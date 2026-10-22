@@ -1,0 +1,49 @@
+/* Hero as in the mockup: about half the first screen, art weighted right, copy on a fade into the
+   page background (so it adapts to every theme), page header floating over the image. */
+.hero { position: relative; min-height: clamp(460px, 56vh, 600px); display: flex; align-items: flex-end; padding: calc(var(--head-h) + 12px) var(--gutter) 48px; isolation: isolate; }
+.hero-art { position: absolute !important; inset: 0; z-index: -1; background: var(--bg); }
+.hero-art img { object-position: 70% 30% !important; }
+.hero-art::after {
+  content: ''; position: absolute; inset: 0;
+  background:
+    linear-gradient(90deg, rgb(var(--bg-rgb) / 0.97) 0%, rgb(var(--bg-rgb) / 0.86) 28%, rgb(var(--bg-rgb) / 0.35) 56%, rgb(var(--bg-rgb) / 0) 76%),
+    linear-gradient(0deg, var(--bg) 0%, rgb(var(--bg-rgb) / 0) 32%),
+    linear-gradient(180deg, rgb(var(--bg-rgb) / 0.6) 0%, rgb(var(--bg-rgb) / 0) 22%);
+}
+.hero-content { max-width: 560px; display: grid; gap: 10px; justify-items: start; }
+.hero-title-link:hover { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 6px; }
+.hero-sub { font-size: 1.15rem; font-weight: 600; color: var(--text); margin-top: -2px; }
+.hero-synopsis { color: var(--text-2); max-width: 52ch; line-height: 1.6; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+
+.home-body { padding-top: 8px; }
+.channel-card .card-media { aspect-ratio: 16 / 10; }
+/* Channel cards carry the wordmark at the top too, so they fade at both edges. */
+.channel-card .card-shade::after { background: linear-gradient(to top, rgb(var(--scrim) / 0.9) 0%, rgb(var(--scrim) / 0.3) 45%, rgb(var(--scrim) / 0.12) 62%, rgb(var(--scrim) / 0.55) 100%); }
+.channel-card .channel-wordmark { font-size: clamp(1rem, 1.05vw, 1.2rem); }
+
+/* Favourite channels and library shortcuts share a row: both are quick ways back in. */
+.home-pair { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: var(--section-gap) calc(var(--gap) * 2); align-items: start; }
+.channel-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: calc(var(--gap) * 0.75); }
+.channel-chip { display: flex; align-items: center; gap: 12px; padding: 10px 12px; }
+.channel-chip > span:last-child { display: grid; min-width: 0; }
+.channel-chip strong { font-weight: 600; font-size: 0.9375rem; }
+.channel-chip .faint { font-size: 0.8125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shortcut-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: calc(var(--gap) * 0.75); }
+.shortcut { display: grid; grid-template-columns: 36px 1fr auto; align-items: center; gap: 12px; padding: 12px 14px; color: var(--text-3); }
+.shortcut > span:nth-child(2) { display: grid; }
+.shortcut strong { color: var(--text); font-weight: 600; font-size: 0.9375rem; }
+.shortcut .faint { font-size: 0.8125rem; }
+.shortcut-icon { width: 36px; height: 36px; border-radius: var(--r-m); display: grid; place-items: center; background: var(--surface-3); color: var(--accent-text); }
+.footer-note { font-size: 0.8125rem; padding-top: 14px; border-top: 1px solid var(--line); }
+
+@media (max-width: 1100px) { .home-pair { grid-template-columns: 1fr; } }
+@media (max-width: 760px) {
+  .hero { min-height: 560px; padding-bottom: 32px; }
+  .hero-art::after { background: linear-gradient(0deg, var(--bg) 0%, rgb(var(--bg-rgb) / 0.9) 48%, rgb(var(--bg-rgb) / 0.4) 80%, rgb(var(--bg-rgb) / 0.65) 100%); }
+  .shortcut-grid { grid-template-columns: 1fr; }
+}
+/* Narrow columns: one-line wordmark and a taller card so name, badge and programme never collide. */
+.channel-card .card-top { min-width: 0; }
+.channel-card .channel-wordmark { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 1280px) { .channel-card .card-media { aspect-ratio: 4 / 3; } }

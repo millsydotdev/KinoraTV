@@ -1,0 +1,47 @@
+/* Full-viewport player: artwork stands in for the picture until a stream exists. */
+.player { position: fixed; inset: 0; z-index: 60; background: #000; display: grid; grid-template-rows: auto 1fr auto; isolation: isolate; }
+.player > .player-bottom { grid-row: 3; }
+.player-art { position: absolute !important; inset: 0; z-index: -1; }
+.player-art img { filter: brightness(0.7); }
+.player-art::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), transparent 25%, transparent 60%, rgba(0, 0, 0, 0.85)); }
+.player-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 22px var(--gutter); }
+.player-top .icon-btn { color: var(--text); }
+.player-heading h1 { font-weight: 700; font-size: 1.375rem; line-height: 1.2; }
+.player-heading p { display: flex; align-items: center; gap: 10px; font-size: 0.875rem; }
+.player-status { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 4px 10px; border-radius: var(--r-s); background: rgb(var(--scrim) / 0.7); font-size: 0.75rem; color: var(--text-2); }
+.player-status svg { color: var(--warn); }
+.player-status .text-link { font-size: 0.75rem; color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
+.player-sub { bottom: 150px; }
+.player-bottom { padding: 0 var(--gutter) 20px; display: grid; gap: 4px; }
+.scrub { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 14px; font-size: 0.8125rem; font-weight: 600; color: var(--text-2); }
+.player .range { appearance: none; height: 28px; background: transparent; }
+.player .range::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, var(--accent) var(--fill), rgba(200, 215, 235, 0.25) var(--fill)); }
+.player .range::-moz-range-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, var(--accent) var(--fill), rgba(200, 215, 235, 0.25) var(--fill)); }
+.player .range::-webkit-slider-thumb { appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%; background: var(--accent); border: 0; }
+.player .range::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 0; }
+.player-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.control-group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.player .icon-btn { color: var(--text); position: relative; }
+.player .icon-btn[data-tip]:hover::after, .player .icon-btn[data-tip]:focus-visible::after {
+  content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  background: var(--text); color: var(--bg); font-size: 0.75rem; font-weight: 700; padding: 4px 8px; border-radius: 3px; white-space: nowrap; pointer-events: none;
+}
+.player .play-btn { opacity: 0.5; }
+.player .icon-btn[aria-expanded='true']::after { display: none; }
+.player .volume { width: 110px; }
+.menu { position: relative; }
+.menu-pop { position: absolute; right: 0; bottom: calc(100% + 8px); min-width: 160px; padding: 6px; border-radius: var(--r-m); background: var(--raised); border: 1px solid var(--line-strong); box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6); display: grid; z-index: 2; }
+.menu-label { font-size: 0.75rem; font-weight: 700; color: var(--text-3); padding: 6px 8px; }
+.menu-item { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 10px 0 6px; border-radius: var(--r-s); text-align: left; font-size: 0.875rem; font-weight: 600; color: var(--text-2); }
+.menu-item:hover { background: var(--surface-2); color: var(--text); }
+.menu-item[aria-pressed='true'] { color: var(--text); }
+.menu-dot { width: 7px; height: 7px; margin: 0 6px; border-radius: 50%; background: var(--text-3); flex: none; }
+.menu-dot.is-on { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* Size and style classes come from the Settings subtitle preview so both always match. */
+.player .sub-line { position: absolute; }
+
+@media (max-width: 640px) {
+  .player .volume { display: none; }
+  .player-sub { bottom: 190px; }
+}

@@ -1,0 +1,73 @@
+/* Detail hero uses the same composition as Home: art weighted right, copy on the left fade. */
+.detail-hero { position: relative; min-height: clamp(480px, 60vh, 640px); display: flex; align-items: flex-end; padding: calc(var(--head-h) + 12px) var(--gutter) 40px; isolation: isolate; }
+.detail-backdrop { position: absolute !important; inset: 0; z-index: -1; background: var(--bg); }
+.detail-backdrop img { object-position: 70% 35% !important; }
+.detail-backdrop::after {
+  content: ''; position: absolute; inset: 0;
+  background:
+    linear-gradient(90deg, rgb(var(--bg-rgb) / 0.96) 0%, rgb(var(--bg-rgb) / 0.82) 32%, rgb(var(--bg-rgb) / 0.2) 65%, rgb(var(--bg-rgb) / 0) 85%),
+    linear-gradient(0deg, var(--bg) 0%, rgb(var(--bg-rgb) / 0) 32%),
+    linear-gradient(180deg, rgb(var(--bg-rgb) / 0.55) 0%, rgb(var(--bg-rgb) / 0) 22%);
+}
+.detail-hero-content { max-width: 620px; display: grid; gap: 10px; justify-items: start; }
+.detail-back { margin-bottom: 4px; }
+.detail-tagline { font-size: 1.2rem; font-weight: 700; }
+.detail-synopsis { color: var(--text-2); max-width: 58ch; }
+.detail-progress { display: flex; align-items: center; gap: 12px; width: min(360px, 100%); font-size: 0.8125rem; }
+.detail-progress .progress { flex: 1; }
+.detail-hero-content .title-actions { margin-top: 8px; }
+.title-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.btn-sub { font-weight: 500; opacity: 0.8; padding-left: 10px; border-left: 1px solid rgba(255, 255, 255, 0.4); }
+.watched-mark { display: inline-flex; align-items: center; gap: 4px; color: var(--ok); font-weight: 600; }
+
+.detail-body { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(260px, 1fr); gap: clamp(24px, 4vw, 64px); padding: 12px var(--gutter) 0; }
+.detail-story { display: grid; gap: 14px; justify-items: start; align-content: start; }
+.detail-story p { color: var(--text-2); font-size: 1rem; max-width: 64ch; line-height: 1.65; }
+.detail-facts { margin: 0; display: grid; border: 1px solid var(--line); border-radius: var(--r-l); background: var(--surface); padding: 4px 16px; }
+.detail-facts div { display: grid; grid-template-columns: 120px 1fr; gap: 16px; padding: 11px 0; border-bottom: 1px solid var(--line); }
+.detail-facts div:last-child { border-bottom: 0; }
+.detail-facts dt { color: var(--text-3); font-size: 0.875rem; font-weight: 600; }
+.detail-facts dd { margin: 0; color: var(--text-2); font-size: 0.875rem; }
+.detail-more { padding: 36px var(--gutter) 64px; }
+
+/* Episodes as a list of cards */
+.episodes { padding: 4px var(--gutter) 64px; }
+.episodes-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+.episodes-head .btn { margin-bottom: 8px; }
+.episode-list { display: grid; gap: 10px; }
+.episode { display: grid; grid-template-columns: clamp(170px, 16vw, 240px) 1fr auto; gap: 18px; align-items: center; padding: 10px 16px 10px 10px; border: 1px solid var(--line); border-radius: var(--r-l); background: var(--surface); transition: border-color 150ms var(--ease); }
+.episode:hover { border-color: var(--line-strong); }
+.episode.is-next { border-color: var(--accent); }
+.episode-still { display: block; border-radius: var(--r-m); overflow: hidden; }
+.episode-still .art { aspect-ratio: 16 / 9; border-radius: var(--r-m); }
+.episode-still .progress { position: absolute; left: 8px; right: 8px; bottom: 8px; }
+.episode-play { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(var(--scrim) / 0.45); opacity: 0; transition: opacity 150ms var(--ease); }
+.episode-play svg { width: 42px; height: 42px; padding: 12px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); }
+.episode-still:hover .episode-play, .episode-still:focus-visible .episode-play { opacity: 1; }
+.episode-text { display: grid; gap: 3px; min-width: 0; }
+.episode-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 0.8125rem; color: var(--text-3); font-weight: 600; }
+.episode-next { color: var(--accent-text); }
+.episode h3 { font-size: 1rem; font-weight: 700; }
+.episode .muted { font-size: 0.875rem; max-width: 72ch; }
+.episode.is-watched h3 { color: var(--text-2); }
+.episode.is-watched .art img { filter: saturate(0.6) brightness(0.75); }
+.episode-check { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line-strong); display: grid; place-items: center; color: transparent; transition: background-color 150ms var(--ease), color 150ms var(--ease), border-color 150ms var(--ease); }
+.episode-check:hover { color: var(--text-3); border-color: var(--text-3); }
+.episode-check[aria-checked='true'] { background: var(--ok); border-color: var(--ok); color: #06150e; }
+
+/* Collection picker (dialog) */
+.collection-picks { display: grid; gap: 4px; margin-bottom: 18px; }
+.collection-picks button { width: 100%; display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: 12px; padding: 10px; border-radius: var(--r-m); text-align: left; font-size: 0.875rem; }
+.collection-picks button:hover { background: var(--surface-2); }
+.pick-box { width: 22px; height: 22px; border-radius: 4px; border: 1px solid var(--line-strong); display: grid; place-items: center; color: var(--accent-ink); }
+.collection-picks button[aria-checked='true'] .pick-box { background: var(--accent); border-color: var(--accent); }
+.pick-name { font-weight: 600; font-size: 0.9375rem; }
+.new-collection { display: flex; gap: 10px; align-items: flex-end; }
+
+@media (max-width: 860px) { .detail-body { grid-template-columns: 1fr; } }
+@media (max-width: 640px) {
+  .detail-hero { min-height: 600px; }
+  .detail-backdrop::after { background: linear-gradient(0deg, var(--bg) 0%, rgb(var(--bg-rgb) / 0.9) 50%, rgb(var(--bg-rgb) / 0.4) 85%, rgb(var(--bg-rgb) / 0.6) 100%); }
+  .episode { grid-template-columns: 110px 1fr auto; align-items: start; gap: 12px; }
+  .episode .muted { display: none; }
+}

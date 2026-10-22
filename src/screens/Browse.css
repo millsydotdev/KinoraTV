@@ -1,0 +1,9 @@
+.browse-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.browse-bar .filters { margin-right: auto; }
+/* Five posters across at desktop width, as in the mockup's Movies grid. */
+.browse .grid-posters { grid-template-columns: repeat(auto-fill, minmax(clamp(160px, 15vw, 300px), 1fr)); gap: 20px; }
+.browse-count { margin: 14px 0 16px; font-size: 0.8125rem; }
+
+@media (max-width: 520px) {
+  .grid-posters, .browse .grid-posters { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+}

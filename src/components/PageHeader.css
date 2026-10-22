@@ -1,0 +1,38 @@
+.page-header { position: relative; z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: var(--head-h); padding: 14px var(--gutter); }
+.page-header.is-overlay { position: absolute; left: 0; right: 0; top: 0; }
+.page-header-left { display: grid; gap: 6px; min-width: 0; }
+.page-title { font-size: 1.25rem; font-weight: 700; line-height: 1.2; }
+.page-header-right { display: flex; align-items: center; gap: 10px; flex: none; }
+.search-pill {
+  display: flex; align-items: center; gap: 10px; height: 42px; width: clamp(200px, 22vw, 340px); padding: 0 16px;
+  border-radius: 21px; background: rgb(var(--bg-rgb) / 0.72); backdrop-filter: blur(8px); border: 1px solid var(--line-strong); color: var(--text-3); font-size: 0.875rem;
+  transition: border-color 150ms var(--ease);
+}
+.search-pill svg { color: var(--text-2); flex: none; }
+.search-pill span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-pill:hover { border-color: rgba(196, 210, 230, 0.32); color: var(--text-2); }
+.avatar { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; background: var(--surface-3); color: var(--text-2); border: 2px solid var(--line-strong); transition: border-color 150ms var(--ease); }
+.avatar:hover { border-color: var(--accent); color: var(--text); }
+.header-clock { font-weight: 600; font-size: 0.9375rem; padding-left: 6px; }
+.menu-btn { display: none; }
+
+.reminders { position: relative; }
+.reminders .icon-btn { position: relative; }
+.bell-dot { position: absolute; top: 11px; right: 12px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.reminders-pop { position: absolute; right: 0; top: calc(100% + 8px); width: 300px; padding: 12px; border-radius: var(--r-l); background: var(--raised); border: 1px solid var(--line-strong); box-shadow: var(--shadow); display: grid; gap: 8px; }
+.reminders-pop ul { display: grid; }
+.reminders-pop li { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
+.reminders-pop li a { display: grid; padding: 8px 0; font-size: 0.875rem; font-weight: 600; }
+.reminders-pop li a .faint { font-weight: 500; font-size: 0.75rem; }
+.reminders-empty, .reminders-note { font-size: 0.8125rem; }
+
+@media (max-width: 1100px) {
+  .search-pill { width: 42px; padding: 0; justify-content: center; }
+  .search-pill span { display: none; }
+}
+@media (max-width: 760px) {
+  .menu-btn { display: inline-grid; margin-left: -8px; }
+  .page-header { justify-content: flex-start; flex-wrap: wrap; }
+  .page-header-left { flex: 1; }
+  .avatar, .header-clock { display: none; }
+}

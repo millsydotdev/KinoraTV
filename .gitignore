@@ -1,0 +1,8 @@
+node_modules
+dist
+# Melvu app workspace metadata (attachments, generated images), not project source
+.melvu/
+# Rust / Tauri build output
+src-tauri/target/
+src-tauri/gen/schemas/
+*.tsbuildinfo

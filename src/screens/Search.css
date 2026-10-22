@@ -1,0 +1,34 @@
+.search { max-width: 1320px; }
+.search-field { display: flex; align-items: center; gap: 14px; height: 60px; padding: 0 8px 0 22px; border-radius: 30px; background: var(--surface); border: 1px solid var(--line-strong); transition: border-color 150ms var(--ease); }
+.search-field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.search-field > svg { color: var(--text-2); flex: none; }
+.search-input { flex: 1; min-width: 0; background: none; border: 0; font-size: 1.25rem; font-weight: 500; color: var(--text); }
+.search-input::placeholder { color: var(--text-3); }
+.search-input:focus-visible { outline: none; }
+.search-input::-webkit-search-cancel-button { display: none; }
+.search-help { margin: 10px 4px 20px; font-size: 0.8125rem; }
+.search-filters { margin-bottom: 24px; }
+
+.search-idle { display: grid; grid-template-columns: 1fr 1.4fr; gap: clamp(24px, 4vw, 56px); }
+.search-idle .section-title { margin-bottom: 12px; }
+.recent li { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
+.recent li > button:first-child { flex: 1; display: flex; align-items: center; gap: 12px; min-height: 46px; text-align: left; font-weight: 500; color: var(--text-2); }
+.recent li > button:first-child:hover { color: var(--text); }
+.recent svg { color: var(--text-3); }
+.genre-links { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.result-group + .result-group { margin-top: 32px; }
+.results { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+.result { display: flex; align-items: center; gap: 14px; padding: 8px; }
+.result-thumb { flex: none; }
+.result-thumb .art { width: 112px; aspect-ratio: 16 / 9; border-radius: 6px; }
+.results-films .result-thumb .art, .results-series .result-thumb .art { width: 52px; aspect-ratio: 2 / 3; }
+.result-text { display: grid; min-width: 0; gap: 2px; }
+.result-text strong { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.result-text > span { color: var(--text-3); font-size: 0.8125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+mark { background: var(--accent-soft); color: var(--text); border-radius: 2px; padding: 0 1px; box-shadow: 0 1px 0 var(--accent); }
+
+@media (max-width: 760px) {
+  .search-idle { grid-template-columns: 1fr; }
+  .results { grid-template-columns: 1fr; }
+}
