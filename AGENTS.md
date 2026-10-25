@@ -1,14 +1,22 @@
 # TVMovie (Kinora)
 
 Premium TV and film app: **React + TypeScript UI inside a Rust + Tauri 2 desktop shell.**
-**Phase: Gate D2 (Rust playlist ingestion) on branch `feature/playlist-ingestion`.** Approved so far:
-Rust M3U parsing, bounded http(s) fetching and the two ingest commands. Not approved yet: wiring them
-into the UI (D3), source persistence, discovery, stream validation, XMLTV, playback. Each needs the
-owner's explicit approval; that is a hard gate.
+**Phase: Gate D2 (Rust playlist ingestion) is complete on `main`. D3 awaits the owner's approval.**
+Done: Rust M3U parsing, bounded http(s) fetching and the two ingest commands. Not approved yet: wiring
+them into the UI (D3), source persistence, discovery, stream validation, XMLTV, playback. Each needs
+the owner's explicit approval; that is a hard gate.
 
-Live path: `/home/millsy/dev/TVMovie` (symlinked from `/mnt/storage/TVMovie`). Git repo, branch
-`main`; first commit is the pre-Tauri baseline. Pre-migration copy:
-`/home/millsy/dev/TVMovie-backup-pre-tauri-2026-10-22`.
+Live path: `/home/millsy/dev/TVMovie` (symlinked from `/mnt/storage/TVMovie`). Git repo; first
+commit is the pre-Tauri baseline. Backups: `/home/millsy/dev/TVMovie-backup-pre-tauri-2026-10-22`
+(pre-migration copy) and `/home/millsy/dev/TVMovie-backup-pre-d2-integration-2026-10-25` plus its
+`.bundle` (full history before D2 reached `main`).
+
+## Git workflow
+
+**All work happens directly on `main`.** Do not create feature, development or other branches. Do
+not rebase, reset, force-push, amend or otherwise rewrite commits. Before changing files, check the
+branch, `git status` and the latest commit. Commit to `main` with a clear message when each approved
+milestone is complete. Keep backups and preserve existing work.
 
 ## Commands
 
