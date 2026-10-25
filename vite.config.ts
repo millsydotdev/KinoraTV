@@ -3,5 +3,10 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  server: { port: 5199 },
+  // Tauri's devUrl points at this exact port, so fail rather than silently move to another one.
+  server: { port: 5199, strictPort: true, watch: { ignored: ['**/src-tauri/**'] } },
+  // Keep Rust compiler output visible when running under `tauri dev`.
+  clearScreen: false,
+  // Small font subsets would otherwise be inlined as data: URLs, which the Tauri CSP (font-src 'self') blocks.
+  build: { assetsInlineLimit: (file) => (file.endsWith('.woff2') ? false : undefined) },
 })

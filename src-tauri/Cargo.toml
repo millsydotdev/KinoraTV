@@ -1,0 +1,22 @@
+[package]
+name = "kinora"
+version = "0.1.0"
+description = "Kinora native shell (Tauri 2) hosting the React UI"
+edition = "2021"
+rust-version = "1.90"
+publish = false
+
+[lib]
+# The `_lib` suffix avoids a name clash with the binary on Windows (Tauri convention).
+name = "kinora_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.7.4", features = [] }
+
+[dependencies]
+tauri = { version = "2.12.5", features = [] }
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"

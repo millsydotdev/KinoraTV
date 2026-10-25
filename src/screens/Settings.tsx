@@ -1,10 +1,11 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Dialog } from '../components/Dialog'
 import { Icon, type IconName } from '../components/Icon'
 import { useToast } from '../components/Toast'
 import { PageHeader } from '../components/PageHeader'
 import { Segmented, StateBlock, Switch } from '../components/ui'
+import { getAppInfo, type AppInfo } from '../lib/native'
 import { ACCENTS, safeHex, type AccentName } from '../lib/theme'
 import { useStore, type Prefs } from '../state/store'
 import './Settings.css'
@@ -329,6 +330,28 @@ function DataSection() {
   )
 }
 
+/** Version and shell details from Rust via the `app_info` IPC command; browser-only runs say so. */
+function BuildRow() {
+  const [state, setState] = useState<{ info: AppInfo | null } | { error: string } | 'loading'>('loading')
+  useEffect(() => {
+    let live = true
+    getAppInfo()
+      .then((info) => { if (live) setState({ info }) })
+      .catch((e: unknown) => { if (live) setState({ error: e instanceof Error ? e.message : 'Could not read app information.' }) })
+    return () => { live = false }
+  }, [])
+
+  if (state === 'loading') return <Row title="Kinora"><span className="muted">Reading build details…</span></Row>
+  if ('error' in state) return <Row title="Kinora" hint={state.error}><span className="pending-tag">Unavailable</span></Row>
+  if (!state.info) return <Row title="Kinora" hint="Running in a web browser, without the native shell."><span className="muted tnum">0.1.0, interface preview</span></Row>
+  const { version, profile, os, arch, tauriVersion } = state.info
+  return (
+    <Row title="Kinora" hint={`Native shell: Tauri ${tauriVersion} on ${os} ${arch}.`}>
+      <span className="muted tnum">{version}, {profile} build</span>
+    </Row>
+  )
+}
+
 function About() {
   const shortcuts: [string, string][] = [
     ['/', 'Search from anywhere'],
@@ -344,12 +367,11 @@ function About() {
   return (
     <>
       <Group title="This build">
-        <Row title="Kinora"><span className="muted tnum">0.1.0, interface preview</span></Row>
+        <BuildRow />
         <Row title="What works" hint="Every screen, control and saved preference. Nothing streams: there is no playback service, source checking or guide import yet." ><span className="pending-tag">Frontend only</span></Row>
         <Row title="Catalogue" hint="Films, series, channels, schedules and sources are fictional demonstration data. Artwork was generated for this project."><span className="muted">Demonstration</span></Row>
       </Group>
       <Group title="Typefaces">
-        <Row title="Instrument Serif" hint="Titles. SIL Open Font License 1.1."><span className="muted">OFL</span></Row>
         <Row title="Hanken Grotesk" hint="Interface text. SIL Open Font License 1.1."><span className="muted">OFL</span></Row>
       </Group>
       <Group title="Keyboard shortcuts">
