@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { demoValidation } from '../data/sources'
 import type { Source, SourceKind } from '../data/types'
@@ -8,8 +8,16 @@ import { PageHeader } from '../components/PageHeader'
 import { useToast } from '../components/Toast'
 import { DemoNote, ProgressBar, Segmented, StateBlock, Switch } from '../components/ui'
 import { clock, relative, useNow } from '../lib/time'
+import { fetchPlaylist, readPlaylistFile, type PlaylistReport } from '../lib/native'
+import {
+  DESKTOP_ONLY, NOT_TESTED, UNCATEGORISED, addressLabel, channelGroups, defaultName, fileLabel, statusText, statusTone, toChannels, userMessage,
+  type PlaylistSource,
+} from '../state/playlists'
 import { useStore } from '../state/store'
 import './Sources.css'
+
+/** File picker filter: M3U extensions and the MIME types servers commonly use for them. */
+const PLAYLIST_ACCEPT = '.m3u,.m3u8,audio/x-mpegurl,audio/mpegurl,application/vnd.apple.mpegurl,application/x-mpegurl'
 
 const kindLabel: Record<SourceKind, string> = { m3u: 'M3U playlist', m3u8: 'M3U8 playlist', xmltv: 'XMLTV guide', 'url-list': 'URL list' }
 const kindIcon: Record<SourceKind, IconName> = { m3u: 'live', m3u8: 'live', xmltv: 'guide', 'url-list': 'link' }
@@ -34,10 +42,22 @@ export function Sources() {
   const [removeId, setRemoveId] = useState<string | null>(null)
 
   const detail = store.sources.find((s) => s.id === detailId)
+  const playlistDetail = store.playlists.find((s) => s.id === detailId)
   const toRemove = store.sources.find((s) => s.id === removeId)
+  const playlistToRemove = store.playlists.find((s) => s.id === removeId)
   const refresh = (s: Source) => {
     store.queueRefresh(s.id)
-    toast(`${s.name} queued for refresh. Checking runs once the source service is connected.`)
+    toast(`${s.name} is a sample source; nothing is fetched for it.`)
+  }
+  const remove = () => {
+    if (playlistToRemove) {
+      store.removePlaylist(playlistToRemove.id)
+      toast(`Removed ${playlistToRemove.name} and its channels`)
+    } else if (toRemove) {
+      store.removeSource(toRemove.id)
+      toast(`Removed ${toRemove.name}`)
+    }
+    setRemoveId(null)
   }
 
   const tabs = (
@@ -52,18 +72,19 @@ export function Sources() {
       <PageHeader title="Sources" tabs={tabs} search={false} actions={<Link to="/sources/add" className="btn btn-primary btn-small"><Icon name="plus" size={16} />Add Source</Link>} />
       <div className="page sources">
 
-        {tab === 'discovery' ? <Discovery /> : store.sources.length === 0 ? (
+        {tab === 'discovery' ? <Discovery /> : store.sources.length + store.playlists.length === 0 ? (
           <StateBlock icon="sources" title="No sources yet" action={<Link to="/sources/add" className="btn btn-primary"><Icon name="plus" size={18} />Add Source</Link>}>
             Add an M3U playlist you are allowed to use, such as your own tuner's channel lineup, or an XMLTV guide feed.
           </StateBlock>
         ) : (
           <ul className="source-list">
+            {store.playlists.map((s) => <PlaylistRow key={s.id} source={s} now={now} onOpen={() => setDetailId(s.id)} />)}
             {store.sources.map((s) => (
               <li key={s.id} className="source-row">
-                <button type="button" className="source-main" onClick={() => setDetailId(s.id)} aria-label={`${s.name}, ${statusLabel[s.status]}. Open details`}>
+                <button type="button" className="source-main" onClick={() => setDetailId(s.id)} aria-label={`${s.name}, sample source, ${statusLabel[s.status]}. Open details`}>
                   <span className="source-icon"><Icon name={kindIcon[s.kind]} /></span>
                   <span className="source-id">
-                    <strong>{s.name}</strong>
+                    <strong>{s.name} <span className="pending-tag">Sample</span></strong>
                     <span className="faint">{s.lastChecked ? `Last checked: ${relative(s.lastChecked, now)}` : 'Not checked yet'}</span>
                   </span>
                   <span className={`pill pill-${s.status}`}>{statusPill(s)}</span>
@@ -73,25 +94,101 @@ export function Sources() {
           </ul>
         )}
 
-        <div className="sources-foot"><DemoNote>Demonstration data. Nothing is fetched, scanned or validated in this build; counts are sample values. Open a source to refresh or remove it.</DemoNote></div>
+        <div className="sources-foot">
+          <DemoNote>
+            {store.playlists.length > 0 && 'Imported playlists are kept only until Kinora closes, and their streams have not been playback-tested. '}
+            Sources marked Sample are demonstration data: nothing is fetched, scanned or validated for them, and their counts are sample values. Open a source to refresh or remove it.
+          </DemoNote>
+        </div>
 
-        <Dialog open={!!detail} onClose={() => setDetailId(null)} title={detail?.name ?? ''} variant="sheet">
+        <Dialog open={!!detail || !!playlistDetail} onClose={() => setDetailId(null)} title={playlistDetail?.name ?? detail?.name ?? ''} variant="sheet">
+          {playlistDetail && <PlaylistDetail source={playlistDetail} onRemove={() => { setDetailId(null); setRemoveId(playlistDetail.id) }} />}
           {detail && <SourceDetail source={detail} onRefresh={() => refresh(detail)} onRemove={() => { setDetailId(null); setRemoveId(detail.id) }} />}
         </Dialog>
 
         <Dialog
-          open={!!toRemove}
+          open={!!toRemove || !!playlistToRemove}
           onClose={() => setRemoveId(null)}
           title="Remove this source?"
           footer={<>
             <button type="button" className="btn btn-secondary" onClick={() => setRemoveId(null)}>Keep it</button>
-            <button type="button" className="btn btn-danger" onClick={() => { if (toRemove) { store.removeSource(toRemove.id); toast(`Removed ${toRemove.name}`) } setRemoveId(null) }}>Remove source</button>
+            <button type="button" className="btn btn-danger" onClick={remove}>Remove source</button>
           </>}
         >
+          {playlistToRemove && <p className="muted">{playlistToRemove.name} and its {playlistToRemove.channels.length} channels will be removed from Live TV. Imported playlists are not saved, so you would need to add it again to get them back.</p>}
           {toRemove && <p className="muted">{toRemove.name} will be removed{toRemove.streams ? `, along with the ${toRemove.streams.total} streams it lists` : ''}. Channels other sources provide are not affected.</p>}
         </Dialog>
       </div>
     </>
+  )
+}
+
+/** One imported playlist in the source list. Exported for tests. */
+export function PlaylistRow({ source: s, now, onOpen }: { source: PlaylistSource; now: number; onOpen: () => void }) {
+  return (
+    <li className="source-row">
+      <button type="button" className="source-main" onClick={onOpen} aria-label={`${s.name}, ${statusText(s)}. Open details`}>
+        <span className="source-icon"><Icon name={s.origin === 'file' ? 'folder' : 'live'} /></span>
+        <span className="source-id">
+          <strong>{s.name}</strong>
+          <span className="faint">{s.lastSuccess ? `Imported ${relative(s.lastSuccess, now)}` : 'Not imported'} · {NOT_TESTED}</span>
+        </span>
+        <span className={`pill pill-${statusTone(s)}`}>{statusText(s)}</span>
+      </button>
+    </li>
+  )
+}
+
+/** Details of an imported playlist: what was read, and nothing about playback. Exported for tests. */
+export function PlaylistDetail({ source: s, onRemove }: { source: PlaylistSource; onRemove: () => void }) {
+  const now = useNow()
+  const store = useStore()
+  const fileInput = useRef<HTMLInputElement>(null)
+  const busy = s.status === 'importing'
+  const groups = channelGroups(s.channels).length
+  return (
+    <div className="source-detail">
+      <p><span className={`pill pill-${statusTone(s)}`}>{statusText(s)}</span></p>
+      {s.status === 'failed' && s.error && (
+        <p className="field-error" role="alert">{s.error}{s.lastSuccess ? ' The channels from the last successful import are still shown.' : ''}</p>
+      )}
+      <dl className="detail-facts">
+        <div><dt>Type</dt><dd>{s.origin === 'url' ? 'M3U playlist from an address' : 'M3U playlist file'}</dd></div>
+        <div><dt>{s.origin === 'url' ? 'Address' : 'File'}</dt><dd className="source-url-full">{s.label}</dd></div>
+        <div><dt>Added</dt><dd>{relative(s.addedAt, now)}</dd></div>
+        <div><dt>Last import</dt><dd>{s.lastSuccess ? relative(s.lastSuccess, now) : 'Never'}</dd></div>
+        <div><dt>Channels</dt><dd className="tnum">{s.channels.length} in {groups} {groups === 1 ? 'group' : 'groups'}</dd></div>
+        <div><dt>Skipped</dt><dd className="tnum">{s.skipped} malformed, {s.duplicates} exact repeats</dd></div>
+        <div><dt>Playback</dt><dd>Not tested. Kinora has read the channel list; it has not tried to play any stream.</dd></div>
+        <div><dt>Kept</dt><dd>Until Kinora closes</dd></div>
+      </dl>
+      <div className="title-actions">
+        {s.origin === 'url' ? (
+          <button type="button" className="btn btn-ghost btn-small" onClick={() => void store.refreshPlaylist(s)} disabled={busy}>
+            <Icon name="refresh" size={16} />{busy ? 'Refreshing…' : 'Refresh now'}
+          </button>
+        ) : (
+          <>
+            <button type="button" className="btn btn-ghost btn-small" onClick={() => fileInput.current?.click()} disabled={busy}>
+              <Icon name="refresh" size={16} />{busy ? 'Importing…' : 'Choose the file again'}
+            </button>
+            <input ref={fileInput} type="file" accept={PLAYLIST_ACCEPT} hidden onChange={(e) => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (file) void store.reimportPlaylist(s.id, file)
+            }} />
+          </>
+        )}
+        <button type="button" className="btn btn-ghost btn-small" onClick={onRemove} disabled={busy}><Icon name="trash" size={16} />Remove</button>
+      </div>
+      {s.origin === 'file' && <p className="faint">A file cannot be refreshed on its own: choose it again to read its current contents.</p>}
+      {s.warnings.length > 0 && (
+        <section>
+          <h3 className="label">Import notes</h3>
+          <ul className="check-list">{s.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
+        </section>
+      )}
+    </div>
   )
 }
 
@@ -205,7 +302,7 @@ const typeOptions: { value: SourceKind; label: string; icon: IconName }[] = [
   { value: 'xmltv', label: 'XMLTV Guide', icon: 'guide' },
 ]
 
-/** Full-page add flow from the mockup: Discover, Validate, Add. */
+/** Full-page add flow from the mockup: Discover, Validate, Add. Validate is a real import through Rust. */
 export function AddSource() {
   const store = useStore()
   const toast = useToast()
@@ -214,39 +311,73 @@ export function AddSource() {
   const [url, setUrl] = useState('')
   const [name, setName] = useState('')
   const [kind, setKind] = useState<SourceKind>('m3u')
-  const [interval, setRefreshEvery] = useState(store.prefs.refreshInterval)
-  const [validate, setValidate] = useState(store.prefs.validateOnAdd)
   const [errors, setErrors] = useState<{ name?: string; url?: string }>({})
+  const [busy, setBusy] = useState(false)
+  const [preview, setPreview] = useState<{ origin: PlaylistSource['origin']; url: string | null; label: string; report: PlaylistReport } | null>(null)
+  // Each import attempt gets a token; a result only lands if no newer attempt started since.
+  const attempt = useRef(0)
+  const fileInput = useRef<HTMLInputElement>(null)
 
   // Trust boundary: only well-formed http(s) addresses get through; credentials in URLs are refused.
+  // Rust validates again (scheme, credentials, destination) before fetching anything.
   const checkUrl = () => {
     let parsed: URL | null = null
     try { parsed = new URL(url.trim()) } catch { parsed = null }
     let error: string | undefined
-    if (!url.trim()) error = 'Paste the playlist or guide address.'
+    if (!url.trim()) error = 'Paste the playlist address.'
     else if (!parsed || !['http:', 'https:'].includes(parsed.protocol)) error = 'Use a full address starting with http:// or https://'
     else if (parsed.username || parsed.password) error = 'Remove the username and password from the address. Sign-in details are not stored in URLs.'
-    else if (store.sources.some((s) => s.url === parsed?.href)) error = 'This address is already one of your sources.'
+    else if (store.playlists.some((s) => s.url === parsed?.href)) error = 'This address is already one of your sources.'
+    else if (kind === 'xmltv' || kind === 'url-list') error = 'Kinora can import M3U playlists so far. XMLTV guides and URL lists are not supported yet.'
     setErrors({ url: error })
-    if (!error && parsed && !name.trim()) setName(parsed.hostname.replace(/^www\./, ''))
-    return !error
+    return error ? null : parsed
   }
   const checkName = () => {
     const n = name.trim()
-    const error = !n ? 'Give the source a name you will recognise.' : store.sources.some((s) => s.name.toLowerCase() === n.toLowerCase()) ? 'You already have a source with this name.' : undefined
+    const taken = [...store.playlists, ...store.sources].some((s) => s.name.toLowerCase() === n.toLowerCase())
+    const error = !n ? 'Give the source a name you will recognise.' : taken ? 'You already have a source with this name.' : undefined
     setErrors({ name: error })
     return !error
   }
 
+  const load = async (next: { origin: PlaylistSource['origin']; url: string | null; label: string; name: string }, read: () => Promise<PlaylistReport | null>) => {
+    const token = ++attempt.current
+    setBusy(true)
+    setErrors({})
+    try {
+      const report = await read()
+      if (token !== attempt.current) return
+      if (!report) setErrors({ url: DESKTOP_ONLY })
+      else if (report.channels.length === 0) setErrors({ url: 'The playlist was read, but it lists no channels to add.' })
+      else {
+        setPreview({ origin: next.origin, url: next.url, label: next.label, report })
+        if (!name.trim()) setName(next.name)
+        setStep(2)
+      }
+    } catch (e) {
+      if (token === attempt.current) setErrors({ url: userMessage(e) })
+    } finally {
+      if (token === attempt.current) setBusy(false)
+    }
+  }
+  const scanUrl = () => {
+    const parsed = checkUrl()
+    if (!parsed) return
+    void load({ origin: 'url', url: parsed.href, label: addressLabel(parsed.href), name: defaultName('url', parsed.href) }, () => fetchPlaylist(parsed.href))
+  }
+  const scanFile = (file: File) =>
+    void load({ origin: 'file', url: null, label: fileLabel(file.name), name: defaultName('file', file.name) }, () => readPlaylistFile(file))
+
   const add = () => {
-    store.addSource({
-      id: `src-${Date.now().toString(36)}`, name: name.trim(), kind, url: new URL(url.trim()).href, addedAt: Date.now(),
-      lastChecked: null, status: 'pending', streams: null, scan: null, history: [], refreshInterval: interval,
-    })
-    toast(`Added ${name.trim()}. It will be checked once the source service is connected.`)
+    if (!preview) return
+    store.addPlaylist({ name: name.trim(), origin: preview.origin, url: preview.url, label: preview.label }, preview.report)
+    const n = preview.report.channels.length
+    toast(`Added ${name.trim()}: ${n} channels. Streams have not been playback-tested.`)
     navigate('/sources')
   }
 
+  const report = preview?.report
+  const groups = report ? channelGroups(toChannels('preview', report)) : []
   const steps = ['Discover', 'Validate', 'Add']
   return (
     <>
@@ -261,31 +392,38 @@ export function AddSource() {
         </ol>
 
         {step === 1 && (
-          <form className="add-form" onSubmit={(e) => { e.preventDefault(); if (checkUrl()) setStep(2) }}>
+          <form className="add-form" onSubmit={(e) => { e.preventDefault(); scanUrl() }} aria-busy={busy}>
             <label className="field">
-              <span>Paste a playlist or guide URL</span>
-              <input className="input input-lg" type="url" inputMode="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="e.g. https://example.com/playlist.m3u" aria-invalid={errors.url ? true : undefined} autoFocus />
-              {errors.url ? <span className="field-error">{errors.url}</span> : <span className="field-hint">Only add sources you have permission to use.</span>}
+              <span>Paste a playlist URL</span>
+              <input className="input input-lg" type="url" inputMode="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="e.g. https://example.com/playlist.m3u" aria-invalid={errors.url ? true : undefined} disabled={busy} autoFocus />
+              {errors.url ? <span className="field-error" role="alert">{errors.url}</span> : <span className="field-hint">Only add sources you have permission to use.</span>}
             </label>
             <div className="field">
               <span>Source Type</span>
               <Segmented label="Source type" value={kind} onChange={setKind} options={typeOptions} className="type-picker" />
             </div>
-            <button type="submit" className="btn btn-primary btn-block">Scan &amp; Validate</button>
-            <p className="faint add-note">Every stream is checked before channels are added. Checking is not connected in this build, so new sources are saved as “Not checked yet”.</p>
+            <button type="submit" className="btn btn-primary btn-block" disabled={busy}>{busy ? 'Reading playlist…' : 'Scan & Validate'}</button>
+            <button type="button" className="btn btn-secondary btn-block" onClick={() => fileInput.current?.click()} disabled={busy}>
+              <Icon name="folder" size={18} />Import a playlist file
+            </button>
+            <input ref={fileInput} type="file" accept={PLAYLIST_ACCEPT} hidden onChange={(e) => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (file) scanFile(file)
+            }} />
+            <p className="faint add-note">Kinora downloads or reads the playlist and lists its channels. It does not open or test any stream, and sources are kept only until Kinora closes.</p>
           </form>
         )}
 
-        {step === 2 && (
+        {step === 2 && report && preview && (
           <form className="add-form" onSubmit={(e) => { e.preventDefault(); if (checkName()) setStep(3) }}>
             <div className="validate-box">
-              <p className="validate-status"><Icon name="warning" size={18} />Validation service not connected</p>
-              <p className="muted">Once connected, Kinora will check this {kindLabel[kind]} before adding it:</p>
+              <p className="validate-status is-ok"><Icon name="check" size={18} />Playlist read: {report.channels.length} channels</p>
               <ul className="check-list">
-                <li><Icon name="check" size={16} />The address responds and is a valid {kindLabel[kind]}</li>
-                {kind !== 'xmltv' && <li><Icon name="check" size={16} />Each stream is opened briefly to see whether it plays</li>}
-                {kind !== 'xmltv' && <li><Icon name="check" size={16} />Duplicates of channels you already have are merged</li>}
-                {kind === 'xmltv' && <li><Icon name="check" size={16} />Programmes are matched to your channels by tvg-id, then by name</li>}
+                <li><Icon name="check" size={16} />{groups.length} {groups.length === 1 ? 'group' : 'groups'}{groups.includes(UNCATEGORISED) ? `, including ${UNCATEGORISED}` : ''}</li>
+                {report.skipped > 0 && <li><Icon name="warning" size={16} />{report.skipped} malformed {report.skipped === 1 ? 'entry was' : 'entries were'} skipped</li>}
+                {report.duplicates > 0 && <li><Icon name="info" size={16} />{report.duplicates} exact {report.duplicates === 1 ? 'repeat was' : 'repeats were'} dropped</li>}
+                <li><Icon name="info" size={16} />Streams have not been playback-tested.</li>
               </ul>
             </div>
             <label className="field">
@@ -293,19 +431,6 @@ export function AddSource() {
               <input className="input" value={name} maxLength={48} onChange={(e) => setName(e.target.value)} placeholder="For example: Living room tuner" aria-invalid={errors.name ? true : undefined} />
               {errors.name && <span className="field-error">{errors.name}</span>}
             </label>
-            <label className="field">
-              <span>Refresh</span>
-              <select className="select" value={interval} onChange={(e) => setRefreshEvery(e.target.value as typeof interval)}>
-                <option value="6h">Every 6 hours</option>
-                <option value="12h">Every 12 hours</option>
-                <option value="24h">Every day</option>
-                <option value="manual">Only when I refresh it</option>
-              </select>
-            </label>
-            <div className="setting-line">
-              <span><strong>Check before adding</strong><span className="faint">Off adds the source straight away and checks it later.</span></span>
-              <Switch checked={validate} onChange={setValidate} label="Check before adding" />
-            </div>
             <div className="add-actions">
               <button type="button" className="btn btn-secondary" onClick={() => setStep(1)}>Back</button>
               <button type="submit" className="btn btn-primary">Continue</button>
@@ -313,16 +438,17 @@ export function AddSource() {
           </form>
         )}
 
-        {step === 3 && (
+        {step === 3 && report && preview && (
           <div className="add-form">
             <dl className="detail-facts">
               <div><dt>Name</dt><dd>{name.trim()}</dd></div>
-              <div><dt>Address</dt><dd className="source-url-full">{url.trim()}</dd></div>
-              <div><dt>Type</dt><dd>{kindLabel[kind]}</dd></div>
-              <div><dt>Checks</dt><dd>{validate ? 'Before adding' : 'After adding'}</dd></div>
-              <div><dt>Refresh</dt><dd>{interval === 'manual' ? 'Manual only' : `Every ${interval}`}</dd></div>
+              <div><dt>{preview.origin === 'url' ? 'Address' : 'File'}</dt><dd className="source-url-full">{preview.label}</dd></div>
+              <div><dt>Type</dt><dd>{preview.origin === 'url' ? kindLabel[kind] : 'M3U playlist file'}</dd></div>
+              <div><dt>Channels</dt><dd className="tnum">{report.channels.length}</dd></div>
+              <div><dt>Playback</dt><dd>Not tested</dd></div>
+              <div><dt>Kept</dt><dd>Until Kinora closes</dd></div>
             </dl>
-            <p className="muted">The source is saved now and shown as “Not checked yet” until checking is available.</p>
+            <p className="muted">Its channels replace the demonstration channels in Live TV while you have imported playlists.</p>
             <div className="add-actions">
               <button type="button" className="btn btn-secondary" onClick={() => setStep(2)}>Back</button>
               <button type="button" className="btn btn-primary" onClick={add}><Icon name="plus" size={18} />Add Source</button>

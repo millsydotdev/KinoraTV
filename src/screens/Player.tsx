@@ -47,7 +47,7 @@ export function Player() {
   const toast = useToast()
   const now = useNow()
   const { prefs, library } = store
-  const item = resolve(ref, now)
+  const item = resolve(ref, now, store.findChannel)
   const shell = useRef<HTMLDivElement>(null)
   const [muted, setMuted] = useState(false)
   const [volume, setVolume] = useState(80)
@@ -98,13 +98,14 @@ export function Player() {
     return (
       <div className="page">
         <StateBlock icon="warning" title="Nothing to play here" action={<Link to="/" className="btn btn-primary">Back to Home</Link>}>
-          This link does not point to a title in the demonstration catalogue.
+          This link does not point to anything in the current catalogue. Imported playlists are kept only until Kinora closes.
         </StateBlock>
       </div>
     )
   }
 
   const programme = item.kind === 'channel' ? programmeAt(item.item, now) : undefined
+  const fromPlaylist = item.kind === 'channel' && item.item.sourceId !== null
   const audioTracks = item.kind === 'movie' ? item.item.audio : ['English stereo', 'English Audio Description']
   const subtitleTracks = item.kind === 'movie' ? item.item.subtitles : ['English', 'English (SDH)']
   const next = item.kind === 'episode' ? nextEpisode(item.series, item.item) : undefined
@@ -120,9 +121,13 @@ export function Player() {
       <div className="player-top">
         <div className="player-heading">
           <h1>{heading}</h1>
-          <p className="muted">{item.kind === 'channel' && <span className="live-dot">Live</span>}{sub}</p>
+          <p className="muted">{item.kind === 'channel' && !fromPlaylist && <span className="live-dot">Live</span>}{sub}</p>
           <p className="player-status" role="status">
-            <Icon name="sources" size={14} />No stream connected: demonstration {item.kind === 'channel' ? 'channel' : 'title'}. <Link to="/sources" className="text-link">Manage sources</Link>
+            <Icon name="sources" size={14} />
+            {fromPlaylist
+              ? 'Playback is not available yet. This channel was read from your playlist; its stream has not been playback-tested.'
+              : `No stream connected: demonstration ${item.kind === 'channel' ? 'channel' : 'title'}.`}
+            {' '}<Link to="/sources" className="text-link">Manage sources</Link>
           </p>
         </div>
         <button type="button" className="icon-btn" onClick={leave} aria-label="Close player"><Icon name="close" /></button>

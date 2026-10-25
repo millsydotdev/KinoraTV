@@ -47,6 +47,8 @@
 .fav-btn.is-fav svg { fill: currentColor; }
 
 .guide-track { position: relative; flex: 1; }
+/* Playlist channels have no guide yet: a sticky note instead of invented programmes. */
+.guide-noinfo { position: sticky; left: calc(var(--col-w) + 14px); display: inline-flex; align-items: center; height: 100%; font-size: 0.8125rem; }
 .prog {
   position: absolute; top: 3px; bottom: 3px; display: flex; align-items: center; padding: 0 14px;
   border-radius: 6px; background: var(--surface); border: 1px solid var(--line); text-align: left;

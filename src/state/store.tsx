@@ -1,7 +1,10 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { channels as demoChannels } from '../data/channels'
 import { demoProviders, demoSources } from '../data/sources'
-import type { DiscoveryProvider, Source } from '../data/types'
+import type { Channel, DiscoveryProvider, Source } from '../data/types'
+import { readPlaylistFile, fetchPlaylist, type PlaylistReport } from '../lib/native'
 import { ACCENTS, THEME_BG, safeHex, type AccentName, type ThemeName } from '../lib/theme'
+import { activeChannels, createSource, fileLabel, removeSource, runImport, type PlaylistSource } from './playlists'
 
 /** `movie:<id>`, `series:<id>`, `channel:<id>` or `episode:<seriesId>/<episodeId>` */
 export type Ref = string
@@ -149,6 +152,28 @@ function useStoreValue() {
   const [prefs, setPrefs] = usePersisted<Prefs>('kinora.prefs.v2', () => defaultPrefs, sanitizePrefs)
   const [src, setSrc] = usePersisted<SourcesState>('kinora.sources.v1', () => ({ sources: demoSources(Date.now()), providers: demoProviders }))
 
+  // Imported playlists live in memory only: never written to localStorage, gone when Kinora closes.
+  const [playlists, setPlaylists] = useState<PlaylistSource[]>([])
+  const lastOp = useRef(0)
+  const channels = useMemo(() => activeChannels(playlists, demoChannels), [playlists])
+  const findChannel = useCallback((id: string): Channel | undefined => channels.find((c) => c.id === id), [channels])
+  const playlistActions = useMemo(() => {
+    const run = (id: string, load: () => Promise<PlaylistReport | null>) => runImport(setPlaylists, id, ++lastOp.current, load)
+    return {
+      addPlaylist: (input: { name: string; origin: PlaylistSource['origin']; url: string | null; label: string }, report: PlaylistReport) => {
+        const id = `pl-${Date.now().toString(36)}-${(++lastOp.current).toString(36)}`
+        setPlaylists((l) => [...l, createSource(id, input, report, Date.now())])
+        return id
+      },
+      refreshPlaylist: (source: PlaylistSource) => (source.url ? run(source.id, () => fetchPlaylist(source.url ?? '')) : Promise.resolve()),
+      reimportPlaylist: (id: string, file: File) => {
+        setPlaylists((l) => l.map((s) => (s.id === id ? { ...s, label: fileLabel(file.name) } : s)))
+        return run(id, () => readPlaylistFile(file))
+      },
+      removePlaylist: (id: string) => setPlaylists((l) => removeSource(l, id)),
+    }
+  }, [])
+
   const keepHistory = prefs.keepHistory
   const setPref = useCallback(<K extends keyof Prefs>(key: K, value: Prefs[K]) => setPrefs((p) => ({ ...p, [key]: value })), [setPrefs])
 
@@ -194,7 +219,12 @@ function useStoreValue() {
     resetSources: () => setSrc({ sources: demoSources(Date.now()), providers: demoProviders }),
   }), [setLibrary, setPrefs, setSrc, keepHistory])
 
-  return { library, prefs, setPref, sources: src.sources, providers: src.providers, ...actions }
+  return {
+    library, prefs, setPref, sources: src.sources, providers: src.providers, ...actions,
+    playlists, ...playlistActions,
+    /** The channel catalogue every screen shows: playlist channels, or the demonstration set when there are no playlists. */
+    channels, findChannel, channelMode: playlists.length > 0 ? 'playlists' as const : 'demo' as const,
+  }
 }
 
 type Store = ReturnType<typeof useStoreValue>

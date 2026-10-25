@@ -58,8 +58,13 @@ export interface Channel {
   group: string
   logoUrl: string | null
   mark: { text: string; tone: string }
+  /** Never shown or logged: may carry credentials. Nothing plays it yet. */
   streamUrl: string | null
   hd: boolean
+  /** Playlist source the channel was read from; `null` for the demonstration catalogue. */
+  sourceId: string | null
+  /** XMLTV guide id from the playlist, kept for later guide matching. */
+  tvgId: string | null
 }
 
 /** Shaped after an XMLTV `<programme>` element (start, stop, channel, title, desc, category, episode-num). */

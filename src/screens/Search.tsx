@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { genresOf, movies, series, titles } from '../data/catalog'
-import { channels, programmeAt, scheduleFor } from '../data/channels'
+import { programmeAt, scheduleFor } from '../data/channels'
 import { episodeCode, episodeRef } from '../data/refs'
 import { Icon, type IconName } from '../components/Icon'
 import { PageHeader } from '../components/PageHeader'
@@ -26,6 +26,7 @@ function Highlight({ text, q }: { text: string; q: string }) {
 export function Search() {
   const now = useNow()
   const store = useStore()
+  const { channels } = store
   const { prefs, library } = store
   const [params, setParams] = useSearchParams()
   // The input owns its text; the URL follows it, so fast typing never waits on navigation.

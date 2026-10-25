@@ -49,19 +49,22 @@ export function WideCard({ to, title, sub, art, focus = 50, progress, flag, capt
   )
 }
 
+/** What a channel shows with no current programme: playlist channels have no guide data yet. */
+export const idleLabel = (c: Channel) => (c.sourceId ? 'No guide information' : 'Off air')
+
 /** Live channel card: wordmark and LIVE badge on top, programme, progress and next slot below. */
 export function ChannelCard({ channel, now, next, to, format, selected, at }: {
   channel: Channel; now?: Programme; next?: Programme; to: string; format: '24h' | '12h'; selected?: boolean; at: number
 }) {
   return (
-    <Link to={to} className={`card channel-card${selected ? ' is-selected' : ''}`} aria-label={`${channel.name}: ${now?.title ?? 'Off air'}${next ? `, next at ${clock(next.start, format)}` : ''}${selected ? ', watching' : ''}`}>
+    <Link to={to} className={`card channel-card${selected ? ' is-selected' : ''}`} aria-label={`${channel.name}: ${now?.title ?? idleLabel(channel)}${next ? `, next at ${clock(next.start, format)}` : ''}${selected ? ', watching' : ''}`}>
       <Art src={now?.art ?? ''} className="card-media card-shade">
         <span className="card-top">
           <span className="channel-wordmark">{channel.name}</span>
           {selected ? <span className="badge badge-accent">Watching</span> : now && <span className="badge badge-live">Live</span>}
         </span>
         <span className="card-overlay has-progress" aria-hidden="true">
-          <strong>{now?.title ?? 'Off air'}</strong>
+          <strong>{now?.title ?? idleLabel(channel)}</strong>
           {next && <span className="tnum">Next {clock(next.start, format)} · {next.title}</span>}
         </span>
         {now && <ProgressBar value={(at - now.start) / (now.stop - now.start)} label="Programme progress" />}

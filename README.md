@@ -3,10 +3,12 @@
 A TV, movie and series app: a React + TypeScript interface running inside a Rust (Tauri 2)
 desktop shell.
 
-**Status:** every screen still shows fictional demonstration data. The Rust shell can now fetch and
-parse user-supplied M3U playlists (Gate D2), but no screen uses that yet. There is no source
-persistence, discovery, stream validation, guide import or playback; those wait for the owner's
-approval.
+**Status:** Sources can import real M3U playlists, by http(s) address or local file, through the
+Rust shell (Gates D2 and D3). While any imported playlist exists, Live TV, Home, Search, Library and
+the player show only its channels; otherwise the fictional demonstration catalogue is shown. Imported
+playlists are kept in memory only, and their streams are not playback-tested. Movies, series and the
+guide remain demonstration data. There is no source persistence, discovery, stream validation, guide
+import or playback; those wait for the owner's approval.
 
 ## Architecture
 

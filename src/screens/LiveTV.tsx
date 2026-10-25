@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { CHANNEL_GROUPS, DAY, GUIDE_DAYS, MIN, channelById, channels, nextProgramme, programmeAt, scheduleFor, startOfDay } from '../data/channels'
+import { CHANNEL_GROUPS, DAY, GUIDE_DAYS, MIN, nextProgramme, programmeAt, scheduleFor, startOfDay } from '../data/channels'
 import { channelRef } from '../data/refs'
 import type { Channel, Programme } from '../data/types'
 import { Dialog } from '../components/Dialog'
@@ -10,6 +10,7 @@ import { PageHeader } from '../components/PageHeader'
 import { ChannelCard } from '../components/Tiles'
 import { Art, ChannelMark, ProgressBar, StateBlock } from '../components/ui'
 import { clock, dayLabel, useNow } from '../lib/time'
+import { channelGroups } from '../state/playlists'
 import { useStore } from '../state/store'
 import './LiveTV.css'
 
@@ -30,13 +31,16 @@ function useMedia(query: string) {
 export function LiveTV() {
   const now = useNow(15_000)
   const store = useStore()
-  const { prefs, library } = store
+  const { prefs, library, channels, findChannel, channelMode } = store
   const toast = useToast()
   const [params, setParams] = useSearchParams()
   const compactCol = useMedia('(max-width: 640px)')
 
-  const playing = channelById(params.get('channel') ?? '') ?? channels[0]
-  const group = params.get('group') ?? 'All'
+  const playing = findChannel(params.get('channel') ?? '') ?? channels[0]
+  const categories = channelMode === 'playlists' ? channelGroups(channels) : CHANNEL_GROUPS.filter((g) => channels.some((c) => c.group === g))
+  const groups = ['All', 'Favourites', ...categories]
+  const requestedGroup = params.get('group')
+  const group = requestedGroup && groups.includes(requestedGroup) ? requestedGroup : 'All'
   const view = params.get('view') === 'channels' ? 'channels' : 'guide'
   const [dayOffset, setDayOffset] = useState(0)
   const [selected, setSelected] = useState<Programme | null>(null)
@@ -45,7 +49,6 @@ export function LiveTV() {
 
   const favIds = library.favourites.filter((r) => r.startsWith('channel:')).map((r) => r.slice(8))
   const visible = channels.filter((c) => (group === 'All' ? true : group === 'Favourites' ? favIds.includes(c.id) : c.group === group))
-  const groups = ['All', 'Favourites', ...CHANNEL_GROUPS.filter((g) => channels.some((c) => c.group === g))]
 
   const dayStart = startOfDay(now) + dayOffset * DAY
   const rows = visible.map((c) => ({ channel: c, programmes: scheduleFor(c, dayStart) }))
@@ -160,7 +163,7 @@ export function LiveTV() {
   const panel = selected && (
     <ProgrammePanel
       programme={selected}
-      channel={channelById(selected.channelId)}
+      channel={findChannel(selected.channelId)}
       now={now}
       isPlayingChannel={selected.channelId === playing?.id}
       isSelection
@@ -203,6 +206,14 @@ export function LiveTV() {
     </div>
   )
 
+  const noPlaylistChannels = (
+    <StateBlock icon="sources" title="No channels to show yet" action={<Link to="/sources" className="btn btn-ghost">Open Sources</Link>}>
+      {store.playlists.some((s) => s.status === 'importing')
+        ? 'A playlist is still being imported.'
+        : 'None of your imported playlists has produced any channels. Open Sources to see why, refresh a source or add another.'}
+    </StateBlock>
+  )
+
   const emptyFavourites = (
     <StateBlock icon="heart" title="No favourite channels yet" action={<button type="button" className="btn btn-ghost" onClick={() => setGroup('All')}>Show all channels</button>}>
       Use the heart next to a channel name to keep it here. Favourites are saved on this device.
@@ -223,7 +234,7 @@ export function LiveTV() {
                 </button>
               ))}
             </div>
-            {visible.length === 0 ? emptyFavourites : (
+            {channels.length === 0 ? noPlaylistChannels : visible.length === 0 ? emptyFavourites : (
               <div className="grid-cards">
                 {visible.map((c) => (
                   <ChannelCard key={c.id} channel={c} now={programmeAt(c, now)} next={nextProgramme(c, now)} to={`/live?channel=${c.id}`} format={prefs.timeFormat} selected={c.id === playing?.id} at={now} />
@@ -247,7 +258,7 @@ export function LiveTV() {
                     ))}
                   </div>
                 </div>
-                {visible.length === 0 && <div className="guide-empty">{emptyFavourites}</div>}
+                {visible.length === 0 && <div className="guide-empty">{channels.length === 0 ? noPlaylistChannels : emptyFavourites}</div>}
                 {rows.map(({ channel: c, programmes }) => {
                   const fav = favIds.includes(c.id)
                   const isPlaying = c.id === playing?.id
@@ -271,6 +282,7 @@ export function LiveTV() {
                         )}
                       </div>
                       <div className="guide-track">
+                        {programmes.length === 0 && <span className="guide-noinfo faint">No guide information</span>}
                         {programmes.map((p) => {
                           const onNow = p.start <= now && now < p.stop
                           const past = p.stop <= now
@@ -304,7 +316,11 @@ export function LiveTV() {
                 {showNow && visible.length > 0 && <div className="now-line" style={{ left: colW + x(now) }} aria-hidden="true" />}
               </div>
             </div>
-            <p className="guide-hint faint">Arrow keys move through the guide, Enter opens a programme, Page Up and Page Down change channel. Channels and schedule are demonstration data.</p>
+            <p className="guide-hint faint">
+              {channelMode === 'playlists'
+                ? 'Channels come from your imported playlists. There is no programme guide for them yet, and their streams have not been playback-tested. Page Up and Page Down change channel.'
+                : 'Arrow keys move through the guide, Enter opens a programme, Page Up and Page Down change channel. Channels and schedule are demonstration data.'}
+            </p>
           </section>
         )}
 
@@ -344,7 +360,9 @@ function LivePlayer({ channel, programme, now, onStep, onClose }: { channel: Cha
       </div>
       <div className="live-player-status" role="status">
         <Icon name="sources" size={18} />
-        <span>No stream connected. <Link to="/sources" className="text-link">Add a source</Link></span>
+        {channel.sourceId
+          ? <span>Not playable yet · stream not playback-tested</span>
+          : <span>No stream connected. <Link to="/sources" className="text-link">Add a source</Link></span>}
       </div>
       <div className="live-player-bar">
         {programme && (

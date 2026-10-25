@@ -1,10 +1,11 @@
 # TVMovie (Kinora)
 
 Premium TV and film app: **React + TypeScript UI inside a Rust + Tauri 2 desktop shell.**
-**Phase: Gate D2 (Rust playlist ingestion) is complete on `main`. D3 awaits the owner's approval.**
-Done: Rust M3U parsing, bounded http(s) fetching and the two ingest commands. Not approved yet: wiring
-them into the UI (D3), source persistence, discovery, stream validation, XMLTV, playback. Each needs
-the owner's explicit approval; that is a hard gate.
+**Phase: Gate D3 (real playlists in the UI) is complete on `main`. The next gate awaits the owner's
+approval.** Done: Rust M3U parsing and guarded fetching (D2); Sources import, refresh and removal,
+and playlist channels in Live TV and the other channel screens (D3). Not approved yet: source
+persistence, discovery, stream validation or probing, XMLTV, playback, remote logos. Each needs the
+owner's explicit approval; that is a hard gate.
 
 Live path: `/home/millsy/dev/TVMovie` (symlinked from `/mnt/storage/TVMovie`). Git repo; first
 commit is the pre-Tauri baseline. Backups: `/home/millsy/dev/TVMovie-backup-pre-tauri-2026-10-22`
@@ -66,7 +67,13 @@ Prerequisites and architecture diagram: `README.md`.
   against a local test server), `tauri.conf.json` (window, CSP, bundle), `capabilities/`, `build.rs`,
   `icons/` (generated from `app-icon.svg`).
 - `src/state/store.tsx` all local state (library, preferences, sources), persisted to localStorage
-  (`kinora.library.v1`, `kinora.prefs.v2`, `kinora.sources.v1`).
+  (`kinora.library.v1`, `kinora.prefs.v2`, `kinora.sources.v1`). Imported playlists (`playlists`) are
+  the exception: memory only, never persisted. `store.channels` is the one channel catalogue screens
+  use (playlist channels if any playlist exists, else the demo set; never both); `store.findChannel`
+  resolves ids, and is passed to `resolve()` for library refs.
+- `src/state/playlists.ts` pure playlist-source logic: transitions with a per-operation token (stale
+  results are dropped), channel mapping (link-safe ids, `Uncategorised`, initials, no logos), safe
+  labels (`https://host/…`, file name) and user-facing error text.
 - `src/screens/` one file per screen plus its CSS. `src/components/` shared UI.
 - `public/art/` 40 AI-generated images made for this project's fictional titles. Throwaway once real
   artwork comes from sources. Do not generate more without asking the owner (it uses their credits).

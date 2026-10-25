@@ -16,7 +16,8 @@ export const episodeRef = (seriesId: string, episodeId: string) => `episode:${se
 export const runtimeLabel = (mins: number) => (mins >= 60 ? `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m` : `${mins}m`)
 export const episodeCode = (e: Episode) => `S${e.season} E${e.number}`
 
-export function resolve(ref: string, now = Date.now()): Resolved | undefined {
+/** `findChannel` defaults to the demonstration catalogue; screens pass the store's active catalogue. */
+export function resolve(ref: string, now = Date.now(), findChannel: (id: string) => Channel | undefined = channelById): Resolved | undefined {
   const [kind, rest = ''] = ref.split(':') as [string, string | undefined]
   const play = `/watch/${encodeURIComponent(ref)}`
   if (kind === 'movie') {
@@ -36,7 +37,7 @@ export function resolve(ref: string, now = Date.now()): Resolved | undefined {
     }
   }
   if (kind === 'channel') {
-    const c = channelById(rest)
+    const c = findChannel(rest)
     const p = c && programmeAt(c, now)
     return c && { kind, ref, title: c.name, meta: p ? `Now: ${p.title}` : c.group, art: p?.art ?? '', focus: 50, href: `/live?channel=${c.id}`, play: `/live?channel=${c.id}`, item: c }
   }

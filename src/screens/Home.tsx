@@ -1,14 +1,15 @@
 import { Link } from 'react-router-dom'
 import { featured, movies, series } from '../data/catalog'
-import { channelById, channels, nextProgramme, programmeAt } from '../data/channels'
+import { nextProgramme, programmeAt } from '../data/channels'
 import { movieRef, runtimeLabel, seriesRef } from '../data/refs'
 import { Icon } from '../components/Icon'
 import { PageHeader } from '../components/PageHeader'
-import { ChannelCard, PosterCard, Section, WideCard } from '../components/Tiles'
+import { ChannelCard, PosterCard, Section, WideCard, idleLabel } from '../components/Tiles'
 import { useToast } from '../components/Toast'
 import { Art, ChannelMark } from '../components/ui'
 import { continueWatching, seriesNextUp } from '../lib/library'
 import { minutesLeft, useNow } from '../lib/time'
+import { NOT_TESTED } from '../state/playlists'
 import { useStore } from '../state/store'
 import './Home.css'
 
@@ -57,12 +58,12 @@ function Hero() {
 
 export function Home() {
   const now = useNow()
-  const { library, prefs } = useStore()
+  const { library, prefs, channels, findChannel, channelMode } = useStore()
   const resume = continueWatching(library)
   const newFilms = [...movies].sort((a, b) => b.added.localeCompare(a.added))
   const newSeries = [...series].sort((a, b) => b.added.localeCompare(a.added))
   const lastChannel = library.history.find((h) => h.ref.startsWith('channel:'))?.ref.slice(8)
-  const favChannels = library.favourites.filter((r) => r.startsWith('channel:')).map((r) => channelById(r.slice(8))).filter((c) => !!c)
+  const favChannels = library.favourites.filter((r) => r.startsWith('channel:')).map((r) => findChannel(r.slice(8))).filter((c) => !!c)
   const shortcuts = [
     { to: '/library?tab=watchlist', label: 'Watchlist', count: library.watchlist.length, icon: 'bookmark' as const },
     { to: '/library?tab=favourites', label: 'Favourites', count: library.favourites.length, icon: 'heart' as const },
@@ -129,7 +130,7 @@ export function Home() {
                 return (
                   <Link key={c.id} to={`/live?channel=${c.id}`} className="card channel-chip">
                     <ChannelMark channel={c} size={40} />
-                    <span><strong>{c.name}</strong><span className="faint">{p ? p.title : 'Off air'}</span></span>
+                    <span><strong>{c.name}</strong><span className="faint">{p ? p.title : idleLabel(c)}</span></span>
                   </Link>
                 )
               })}
@@ -146,7 +147,11 @@ export function Home() {
           </Section>
         </div>
 
-        <p className="footer-note faint">Kinora interface preview. Movies, series, channels and the guide are fictional demonstration data; nothing is streamed.</p>
+        <p className="footer-note faint">
+          {channelMode === 'playlists'
+            ? `Kinora interface preview. Channels come from your imported playlists (${NOT_TESTED.toLowerCase()}); movies, series and the guide are fictional demonstration data. Nothing is streamed.`
+            : 'Kinora interface preview. Movies, series, channels and the guide are fictional demonstration data; nothing is streamed.'}
+        </p>
       </div>
     </>
   )

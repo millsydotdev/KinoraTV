@@ -1,6 +1,5 @@
 import { useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { channels } from '../data/channels'
 import { useStore } from '../state/store'
 import { Icon, type IconName } from './Icon'
 import './Sidebar.css'
@@ -29,7 +28,7 @@ export function Logo() {
 }
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { sources } = useStore()
+  const { sources, playlists, channels, channelMode } = useStore()
   const { pathname } = useLocation()
 
   useEffect(() => onClose(), [pathname, onClose])
@@ -46,10 +45,17 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             </NavLink>
           ))}
         </nav>
-        <div className="sidebar-status" title="Demonstration mode">
-          <p><span className="status-dot" aria-hidden="true" />Demonstration mode</p>
-          <p className="faint">{sources.length} sample sources · {channels.length} channels</p>
-        </div>
+        {channelMode === 'playlists' ? (
+          <div className="sidebar-status" title="Imported playlists, kept until Kinora closes">
+            <p><span className="status-dot" aria-hidden="true" />Imported playlists</p>
+            <p className="faint">{playlists.length} {playlists.length === 1 ? 'source' : 'sources'} · {channels.length} channels</p>
+          </div>
+        ) : (
+          <div className="sidebar-status" title="Demonstration mode">
+            <p><span className="status-dot" aria-hidden="true" />Demonstration mode</p>
+            <p className="faint">{sources.length} sample sources · {channels.length} channels</p>
+          </div>
+        )}
       </aside>
       {open && <button type="button" className="sidebar-scrim" aria-label="Close menu" onClick={onClose} />}
     </>
