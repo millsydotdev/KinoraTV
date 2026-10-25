@@ -17,6 +17,12 @@ tauri-build = { version = "2.7.4", features = [] }
 [dependencies]
 tauri = { version = "2.12.5", features = [] }
 serde = { version = "1", features = ["derive"] }
+# Playlist download only. No default features: no OS proxy settings, cookies, decompression or
+# HTTP/2. TLS comes from the system OpenSSL. Proxy environment variables are still read unless the
+# client calls `no_proxy()`, which src/fetch.rs does (see its tests).
+reqwest = { version = "0.13.5", default-features = false, features = ["native-tls"] }
+# Already in the tree through Tauri; `net` adds the DNS lookup the guarded resolver checks.
+tokio = { version = "1", features = ["net"] }
 
 [dev-dependencies]
 serde_json = "1"

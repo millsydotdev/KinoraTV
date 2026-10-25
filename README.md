@@ -3,29 +3,46 @@
 A TV, movie and series app: a React + TypeScript interface running inside a Rust (Tauri 2)
 desktop shell.
 
-**Status:** UI phase. Every screen works against fictional demonstration data. There is no real
-source discovery, playlist ingestion, stream validation, guide import or playback yet; those wait
-for the owner's approval.
+**Status:** every screen still shows fictional demonstration data. The Rust shell can now fetch and
+parse user-supplied M3U playlists (Gate D2), but no screen uses that yet. There is no source
+persistence, discovery, stream validation, guide import or playback; those wait for the owner's
+approval.
 
 ## Architecture
 
 ```
 React 19 + TypeScript (src/)          Rust + Tauri 2 (src-tauri/)
-  screens, routing, theme,   ── IPC ──▶  native shell: window, startup,
-  demo data, local prefs     invoke()    errors, `app_info` command
+  screens, routing, theme,   ── IPC ──▶  native shell: window, startup, errors,
+  demo data, local prefs     invoke()    `app_info`, playlist ingestion
   built by Vite into dist/  ◀── JSON ──  (serde, validated on arrival)
 ```
 
 - **React** (`src/`): all UI, navigation, forms, theme controls and demo state. The UI also runs
   in an ordinary browser for development and tests.
 - **Rust** (`src-tauri/`): the native application. It loads the Vite dev server in development and
-  the built `dist/` in release, and owns anything native. Today that is only `app_info` (version,
-  build profile, platform), shown in Settings › About.
+  the built `dist/` in release, and owns anything native: `app_info` (version, build profile,
+  platform, shown in Settings › About) and playlist ingestion. `fetch_playlist` downloads an M3U
+  from a user-supplied http(s) address; `parse_playlist_text` parses text from a file the user
+  picked in the webview. Both return parsed channel metadata. Stream addresses are never fetched.
 - **IPC boundary**: `src/lib/native.ts` is the only place React calls Rust. It mirrors the Rust
-  `AppInfo` struct, validates every response before use, and returns `null` outside Tauri.
+  structs, validates every response before use, and returns `null` outside Tauri.
 - **Security**: each app command is deny-by-default (`build.rs`). `capabilities/default.json` grants
-  the main window only `allow-app-info`. No filesystem, shell, HTTP, dialog or other plugins. A strict
-  Content Security Policy is set in `tauri.conf.json`. Developer tools exist only in debug builds.
+  the main window only `allow-app-info`, `allow-fetch-playlist` and `allow-parse-playlist-text`. No
+  filesystem, shell, HTTP, dialog or other plugins. A strict Content Security Policy is set in
+  `tauri.conf.json` (remote images stay blocked). Developer tools exist only in debug builds.
+- **Playlist fetching** (`src-tauri/src/fetch.rs`): http(s) only, no credentials in the address, no
+  proxies. Local, private, link-local, CGNAT, multicast and reserved IPv4/IPv6 destinations are
+  refused. Host names go through a resolver that checks every answer, which is the address
+  connected to. IP literals and every redirect hop (at most 5) are checked again. Limits: 10 s
+  connect, 30 s total, 25 MB, 50,000 channels. Errors name only the host; full addresses, queries
+  and tokens are never logged or shown. LAN tuners are therefore not supported.
+- **Direct connection required**: proxy settings, including `HTTP_PROXY`, `HTTPS_PROXY` and
+  `ALL_PROXY`, are deliberately ignored, because a proxy would make the connection on Kinora's
+  behalf and bypass the address checks. On a network that only allows traffic through a proxy,
+  playlist fetching fails with a connection error.
+- **Stream addresses**: `streamUrl` is kept exactly as written for a future player and may contain
+  account names, passwords or tokens. Show `streamDisplay` (`scheme://host[:port]/…`) instead, and
+  never log either. Channel keys come from `tvg-id`, or from name and group, never from the address.
 - **Webview compatibility fix**: the release build inlined a small font subset as a `data:` URL,
   which the CSP blocked. `vite.config.ts` now emits `.woff2` fonts as files rather than allowing
   `data:` fonts.

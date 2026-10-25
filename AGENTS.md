@@ -1,9 +1,10 @@
 # TVMovie (Kinora)
 
 Premium TV and film app: **React + TypeScript UI inside a Rust + Tauri 2 desktop shell.**
-**Phase: UI only, plus the native shell.** Do not start backend work (playlist parsing, discovery,
-stream validation, XMLTV ingestion, storage, playback) until the owner explicitly approves it. That is
-a hard gate set by the owner.
+**Phase: Gate D2 (Rust playlist ingestion) on branch `feature/playlist-ingestion`.** Approved so far:
+Rust M3U parsing, bounded http(s) fetching and the two ingest commands. Not approved yet: wiring them
+into the UI (D3), source persistence, discovery, stream validation, XMLTV, playback. Each needs the
+owner's explicit approval; that is a hard gate.
 
 Live path: `/home/millsy/dev/TVMovie` (symlinked from `/mnt/storage/TVMovie`). Git repo, branch
 `main`; first commit is the pre-Tauri baseline. Pre-migration copy:
@@ -17,7 +18,7 @@ npm run dev          # React UI in a browser: http://localhost:5199
 npm run tauri:dev    # native app (starts Vite itself)
 npm run typecheck    # tsc -b
 npm test             # vitest: guide schedule, next episode, theme contrast, IPC boundary
-npm run test:rust    # cargo test (src-tauri)
+npm run test:rust    # cargo test (src-tauri): parser, fetch policy, local-server fetch tests
 npm run tauri:build  # release binary + .rpm (src-tauri/target/release/)
 ```
 
@@ -31,6 +32,16 @@ Prerequisites and architecture diagram: `README.md`.
   validation, and `null` when not running in Tauri (browser dev and Vitest must keep working).
 - New Rust commands must be added to `build.rs` (`AppManifest::commands`) and granted explicitly in
   `src-tauri/capabilities/default.json`. Do not add plugins (fs, shell, http, dialog...) without approval.
+- Network access lives only in `src-tauri/src/fetch.rs`. Keep its guarantees: proxies off, guarded
+  resolver, IP-literal and per-redirect `check_url`, `referer(false)`, size/time limits, and errors
+  that never include a path, query or token (reqwest's own error text includes the full URL, so
+  never show or log it). Test-only policy fields are `#[cfg(test)]`; never add a runtime bypass,
+  including for LAN addresses. Never fetch the stream URLs inside a playlist.
+- `no_proxy()` in `fetch.rs` is load-bearing: reqwest reads `HTTP(S)_PROXY`/`ALL_PROXY` even with
+  default features off. Fetching needs a direct connection; do not add a proxy option.
+- `PlaylistChannel.streamUrl` may hold credentials: never render, log or persist it in plain text
+  without an approved policy. Display `streamDisplay`. No logger is installed; if one is ever added,
+  keep `reqwest`/`hyper` at warn level and never log commands' arguments.
 - Keep the CSP in `tauri.conf.json` strict; do not loosen it to make something work. Example: Vite
   inlines small assets as `data:` URLs, which `font-src 'self'` blocks, so `vite.config.ts` keeps
   `.woff2` files out of inlining instead of allowing `data:` fonts.
@@ -42,8 +53,10 @@ Prerequisites and architecture diagram: `README.md`.
 - `src/data/` demonstration catalogue, channels and guide generator, demo sources. Types in
   `types.ts` mirror M3U `#EXTINF` (channels) and XMLTV `<programme>` so real parsers can replace the
   demo data without touching screens.
-- `src-tauri/` Rust shell: `src/lib.rs` (startup, `app_info` command + tests), `tauri.conf.json`
-  (window, CSP, bundle), `capabilities/`, `build.rs`, `icons/` (generated from `app-icon.svg`).
+- `src-tauri/` Rust shell: `src/lib.rs` (startup, commands), `src/ingest.rs` (error type, report,
+  entry points), `src/m3u.rs` (pure M3U parser + tests), `src/fetch.rs` (guarded download + tests
+  against a local test server), `tauri.conf.json` (window, CSP, bundle), `capabilities/`, `build.rs`,
+  `icons/` (generated from `app-icon.svg`).
 - `src/state/store.tsx` all local state (library, preferences, sources), persisted to localStorage
   (`kinora.library.v1`, `kinora.prefs.v2`, `kinora.sources.v1`).
 - `src/screens/` one file per screen plus its CSS. `src/components/` shared UI.

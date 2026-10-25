@@ -1,5 +1,9 @@
-//! Kinora native shell. The React UI owns presentation and demo state; Rust owns native concerns.
-//! The only IPC command in this phase is the read-only `app_info`.
+//! Kinora native shell. The React UI owns presentation and demo state; Rust owns native concerns:
+//! `app_info`, and playlist ingestion (`fetch_playlist`, `parse_playlist_text`).
+
+mod fetch;
+mod ingest;
+mod m3u;
 
 use serde::Serialize;
 
@@ -33,10 +37,28 @@ fn app_info(app: tauri::AppHandle) -> AppInfo {
     build_info(&package.name, &package.version.to_string())
 }
 
+/// Downloads and parses an M3U channel list from a user-supplied http(s) address. The address is
+/// validated in Rust (scheme, credentials, destination); the stream addresses inside are not fetched.
+#[tauri::command]
+async fn fetch_playlist(url: String) -> Result<ingest::Report, ingest::IngestError> {
+    ingest::from_url(&url, &fetch::Policy::default()).await
+}
+
+/// Parses M3U text from a file the user picked in the webview. Rust receives text, never a path.
+/// `async` so a large file is parsed off the main (UI) thread.
+#[tauri::command]
+async fn parse_playlist_text(text: String) -> Result<ingest::Report, ingest::IngestError> {
+    ingest::from_text(&text)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let result = tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![app_info])
+        .invoke_handler(tauri::generate_handler![
+            app_info,
+            fetch_playlist,
+            parse_playlist_text
+        ])
         .run(tauri::generate_context!());
 
     // Fail loudly with a readable message and a non-zero exit instead of a panic backtrace.
