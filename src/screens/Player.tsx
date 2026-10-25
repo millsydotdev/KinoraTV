@@ -7,6 +7,7 @@ import { Icon, type IconName } from '../components/Icon'
 import { useToast } from '../components/Toast'
 import { Art, StateBlock } from '../components/ui'
 import { clock, timecode, useNow } from '../lib/time'
+import { categoryLabel } from '../state/playlists'
 import { useStore, type Prefs } from '../state/store'
 import './Player.css'
 
@@ -68,6 +69,8 @@ export function Player() {
   }, [])
 
   const durationSec = item?.kind === 'movie' ? item.item.runtime * 60 : item?.kind === 'episode' ? item.item.runtime * 60 : 0
+  // Imported channels: no playback, so no controls or shortcuts that suggest audio, subtitles or quality.
+  const fromPlaylist = item?.kind === 'channel' && item.item.sourceId !== null
   const saved = library.progress[ref]
   const pos = saved?.pos ?? 0
   const seek = (to: number) => {
@@ -85,6 +88,7 @@ export function Player() {
       if (t.tagName === 'INPUT' && e.key !== 'Escape') return
       if (e.key === 'Escape' && !document.fullscreenElement) leave()
       if (e.key === 'f' || e.key === 'F') toggleFullscreen()
+      if (fromPlaylist) return
       if (e.key === 'm' || e.key === 'M') setMuted((m) => !m)
       if (e.key === 'c' || e.key === 'C') store.setPref('subtitles', !prefs.subtitles)
       if (e.key === 'ArrowLeft' && durationSec) { e.preventDefault(); seek(pos - 10) }
@@ -105,14 +109,13 @@ export function Player() {
   }
 
   const programme = item.kind === 'channel' ? programmeAt(item.item, now) : undefined
-  const fromPlaylist = item.kind === 'channel' && item.item.sourceId !== null
   const audioTracks = item.kind === 'movie' ? item.item.audio : ['English stereo', 'English Audio Description']
   const subtitleTracks = item.kind === 'movie' ? item.item.subtitles : ['English', 'English (SDH)']
   const next = item.kind === 'episode' ? nextEpisode(item.series, item.item) : undefined
   const watched = library.watched.includes(item.ref)
   const heading = item.kind === 'episode' ? item.series.title : item.title
   const sub = item.kind === 'episode' ? `${episodeCode(item.item)} · ${item.item.title}`
-    : item.kind === 'channel' ? (programme ? `${programme.title} · until ${clock(programme.stop, prefs.timeFormat)}` : item.item.group)
+    : item.kind === 'channel' ? (programme ? `${programme.title} · until ${clock(programme.stop, prefs.timeFormat)}` : categoryLabel(item.item))
       : item.kind === 'movie' ? `(${item.item.year})` : item.meta
 
   return (
@@ -134,7 +137,7 @@ export function Player() {
       </div>
 
 
-      {prefs.subtitles && <p className={`player-sub sub-line sub-${prefs.subtitleSize} sub-${prefs.subtitleStyle}`}>[Subtitles: {prefs.subtitleLanguage}]</p>}
+      {prefs.subtitles && !fromPlaylist && <p className={`player-sub sub-line sub-${prefs.subtitleSize} sub-${prefs.subtitleStyle}`}>[Subtitles: {prefs.subtitleLanguage}]</p>}
 
       <div className="player-bottom">
         {durationSec > 0 && (
@@ -156,15 +159,21 @@ export function Player() {
         )}
         <div className="player-controls">
           <div className="control-group">
-            <button type="button" className="icon-btn play-btn" disabled aria-label="Play, unavailable: no stream connected" data-tip="No stream connected"><Icon name="play" /></button>
+            <button type="button" className="icon-btn play-btn" disabled
+              aria-label={fromPlaylist ? 'Play, unavailable: playback is not available yet' : 'Play, unavailable: no stream connected'}
+              data-tip={fromPlaylist ? 'Playback not available yet' : 'No stream connected'}><Icon name="play" /></button>
             {durationSec > 0 && (
               <>
                 <button type="button" className="icon-btn" onClick={() => seek(pos - 10)} aria-label="Back 10 seconds" data-tip="Back 10 s"><Icon name="left" /></button>
                 <button type="button" className="icon-btn" onClick={() => seek(pos + 10)} aria-label="Forward 10 seconds" data-tip="Forward 10 s"><Icon name="right" /></button>
               </>
             )}
-            <button type="button" className="icon-btn" onClick={() => setMuted(!muted)} aria-pressed={muted} aria-label={muted ? 'Unmute' : 'Mute'} data-tip={muted ? 'Unmute' : 'Mute'}><Icon name={muted ? 'mute' : 'volume'} /></button>
-            <input type="range" className="range volume" min={0} max={100} value={muted ? 0 : volume} onChange={(e) => { setVolume(Number(e.target.value)); setMuted(Number(e.target.value) === 0) }} aria-label="Volume" style={{ ['--fill' as string]: `${muted ? 0 : volume}%` }} />
+            {!fromPlaylist && (
+              <>
+                <button type="button" className="icon-btn" onClick={() => setMuted(!muted)} aria-pressed={muted} aria-label={muted ? 'Unmute' : 'Mute'} data-tip={muted ? 'Unmute' : 'Mute'}><Icon name={muted ? 'mute' : 'volume'} /></button>
+                <input type="range" className="range volume" min={0} max={100} value={muted ? 0 : volume} onChange={(e) => { setVolume(Number(e.target.value)); setMuted(Number(e.target.value) === 0) }} aria-label="Volume" style={{ ['--fill' as string]: `${muted ? 0 : volume}%` }} />
+              </>
+            )}
           </div>
           <div className="control-group">
             {item.kind !== 'channel' && (
@@ -184,6 +193,7 @@ export function Player() {
                 <Icon name="skip" />
               </Link>
             )}
+            {!fromPlaylist && <>
             <Menu icon="subtitles" label="Subtitles">
               {(close) => (
                 <>
@@ -215,6 +225,7 @@ export function Player() {
                 </>
               )}
             </Menu>
+            </>}
             <button type="button" className="icon-btn" onClick={toggleFullscreen} aria-pressed={fullscreen} aria-label={fullscreen ? 'Exit full screen' : 'Full screen'} data-tip="Full screen"><Icon name="fullscreen" /></button>
           </div>
         </div>

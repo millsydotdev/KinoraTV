@@ -7,6 +7,7 @@ import { Icon, type IconName } from '../components/Icon'
 import { PageHeader } from '../components/PageHeader'
 import { Art, ChannelMark, StateBlock } from '../components/ui'
 import { clock, useNow } from '../lib/time'
+import { categoryLabel } from '../state/playlists'
 import { useStore } from '../state/store'
 import './Search.css'
 
@@ -55,9 +56,9 @@ export function Search() {
   const has = (...fields: string[]) => fields.some((f) => f.toLowerCase().includes(needle))
   const groups: Record<Group, Hit[]> = { channels: [], tv: [], films: [], series: [], episodes: [] }
   if (needle) {
-    groups.channels = channels.filter((c) => has(c.name, c.group, String(c.number))).map((c) => ({
+    groups.channels = channels.filter((c) => has(c.name, ...c.categories, String(c.number))).map((c) => ({
       key: c.id, to: `/live?channel=${c.id}`, thumb: <ChannelMark channel={c} size={44} />, title: c.name,
-      sub: `${c.number} · ${c.group}${programmeAt(c, now) ? ` · Now: ${programmeAt(c, now)?.title}` : ''}`,
+      sub: `${c.number} · ${categoryLabel(c)}${programmeAt(c, now) ? ` · Now: ${programmeAt(c, now)?.title}` : ''}`,
     }))
     const seen = new Set<string>()
     groups.tv = channels

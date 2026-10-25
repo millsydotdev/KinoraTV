@@ -55,7 +55,10 @@ export interface Channel {
   id: string
   number: number
   name: string
+  /** The group as the source wrote it (`Animation;Comedy`), or Uncategorised. */
   group: string
+  /** `group` split into individual categories; used for filtering and display. */
+  categories: string[]
   logoUrl: string | null
   mark: { text: string; tone: string }
   /** Never shown or logged: may carry credentials. Nothing plays it yet. */

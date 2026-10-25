@@ -50,12 +50,10 @@ export interface Prefs {
   guideZoom: 2 | 3 | 4
   guideArt: boolean
   guideStart: 'now' | 'day'
-  autoRefresh: boolean
-  refreshInterval: '6h' | '12h' | '24h' | 'manual'
-  validateOnAdd: boolean
-  dropAfterFailures: 'never' | '3' | '5' | '10'
-  parallelChecks: 4 | 8 | 16
 }
+
+/** Source-checking settings removed in D3.1: nothing used them. Stripped from saved prefs so they stop being stored. */
+type RemovedPrefs = { autoRefresh?: unknown; refreshInterval?: unknown; validateOnAdd?: unknown; dropAfterFailures?: unknown; parallelChecks?: unknown }
 
 const DAY = 86_400_000
 
@@ -65,7 +63,6 @@ export const defaultPrefs: Prefs = {
   audioLanguage: 'English', audioOutput: 'stereo', dialogueBoost: false, normaliseVolume: true,
   subtitles: false, subtitleLanguage: 'English', subtitleSize: 'medium', subtitleStyle: 'shadow',
   timeFormat: '24h', guideZoom: 3, guideArt: true, guideStart: 'now',
-  autoRefresh: true, refreshInterval: '12h', validateOnAdd: true, dropAfterFailures: '5', parallelChecks: 8,
 }
 
 export const emptyLibrary: Library = {
@@ -134,7 +131,8 @@ function usePersisted<T>(key: string, fallback: () => T, sanitize: (v: T) => T =
 }
 
 /** Stored preferences come from localStorage, so out-of-range values (or ones from older builds) fall back to defaults. */
-function sanitizePrefs(p: Prefs): Prefs {
+export function sanitizePrefs(stored: Prefs & RemovedPrefs): Prefs {
+  const { autoRefresh: _a, refreshInterval: _r, validateOnAdd: _v, dropAfterFailures: _d, parallelChecks: _p, ...p } = stored
   const pick = <K extends keyof Prefs>(key: K, allowed: readonly Prefs[K][]) => (allowed.includes(p[key]) ? p[key] : defaultPrefs[key])
   return {
     ...p,
@@ -147,13 +145,13 @@ function sanitizePrefs(p: Prefs): Prefs {
 
 const toggleIn = (list: string[], item: string) => (list.includes(item) ? list.filter((x) => x !== item) : [item, ...list])
 
-function useStoreValue() {
+function useStoreValue(initialPlaylists: PlaylistSource[]) {
   const [library, setLibrary] = usePersisted<Library>('kinora.library.v1', () => demoLibrary(Date.now()))
   const [prefs, setPrefs] = usePersisted<Prefs>('kinora.prefs.v2', () => defaultPrefs, sanitizePrefs)
   const [src, setSrc] = usePersisted<SourcesState>('kinora.sources.v1', () => ({ sources: demoSources(Date.now()), providers: demoProviders }))
 
   // Imported playlists live in memory only: never written to localStorage, gone when Kinora closes.
-  const [playlists, setPlaylists] = useState<PlaylistSource[]>([])
+  const [playlists, setPlaylists] = useState<PlaylistSource[]>(initialPlaylists)
   const lastOp = useRef(0)
   const channels = useMemo(() => activeChannels(playlists, demoChannels), [playlists])
   const findChannel = useCallback((id: string): Channel | undefined => channels.find((c) => c.id === id), [channels])
@@ -230,8 +228,9 @@ function useStoreValue() {
 type Store = ReturnType<typeof useStoreValue>
 const StoreContext = createContext<Store | null>(null)
 
-export function StoreProvider({ children }: { children: ReactNode }) {
-  const store = useStoreValue()
+/** `initialPlaylists` seeds imported playlists for tests; the app always starts with none. */
+export function StoreProvider({ children, initialPlaylists = [] }: { children: ReactNode; initialPlaylists?: PlaylistSource[] }) {
+  const store = useStoreValue(initialPlaylists)
   return <StoreContext.Provider value={store}>{children}</StoreContext.Provider>
 }
 

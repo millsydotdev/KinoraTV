@@ -1,9 +1,10 @@
 # TVMovie (Kinora)
 
 Premium TV and film app: **React + TypeScript UI inside a Rust + Tauri 2 desktop shell.**
-**Phase: Gate D3 (real playlists in the UI) is complete on `main`. The next gate awaits the owner's
+**Phase: Gate D3.1 (playlist polish) is complete on `main`. The next gate awaits the owner's
 approval.** Done: Rust M3U parsing and guarded fetching (D2); Sources import, refresh and removal,
-and playlist channels in Live TV and the other channel screens (D3). Not approved yet: source
+and playlist channels in Live TV and the other channel screens (D3); honest Settings and player
+states for playlist channels, and individual categories from `A;B` groups (D3.1). Not approved yet: source
 persistence, discovery, stream validation or probing, XMLTV, playback, remote logos. Each needs the
 owner's explicit approval; that is a hard gate.
 
@@ -72,8 +73,13 @@ Prerequisites and architecture diagram: `README.md`.
   use (playlist channels if any playlist exists, else the demo set; never both); `store.findChannel`
   resolves ids, and is passed to `resolve()` for library refs.
 - `src/state/playlists.ts` pure playlist-source logic: transitions with a per-operation token (stale
-  results are dropped), channel mapping (link-safe ids, `Uncategorised`, initials, no logos), safe
-  labels (`https://host/…`, file name) and user-facing error text.
+  results are dropped), channel mapping (link-safe ids, `Uncategorised`, initials, no logos),
+  categories (`group` keeps the source text; `categories` splits `A;B`, used for chips, filtering and
+  labels), Add Source checks (`checkPlaylistUrl`, `readForPreview`), safe labels (`https://host/…`,
+  file name) and user-facing error text.
+- Screen tests render real screens to HTML (`react-dom/server`) with the store seeded through
+  `StoreProvider initialPlaylists`; there is no DOM test environment, so click flows are verified in
+  the native app instead.
 - `src/screens/` one file per screen plus its CSS. `src/components/` shared UI.
 - `public/art/` 40 AI-generated images made for this project's fictional titles. Throwaway once real
   artwork comes from sources. Do not generate more without asking the owner (it uses their credits).

@@ -7,7 +7,7 @@ const art = (name: string) => `/art/${name}.jpg`
 export const CHANNEL_GROUPS = ['Entertainment', 'News', 'Sports', 'Documentary', 'Movies', 'Kids', 'Music', 'Lifestyle'] as const
 
 const ch = (number: number, id: string, name: string, group: string, text: string, tone: string, hd = true): Channel => ({
-  id, number, name, group, logoUrl: null, mark: { text, tone }, streamUrl: null, hd, sourceId: null, tvgId: null,
+  id, number, name, group, categories: [group], logoUrl: null, mark: { text, tone }, streamUrl: null, hd, sourceId: null, tvgId: null,
 })
 
 export const channels: Channel[] = [

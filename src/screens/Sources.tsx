@@ -10,7 +10,7 @@ import { DemoNote, ProgressBar, Segmented, StateBlock, Switch } from '../compone
 import { clock, relative, useNow } from '../lib/time'
 import { fetchPlaylist, readPlaylistFile, type PlaylistReport } from '../lib/native'
 import {
-  DESKTOP_ONLY, NOT_TESTED, UNCATEGORISED, addressLabel, channelGroups, defaultName, fileLabel, statusText, statusTone, toChannels, userMessage,
+  NOT_TESTED, UNCATEGORISED, addressLabel, channelGroups, checkPlaylistUrl, defaultName, fileLabel, readForPreview, statusText, statusTone, toChannels,
   type PlaylistSource,
 } from '../state/playlists'
 import { useStore } from '../state/store'
@@ -318,19 +318,10 @@ export function AddSource() {
   const attempt = useRef(0)
   const fileInput = useRef<HTMLInputElement>(null)
 
-  // Trust boundary: only well-formed http(s) addresses get through; credentials in URLs are refused.
-  // Rust validates again (scheme, credentials, destination) before fetching anything.
   const checkUrl = () => {
-    let parsed: URL | null = null
-    try { parsed = new URL(url.trim()) } catch { parsed = null }
-    let error: string | undefined
-    if (!url.trim()) error = 'Paste the playlist address.'
-    else if (!parsed || !['http:', 'https:'].includes(parsed.protocol)) error = 'Use a full address starting with http:// or https://'
-    else if (parsed.username || parsed.password) error = 'Remove the username and password from the address. Sign-in details are not stored in URLs.'
-    else if (store.playlists.some((s) => s.url === parsed?.href)) error = 'This address is already one of your sources.'
-    else if (kind === 'xmltv' || kind === 'url-list') error = 'Kinora can import M3U playlists so far. XMLTV guides and URL lists are not supported yet.'
-    setErrors({ url: error })
-    return error ? null : parsed
+    const checked = checkPlaylistUrl(url, kind, store.playlists.map((s) => s.url))
+    setErrors({ url: 'error' in checked ? checked.error : undefined })
+    return 'url' in checked ? checked.url : null
   }
   const checkName = () => {
     const n = name.trim()
@@ -344,26 +335,18 @@ export function AddSource() {
     const token = ++attempt.current
     setBusy(true)
     setErrors({})
-    try {
-      const report = await read()
-      if (token !== attempt.current) return
-      if (!report) setErrors({ url: DESKTOP_ONLY })
-      else if (report.channels.length === 0) setErrors({ url: 'The playlist was read, but it lists no channels to add.' })
-      else {
-        setPreview({ origin: next.origin, url: next.url, label: next.label, report })
-        if (!name.trim()) setName(next.name)
-        setStep(2)
-      }
-    } catch (e) {
-      if (token === attempt.current) setErrors({ url: userMessage(e) })
-    } finally {
-      if (token === attempt.current) setBusy(false)
-    }
+    const result = await readForPreview(read)
+    if (token !== attempt.current) return // a newer attempt started; this result is stale
+    setBusy(false)
+    if ('error' in result) return setErrors({ url: result.error })
+    setPreview({ origin: next.origin, url: next.url, label: next.label, report: result.report })
+    if (!name.trim()) setName(next.name)
+    setStep(2)
   }
   const scanUrl = () => {
-    const parsed = checkUrl()
-    if (!parsed) return
-    void load({ origin: 'url', url: parsed.href, label: addressLabel(parsed.href), name: defaultName('url', parsed.href) }, () => fetchPlaylist(parsed.href))
+    const href = checkUrl()
+    if (!href) return
+    void load({ origin: 'url', url: href, label: addressLabel(href), name: defaultName('url', href) }, () => fetchPlaylist(href))
   }
   const scanFile = (file: File) =>
     void load({ origin: 'file', url: null, label: fileLabel(file.name), name: defaultName('file', file.name) }, () => readPlaylistFile(file))

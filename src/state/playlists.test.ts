@@ -3,8 +3,8 @@ import { channels as demoChannels } from '../data/channels'
 import { resolve } from '../data/refs'
 import { IngestError, type PlaylistChannel, type PlaylistReport } from '../lib/native'
 import {
-  DESKTOP_ONLY, UNCATEGORISED, activeChannels, addressLabel, channelGroups, createSource, defaultName, fileLabel, removeSource,
-  runImport, statusText, statusTone, toChannels, userMessage, type PlaylistSource,
+  DESKTOP_ONLY, UNCATEGORISED, activeChannels, addressLabel, channelGroups, checkPlaylistUrl, createSource, defaultName, fileLabel,
+  filterChannels, readForPreview, removeSource, runImport, splitCategories, statusText, statusTone, toChannels, userMessage, type PlaylistSource,
 } from './playlists'
 
 const SECRET_URL = 'http://alice:pw1@provider.example:8080/live/alice/hunter2/1.ts?token=SECRET123'
@@ -198,5 +198,77 @@ describe('overlapping operations', () => {
     expect([h.get()[0]?.status, statusText(h.get()[0]!), h.get()[0]?.channels.length]).toEqual(['importing', 'Importing…', 1])
     slow.resolve(report([entry()]))
     await pending
+  })
+})
+
+describe('multiple categories', () => {
+  const chans = (groups: (string | null)[]) => toChannels('pl-a', report(groups.map((group, i) => entry({ key: `tvg:c${i}`, tvgId: `c${i}`, name: `C${i}`, group }))))
+
+  it('splits semicolon lists, trimming and dropping empty entries and repeats', () => {
+    expect(splitCategories('Animation;Comedy')).toEqual(['Animation', 'Comedy'])
+    expect(splitCategories('  Animation ;  Comedy  ')).toEqual(['Animation', 'Comedy'])
+    expect(splitCategories('News;;Sport;')).toEqual(['News', 'Sport'])
+    expect(splitCategories('Comedy;comedy; COMEDY ;Kids')).toEqual(['Comedy', 'Kids'])
+  })
+
+  it('treats missing or empty categories as Uncategorised', () => {
+    for (const raw of [null, '', '   ', ';', ' ; ;; ']) expect(splitCategories(raw)).toEqual([UNCATEGORISED])
+  })
+
+  it('keeps the source group as written and the channel id independent of categories', () => {
+    const [a] = chans(['Animation;Comedy'])
+    const [b] = chans(['Something else'])
+    expect([a?.group, a?.categories]).toEqual(['Animation;Comedy', ['Animation', 'Comedy']])
+    expect(a?.id).toBe(b?.id) // same key → same id, whatever the category text
+  })
+
+  it('offers each category once, whatever its spelling or how many channels share it', () => {
+    expect(channelGroups(chans(['Animation;Comedy', 'comedy', 'Kids; Animation', null, ' ;']))).toEqual(['Animation', 'Comedy', 'Kids', UNCATEGORISED])
+  })
+
+  it('lists a multi-category channel once under each of its categories and once overall', () => {
+    const list = chans(['Animation;Comedy', 'Comedy', null])
+    expect(filterChannels(list, 'All', []).map((c) => c.name)).toEqual(['C0', 'C1', 'C2'])
+    expect(filterChannels(list, 'Comedy', []).map((c) => c.name)).toEqual(['C0', 'C1'])
+    expect(filterChannels(list, 'comedy', []).map((c) => c.name)).toEqual(['C0', 'C1'])
+    expect(filterChannels(list, 'Animation', []).map((c) => c.name)).toEqual(['C0'])
+    expect(filterChannels(list, UNCATEGORISED, []).map((c) => c.name)).toEqual(['C2'])
+    expect(filterChannels(list, 'Favourites', [list[2]!.id]).map((c) => c.name)).toEqual(['C2'])
+  })
+
+  it('keeps demo channel categories as they were', () => {
+    expect(demoChannels.every((c) => c.categories.length === 1 && c.categories[0] === c.group)).toBe(true)
+    expect(filterChannels(demoChannels, 'News', []).map((c) => c.name)).toEqual(['Meridian News', 'Civic'])
+  })
+})
+
+describe('Add Source checks', () => {
+  it('accepts a well-formed http(s) M3U address and normalises it', () => {
+    expect(checkPlaylistUrl('  https://Playlists.Example/list.m3u ', 'm3u', [])).toEqual({ url: 'https://playlists.example/list.m3u' })
+    expect(checkPlaylistUrl('http://playlists.example/a.m3u8', 'm3u8', [])).toEqual({ url: 'http://playlists.example/a.m3u8' })
+  })
+
+  it('refuses empty, malformed, non-http, credentialed, duplicate and unsupported inputs', () => {
+    const error = (raw: string, kind: 'm3u' | 'xmltv' | 'url-list' = 'm3u', existing: string[] = []) => {
+      const r = checkPlaylistUrl(raw, kind, existing)
+      return 'error' in r ? r.error : null
+    }
+    expect(error('')).toBe('Paste the playlist address.')
+    expect(error('not a url')).toMatch(/http:\/\/ or https:\/\//)
+    expect(error('ftp://playlists.example/a.m3u')).toMatch(/http:\/\/ or https:\/\//)
+    expect(error('file:///home/me/a.m3u')).toMatch(/http:\/\/ or https:\/\//)
+    expect(error('https://alice:hunter2@playlists.example/a.m3u')).toMatch(/Remove the username and password/)
+    expect(error('https://playlists.example/a.m3u', 'm3u', ['https://playlists.example/a.m3u'])).toMatch(/already one of your sources/)
+    expect(error('https://guide.example/epg.xml', 'xmltv')).toMatch(/not supported yet/)
+    expect(error('https://lists.example/sport.txt', 'url-list')).toMatch(/not supported yet/)
+  })
+
+  it('turns every read outcome into the report or a safe message, without throwing', async () => {
+    expect(await readForPreview(async () => report([entry()]))).toEqual({ report: report([entry()]) })
+    expect(await readForPreview(async () => null)).toEqual({ error: DESKTOP_ONLY })
+    expect(await readForPreview(async () => report([]))).toEqual({ error: 'The playlist was read, but it lists no channels to add.' })
+    expect(await readForPreview(async () => { throw new IngestError('not-playlist', 'No #EXTM3U header or channel entries were found.') })).toEqual({ error: 'No #EXTM3U header or channel entries were found.' })
+    const leaky = await readForPreview(async () => { throw new Error(`GET ${SECRET_URL} failed`) })
+    expect(leaky).toEqual({ error: 'Kinora could not read that playlist.' })
   })
 })

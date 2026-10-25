@@ -18,7 +18,7 @@ const sections: { id: string; label: string; icon: IconName; blurb: string }[] =
   { id: 'subtitles', label: 'Subtitles', icon: 'subtitles', blurb: 'Language, size, style' },
   { id: 'appearance', label: 'Appearance', icon: 'palette', blurb: 'Theme, accent colour, density, text size, motion' },
   { id: 'epg', label: 'EPG', icon: 'guide', blurb: 'Guide settings, time format, timezone' },
-  { id: 'sources', label: 'Sources', icon: 'link', blurb: 'Discovery, validation, update interval' },
+  { id: 'sources', label: 'Sources', icon: 'link', blurb: 'How playlists are imported and refreshed' },
   { id: 'library', label: 'Library', icon: 'library', blurb: 'Layout, watched titles, watch history' },
   { id: 'data', label: 'Data', icon: 'database', blurb: 'Export, reset, clear saved data' },
   { id: 'about', label: 'About', icon: 'info', blurb: 'Version, licences, keyboard shortcuts' },
@@ -249,21 +249,15 @@ function Section({ id }: { id: string }) {
       )
     case 'sources':
       return (
-        <Group title="Checking sources">
-          {toggle('autoRefresh', 'Refresh sources automatically', 'Re-reads playlists and guides on a schedule.', true)}
-          <Row title="Default refresh interval" hint="New sources start with this; each can be changed." htmlFor="refresh">
-            <select id="refresh" className="select" value={prefs.refreshInterval} onChange={(e) => setPref('refreshInterval', e.target.value as Prefs['refreshInterval'])}>
-              <option value="6h">Every 6 hours</option><option value="12h">Every 12 hours</option><option value="24h">Every day</option><option value="manual">Only manually</option>
-            </select>
+        <Group title="Importing and refreshing">
+          <Row title="Refreshing" hint="Playlists are read when you add them and again only when you choose Refresh on a source. Automatic refresh is not available yet.">
+            <span className="muted">Manual</span>
           </Row>
-          {toggle('validateOnAdd', 'Check sources before adding them', 'New sources are tested before their channels appear.')}
-          <Row title="Drop a stream after" hint="Consecutive failed checks before a stream is hidden." pending htmlFor="drop">
-            <select id="drop" className="select" value={prefs.dropAfterFailures} onChange={(e) => setPref('dropAfterFailures', e.target.value as Prefs['dropAfterFailures'])}>
-              <option value="never">Never</option><option value="3">3 failed checks</option><option value="5">5 failed checks</option><option value="10">10 failed checks</option>
-            </select>
+          <Row title="Stream checks" hint="Kinora reads channel lists but does not open or test streams. Checking streams is not available yet.">
+            <span className="muted">Not available</span>
           </Row>
-          <Row title="Streams checked at once" hint="Higher is faster but busier on your network." pending>
-            <Segmented label="Parallel checks" value={prefs.parallelChecks} onChange={(v) => setPref('parallelChecks', v)} options={[{ value: 4, label: '4' }, { value: 8, label: '8' }, { value: 16, label: '16' }]} />
+          <Row title="Keeping sources" hint="Imported playlists are kept until Kinora closes.">
+            <span className="muted">This session</span>
           </Row>
         </Group>
       )

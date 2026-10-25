@@ -39,7 +39,7 @@ export function resolve(ref: string, now = Date.now(), findChannel: (id: string)
   if (kind === 'channel') {
     const c = findChannel(rest)
     const p = c && programmeAt(c, now)
-    return c && { kind, ref, title: c.name, meta: p ? `Now: ${p.title}` : c.group, art: p?.art ?? '', focus: 50, href: `/live?channel=${c.id}`, play: `/live?channel=${c.id}`, item: c }
+    return c && { kind, ref, title: c.name, meta: p ? `Now: ${p.title}` : c.categories.join(' · '), art: p?.art ?? '', focus: 50, href: `/live?channel=${c.id}`, play: `/live?channel=${c.id}`, item: c }
   }
   return undefined
 }

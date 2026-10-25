@@ -10,7 +10,7 @@ import { PageHeader } from '../components/PageHeader'
 import { ChannelCard } from '../components/Tiles'
 import { Art, ChannelMark, ProgressBar, StateBlock } from '../components/ui'
 import { clock, dayLabel, useNow } from '../lib/time'
-import { channelGroups } from '../state/playlists'
+import { categoryLabel, channelGroups, filterChannels, inCategory } from '../state/playlists'
 import { useStore } from '../state/store'
 import './LiveTV.css'
 
@@ -37,7 +37,7 @@ export function LiveTV() {
   const compactCol = useMedia('(max-width: 640px)')
 
   const playing = findChannel(params.get('channel') ?? '') ?? channels[0]
-  const categories = channelMode === 'playlists' ? channelGroups(channels) : CHANNEL_GROUPS.filter((g) => channels.some((c) => c.group === g))
+  const categories = channelMode === 'playlists' ? channelGroups(channels) : CHANNEL_GROUPS.filter((g) => channels.some((c) => inCategory(c, g)))
   const groups = ['All', 'Favourites', ...categories]
   const requestedGroup = params.get('group')
   const group = requestedGroup && groups.includes(requestedGroup) ? requestedGroup : 'All'
@@ -48,7 +48,7 @@ export function LiveTV() {
   const [focusId, setFocusId] = useState<string | null>(null)
 
   const favIds = library.favourites.filter((r) => r.startsWith('channel:')).map((r) => r.slice(8))
-  const visible = channels.filter((c) => (group === 'All' ? true : group === 'Favourites' ? favIds.includes(c.id) : c.group === group))
+  const visible = filterChannels(channels, group, favIds)
 
   const dayStart = startOfDay(now) + dayOffset * DAY
   const rows = visible.map((c) => ({ channel: c, programmes: scheduleFor(c, dayStart) }))
@@ -355,7 +355,7 @@ function LivePlayer({ channel, programme, now, onStep, onClose }: { channel: Cha
         <ChannelMark channel={channel} size={30} />
         <span>
           <strong>{channel.number} {channel.name}</strong>
-          <span className="faint">{channel.group}{channel.hd ? ' · HD' : ''}</span>
+          <span className="faint">{categoryLabel(channel)}{channel.hd ? ' · HD' : ''}</span>
         </span>
       </div>
       <div className="live-player-status" role="status">
