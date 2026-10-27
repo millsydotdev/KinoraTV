@@ -1,7 +1,7 @@
 # TVMovie (Kinora)
 
 Premium TV and film app: **React + TypeScript UI inside a Rust + Tauri 2 desktop shell.**
-**Phase: Gate D3.1 (playlist polish) is complete on `main`. The next gate awaits the owner's
+**Phase: Gate D3.2 (integration audit) is complete on `main`. The next gate awaits the owner's
 approval.** Done: Rust M3U parsing and guarded fetching (D2); Sources import, refresh and removal,
 and playlist channels in Live TV and the other channel screens (D3); honest Settings and player
 states for playlist channels, and individual categories from `A;B` groups (D3.1). Not approved yet: source
@@ -78,8 +78,9 @@ Prerequisites and architecture diagram: `README.md`.
   labels), Add Source checks (`checkPlaylistUrl`, `readForPreview`), safe labels (`https://host/…`,
   file name) and user-facing error text.
 - Screen tests render real screens to HTML (`react-dom/server`) with the store seeded through
-  `StoreProvider initialPlaylists`; there is no DOM test environment, so click flows are verified in
-  the native app instead.
+  `StoreProvider initialPlaylists`. Click-through tests (`src/screens/SourceFlows.test.tsx`) opt into
+  `happy-dom` per file (`// @vitest-environment happy-dom`, dev dependency only) and mock the native
+  commands; everything else runs in Node. No test may reach the network or a stream.
 - `src/screens/` one file per screen plus its CSS. `src/components/` shared UI.
 - `public/art/` 40 AI-generated images made for this project's fictional titles. Throwaway once real
   artwork comes from sources. Do not generate more without asking the owner (it uses their credits).

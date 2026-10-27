@@ -316,6 +316,7 @@ export function AddSource() {
   const [preview, setPreview] = useState<{ origin: PlaylistSource['origin']; url: string | null; label: string; report: PlaylistReport } | null>(null)
   // Each import attempt gets a token; a result only lands if no newer attempt started since.
   const attempt = useRef(0)
+  const reading = useRef(false)
   const fileInput = useRef<HTMLInputElement>(null)
 
   const checkUrl = () => {
@@ -332,10 +333,14 @@ export function AddSource() {
   }
 
   const load = async (next: { origin: PlaylistSource['origin']; url: string | null; label: string; name: string }, read: () => Promise<PlaylistReport | null>) => {
+    // Disabled controls stop clicks, but not every way of submitting a form: refuse a second read outright.
+    if (reading.current) return
+    reading.current = true
     const token = ++attempt.current
     setBusy(true)
     setErrors({})
     const result = await readForPreview(read)
+    reading.current = false
     if (token !== attempt.current) return // a newer attempt started; this result is stale
     setBusy(false)
     if ('error' in result) return setErrors({ url: result.error })
