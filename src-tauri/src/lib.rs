@@ -1,11 +1,13 @@
 //! Kinora native shell. The React UI owns presentation and demo state; Rust owns native concerns:
-//! `app_info`, playlist ingestion (`fetch_playlist`, `parse_playlist_text`) and guarded HLS
-//! playback (`open_stream`, `close_stream` and the `kstream` protocol, see `stream.rs`).
+//! `app_info`, playlist ingestion (`fetch_playlist`, `parse_playlist_text`), guarded HLS playback
+//! (`open_stream`, `close_stream` and the `kstream` protocol, see `stream.rs`) and saved sources
+//! (`load_sources`, `save_sources`, see `sources.rs`).
 
 mod fetch;
 mod hls;
 mod ingest;
 mod m3u;
+mod sources;
 mod stream;
 
 use serde::Serialize;
@@ -71,6 +73,23 @@ fn close_stream(session: u64, streams: tauri::State<'_, stream::Streams>) {
     streams.close(session);
 }
 
+/// Reads the saved playlist sources (and why, if they could not be used as they were).
+#[tauri::command]
+async fn load_sources(
+    store: tauri::State<'_, sources::Store>,
+) -> Result<sources::Loaded, ingest::IngestError> {
+    Ok(store.load())
+}
+
+/// Replaces the saved playlist sources atomically. Validated in Rust; refused while read-only.
+#[tauri::command]
+async fn save_sources(
+    sources: Vec<sources::SavedSource>,
+    store: tauri::State<'_, sources::Store>,
+) -> Result<(), ingest::IngestError> {
+    store.save(&sources)
+}
+
 /// The page origin allowed to read `kstream` responses: the dev server in `tauri dev`, otherwise
 /// the bundled app's origin (verified as `tauri://localhost` on Linux in the D4A spike).
 fn app_origin(config: &tauri::Config) -> String {
@@ -91,6 +110,9 @@ pub fn run() {
     let result = tauri::Builder::default()
         .setup(|app| {
             let origin = app_origin(app.config());
+            // A private folder inside the app's data directory; without one, sources are not saved.
+            let dir = app.path().app_data_dir().ok().map(|d| d.join("sources"));
+            app.manage(sources::Store::new(dir));
             app.manage(stream::Streams::new(
                 fetch::Policy::default(),
                 stream::Limits::default(),
@@ -135,7 +157,9 @@ pub fn run() {
             fetch_playlist,
             parse_playlist_text,
             open_stream,
-            close_stream
+            close_stream,
+            load_sources,
+            save_sources
         ])
         .run(tauri::generate_context!());
 

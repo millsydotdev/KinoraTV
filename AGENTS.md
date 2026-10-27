@@ -1,11 +1,11 @@
 # TVMovie (Kinora)
 
 Premium TV and film app: **React + TypeScript UI inside a Rust + Tauri 2 desktop shell.**
-**Phase: Gate D4 (guarded HLS playback) is complete on `main`. The next gate awaits the owner's
-approval.** Done: Rust M3U parsing and guarded fetching (D2); Sources import, refresh and removal,
+**Phase: Gate D5 (persistent sources and user state) is complete on `main`. The next gate awaits
+the owner's approval.** Done: Rust M3U parsing and guarded fetching (D2); Sources import, refresh and removal,
 and playlist channels in Live TV and the other channel screens (D3); honest Settings and player
 states for playlist channels, and individual categories from `A;B` groups (D3.1); HLS playback for
-playlist channels through Rust (D4). Not approved yet: source persistence, discovery, stream
+playlist channels through Rust (D4); saved sources, refreshed at startup (D5). Not approved yet: discovery, stream
 validation or probing, XMLTV, other playback formats, remote logos. Each needs the
 owner's explicit approval; that is a hard gate.
 
@@ -29,7 +29,7 @@ npm run dev          # React UI in a browser: http://localhost:5199
 npm run tauri:dev    # native app (starts Vite itself)
 npm run typecheck    # tsc -b
 npm test             # vitest: guide schedule, next episode, theme contrast, IPC boundary
-npm run test:rust    # cargo test (src-tauri): parser, fetch policy, local-server fetch tests
+npm run test:rust    # cargo test (src-tauri): parser, fetch policy, local-server fetch, saved-sources file
 npm run tauri:build  # release binary + .rpm (src-tauri/target/release/)
 ```
 
@@ -53,6 +53,14 @@ Prerequisites and architecture diagram: `README.md`.
 - `PlaylistChannel.streamUrl` may hold credentials: never render, log or persist it in plain text
   without an approved policy. Display `streamDisplay`. No logger is installed; if one is ever added,
   keep `reqwest`/`hyper` at warn level and never log commands' arguments.
+- Saved sources (D5): `src-tauri/src/sources.rs` owns one file, `<app data>/sources/sources.json`
+  (folder `0700`, file `0600`, schema `version` 1, atomic temp-file-and-rename writes, every save
+  validated with `fetch::check_url`). It holds source addresses (they may carry tokens: the
+  documented residual risk is in `README.md`) and channel metadata only; never stream addresses,
+  logos, sessions, handles or playback state. A damaged file is moved aside, never deleted; a newer
+  or unreadable one is left alone and the store goes read-only for the session. A schema change
+  bumps `SCHEMA_VERSION` and adds a migration in `Store::read`. Never put source addresses in a
+  general export, an error message or a log.
 - Playback (D4): the page never gets an upstream stream address. `open_stream` returns
   `kstream://localhost/<128-bit handle>`; `src-tauri/src/stream.rs` serves it through `fetch.rs`'s
   guarded client and rewrites HLS playlists (`hls.rs`) so every segment, key, map and rendition gets
@@ -81,11 +89,15 @@ Prerequisites and architecture diagram: `README.md`.
 - `src-tauri/` Rust shell: `src/lib.rs` (startup, commands, `kstream` protocol), `src/ingest.rs`
   (error type, report, entry points), `src/m3u.rs` (pure M3U parser + tests), `src/fetch.rs` (guarded
   client, playlist download, media fetch + tests against a local test server), `src/hls.rs` (pure
-  HLS rewriter + tests), `src/stream.rs` (stream sessions, handles, limits, protocol handler + tests), `tauri.conf.json` (window, CSP, bundle), `capabilities/`, `build.rs`,
+  HLS rewriter + tests), `src/stream.rs` (stream sessions, handles, limits, protocol handler + tests),
+  `src/sources.rs` (saved-sources file + tests), `tauri.conf.json` (window, CSP, bundle), `capabilities/`, `build.rs`,
   `icons/` (generated from `app-icon.svg`).
 - `src/state/store.tsx` all local state (library, preferences, sources), persisted to localStorage
   (`kinora.library.v1`, `kinora.prefs.v2`, `kinora.sources.v1`). Imported playlists (`playlists`) are
-  the exception: memory only, never persisted. `store.channels` is the one channel catalogue screens
+  the exception: saved by Rust through `loadSources`/`saveSources`, never in localStorage. The
+  provider renders nothing until they are restored (5 s cap), then refreshes address sources in
+  turn; restored channels have `streamUrl: null` until then. Removing a source also drops its
+  `channel:` refs from the library (`dropSourceRefs`). `store.channels` is the one channel catalogue screens
   use (playlist channels if any playlist exists, else the demo set; never both); `store.findChannel`
   resolves ids, and is passed to `resolve()` for library refs.
 - `src/state/playlists.ts` pure playlist-source logic: transitions with a per-operation token (stale
@@ -98,7 +110,8 @@ Prerequisites and architecture diagram: `README.md`.
 - Screen tests render real screens to HTML (`react-dom/server`) with the store seeded through
   `StoreProvider initialPlaylists`. Click-through tests (`src/screens/SourceFlows.test.tsx`) opt into
   `happy-dom` per file (`// @vitest-environment happy-dom`, dev dependency only) and mock the native
-  commands (`PlayerPlayback.test.tsx` also fakes hls.js); everything else runs in Node. No test may reach the network or a stream.
+  commands (`PlayerPlayback.test.tsx` also fakes hls.js; `Persistence.test.tsx` mocks
+  `loadSources`/`saveSources` to cover restore, refresh, removal and storage notices); everything else runs in Node. No test may reach the network or a stream.
 - `src/screens/` one file per screen plus its CSS. `src/components/` shared UI.
 - `public/art/` 40 AI-generated images made for this project's fictional titles. Throwaway once real
   artwork comes from sources. Do not generate more without asking the owner (it uses their credits).

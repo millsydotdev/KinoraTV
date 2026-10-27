@@ -256,8 +256,8 @@ function Section({ id }: { id: string }) {
           <Row title="Stream checks" hint="Kinora reads channel lists but does not open or test streams. Checking streams is not available yet.">
             <span className="muted">Not available</span>
           </Row>
-          <Row title="Keeping sources" hint="Imported playlists are kept until Kinora closes.">
-            <span className="muted">This session</span>
+          <Row title="Keeping sources" hint="Imported playlists are saved on this device, including their addresses, which can contain private tokens. Stream addresses are never saved, so restored channels play again once their source refreshes.">
+            <span className="muted">On this device</span>
           </Row>
         </Group>
       )

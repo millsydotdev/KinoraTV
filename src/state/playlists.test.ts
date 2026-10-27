@@ -4,7 +4,8 @@ import { resolve } from '../data/refs'
 import { IngestError, type PlaylistChannel, type PlaylistReport } from '../lib/native'
 import {
   DESKTOP_ONLY, UNCATEGORISED, activeChannels, addressLabel, channelGroups, checkPlaylistUrl, createSource, defaultName, fileLabel,
-  filterChannels, readForPreview, removeSource, runImport, splitCategories, statusText, statusTone, toChannels, userMessage, type PlaylistSource,
+  filterChannels, readForPreview, removeSource, restoreSource, runImport, splitCategories, statusText, statusTone, toChannels, toSaved, unavailableReason, userMessage,
+  type PlaylistSource,
 } from './playlists'
 
 const SECRET_URL = 'http://alice:pw1@provider.example:8080/live/alice/hunter2/1.ts?token=SECRET123'
@@ -121,7 +122,7 @@ describe('the active catalogue', () => {
   })
 
   it('resolves library refs to playlist channels without breaking ids that contain colons or slashes', () => {
-    const [c] = toChannels('pl-a', report([entry({ key: 'tvg:odd:id/with#bits', tvgId: 'odd:id/with#bits' })]))
+    const [c] = toChannels('pl-a', report([entry({ key: 'tvg:odd:id/with#bits', tvgId: 'odd:id/with#bits' })]).channels)
     const r = resolve(`channel:${c!.id}`, Date.now(), (id) => (id === c!.id ? c : undefined))
     expect(r?.kind === 'channel' && r.item.id).toBe(c!.id)
     expect(c!.id).not.toMatch(/[:/#]/)
@@ -129,7 +130,7 @@ describe('the active catalogue', () => {
 
   it('makes channel ids that survive links and query strings unchanged, and stay distinct', () => {
     const keys = ['tvg:odd:id/with#bits', 'tvg:a%3Ab', 'tvg:a:b', 'tvg:a_3a_b', 'tvg:sp ace&x=1?y+z', 'name:00ff00ff00ff00ff#2', 'tvg:ニュース']
-    const ids = toChannels('pl-a', report(keys.map((key) => entry({ key })))).map((c) => c.id)
+    const ids = toChannels('pl-a', report(keys.map((key) => entry({ key }))).channels).map((c) => c.id)
     for (const id of ids) {
       expect(id).toMatch(/^[A-Za-z0-9._~-]+$/)
       expect(new URLSearchParams(`channel=${id}`).get('channel')).toBe(id) // as in `/live?channel=${c.id}` links
@@ -139,14 +140,14 @@ describe('the active catalogue', () => {
   })
 
   it('uses safe fallbacks for missing metadata', () => {
-    const [a, b] = toChannels('pl-a', report([entry({ group: null, chno: null, name: '   ' }), entry({ key: 'tvg:k', group: '  ', name: '(HD) 24/7 News', chno: 12 })]))
+    const [a, b] = toChannels('pl-a', report([entry({ group: null, chno: null, name: '   ' }), entry({ key: 'tvg:k', group: '  ', name: '(HD) 24/7 News', chno: 12 })]).channels)
     expect([a?.group, a?.name, a?.number, a?.mark.text]).toEqual([UNCATEGORISED, 'Unnamed channel', 1, 'UC'])
     expect([b?.group, b?.number, b?.mark.text]).toEqual([UNCATEGORISED, 12, 'H2'])
-    expect(channelGroups([...toChannels('x', report([entry({ group: 'Sport' }), entry({ group: null }), entry({ group: 'Kids' })]))])).toEqual(['Kids', 'Sport', UNCATEGORISED])
+    expect(channelGroups([...toChannels('x', report([entry({ group: 'Sport' }), entry({ group: null }), entry({ group: 'Kids' })]).channels)])).toEqual(['Kids', 'Sport', UNCATEGORISED])
   })
 
   it('never puts stream or logo addresses, credentials or tokens into anything a screen shows', () => {
-    const [c] = toChannels('pl-a', report([entry({ key: 'name:00ff00ff00ff00ff', tvgId: null })]))
+    const [c] = toChannels('pl-a', report([entry({ key: 'name:00ff00ff00ff00ff', tvgId: null })]).channels)
     const shown = JSON.stringify({ id: c!.id, name: c!.name, group: c!.group, mark: c!.mark, number: c!.number, logo: c!.logoUrl })
     for (const s of SECRETS) expect(shown).not.toContain(s)
     expect(c!.logoUrl).toBeNull() // remote logos stay blocked; initials instead
@@ -202,7 +203,7 @@ describe('overlapping operations', () => {
 })
 
 describe('multiple categories', () => {
-  const chans = (groups: (string | null)[]) => toChannels('pl-a', report(groups.map((group, i) => entry({ key: `tvg:c${i}`, tvgId: `c${i}`, name: `C${i}`, group }))))
+  const chans = (groups: (string | null)[]) => toChannels('pl-a', report(groups.map((group, i) => entry({ key: `tvg:c${i}`, tvgId: `c${i}`, name: `C${i}`, group }))).channels)
 
   it('splits semicolon lists, trimming and dropping empty entries and repeats', () => {
     expect(splitCategories('Animation;Comedy')).toEqual(['Animation', 'Comedy'])
@@ -270,5 +271,46 @@ describe('Add Source checks', () => {
     expect(await readForPreview(async () => { throw new IngestError('not-playlist', 'No #EXTM3U header or channel entries were found.') })).toEqual({ error: 'No #EXTM3U header or channel entries were found.' })
     const leaky = await readForPreview(async () => { throw new Error(`GET ${SECRET_URL} failed`) })
     expect(leaky).toEqual({ error: 'Kinora could not read that playlist.' })
+  })
+})
+
+describe('saving and restoring', () => {
+  it('saves metadata only: no stream or logo addresses, and an address only for URL sources', () => {
+    const s = urlSource('pl-a', report([entry(), entry({ key: 'name:00ff00ff00ff00ff', tvgId: null, name: 'Two', group: null, chno: 5 })]))
+    const saved = toSaved(s)
+    expect(saved.url).toContain('token=SECRET123') // the playlist address is saved so it can be refreshed
+    expect(saved.channels).toEqual([
+      { key: 'tvg:one.uk', tvgId: 'one.uk', name: 'One', group: 'News', chno: null },
+      { key: 'name:00ff00ff00ff00ff', tvgId: null, name: 'Two', group: null, chno: 5 },
+    ])
+    const json = JSON.stringify(saved)
+    for (const s of ['hunter2', '/live', 'LOGOSIG', 'streamUrl', 'logo']) expect(json).not.toContain(s)
+    expect(toSaved({ ...createSource('pl-f', { name: 'F', origin: 'file', url: null, label: 'f.m3u' }, report([entry()]), 1), url: 'https://x.example/?t=1' }).url).toBeNull()
+  })
+
+  it('restores a source with the same channel ids, listed but not playable until refreshed', async () => {
+    const fresh = urlSource('pl-a', report([entry(), entry({ key: 'tvg:odd:id/#2', tvgId: 'odd', name: 'Odd' })]))
+    const restored = restoreSource(toSaved(fresh))
+    expect(restored.channels.map((c) => c.id)).toEqual(fresh.channels.map((c) => c.id))
+    expect(restored.channels.map((c) => c.name)).toEqual(['One', 'Odd'])
+    expect(restored.channels.every((c) => c.streamUrl === null)).toBe(true)
+    expect([restored.status, statusText(restored), statusTone(restored)]).toEqual(['saved', 'Saved · 2 channels', 'pending'])
+    expect(unavailableReason(restored)).toContain('not been refreshed')
+    // Refreshing brings the stream addresses back under the same ids.
+    const h = holder([restored])
+    await runImport(h.update, 'pl-a', 1, async () => report([entry(), entry({ key: 'tvg:odd:id/#2', tvgId: 'odd', name: 'Odd' })]))
+    expect(h.get()[0]!.channels.map((c) => c.id)).toEqual(fresh.channels.map((c) => c.id))
+    expect(h.get()[0]!.channels[0]?.streamUrl).toBe(SECRET_URL)
+    expect(unavailableReason(h.get()[0]!)).toBeNull()
+  })
+
+  it('a failed startup refresh keeps the saved channels and says why they cannot play', async () => {
+    const h = holder([restoreSource(toSaved(urlSource('pl-a', report([entry()]), 100)))])
+    await runImport(h.update, 'pl-a', 1, async () => { throw new IngestError('network', 'Could not connect to playlists.example.') })
+    const s = h.get()[0]!
+    expect([s.status, statusText(s), s.channels.length]).toEqual(['failed', 'Refresh failed · 1 channel kept', 1])
+    expect(unavailableReason(s)).toContain('could not be refreshed')
+    const file = restoreSource(toSaved(createSource('pl-f', { name: 'F', origin: 'file', url: null, label: 'f.m3u' }, report([entry()]), 1)))
+    expect(unavailableReason(file)).toContain('Choose the file again')
   })
 })

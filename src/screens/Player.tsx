@@ -8,7 +8,7 @@ import { useToast } from '../components/Toast'
 import { Art, StateBlock } from '../components/ui'
 import { clock, timecode, useNow } from '../lib/time'
 import { useStreamPlayback, type PlaybackState } from '../lib/playback'
-import { categoryLabel } from '../state/playlists'
+import { categoryLabel, unavailableReason } from '../state/playlists'
 import { useStore, type Prefs } from '../state/store'
 import './Player.css'
 
@@ -83,6 +83,10 @@ export function Player() {
   const fromPlaylist = item?.kind === 'channel' && item.item.sourceId !== null
   const videoRef = useRef<HTMLVideoElement>(null)
   const playback = useStreamPlayback(fromPlaylist && item?.kind === 'channel' ? item.item.streamUrl : null, videoRef)
+  // A restored channel has no stream address until its source refreshes (or its file is chosen again).
+  const unavailable = fromPlaylist && item?.kind === 'channel' && item.item.streamUrl === null
+    ? unavailableReason(store.playlists.find((s) => s.id === item.item.sourceId)) ?? 'This channel cannot play yet.'
+    : null
   const saved = library.progress[ref]
   const pos = saved?.pos ?? 0
   const seek = (to: number) => {
@@ -117,7 +121,7 @@ export function Player() {
     return (
       <div className="page">
         <StateBlock icon="warning" title="Nothing to play here" action={<Link to="/" className="btn btn-primary">Back to Home</Link>}>
-          This link does not point to anything in the current catalogue. Imported playlists are kept only until Kinora closes.
+          This link does not point to anything in the current catalogue. If it was a playlist channel, its source may have been removed.
         </StateBlock>
       </div>
     )
@@ -146,7 +150,7 @@ export function Player() {
             playback.state.status !== 'playing' && (
               <p className="player-status" role="status">
                 <Icon name="sources" size={14} />
-                {playbackText(playback.state)}
+                {unavailable ?? playbackText(playback.state)}
                 {playback.state.canRetry && <>{' '}<button type="button" className="text-link" onClick={playback.retry}>Retry</button></>}
               </p>
             )

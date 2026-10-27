@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { IngestError, MAX_PLAYLIST_BYTES, closeStream, fetchPlaylist, getAppInfo, openStream, parseAppInfo, parseOpenedStream, parsePlaylistReport, readPlaylistFile, toIngestError } from './native'
+import { IngestError, MAX_PLAYLIST_BYTES, closeStream, fetchPlaylist, getAppInfo, loadSources, openStream, parseAppInfo, parseOpenedStream, parsePlaylistReport, parseSavedSource, readPlaylistFile, saveSources, toIngestError, type SavedSource } from './native'
 
 // `inside` undefined keeps the real isTauri() (false under Vitest); tests set it to drive the shell path.
 const shell = vi.hoisted(() => ({ inside: undefined as boolean | undefined, invoke: vi.fn() }))
@@ -157,6 +157,56 @@ describe('stream session boundary', () => {
   it('does nothing outside the native shell', async () => {
     await expect(openStream('https://cdn.example/a.m3u8')).resolves.toBeNull()
     await closeStream(3)
+    expect(shell.invoke).not.toHaveBeenCalled()
+  })
+})
+
+describe('saved sources boundary', () => {
+  const saved: SavedSource = {
+    id: 'pl-a1', name: 'My lineup', origin: 'url', url: 'https://playlists.example/get.php?token=SECRET123', label: 'https://playlists.example/…',
+    addedAt: 1000, lastSuccess: 2000, skipped: 0, duplicates: 1,
+    channels: [{ key: 'tvg:one', tvgId: 'one', name: 'One', group: 'News', chno: 7 }, { key: 'name:00ff', tvgId: null, name: 'Two', group: null, chno: null }],
+  }
+
+  it('accepts what Rust saves and drops unknown fields', () => {
+    expect(parseSavedSource({ ...saved, streamUrl: 'x', channels: saved.channels.map((c) => ({ ...c, streamUrl: 'x' })) })).toEqual(saved)
+    expect(parseSavedSource({ ...saved, origin: 'file', url: null, label: 'f.m3u' }).url).toBeNull()
+  })
+
+  it('rejects malformed saved data', () => {
+    for (const bad of [
+      null, { ...saved, id: '../x' }, { ...saved, origin: 'url', url: null }, { ...saved, origin: 'file', url: 'https://x' }, { ...saved, origin: 'ftp' },
+      { ...saved, addedAt: -1 }, { ...saved, lastSuccess: 'yesterday' }, { ...saved, channels: [{ ...saved.channels[0], chno: 0 }] },
+      { ...saved, channels: [{ ...saved.channels[0], name: '' }] }, { ...saved, channels: 'many' },
+    ]) expect(() => parseSavedSource(bad)).toThrow()
+  })
+
+  it('loads through Rust, validating the notice too', async () => {
+    shell.inside = true
+    shell.invoke.mockResolvedValueOnce({ sources: [saved], notice: 'recovered' })
+    await expect(loadSources()).resolves.toEqual({ sources: [saved], notice: 'recovered' })
+    shell.invoke.mockResolvedValueOnce({ sources: [saved], notice: 'wiped' })
+    await expect(loadSources()).rejects.toThrow()
+  })
+
+  it('saves in order, and surfaces refusals as IngestError', async () => {
+    shell.inside = true
+    let finishFirst!: (v: unknown) => void
+    shell.invoke.mockImplementationOnce(() => new Promise((r) => { finishFirst = r })).mockResolvedValueOnce(undefined)
+    const first = saveSources([])
+    const second = saveSources([saved])
+    await Promise.resolve(); await Promise.resolve()
+    expect(shell.invoke).toHaveBeenCalledTimes(1)
+    finishFirst(undefined)
+    await first; await second
+    expect(shell.invoke.mock.calls.map((c) => c[1])).toEqual([{ sources: [] }, { sources: [saved] }])
+    shell.invoke.mockRejectedValueOnce({ code: 'storage', message: 'Kinora could not save your sources.' })
+    await expect(saveSources([])).rejects.toMatchObject({ code: 'storage' })
+  })
+
+  it('does nothing outside the native shell', async () => {
+    await expect(loadSources()).resolves.toBeNull()
+    await saveSources([])
     expect(shell.invoke).not.toHaveBeenCalled()
   })
 })

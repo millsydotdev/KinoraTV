@@ -27,6 +27,8 @@ pub enum ErrorCode {
     Busy,
     /// The stream is not something Kinora can play (not HLS, an unsupported scheme, sign-in in the address).
     UnsupportedStream,
+    /// Saved sources could not be written (read-only store, disk error, or input in an unexpected shape).
+    Storage,
 }
 
 /// Safe to show the user: messages name at most the host, never a path, query or credential.

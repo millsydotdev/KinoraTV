@@ -226,7 +226,7 @@ describe('refreshing and removing', () => {
     await mount('/sources', [seeded(), other])
     await openSource()
     await click(button('Remove'))
-    expect(text()).toContain('My lineup and its 2 channels will be removed from Live TV.')
+    expect(text()).toContain('My lineup and its 2 channels will be removed from Live TV, and from your favourites, history and collections.')
     await click(button('Keep it'))
     expect(text()).toContain('My lineup')
     await openSource()

@@ -8,13 +8,21 @@ import { PageHeader } from '../components/PageHeader'
 import { useToast } from '../components/Toast'
 import { DemoNote, ProgressBar, Segmented, StateBlock, Switch } from '../components/ui'
 import { clock, relative, useNow } from '../lib/time'
-import { fetchPlaylist, readPlaylistFile, type PlaylistReport } from '../lib/native'
+import { fetchPlaylist, readPlaylistFile, type PlaylistReport, type StorageNotice } from '../lib/native'
 import {
-  NOT_TESTED, UNCATEGORISED, addressLabel, channelGroups, checkPlaylistUrl, defaultName, fileLabel, readForPreview, statusText, statusTone, toChannels,
+  NOT_TESTED, UNCATEGORISED, addressLabel, channelGroups, checkPlaylistUrl, defaultName, fileLabel, readForPreview, statusText, statusTone, toChannels, unavailableReason,
   type PlaylistSource,
 } from '../state/playlists'
 import { useStore } from '../state/store'
 import './Sources.css'
+
+/** Why saved sources could not simply be used; none of these lose data. */
+const STORAGE_NOTICES: Record<StorageNotice | 'save-failed', string> = {
+  recovered: 'Your saved sources file was damaged. It was set aside, not deleted, and Kinora started without it.',
+  'newer-version': 'Your saved sources were written by a newer version of Kinora. They are left untouched, and changes are not saved this session.',
+  unreadable: 'Your saved sources could not be read. They are left untouched, and changes are not saved this session.',
+  'save-failed': 'Recent changes to your sources could not be saved.',
+}
 
 /** File picker filter: M3U extensions and the MIME types servers commonly use for them. */
 const PLAYLIST_ACCEPT = '.m3u,.m3u8,audio/x-mpegurl,audio/mpegurl,application/vnd.apple.mpegurl,application/x-mpegurl'
@@ -72,6 +80,10 @@ export function Sources() {
       <PageHeader title="Sources" tabs={tabs} search={false} actions={<Link to="/sources/add" className="btn btn-primary btn-small"><Icon name="plus" size={16} />Add Source</Link>} />
       <div className="page sources">
 
+        {store.storageNotice && (
+          <div className="sources-foot" role="status"><DemoNote>{STORAGE_NOTICES[store.storageNotice]}</DemoNote></div>
+        )}
+
         {tab === 'discovery' ? <Discovery /> : store.sources.length + store.playlists.length === 0 ? (
           <StateBlock icon="sources" title="No sources yet" action={<Link to="/sources/add" className="btn btn-primary"><Icon name="plus" size={18} />Add Source</Link>}>
             Add an M3U playlist you are allowed to use, such as your own tuner's channel lineup, or an XMLTV guide feed.
@@ -96,7 +108,7 @@ export function Sources() {
 
         <div className="sources-foot">
           <DemoNote>
-            {store.playlists.length > 0 && 'Imported playlists are kept only until Kinora closes, and their streams have not been playback-tested. '}
+            {store.playlists.length > 0 && 'Imported playlists are saved on this device, including their addresses, which can contain private tokens. Streams are only fetched when you play a channel. '}
             Sources marked Sample are demonstration data: nothing is fetched, scanned or validated for them, and their counts are sample values. Open a source to refresh or remove it.
           </DemoNote>
         </div>
@@ -115,7 +127,7 @@ export function Sources() {
             <button type="button" className="btn btn-danger" onClick={remove}>Remove source</button>
           </>}
         >
-          {playlistToRemove && <p className="muted">{playlistToRemove.name} and its {playlistToRemove.channels.length} channels will be removed from Live TV. Imported playlists are not saved, so you would need to add it again to get them back.</p>}
+          {playlistToRemove && <p className="muted">{playlistToRemove.name} and its {playlistToRemove.channels.length} channels will be removed from Live TV, and from your favourites, history and collections. Other sources are not affected.</p>}
           {toRemove && <p className="muted">{toRemove.name} will be removed{toRemove.streams ? `, along with the ${toRemove.streams.total} streams it lists` : ''}. Channels other sources provide are not affected.</p>}
         </Dialog>
       </div>
@@ -160,8 +172,9 @@ export function PlaylistDetail({ source: s, onRemove }: { source: PlaylistSource
         <div><dt>Channels</dt><dd className="tnum">{s.channels.length} in {groups} {groups === 1 ? 'group' : 'groups'}</dd></div>
         <div><dt>Skipped</dt><dd className="tnum">{s.skipped} malformed, {s.duplicates} exact repeats</dd></div>
         <div><dt>Playback</dt><dd>Not tested. Kinora has read the channel list; it has not tried to play any stream.</dd></div>
-        <div><dt>Kept</dt><dd>Until Kinora closes</dd></div>
+        <div><dt>Saved</dt><dd>On this device, without stream addresses</dd></div>
       </dl>
+      {unavailableReason(s) && s.status !== 'importing' && <p className="faint">{unavailableReason(s)}</p>}
       <div className="title-actions">
         {s.origin === 'url' ? (
           <button type="button" className="btn btn-ghost btn-small" onClick={() => void store.refreshPlaylist(s)} disabled={busy}>
@@ -365,7 +378,7 @@ export function AddSource() {
   }
 
   const report = preview?.report
-  const groups = report ? channelGroups(toChannels('preview', report)) : []
+  const groups = report ? channelGroups(toChannels('preview', report.channels)) : []
   const steps = ['Discover', 'Validate', 'Add']
   return (
     <>
@@ -399,7 +412,7 @@ export function AddSource() {
               e.target.value = ''
               if (file) scanFile(file)
             }} />
-            <p className="faint add-note">Kinora downloads or reads the playlist and lists its channels. It does not open or test any stream, and sources are kept only until Kinora closes.</p>
+            <p className="faint add-note">Kinora downloads or reads the playlist and lists its channels. It does not open or test any stream. Sources are saved on this device.</p>
           </form>
         )}
 
@@ -434,7 +447,7 @@ export function AddSource() {
               <div><dt>Type</dt><dd>{preview.origin === 'url' ? kindLabel[kind] : 'M3U playlist file'}</dd></div>
               <div><dt>Channels</dt><dd className="tnum">{report.channels.length}</dd></div>
               <div><dt>Playback</dt><dd>Not tested</dd></div>
-              <div><dt>Kept</dt><dd>Until Kinora closes</dd></div>
+              <div><dt>Saved</dt><dd>On this device</dd></div>
             </dl>
             <p className="muted">Its channels replace the demonstration channels in Live TV while you have imported playlists.</p>
             <div className="add-actions">

@@ -17,6 +17,8 @@ tauri-build = { version = "2.7.4", features = [] }
 [dependencies]
 tauri = { version = "2.12.5", features = [] }
 serde = { version = "1", features = ["derive"] }
+# Already in the tree through Tauri: reads and writes the saved-sources file (sources.rs).
+serde_json = "1"
 # Playlist download only. No default features: no OS proxy settings, cookies, decompression or
 # HTTP/2. TLS comes from the system OpenSSL. Proxy environment variables are still read unless the
 # client calls `no_proxy()`, which src/fetch.rs does (see its tests).
@@ -31,6 +33,3 @@ getrandom = "0.3"
 # Lets dev builds (`tauri dev`) fetch from 127.0.0.1 so native smoke tests can play local fixtures.
 # Refuses to compile without Tauri's `dev` cfg, so it can never reach a release or bundled app.
 loopback-fixtures = []
-
-[dev-dependencies]
-serde_json = "1"

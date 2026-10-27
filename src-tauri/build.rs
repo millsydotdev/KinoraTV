@@ -8,6 +8,8 @@ fn main() {
             "parse_playlist_text",
             "open_stream",
             "close_stream",
+            "load_sources",
+            "save_sources",
         ]),
     ))
     .expect("failed to run the Tauri build script");

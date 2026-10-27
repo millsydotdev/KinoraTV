@@ -152,12 +152,12 @@ describe('other channel screens and Sources', () => {
     expect(t).not.toMatch(/Refresh sources automatically|Default refresh interval|Drop a stream after|Streams checked at once/)
   })
 
-  it('Add Source offers address and file import, and promises no stream checks or saving', () => {
+  it('Add Source offers address and file import, and says streams are not checked and sources are saved', () => {
     const t = text(render('/sources/add', <AddSource />))
     expect(t).toContain('Scan & Validate')
     expect(t).toContain('Import a playlist file')
     expect(t).toContain('It does not open or test any stream')
-    expect(t).toContain('kept only until Kinora closes')
+    expect(t).toContain('Sources are saved on this device.')
     expect(t).not.toMatch(/Refresh every|Check before adding|Every 12 hours/)
   })
 })

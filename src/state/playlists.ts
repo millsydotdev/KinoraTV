@@ -1,7 +1,8 @@
-// Playlist sources imported through the Rust ingest commands (src/lib/native.ts). Kept in memory
-// only: nothing here is saved, and nothing here has been played or playback-tested.
+// Playlist sources imported through the Rust ingest commands (src/lib/native.ts). Saved by Rust
+// (sources.rs) without stream addresses: a restored source lists its channels, which play again once
+// the source is refreshed (or, for a file, chosen again). Nothing here has been playback-tested.
 import type { Channel, SourceKind } from '../data/types'
-import { IngestError, type PlaylistReport } from '../lib/native'
+import { IngestError, type PlaylistReport, type SavedChannel, type SavedSource } from '../lib/native'
 
 export const UNCATEGORISED = 'Uncategorised'
 export const NOT_TESTED = 'Streams not playback-tested'
@@ -12,18 +13,21 @@ export interface PlaylistSource {
   id: string
   name: string
   origin: 'url' | 'file'
-  /** URL sources only, kept in memory so Refresh can fetch it again. Never shown, logged or saved. */
+  /** URL sources only, so Refresh can fetch it again. Saved by Rust; never shown or logged. */
   url: string | null
   /** Safe to show: `https://host/…` or the file name. */
   label: string
   addedAt: number
-  status: 'importing' | 'parsed' | 'failed'
+  /** `saved`: restored from disk and not refreshed this session, so its channels cannot play yet. */
+  status: 'saved' | 'importing' | 'parsed' | 'failed'
   /** Latest operation started for this source; results of older operations are dropped. */
   op: number
   lastAttempt: number
   lastSuccess: number | null
   /** Channels from the last successful import. A failed refresh keeps them, and says so. */
   channels: Channel[]
+  /** The same channels as saved to disk: metadata only, never a stream address. */
+  entries: SavedChannel[]
   skipped: number
   duplicates: number
   /** From Rust: line numbers and reasons only, never addresses. */
@@ -131,13 +135,16 @@ export function filterChannels(channels: Channel[], group: string, favouriteIds:
 const idSafe = (key: string) =>
   [...key].map((ch) => (/[A-Za-z0-9.-]/.test(ch) ? ch : `_${(ch.codePointAt(0) ?? 0).toString(16)}_`)).join('')
 
+/** A channel as parsed (with its stream address) or as restored from disk (without one). */
+type ChannelEntry = SavedChannel & { streamUrl: string | null }
+
 /**
- * Maps parsed entries to channels. Ids are `<sourceId>~<escaped Rust key>`: unique within a source,
- * stable across refreshes, and never shared between sources, so separate sources are never merged.
+ * Maps entries to channels. Ids are `<sourceId>~<escaped Rust key>`: unique within a source, stable
+ * across refreshes and restarts, and never shared between sources, so separate sources never merge.
  * Within one source, Rust has already dropped exact repeats (same guide id and stream address).
  */
-export function toChannels(sourceId: string, report: PlaylistReport): Channel[] {
-  return report.channels.map((c, i) => {
+export function toChannels(sourceId: string, entries: ChannelEntry[]): Channel[] {
+  return entries.map((c, i) => {
     const name = c.name.trim() || 'Unnamed channel'
     return {
       id: `${sourceId}~${idSafe(c.key)}`,
@@ -163,7 +170,28 @@ export function createSource(
 ): PlaylistSource {
   return {
     id, ...input, addedAt: now, status: 'parsed', op: 0, lastAttempt: now, lastSuccess: now,
-    channels: toChannels(id, report), skipped: report.skipped, duplicates: report.duplicates, warnings: report.warnings, error: null,
+    channels: toChannels(id, report.channels), entries: report.channels.map(savedChannel), skipped: report.skipped, duplicates: report.duplicates,
+    warnings: report.warnings, error: null,
+  }
+}
+
+const savedChannel = ({ key, tvgId, name, group, chno }: SavedChannel): SavedChannel => ({ key, tvgId, name, group, chno })
+
+/** A source restored from disk: its channels are listed, but have no stream address until refreshed. */
+export function restoreSource(saved: SavedSource): PlaylistSource {
+  return {
+    id: saved.id, name: saved.name, origin: saved.origin, url: saved.url, label: saved.label, addedAt: saved.addedAt,
+    status: 'saved', op: 0, lastAttempt: saved.lastSuccess ?? saved.addedAt, lastSuccess: saved.lastSuccess,
+    channels: toChannels(saved.id, saved.channels.map((c) => ({ ...c, streamUrl: null }))), entries: saved.channels,
+    skipped: saved.skipped, duplicates: saved.duplicates, warnings: [], error: null,
+  }
+}
+
+/** What is written to disk for a source: no stream or logo addresses; an address only for URL sources. */
+export function toSaved(s: PlaylistSource): SavedSource {
+  return {
+    id: s.id, name: s.name, origin: s.origin, url: s.origin === 'url' ? s.url : null, label: s.label, addedAt: s.addedAt,
+    lastSuccess: s.lastSuccess, skipped: s.skipped, duplicates: s.duplicates, channels: s.entries.map(savedChannel),
   }
 }
 
@@ -173,7 +201,7 @@ export const begin = (list: PlaylistSource[], id: string, op: number, now: numbe
 /** Replaces the source's channels wholesale, so a refresh never leaves stale entries behind. */
 export const succeed = (list: PlaylistSource[], id: string, op: number, report: PlaylistReport, now: number): PlaylistSource[] =>
   list.map((s) => (s.id !== id || s.op !== op ? s : {
-    ...s, status: 'parsed', channels: toChannels(id, report), skipped: report.skipped, duplicates: report.duplicates,
+    ...s, status: 'parsed', channels: toChannels(id, report.channels), entries: report.channels.map(savedChannel), skipped: report.skipped, duplicates: report.duplicates,
     warnings: report.warnings, error: null, lastSuccess: now,
   }))
 
@@ -223,7 +251,19 @@ export function statusText(s: PlaylistSource): string {
   const count = `${n} channel${n === 1 ? '' : 's'}`
   if (s.status === 'importing') return 'Importing…'
   if (s.status === 'parsed') return `Parsed · ${count}`
+  if (s.status === 'saved') return `Saved · ${count}`
   return s.lastSuccess ? `Refresh failed · ${count} kept` : 'Import failed'
 }
 
-export const statusTone = (s: PlaylistSource) => (s.status === 'importing' ? 'scanning' : s.status === 'parsed' ? 'healthy' : 'failing')
+export const statusTone = (s: PlaylistSource) =>
+  s.status === 'importing' ? 'scanning' : s.status === 'parsed' ? 'healthy' : s.status === 'saved' ? 'pending' : 'failing'
+
+/** Why a restored channel cannot play yet, or `null` when it can. */
+export function unavailableReason(s: PlaylistSource | undefined): string | null {
+  if (!s || s.status === 'parsed') return null
+  if (s.status === 'importing') return 'Updating this source’s channel list…'
+  if (s.origin === 'file') return 'This channel comes from a playlist file. Choose the file again in Sources to play its channels.'
+  return s.status === 'failed'
+    ? 'This source could not be refreshed, so its streams are unavailable. Refresh it in Sources.'
+    : 'This source has not been refreshed yet this session.'
+}

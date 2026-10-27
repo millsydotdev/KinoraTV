@@ -7,11 +7,12 @@ desktop shell.
 Rust shell (Gates D2 and D3), and playlist channels whose streams are HLS over http(s) can be played
 (Gate D4). While any imported playlist exists, Live TV, Home, Search, Library and
 the player show only its channels; otherwise the fictional demonstration catalogue is shown. Imported
-playlists are kept in memory only. Streams are not checked in advance: a channel is fetched only
+sources are saved on this device and refreshed at startup (Gate D5); stream addresses are not saved,
+so a restored channel plays once its source has been refreshed. Streams are not checked in advance: a channel is fetched only
 when you play it, and other formats (raw MPEG-TS, MP4, RTMP, RTSP, UDP...) or DRM streams are
 refused with a message. Movies, series and the
-guide remain demonstration data. There is no source persistence, discovery, stream validation or
-guide import; those wait for the owner's approval.
+guide remain demonstration data. There is no discovery, stream validation or guide import; those
+wait for the owner's approval.
 
 ## Architecture
 
@@ -26,13 +27,14 @@ React 19 + TypeScript (src/)          Rust + Tauri 2 (src-tauri/)
   in an ordinary browser for development and tests.
 - **Rust** (`src-tauri/`): the native application. It loads the Vite dev server in development and
   the built `dist/` in release, and owns anything native: `app_info` (version, build profile,
-  platform, shown in Settings › About) and playlist ingestion. `fetch_playlist` downloads an M3U
+  platform, shown in Settings › About), playlist ingestion, playback and saved sources. `fetch_playlist` downloads an M3U
   from a user-supplied http(s) address; `parse_playlist_text` parses text from a file the user
   picked in the webview. Both return parsed channel metadata. Stream addresses are never fetched.
 - **IPC boundary**: `src/lib/native.ts` is the only place React calls Rust. It mirrors the Rust
   structs, validates every response before use, and returns `null` outside Tauri.
 - **Security**: each app command is deny-by-default (`build.rs`). `capabilities/default.json` grants
-  the main window only `allow-app-info`, `allow-fetch-playlist` and `allow-parse-playlist-text`. No
+  the main window only the app's own commands: `app_info`, `fetch_playlist`, `parse_playlist_text`,
+  `open_stream`, `close_stream`, `load_sources` and `save_sources`. No
   filesystem, shell, HTTP, dialog or other plugins. A strict Content Security Policy is set in
   `tauri.conf.json` (remote images stay blocked). Developer tools exist only in debug builds.
 - **Playlist fetching** (`src-tauri/src/fetch.rs`): http(s) only, no credentials in the address, no
@@ -54,6 +56,30 @@ React 19 + TypeScript (src/)          Rust + Tauri 2 (src-tauri/)
   20,000 handles. Closing or switching cancels in-flight requests. hls.js 1.7.3 (Apache-2.0, light
   build, about 113 KB gzipped) loads only when a playlist channel is played. The CSP gained only
   `connect-src kstream://localhost` and `media-src blob:`.
+- **Saved sources** (`src-tauri/src/sources.rs`): `load_sources` and `save_sources` read and write
+  one JSON file, `<app data>/sources/sources.json` (on Linux
+  `~/.local/share/io.github.millsydotdev.kinora/sources/`). The folder is `0700` and the file
+  `0600`. Each save is validated (the same address check as Add Source, no `user:pass@`), then
+  written to a temporary file, flushed and renamed over the old one, so a crash leaves the last
+  complete file. The file has a schema version (1). A damaged or invalid file is moved aside to
+  `sources.json.corrupt-<time>`, never deleted, and Kinora starts without it. A file from a newer
+  version, or one that cannot be read, is left untouched and nothing is saved that session. Errors
+  never contain the path or an address.
+- **What is saved**: each source's name, origin, label, times, counts and, for an address source,
+  the address itself, plus each channel's key, `tvg-id`, name, group and number, enough to rebuild
+  the source–channel link so favourites and history keep working. Stream addresses, logos, stream
+  sessions, `kstream` handles, playback state and parser warnings are never saved. Preferences,
+  theme, favourites, history and collections stay in the webview's localStorage (`kinora.prefs.v2`,
+  `kinora.library.v1`). Library refs to a removed source's channels are dropped with it.
+- **Startup**: the UI waits for the saved sources (at most 5 s; after that it starts and saves
+  nothing that session), shows them as saved, then refreshes address sources one at a time
+  through `fetch_playlist`. A failed refresh keeps the saved channels and says so. File sources
+  cannot refresh themselves: their channels are listed, and the player asks for the file again.
+- **Residual risk of saved addresses**: a source address can carry an account token. It is stored
+  in plain text, readable only by your OS user, but also by anything running as that user, by root,
+  and by backup or sync tools that copy your home folder. Kinora does not export it. If that matters,
+  exclude the folder above from cloud backups and remove sources you no longer use; removing a
+  source rewrites the file without it (older copies in backups are outside Kinora's control).
 - **Codecs**: decoding is done by WebKitGTK through GStreamer. H.264/AAC streams need the
   corresponding GStreamer plugins (for example `gstreamer1-plugin-openh264` or `gstreamer1-plugin-libav`);
   without them Kinora shows a decode error.

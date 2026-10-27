@@ -41,7 +41,7 @@ describe('imported playlist sources in the UI', () => {
     expect(t).toContain('Not tested. Kinora has read the channel list; it has not tried to play any stream.')
     expect(t).toContain('1 malformed, 0 exact repeats')
     expect(t).toContain('Line 9: entry has no stream address.')
-    expect(t).toContain('Until Kinora closes')
+    expect(t).toContain('On this device, without stream addresses')
     expect(t).not.toMatch(/\b(working|playable|healthy|available|live)\b/i)
     for (const s of SECRETS) expect(html).not.toContain(s)
   })

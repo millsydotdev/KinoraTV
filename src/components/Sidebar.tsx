@@ -46,7 +46,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           ))}
         </nav>
         {channelMode === 'playlists' ? (
-          <div className="sidebar-status" title="Imported playlists, kept until Kinora closes">
+          <div className="sidebar-status" title="Imported playlists, saved on this device">
             <p><span className="status-dot" aria-hidden="true" />Imported playlists</p>
             <p className="faint">{playlists.length} {playlists.length === 1 ? 'source' : 'sources'} · {channels.length} channels</p>
           </div>

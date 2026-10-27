@@ -27,6 +27,9 @@ export function parseAppInfo(raw: unknown): AppInfo {
   return { name: v.name, version: v.version, profile: v.profile, os: v.os, arch: v.arch, tauriVersion: v.tauriVersion }
 }
 
+/** True inside the Kinora desktop app; false in a plain browser and in tests. */
+export const inNativeShell = () => isTauri()
+
 export async function getAppInfo(): Promise<AppInfo | null> {
   if (!isTauri()) return null
   return parseAppInfo(await invoke('app_info'))
@@ -63,7 +66,7 @@ export interface PlaylistReport {
 
 const INGEST_CODES = [
   'invalid-url', 'blocked', 'too-many-redirects', 'timeout', 'too-large', 'too-many-entries',
-  'http-status', 'web-page', 'hls-media', 'hls-master', 'not-playlist', 'network', 'busy', 'unsupported-stream',
+  'http-status', 'web-page', 'hls-media', 'hls-master', 'not-playlist', 'network', 'busy', 'unsupported-stream', 'storage',
 ] as const
 /** Codes from `ErrorCode` in ingest.rs, plus `internal` for a failure that did not come from it. */
 export type IngestErrorCode = (typeof INGEST_CODES)[number] | 'internal'
@@ -158,15 +161,20 @@ export function parseOpenedStream(raw: unknown): OpenedStream {
   return { url: v.url, session: v.session }
 }
 
+/** Runs async commands one at a time, in the order they were asked for, whatever happens to each. */
+function serial() {
+  let tail: Promise<unknown> = Promise.resolve()
+  return <T>(run: () => Promise<T>): Promise<T> => {
+    const next = tail.then(run, run)
+    tail = next.catch(() => undefined)
+    return next
+  }
+}
+
 // Rust keeps one stream session: each open ends the previous one. The commands are async in Rust and
 // may finish out of order, so they are sent one at a time: the session Rust keeps is then always the
 // last one the page asked for (rapid channel changes, React's double-run effects in development).
-let streamQueue: Promise<unknown> = Promise.resolve()
-function queued<T>(run: () => Promise<T>): Promise<T> {
-  const next = streamQueue.then(run, run)
-  streamQueue = next.catch(() => undefined)
-  return next
-}
+const queued = serial()
 
 /**
  * Starts a guarded playback session in Rust for a playlist channel's stream address and returns an
@@ -190,4 +198,83 @@ export async function openStream(streamUrl: string): Promise<OpenedStream | null
 export async function closeStream(session: number): Promise<void> {
   if (!isTauri()) return
   await queued(() => invoke('close_stream', { session }))
+}
+
+/** Mirrors `SavedChannel` in src-tauri/src/sources.rs: metadata only, never a stream address. */
+export interface SavedChannel {
+  key: string
+  tvgId: string | null
+  name: string
+  group: string | null
+  chno: number | null
+}
+
+/** Mirrors `SavedSource` in src-tauri/src/sources.rs. `url` may carry a token: never display it. */
+export interface SavedSource {
+  id: string
+  name: string
+  origin: 'url' | 'file'
+  url: string | null
+  label: string
+  addedAt: number
+  lastSuccess: number | null
+  skipped: number
+  duplicates: number
+  channels: SavedChannel[]
+}
+
+/** Mirrors `Notice` in sources.rs: why saved sources could not simply be loaded. */
+export type StorageNotice = 'recovered' | 'newer-version' | 'unreadable'
+const NOTICES: readonly StorageNotice[] = ['recovered', 'newer-version', 'unreadable']
+
+const isNotice = (v: unknown): v is StorageNotice => NOTICES.some((n) => n === v)
+const isTime = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0
+
+function parseSavedChannel(raw: unknown): SavedChannel {
+  const v = raw as Record<string, unknown> | null
+  if (typeof v !== 'object' || v === null || !isText(v.key, 600) || !isText(v.name, 1024) || !isOptText(v.tvgId, 1024) ||
+      !(v.group === null || (typeof v.group === 'string' && v.group.length <= 1024)) || !(v.chno === null || (isCount(v.chno, 99_999) && v.chno > 0))) {
+    throw new Error('Saved channel data is in an unexpected shape.')
+  }
+  return { key: v.key, tvgId: v.tvgId, name: v.name, group: v.group, chno: v.chno }
+}
+
+export function parseSavedSource(raw: unknown): SavedSource {
+  const v = raw as Record<string, unknown> | null
+  if (typeof v !== 'object' || v === null || !isText(v.id, 48) || !/^pl-[a-z0-9-]+$/.test(v.id) || !isText(v.name, 200) || !isText(v.label, 480) ||
+      !(v.origin === 'url' ? isText(v.url, 2048) : v.origin === 'file' && v.url === null) ||
+      !isTime(v.addedAt) || !(v.lastSuccess === null || isTime(v.lastSuccess)) ||
+      !isCount(v.skipped, 2 ** 32) || !isCount(v.duplicates, 2 ** 32) || !Array.isArray(v.channels) || v.channels.length > MAX_CHANNELS) {
+    throw new Error('Saved source data is in an unexpected shape.')
+  }
+  const origin = v.origin === 'url' ? 'url' : 'file'
+  return {
+    id: v.id, name: v.name, origin, url: origin === 'url' && typeof v.url === 'string' ? v.url : null, label: v.label, addedAt: v.addedAt,
+    lastSuccess: v.lastSuccess, skipped: v.skipped, duplicates: v.duplicates, channels: v.channels.map(parseSavedChannel),
+  }
+}
+
+/** Loads saved sources from Rust. `null` outside the native shell (browser dev and tests keep memory-only sources). */
+export async function loadSources(): Promise<{ sources: SavedSource[]; notice: StorageNotice | null } | null> {
+  if (!isTauri()) return null
+  const raw = await invoke('load_sources') as Record<string, unknown> | null
+  const notice = raw?.notice ?? null
+  if (typeof raw !== 'object' || raw === null || !Array.isArray(raw.sources) || !(notice === null || isNotice(notice))) {
+    throw new Error('Saved sources arrived in an unexpected shape.')
+  }
+  return { sources: raw.sources.map(parseSavedSource), notice }
+}
+
+const saves = serial()
+
+/** Replaces the saved sources. Saves run in order, so the last one asked for is the one kept. */
+export async function saveSources(sources: SavedSource[]): Promise<void> {
+  if (!isTauri()) return
+  await saves(async () => {
+    try {
+      await invoke('save_sources', { sources })
+    } catch (e) {
+      throw toIngestError(e)
+    }
+  })
 }
