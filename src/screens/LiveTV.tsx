@@ -361,7 +361,7 @@ function LivePlayer({ channel, programme, now, onStep, onClose }: { channel: Cha
       <div className="live-player-status" role="status">
         <Icon name="sources" size={18} />
         {channel.sourceId
-          ? <span>Not playable yet · stream not playback-tested</span>
+          ? <span>Open the full-screen player to watch</span>
           : <span>No stream connected. <Link to="/sources" className="text-link">Add a source</Link></span>}
       </div>
       <div className="live-player-bar">

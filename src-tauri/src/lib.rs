@@ -1,11 +1,15 @@
 //! Kinora native shell. The React UI owns presentation and demo state; Rust owns native concerns:
-//! `app_info`, and playlist ingestion (`fetch_playlist`, `parse_playlist_text`).
+//! `app_info`, playlist ingestion (`fetch_playlist`, `parse_playlist_text`) and guarded HLS
+//! playback (`open_stream`, `close_stream` and the `kstream` protocol, see `stream.rs`).
 
 mod fetch;
+mod hls;
 mod ingest;
 mod m3u;
+mod stream;
 
 use serde::Serialize;
+use tauri::Manager;
 
 /// Facts about the running shell. Mirrored by `AppInfo` in `src/lib/native.ts`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -51,13 +55,87 @@ async fn parse_playlist_text(text: String) -> Result<ingest::Report, ingest::Ing
     ingest::from_text(&text)
 }
 
+/// Starts a playback session for an HLS stream address and returns only an opaque `kstream`
+/// address for it. Ends the previous session. Nothing is fetched until the page asks for it.
+#[tauri::command]
+async fn open_stream(
+    url: String,
+    streams: tauri::State<'_, stream::Streams>,
+) -> Result<stream::Opened, ingest::IngestError> {
+    streams.open(&url)
+}
+
+/// Ends a playback session (if it is still the current one), cancelling its in-flight requests.
+#[tauri::command]
+fn close_stream(session: u64, streams: tauri::State<'_, stream::Streams>) {
+    streams.close(session);
+}
+
+/// The page origin allowed to read `kstream` responses: the dev server in `tauri dev`, otherwise
+/// the bundled app's origin (verified as `tauri://localhost` on Linux in the D4A spike).
+fn app_origin(config: &tauri::Config) -> String {
+    if tauri::is_dev() {
+        if let Some(dev) = &config.build.dev_url {
+            return dev.origin().ascii_serialization();
+        }
+    }
+    if cfg!(windows) {
+        "http://tauri.localhost".into()
+    } else {
+        "tauri://localhost".into()
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let result = tauri::Builder::default()
+        .setup(|app| {
+            let origin = app_origin(app.config());
+            app.manage(stream::Streams::new(
+                fetch::Policy::default(),
+                stream::Limits::default(),
+                origin,
+            ));
+            Ok(())
+        })
+        .register_asynchronous_uri_scheme_protocol("kstream", |ctx, request, responder| {
+            // Only Kinora's own window may use the stream protocol.
+            if ctx.webview_label() != "main" {
+                responder.respond(
+                    tauri::http::Response::builder()
+                        .status(403)
+                        .body(Vec::new())
+                        .unwrap_or_default(),
+                );
+                return;
+            }
+            let app = ctx.app_handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let streams = app.state::<stream::Streams>();
+                let header = |name: &str| request.headers().get(name).and_then(|v| v.to_str().ok());
+                let ranges: Vec<&str> = request
+                    .headers()
+                    .get_all("range")
+                    .iter()
+                    .filter_map(|v| v.to_str().ok())
+                    .collect();
+                let reply = streams
+                    .serve(
+                        request.method().as_str(),
+                        request.uri().path(),
+                        header("origin"),
+                        &ranges,
+                    )
+                    .await;
+                responder.respond(stream::into_response(reply));
+            });
+        })
         .invoke_handler(tauri::generate_handler![
             app_info,
             fetch_playlist,
-            parse_playlist_text
+            parse_playlist_text,
+            open_stream,
+            close_stream
         ])
         .run(tauri::generate_context!());
 

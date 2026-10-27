@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window only: app_info, plus playlist import (fetch a user-supplied http(s) M3U address, or parse text from a file the user picked). No filesystem, shell, HTTP, dialog or other plugin access.",
+  "description": "Main window only: app_info; playlist import (fetch a user-supplied http(s) M3U address, or parse text from a file the user picked); HLS playback sessions (open_stream returns only an opaque kstream address; close_stream ends it). No filesystem, shell, HTTP, dialog or other plugin access.",
   "windows": ["main"],
-  "permissions": ["allow-app-info", "allow-fetch-playlist", "allow-parse-playlist-text"]
+  "permissions": ["allow-app-info", "allow-fetch-playlist", "allow-parse-playlist-text", "allow-open-stream", "allow-close-stream"]
 }

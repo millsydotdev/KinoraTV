@@ -17,8 +17,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
-use reqwest::header::ACCEPT;
+use reqwest::header::{ACCEPT, CONTENT_RANGE, CONTENT_TYPE, RANGE};
 use reqwest::{redirect, Url};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use crate::ingest::{ErrorCode, IngestError, MAX_PLAYLIST_BYTES};
 
@@ -30,6 +31,9 @@ pub struct Policy {
     pub max_redirects: usize,
     pub connect_timeout: Duration,
     pub total_timeout: Duration,
+    /// Longest wait for the next bytes of a response. `None` for playlists (the total timeout
+    /// covers them); set for media, where a stalled live stream must not hold a request open.
+    pub read_timeout: Option<Duration>,
     /// Test-only: lets the local test server on 127.0.0.1 be reached. Not compiled into the app.
     #[cfg(test)]
     pub allow_loopback: bool,
@@ -45,6 +49,7 @@ impl Default for Policy {
             max_redirects: 5,
             connect_timeout: Duration::from_secs(10),
             total_timeout: Duration::from_secs(30),
+            read_timeout: None,
             #[cfg(test)]
             allow_loopback: false,
             #[cfg(test)]
@@ -59,9 +64,18 @@ impl Policy {
         if self.allow_loopback && ip.to_canonical().is_loopback() {
             return true;
         }
+        // Native smoke tests serve local fixtures on 127.0.0.1. Only in dev builds; see below.
+        #[cfg(all(feature = "loopback-fixtures", dev))]
+        if ip.to_canonical().is_loopback() {
+            return true;
+        }
         !is_prohibited(ip)
     }
 }
+
+// `dev` is set by tauri-build for `tauri dev` builds only; bundled and release apps never have it.
+#[cfg(all(feature = "loopback-fixtures", not(dev)))]
+compile_error!("`loopback-fixtures` opens loopback to fetches and is for local dev-build smoke tests only; it must never be built into a release or bundled app.");
 
 /// True for every address a playlist fetch must never reach.
 pub fn is_prohibited(ip: IpAddr) -> bool {
@@ -228,11 +242,9 @@ fn from_reqwest(e: &reqwest::Error, host: &str) -> IngestError {
     }
 }
 
-/// Downloads playlist text. Returns the text and the host it was requested from.
-pub async fn download(raw_url: &str, policy: &Policy) -> Result<(String, String), IngestError> {
-    let url = check_url(raw_url, policy)?;
-    let host = url.host_str().unwrap_or_default().to_owned();
-
+/// The only HTTP client Kinora uses. Every request it makes is checked: guarded resolver, IP-literal
+/// and per-redirect `check_url`, no proxy, no Referer, bounded connect/total (and optional idle) time.
+pub fn guarded_client(policy: &Policy) -> Result<reqwest::Client, IngestError> {
     let hop_policy = policy.clone();
     let redirects = redirect::Policy::custom(move |attempt| {
         // `previous` holds every address already requested, starting with the original.
@@ -248,7 +260,7 @@ pub async fn download(raw_url: &str, policy: &Policy) -> Result<(String, String)
             Err(e) => attempt.error(e),
         }
     });
-    let client = reqwest::Client::builder()
+    let mut builder = reqwest::Client::builder()
         .no_proxy()
         .referer(false) // a Referer header would forward the previous address, query tokens included
         .redirect(redirects)
@@ -257,9 +269,20 @@ pub async fn download(raw_url: &str, policy: &Policy) -> Result<(String, String)
         }))
         .connect_timeout(policy.connect_timeout)
         .timeout(policy.total_timeout)
-        .user_agent(concat!("Kinora/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("Kinora/", env!("CARGO_PKG_VERSION")));
+    if let Some(idle) = policy.read_timeout {
+        builder = builder.read_timeout(idle);
+    }
+    builder
         .build()
-        .map_err(|_| network("Could not start the download.".into()))?;
+        .map_err(|_| network("Could not start the download.".into()))
+}
+
+/// Downloads playlist text. Returns the text and the host it was requested from.
+pub async fn download(raw_url: &str, policy: &Policy) -> Result<(String, String), IngestError> {
+    let url = check_url(raw_url, policy)?;
+    let host = url.host_str().unwrap_or_default().to_owned();
+    let client = guarded_client(policy)?;
 
     let mut response = client
         .get(url)
@@ -315,41 +338,140 @@ pub async fn download(raw_url: &str, policy: &Policy) -> Result<(String, String)
     Ok((String::from_utf8_lossy(&body).into_owned(), host))
 }
 
+/// A media resource fetched for the stream protocol.
+pub struct Fetched {
+    /// 200, or 206 when the upstream answered a byte range.
+    pub status: u16,
+    pub content_type: Option<String>,
+    pub content_range: Option<String>,
+    /// Address after redirects; relative references in a playlist resolve against this.
+    pub final_url: Url,
+    pub body: Vec<u8>,
+    /// Holds `body.len()` bytes of the session's memory budget until dropped.
+    pub budget: OwnedSemaphorePermit,
+}
+
+/// Fetches one playlist, segment or key through `client` (built by `guarded_client`). The body is
+/// capped at `max_bytes`, and every chunk is charged to `budget` as it arrives: when the session's
+/// in-flight bytes would exceed the budget the request fails with `Busy` instead of buffering more.
+pub async fn fetch_media(
+    client: &reqwest::Client,
+    url: &Url,
+    policy: &Policy,
+    range: Option<&str>,
+    total: Duration,
+    max_bytes: usize,
+    budget: &Arc<Semaphore>,
+) -> Result<Fetched, IngestError> {
+    let url = check_url(url.as_str(), policy)?;
+    let host = url.host_str().unwrap_or_default().to_owned();
+    let mut request = client.get(url).timeout(total).header(ACCEPT, "*/*");
+    if let Some(range) = range {
+        request = request.header(RANGE, range);
+    }
+    let mut response = request.send().await.map_err(|e| from_reqwest(&e, &host))?;
+    if let Some(peer) = response.remote_addr() {
+        if !policy.permits(peer.ip()) {
+            return Err(blocked(&host));
+        }
+    }
+    let status = response.status().as_u16();
+    if !matches!(status, 200 | 206) {
+        return Err(IngestError::new(
+            ErrorCode::HttpStatus,
+            format!("{host} answered with HTTP {status}."),
+        ));
+    }
+    let too_large = || {
+        IngestError::new(
+            ErrorCode::TooLarge,
+            format!("A resource from {host} is larger than the limit."),
+        )
+    };
+    if response
+        .content_length()
+        .is_some_and(|n| n > max_bytes as u64)
+    {
+        return Err(too_large());
+    }
+    let header = |name| {
+        response
+            .headers()
+            .get(name)
+            .and_then(|v: &reqwest::header::HeaderValue| v.to_str().ok())
+            .map(str::to_owned)
+    };
+    let content_type = header(CONTENT_TYPE);
+    let content_range = header(CONTENT_RANGE);
+    let final_url = response.url().clone();
+    let busy = || {
+        IngestError::new(
+            ErrorCode::Busy,
+            "Too much stream data is in flight; try again shortly.",
+        )
+    };
+    let mut held = budget
+        .clone()
+        .try_acquire_many_owned(0)
+        .map_err(|_| busy())?;
+    let mut body = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|e| from_reqwest(&e, &host))?
+    {
+        if body.len() + chunk.len() > max_bytes {
+            return Err(too_large());
+        }
+        let n = u32::try_from(chunk.len()).map_err(|_| too_large())?;
+        held.merge(
+            budget
+                .clone()
+                .try_acquire_many_owned(n)
+                .map_err(|_| busy())?,
+        );
+        body.extend_from_slice(&chunk);
+    }
+    Ok(Fetched {
+        status,
+        content_type,
+        content_range,
+        final_url,
+        body,
+        budget: held,
+    })
+}
+
+/// Local HTTP test server shared by the fetch and stream tests. Test builds only.
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ingest;
+pub(crate) mod test_support {
     use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use std::time::Duration;
 
-    const PLAYLIST: &str = "#EXTM3U\n#EXTINF:-1 tvg-id=\"one\" group-title=\"News\",One\nhttps://s.example/1.m3u8\n#EXTINF:-1,Two\nhttps://s.example/2.m3u8\n";
-
-    fn run<T>(f: impl std::future::Future<Output = T>) -> T {
+    pub fn run<T>(f: impl std::future::Future<Output = T>) -> T {
         tauri::async_runtime::block_on(f)
     }
 
-    /// The explicit test-only network policy: loopback allowed (for the local server), small limits.
-    fn local() -> Policy {
-        Policy {
-            max_bytes: 4096,
-            total_timeout: Duration::from_millis(1500),
-            allow_loopback: true,
-            ..Policy::default()
-        }
+    pub fn http(status: &str, headers: &str, body: &str) -> Vec<u8> {
+        http_bytes(status, headers, body.as_bytes())
     }
 
-    fn http(status: &str, headers: &str, body: &str) -> Vec<u8> {
-        format!(
-            "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n{headers}\r\n{body}",
+    pub fn http_bytes(status: &str, headers: &str, body: &[u8]) -> Vec<u8> {
+        let mut out = format!(
+            "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n{headers}\r\n",
             body.len()
         )
-        .into_bytes()
+        .into_bytes();
+        out.extend_from_slice(body);
+        out
     }
 
     /// Minimal local HTTP server on 127.0.0.1. `respond` gets the path, port and raw request head.
-    /// Returns the port and a count of connections accepted.
-    fn server(
+    /// Paths starting `/slow` wait 3 s before answering. Returns the port and connections accepted.
+    pub fn server(
         respond: impl Fn(&str, u16, &str) -> Vec<u8> + Send + Sync + 'static,
     ) -> (u16, Arc<AtomicUsize>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -383,6 +505,26 @@ mod tests {
             }
         });
         (port, hits)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::test_support::{http, run, server};
+    use super::*;
+    use crate::ingest;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    const PLAYLIST: &str = "#EXTM3U\n#EXTINF:-1 tvg-id=\"one\" group-title=\"News\",One\nhttps://s.example/1.m3u8\n#EXTINF:-1,Two\nhttps://s.example/2.m3u8\n";
+
+    /// The explicit test-only network policy: loopback allowed (for the local server), small limits.
+    fn local() -> Policy {
+        Policy {
+            max_bytes: 4096,
+            total_timeout: Duration::from_millis(1500),
+            allow_loopback: true,
+            ..Policy::default()
+        }
     }
 
     fn playlist_server() -> (u16, Arc<AtomicUsize>) {

@@ -4,11 +4,14 @@ A TV, movie and series app: a React + TypeScript interface running inside a Rust
 desktop shell.
 
 **Status:** Sources can import real M3U playlists, by http(s) address or local file, through the
-Rust shell (Gates D2 and D3). While any imported playlist exists, Live TV, Home, Search, Library and
+Rust shell (Gates D2 and D3), and playlist channels whose streams are HLS over http(s) can be played
+(Gate D4). While any imported playlist exists, Live TV, Home, Search, Library and
 the player show only its channels; otherwise the fictional demonstration catalogue is shown. Imported
-playlists are kept in memory only, and their streams are not playback-tested. Movies, series and the
-guide remain demonstration data. There is no source persistence, discovery, stream validation, guide
-import or playback; those wait for the owner's approval.
+playlists are kept in memory only. Streams are not checked in advance: a channel is fetched only
+when you play it, and other formats (raw MPEG-TS, MP4, RTMP, RTSP, UDP...) or DRM streams are
+refused with a message. Movies, series and the
+guide remain demonstration data. There is no source persistence, discovery, stream validation or
+guide import; those wait for the owner's approval.
 
 ## Architecture
 
@@ -42,6 +45,18 @@ React 19 + TypeScript (src/)          Rust + Tauri 2 (src-tauri/)
   `ALL_PROXY`, are deliberately ignored, because a proxy would make the connection on Kinora's
   behalf and bypass the address checks. On a network that only allows traffic through a proxy,
   playlist fetching fails with a connection error.
+- **Playback (`kstream`)**: `open_stream` returns an opaque `kstream://localhost/<handle>`; Rust
+  fetches every playlist, segment, key and rendition through the same guarded client (private,
+  loopback and reserved destinations refused, every redirect rechecked, no proxy, no Referer),
+  rewrites HLS playlists to handles, refuses DRM and unknown resource tags, and answers CORS for the
+  app's own origin only. Limits per session: 10 s connect, 15 s idle, 10 s per playlist or key, 60 s
+  per segment, 4 MiB playlists, 32 MiB segments, 64 MiB buffered at once, 4 requests at a time,
+  20,000 handles. Closing or switching cancels in-flight requests. hls.js 1.7.3 (Apache-2.0, light
+  build, about 113 KB gzipped) loads only when a playlist channel is played. The CSP gained only
+  `connect-src kstream://localhost` and `media-src blob:`.
+- **Codecs**: decoding is done by WebKitGTK through GStreamer. H.264/AAC streams need the
+  corresponding GStreamer plugins (for example `gstreamer1-plugin-openh264` or `gstreamer1-plugin-libav`);
+  without them Kinora shows a decode error.
 - **Stream addresses**: `streamUrl` is kept exactly as written for a future player and may contain
   account names, passwords or tokens. Show `streamDisplay` (`scheme://host[:port]/…`) instead, and
   never log either. Channel keys come from `tvg-id`, or from name and group, never from the address.

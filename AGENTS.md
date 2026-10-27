@@ -1,11 +1,12 @@
 # TVMovie (Kinora)
 
 Premium TV and film app: **React + TypeScript UI inside a Rust + Tauri 2 desktop shell.**
-**Phase: Gate D3.2 (integration audit) is complete on `main`. The next gate awaits the owner's
+**Phase: Gate D4 (guarded HLS playback) is complete on `main`. The next gate awaits the owner's
 approval.** Done: Rust M3U parsing and guarded fetching (D2); Sources import, refresh and removal,
 and playlist channels in Live TV and the other channel screens (D3); honest Settings and player
-states for playlist channels, and individual categories from `A;B` groups (D3.1). Not approved yet: source
-persistence, discovery, stream validation or probing, XMLTV, playback, remote logos. Each needs the
+states for playlist channels, and individual categories from `A;B` groups (D3.1); HLS playback for
+playlist channels through Rust (D4). Not approved yet: source persistence, discovery, stream
+validation or probing, XMLTV, other playback formats, remote logos. Each needs the
 owner's explicit approval; that is a hard gate.
 
 Live path: `/home/millsy/dev/TVMovie` (symlinked from `/mnt/storage/TVMovie`). Git repo; first
@@ -52,9 +53,23 @@ Prerequisites and architecture diagram: `README.md`.
 - `PlaylistChannel.streamUrl` may hold credentials: never render, log or persist it in plain text
   without an approved policy. Display `streamDisplay`. No logger is installed; if one is ever added,
   keep `reqwest`/`hyper` at warn level and never log commands' arguments.
+- Playback (D4): the page never gets an upstream stream address. `open_stream` returns
+  `kstream://localhost/<128-bit handle>`; `src-tauri/src/stream.rs` serves it through `fetch.rs`'s
+  guarded client and rewrites HLS playlists (`hls.rs`) so every segment, key, map and rendition gets
+  its own handle. Unknown URI-bearing tags fail closed; DRM is refused. One session at a time;
+  opening or closing one cancels its in-flight work (wry never reports a cancelled request, so this
+  is ours). Responses are buffered by wry, so keep every limit in `stream::Limits` bounded, including
+  the session byte budget. CORS answers only the exact app origin (`tauri://localhost`, or the dev
+  server under `tauri dev`). `<video src>` cannot use custom schemes in WebKitGTK 2.54, so playback is
+  hls.js (light build, lazy, `enableWorker: false`) through MSE; stream commands are queued in
+  `native.ts` so the session Rust keeps is always the last one requested.
+- `loopback-fixtures` (cargo feature) lets `tauri dev` builds fetch 127.0.0.1 for native smoke tests
+  with local fixtures. It refuses to compile without Tauri's `dev` cfg; never weaken that guard.
 - Keep the CSP in `tauri.conf.json` strict; do not loosen it to make something work. Example: Vite
   inlines small assets as `data:` URLs, which `font-src 'self'` blocks, so `vite.config.ts` keeps
-  `.woff2` files out of inlining instead of allowing `data:` fonts.
+  `.woff2` files out of inlining instead of allowing `data:` fonts. D4 added exactly two sources:
+  `connect-src kstream://localhost` (hls.js reads playlists and segments) and `media-src blob:` (MSE).
+  Never add `http:`/`https:` hosts or `worker-src`.
 - Native verification: run one app instance at a time (check `ps` first; start, check, stop).
   `npm run tauri:dev` and a tauri-driver session each open their own window.
 
@@ -63,9 +78,10 @@ Prerequisites and architecture diagram: `README.md`.
 - `src/data/` demonstration catalogue, channels and guide generator, demo sources. Types in
   `types.ts` mirror M3U `#EXTINF` (channels) and XMLTV `<programme>` so real parsers can replace the
   demo data without touching screens.
-- `src-tauri/` Rust shell: `src/lib.rs` (startup, commands), `src/ingest.rs` (error type, report,
-  entry points), `src/m3u.rs` (pure M3U parser + tests), `src/fetch.rs` (guarded download + tests
-  against a local test server), `tauri.conf.json` (window, CSP, bundle), `capabilities/`, `build.rs`,
+- `src-tauri/` Rust shell: `src/lib.rs` (startup, commands, `kstream` protocol), `src/ingest.rs`
+  (error type, report, entry points), `src/m3u.rs` (pure M3U parser + tests), `src/fetch.rs` (guarded
+  client, playlist download, media fetch + tests against a local test server), `src/hls.rs` (pure
+  HLS rewriter + tests), `src/stream.rs` (stream sessions, handles, limits, protocol handler + tests), `tauri.conf.json` (window, CSP, bundle), `capabilities/`, `build.rs`,
   `icons/` (generated from `app-icon.svg`).
 - `src/state/store.tsx` all local state (library, preferences, sources), persisted to localStorage
   (`kinora.library.v1`, `kinora.prefs.v2`, `kinora.sources.v1`). Imported playlists (`playlists`) are
@@ -77,10 +93,12 @@ Prerequisites and architecture diagram: `README.md`.
   categories (`group` keeps the source text; `categories` splits `A;B`, used for chips, filtering and
   labels), Add Source checks (`checkPlaylistUrl`, `readForPreview`), safe labels (`https://host/…`,
   file name) and user-facing error text.
+- `src/lib/playback.ts` the playback hook (session, lazy hls.js, real media states, cleanup);
+  `src/hls-light.d.ts` types for hls.js's `./light` entry.
 - Screen tests render real screens to HTML (`react-dom/server`) with the store seeded through
   `StoreProvider initialPlaylists`. Click-through tests (`src/screens/SourceFlows.test.tsx`) opt into
   `happy-dom` per file (`// @vitest-environment happy-dom`, dev dependency only) and mock the native
-  commands; everything else runs in Node. No test may reach the network or a stream.
+  commands (`PlayerPlayback.test.tsx` also fakes hls.js); everything else runs in Node. No test may reach the network or a stream.
 - `src/screens/` one file per screen plus its CSS. `src/components/` shared UI.
 - `public/art/` 40 AI-generated images made for this project's fictional titles. Throwaway once real
   artwork comes from sources. Do not generate more without asking the owner (it uses their credits).

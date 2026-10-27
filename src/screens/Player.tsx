@@ -7,6 +7,7 @@ import { Icon, type IconName } from '../components/Icon'
 import { useToast } from '../components/Toast'
 import { Art, StateBlock } from '../components/ui'
 import { clock, timecode, useNow } from '../lib/time'
+import { useStreamPlayback, type PlaybackState } from '../lib/playback'
 import { categoryLabel } from '../state/playlists'
 import { useStore, type Prefs } from '../state/store'
 import './Player.css'
@@ -41,6 +42,14 @@ function MenuOption({ selected, onSelect, children }: { selected: boolean; onSel
   )
 }
 
+/** The status line for a playlist stream; messages never contain a stream address. */
+function playbackText(s: PlaybackState): string {
+  if (s.message) return s.message
+  if (s.status === 'buffering') return 'Buffering…'
+  if (s.status === 'paused') return 'Paused'
+  return 'Loading stream…'
+}
+
 export function Player() {
   const { ref = '' } = useParams()
   const navigate = useNavigate()
@@ -69,8 +78,11 @@ export function Player() {
   }, [])
 
   const durationSec = item?.kind === 'movie' ? item.item.runtime * 60 : item?.kind === 'episode' ? item.item.runtime * 60 : 0
-  // Imported channels: no playback, so no controls or shortcuts that suggest audio, subtitles or quality.
+  // Imported channels play for real (HLS through Rust, see lib/playback.ts). There are no subtitle,
+  // audio-track or quality controls for them, and nothing is shown as playing until media plays.
   const fromPlaylist = item?.kind === 'channel' && item.item.sourceId !== null
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const playback = useStreamPlayback(fromPlaylist && item?.kind === 'channel' ? item.item.streamUrl : null, videoRef)
   const saved = library.progress[ref]
   const pos = saved?.pos ?? 0
   const seek = (to: number) => {
@@ -88,7 +100,10 @@ export function Player() {
       if (t.tagName === 'INPUT' && e.key !== 'Escape') return
       if (e.key === 'Escape' && !document.fullscreenElement) leave()
       if (e.key === 'f' || e.key === 'F') toggleFullscreen()
-      if (fromPlaylist) return
+      if (fromPlaylist) {
+        if ((e.key === 'm' || e.key === 'M') && playback.ready) playback.toggleMute()
+        return
+      }
       if (e.key === 'm' || e.key === 'M') setMuted((m) => !m)
       if (e.key === 'c' || e.key === 'C') store.setPref('subtitles', !prefs.subtitles)
       if (e.key === 'ArrowLeft' && durationSec) { e.preventDefault(); seek(pos - 10) }
@@ -121,17 +136,27 @@ export function Player() {
   return (
     <div className={`player force-dark${fullscreen ? ' is-fullscreen' : ''}`} ref={shell}>
       <Art src={item.kind === 'channel' ? programme?.art ?? '' : item.art} focus={item.focus} eager className="player-art" />
+      {fromPlaylist && <video ref={videoRef} className="player-video" playsInline aria-label={`${item.title} video`} />}
+      {fromPlaylist && <div className="player-video-shade" aria-hidden="true" />}
       <div className="player-top">
         <div className="player-heading">
           <h1>{heading}</h1>
-          <p className="muted">{item.kind === 'channel' && !fromPlaylist && <span className="live-dot">Live</span>}{sub}</p>
-          <p className="player-status" role="status">
-            <Icon name="sources" size={14} />
-            {fromPlaylist
-              ? 'Playback is not available yet. This channel was read from your playlist; its stream has not been playback-tested.'
-              : `No stream connected: demonstration ${item.kind === 'channel' ? 'channel' : 'title'}.`}
-            {' '}<Link to="/sources" className="text-link">Manage sources</Link>
-          </p>
+          <p className="muted">{item.kind === 'channel' && (!fromPlaylist || playback.state.status === 'playing') && <span className="live-dot">Live</span>}{sub}</p>
+          {fromPlaylist ? (
+            playback.state.status !== 'playing' && (
+              <p className="player-status" role="status">
+                <Icon name="sources" size={14} />
+                {playbackText(playback.state)}
+                {playback.state.canRetry && <>{' '}<button type="button" className="text-link" onClick={playback.retry}>Retry</button></>}
+              </p>
+            )
+          ) : (
+            <p className="player-status" role="status">
+              <Icon name="sources" size={14} />
+              {`No stream connected: demonstration ${item.kind === 'channel' ? 'channel' : 'title'}.`}
+              {' '}<Link to="/sources" className="text-link">Manage sources</Link>
+            </p>
+          )}
         </div>
         <button type="button" className="icon-btn" onClick={leave} aria-label="Close player"><Icon name="close" /></button>
       </div>
@@ -159,13 +184,25 @@ export function Player() {
         )}
         <div className="player-controls">
           <div className="control-group">
-            <button type="button" className="icon-btn play-btn" disabled
-              aria-label={fromPlaylist ? 'Play, unavailable: playback is not available yet' : 'Play, unavailable: no stream connected'}
-              data-tip={fromPlaylist ? 'Playback not available yet' : 'No stream connected'}><Icon name="play" /></button>
+            {fromPlaylist ? (
+              <button type="button" className="icon-btn play-btn" disabled={!playback.ready} onClick={playback.togglePlay}
+                aria-label={!playback.ready ? 'Play, unavailable until the stream loads' : playback.state.status === 'paused' ? 'Play' : 'Pause'}
+                data-tip={!playback.ready ? 'Loading' : playback.state.status === 'paused' ? 'Play' : 'Pause'}>
+                <Icon name={playback.ready && playback.state.status !== 'paused' ? 'pause' : 'play'} />
+              </button>
+            ) : (
+              <button type="button" className="icon-btn play-btn" disabled aria-label="Play, unavailable: no stream connected" data-tip="No stream connected"><Icon name="play" /></button>
+            )}
             {durationSec > 0 && (
               <>
                 <button type="button" className="icon-btn" onClick={() => seek(pos - 10)} aria-label="Back 10 seconds" data-tip="Back 10 s"><Icon name="left" /></button>
                 <button type="button" className="icon-btn" onClick={() => seek(pos + 10)} aria-label="Forward 10 seconds" data-tip="Forward 10 s"><Icon name="right" /></button>
+              </>
+            )}
+            {fromPlaylist && playback.ready && (
+              <>
+                <button type="button" className="icon-btn" onClick={playback.toggleMute} aria-pressed={playback.muted} aria-label={playback.muted ? 'Unmute' : 'Mute'} data-tip={playback.muted ? 'Unmute' : 'Mute'}><Icon name={playback.muted ? 'mute' : 'volume'} /></button>
+                <input type="range" className="range volume" min={0} max={100} value={playback.muted ? 0 : Math.round(playback.volume * 100)} onChange={(e) => playback.setVolume(Number(e.target.value) / 100)} aria-label="Volume" style={{ ['--fill' as string]: `${playback.muted ? 0 : Math.round(playback.volume * 100)}%` }} />
               </>
             )}
             {!fromPlaylist && (

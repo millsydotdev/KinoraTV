@@ -21,8 +21,16 @@ serde = { version = "1", features = ["derive"] }
 # HTTP/2. TLS comes from the system OpenSSL. Proxy environment variables are still read unless the
 # client calls `no_proxy()`, which src/fetch.rs does (see its tests).
 reqwest = { version = "0.13.5", default-features = false, features = ["native-tls"] }
-# Already in the tree through Tauri; `net` adds the DNS lookup the guarded resolver checks.
-tokio = { version = "1", features = ["net"] }
+# Already in the tree through Tauri; `net` adds the DNS lookup the guarded resolver checks, `time`
+# and `sync` the stream protocol's timeouts, semaphores and cancellation channel.
+tokio = { version = "1", features = ["net", "time", "sync"] }
+# Already in the tree through Tauri: the OS random source for unguessable stream handles.
+getrandom = "0.3"
+
+[features]
+# Lets dev builds (`tauri dev`) fetch from 127.0.0.1 so native smoke tests can play local fixtures.
+# Refuses to compile without Tauri's `dev` cfg, so it can never reach a release or bundled app.
+loopback-fixtures = []
 
 [dev-dependencies]
 serde_json = "1"

@@ -98,15 +98,14 @@ describe('Live TV catalogue', () => {
 describe('player for a playlist channel', () => {
   const player = (id: string, playlists = [lineup]) => render(`/watch/${encodeURIComponent(`channel:${id}`)}`, <Player />, playlists, '/watch/:ref')
 
-  it('says playback is unavailable and offers no audio, subtitle, quality or volume controls', () => {
+  it('starts in a loading state with nothing shown as playing and no controls before there is media', () => {
     const html = player(laughs.id)
     const t = text(html)
     expect(t).toContain('Laugh Line')
-    expect(t).toContain('Playback is not available yet')
-    expect(t).toContain('has not been playback-tested')
-    expect(html).toContain('aria-label="Play, unavailable: playback is not available yet"')
-    expect(html).toMatch(/<button[^>]*disabled=""[^>]*aria-label="Play, unavailable/)
-    for (const control of ['aria-label="Mute"', 'aria-label="Volume"', 'aria-label="Subtitles"', 'aria-label="Audio"', 'aria-label="Quality"']) expect(html).not.toContain(control)
+    expect(t).toContain('Loading stream…')
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*aria-label="Play, unavailable until the stream loads"/)
+    expect(html).toContain('<video class="player-video"')
+    for (const control of ['aria-label="Mute"', 'aria-label="Volume"', 'aria-label="Subtitles"', 'aria-label="Audio"', 'aria-label="Quality"', 'aria-label="Pause"']) expect(html).not.toContain(control)
     expect(t).not.toMatch(/\bLive\b/)
     for (const s of SECRETS) expect(html).not.toContain(s)
   })

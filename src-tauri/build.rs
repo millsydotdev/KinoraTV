@@ -6,6 +6,8 @@ fn main() {
             "app_info",
             "fetch_playlist",
             "parse_playlist_text",
+            "open_stream",
+            "close_stream",
         ]),
     ))
     .expect("failed to run the Tauri build script");

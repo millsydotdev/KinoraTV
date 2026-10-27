@@ -63,7 +63,7 @@ export interface PlaylistReport {
 
 const INGEST_CODES = [
   'invalid-url', 'blocked', 'too-many-redirects', 'timeout', 'too-large', 'too-many-entries',
-  'http-status', 'web-page', 'hls-media', 'hls-master', 'not-playlist', 'network',
+  'http-status', 'web-page', 'hls-media', 'hls-master', 'not-playlist', 'network', 'busy', 'unsupported-stream',
 ] as const
 /** Codes from `ErrorCode` in ingest.rs, plus `internal` for a failure that did not come from it. */
 export type IngestErrorCode = (typeof INGEST_CODES)[number] | 'internal'
@@ -139,4 +139,55 @@ export async function readPlaylistFile(file: File): Promise<PlaylistReport | nul
   if (!isTauri()) return null
   if (file.size > MAX_PLAYLIST_BYTES) throw new IngestError('too-large', 'That file is larger than the 25 MB playlist limit.')
   return ingest('parse_playlist_text', { text: await file.text() })
+}
+
+/** Mirrors `Opened` in src-tauri/src/stream.rs. */
+export interface OpenedStream {
+  /** `kstream://localhost/<handle>`: the only address the page ever gets for a stream. */
+  url: string
+  session: number
+}
+
+const STREAM_ADDRESS = /^kstream:\/\/localhost\/[0-9a-f]{32}$/
+
+export function parseOpenedStream(raw: unknown): OpenedStream {
+  const v = raw as Record<string, unknown> | null
+  if (typeof v !== 'object' || v === null || typeof v.url !== 'string' || !STREAM_ADDRESS.test(v.url) || !isCount(v.session, Number.MAX_SAFE_INTEGER) || v.session < 1) {
+    throw new Error('The native shell returned a stream session in an unexpected shape.')
+  }
+  return { url: v.url, session: v.session }
+}
+
+// Rust keeps one stream session: each open ends the previous one. The commands are async in Rust and
+// may finish out of order, so they are sent one at a time: the session Rust keeps is then always the
+// last one the page asked for (rapid channel changes, React's double-run effects in development).
+let streamQueue: Promise<unknown> = Promise.resolve()
+function queued<T>(run: () => Promise<T>): Promise<T> {
+  const next = streamQueue.then(run, run)
+  streamQueue = next.catch(() => undefined)
+  return next
+}
+
+/**
+ * Starts a guarded playback session in Rust for a playlist channel's stream address and returns an
+ * opaque `kstream` address for hls.js. `null` outside the native shell. Rejects with `IngestError`
+ * (`unsupported-stream`, `blocked`...) when the stream cannot be played.
+ */
+export async function openStream(streamUrl: string): Promise<OpenedStream | null> {
+  if (!isTauri()) return null
+  return queued(async () => {
+    let raw: unknown
+    try {
+      raw = await invoke('open_stream', { url: streamUrl })
+    } catch (e) {
+      throw toIngestError(e)
+    }
+    return parseOpenedStream(raw)
+  })
+}
+
+/** Ends a playback session in Rust, cancelling its requests. Closing an older session is harmless. */
+export async function closeStream(session: number): Promise<void> {
+  if (!isTauri()) return
+  await queued(() => invoke('close_stream', { session }))
 }

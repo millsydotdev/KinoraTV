@@ -23,6 +23,10 @@ pub enum ErrorCode {
     HlsMaster,
     NotPlaylist,
     Network,
+    /// The stream session's in-flight memory budget is spent; the request can be retried.
+    Busy,
+    /// The stream is not something Kinora can play (not HLS, an unsupported scheme, sign-in in the address).
+    UnsupportedStream,
 }
 
 /// Safe to show the user: messages name at most the host, never a path, query or credential.
