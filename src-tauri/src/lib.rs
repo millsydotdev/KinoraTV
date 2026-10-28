@@ -1,14 +1,18 @@
 //! Kinora native shell. The React UI owns presentation and demo state; Rust owns native concerns:
 //! `app_info`, playlist ingestion (`fetch_playlist`, `parse_playlist_text`), guarded HLS playback
-//! (`open_stream`, `close_stream` and the `kstream` protocol, see `stream.rs`) and saved sources
-//! (`load_sources`, `save_sources`, see `sources.rs`).
+//! (`open_stream`, `close_stream` and the `kstream` protocol, see `stream.rs`), saved sources
+//! (`load_sources`, `save_sources`, see `sources.rs`) and XMLTV guides (`fetch_guide`,
+//! `import_guide_file`, `load_guide`, `guide_channels`, `guide_programmes`, `remove_guide`, see
+//! `guides.rs` and `xmltv.rs`).
 
 mod fetch;
+mod guides;
 mod hls;
 mod ingest;
 mod m3u;
 mod sources;
 mod stream;
+mod xmltv;
 
 use serde::Serialize;
 use tauri::Manager;
@@ -73,21 +77,158 @@ fn close_stream(session: u64, streams: tauri::State<'_, stream::Streams>) {
     streams.close(session);
 }
 
-/// Reads the saved playlist sources (and why, if they could not be used as they were).
+/// Reads the saved playlist sources (and why, if they could not be used as they were). When the file
+/// was read cleanly, guide caches that no saved guide owns are deleted.
 #[tauri::command]
 async fn load_sources(
     store: tauri::State<'_, sources::Store>,
+    guides: tauri::State<'_, guides::GuideStore>,
 ) -> Result<sources::Loaded, ingest::IngestError> {
-    Ok(store.load())
+    let loaded = store.load();
+    if loaded.notice.is_none() {
+        let keep: Vec<&str> = loaded.saved.guides.iter().map(|g| g.id.as_str()).collect();
+        guides.prune(&keep);
+    }
+    Ok(loaded)
 }
 
 /// Replaces the saved playlist sources atomically. Validated in Rust; refused while read-only.
 #[tauri::command]
 async fn save_sources(
-    sources: Vec<sources::SavedSource>,
+    saved: sources::Saved,
     store: tauri::State<'_, sources::Store>,
 ) -> Result<(), ingest::IngestError> {
-    store.save(&sources)
+    store.save(&saved)
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+}
+
+/// Parses guide bytes off the async runtime (a large guide takes a while) and keeps the result if
+/// no newer import or removal of the guide started since `generation`.
+async fn finish_guide(
+    app: tauri::AppHandle,
+    id: String,
+    generation: u64,
+    bytes: Vec<u8>,
+) -> Result<guides::Summary, ingest::IngestError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<guides::GuideStore>()
+            .finish(&id, generation, bytes, now_ms())
+    })
+    .await
+    .map_err(|_| {
+        ingest::IngestError::new(
+            ingest::ErrorCode::NotGuide,
+            "Kinora could not read that guide.",
+        )
+    })?
+}
+
+/// Downloads an XMLTV guide (plain or gzip) from a user-supplied http(s) address through the guarded
+/// client, with the guide policy's size and time limits. Nothing the guide refers to is fetched.
+#[tauri::command]
+async fn fetch_guide(
+    id: String,
+    url: String,
+    app: tauri::AppHandle,
+    guides: tauri::State<'_, guides::GuideStore>,
+) -> Result<guides::Summary, ingest::IngestError> {
+    let generation = guides.begin(&id)?;
+    let accept = "application/xml, text/xml, application/gzip;q=0.9, */*;q=0.1";
+    let (bytes, _host) = fetch::download_bytes(&url, &fetch::Policy::guide(), accept).await?;
+    finish_guide(app, id, generation, bytes).await
+}
+
+/// Reads a guide file the user picked in the webview, sent as raw bytes (it may be gzip) with the
+/// guide id in the `x-guide-id` header. Rust receives bytes, never a path.
+#[tauri::command]
+async fn import_guide_file(
+    request: tauri::ipc::Request<'_>,
+    app: tauri::AppHandle,
+    guides: tauri::State<'_, guides::GuideStore>,
+) -> Result<guides::Summary, ingest::IngestError> {
+    let refused = || {
+        ingest::IngestError::new(
+            ingest::ErrorCode::NotGuide,
+            "Kinora could not read that guide file.",
+        )
+    };
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err(refused());
+    };
+    if bytes.len() > fetch::MAX_GUIDE_BYTES {
+        return Err(ingest::IngestError::new(
+            ingest::ErrorCode::TooLarge,
+            format!(
+                "That file is larger than the {} MB guide limit.",
+                fetch::MAX_GUIDE_BYTES / (1024 * 1024)
+            ),
+        ));
+    }
+    let id = request
+        .headers()
+        .get("x-guide-id")
+        .and_then(|v| v.to_str().ok())
+        .ok_or_else(refused)?
+        .to_owned();
+    let generation = guides.begin(&id)?;
+    finish_guide(app, id, generation, bytes.clone()).await
+}
+
+/// The summary of a guide's programmes, read from its cache on first use. `None` when none are held.
+#[tauri::command]
+async fn load_guide(
+    id: String,
+    app: tauri::AppHandle,
+) -> Result<Option<guides::Summary>, ingest::IngestError> {
+    tauri::async_runtime::spawn_blocking(move || app.state::<guides::GuideStore>().load(&id))
+        .await
+        .map_err(|_| {
+            ingest::IngestError::new(
+                ingest::ErrorCode::NotGuide,
+                "Kinora could not read that guide.",
+            )
+        })?
+}
+
+/// A guide's channel ids and names, for matching a playlist channel by hand.
+#[tauri::command]
+fn guide_channels(
+    id: String,
+    guides: tauri::State<'_, guides::GuideStore>,
+) -> Vec<xmltv::GuideChannel> {
+    guides.channels(&id).unwrap_or_default()
+}
+
+/// Programmes overlapping `[from, to)` (UTC ms) for the channel ids the page asks about.
+#[tauri::command]
+fn guide_programmes(
+    queries: Vec<guides::Query>,
+    from: f64,
+    to: f64,
+    guides: tauri::State<'_, guides::GuideStore>,
+) -> Result<Vec<guides::Answer>, ingest::IngestError> {
+    let ms = |t: f64| (t.is_finite() && t.abs() < 1e15).then_some(t as i64);
+    let (Some(from), Some(to)) = (ms(from), ms(to)) else {
+        return Err(ingest::IngestError::new(
+            ingest::ErrorCode::Storage,
+            "Kinora refused a guide request in an unexpected shape.",
+        ));
+    };
+    guides.query(&queries, from, to)
+}
+
+/// Forgets a guide: its programmes and cache are deleted, and any import still running is dropped.
+#[tauri::command]
+fn remove_guide(
+    id: String,
+    guides: tauri::State<'_, guides::GuideStore>,
+) -> Result<(), ingest::IngestError> {
+    guides.remove(&id)
 }
 
 /// The page origin allowed to read `kstream` responses: the dev server in `tauri dev`, otherwise
@@ -112,6 +253,7 @@ pub fn run() {
             let origin = app_origin(app.config());
             // A private folder inside the app's data directory; without one, sources are not saved.
             let dir = app.path().app_data_dir().ok().map(|d| d.join("sources"));
+            app.manage(guides::GuideStore::new(dir.clone()));
             app.manage(sources::Store::new(dir));
             app.manage(stream::Streams::new(
                 fetch::Policy::default(),
@@ -159,7 +301,13 @@ pub fn run() {
             open_stream,
             close_stream,
             load_sources,
-            save_sources
+            save_sources,
+            fetch_guide,
+            import_guide_file,
+            load_guide,
+            guide_channels,
+            guide_programmes,
+            remove_guide
         ])
         .run(tauri::generate_context!());
 

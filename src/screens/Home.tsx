@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom'
 import { featured, movies, series } from '../data/catalog'
-import { nextProgramme, programmeAt } from '../data/channels'
 import { movieRef, runtimeLabel, seriesRef } from '../data/refs'
 import { Icon } from '../components/Icon'
 import { PageHeader } from '../components/PageHeader'
@@ -58,7 +57,7 @@ function Hero() {
 
 export function Home() {
   const now = useNow()
-  const { library, prefs, channels, findChannel, channelMode } = useStore()
+  const { library, prefs, channels, findChannel, channelMode, programmeAt, nextProgramme } = useStore()
   const resume = continueWatching(library)
   const newFilms = [...movies].sort((a, b) => b.added.localeCompare(a.added))
   const newSeries = [...series].sort((a, b) => b.added.localeCompare(a.added))

@@ -37,8 +37,9 @@ export interface PlaylistSource {
 }
 
 /**
- * Validates the address typed into Add Source: well-formed http(s), no embedded credentials, not
- * already added, and an M3U type. Rust checks scheme, credentials and destination again before fetching.
+ * Validates a playlist address typed into Add Source: well-formed http(s), no embedded credentials,
+ * not already added, and not a URL list. Guides use `checkGuideUrl` (guides.ts). Rust checks scheme,
+ * credentials and destination again before fetching.
  */
 export function checkPlaylistUrl(raw: string, kind: SourceKind, existing: (string | null)[]): { url: string } | { error: string } {
   if (!raw.trim()) return { error: 'Paste the playlist address.' }
@@ -51,7 +52,7 @@ export function checkPlaylistUrl(raw: string, kind: SourceKind, existing: (strin
   if (!['http:', 'https:'].includes(parsed.protocol)) return { error: 'Use a full address starting with http:// or https://' }
   if (parsed.username || parsed.password) return { error: 'Remove the username and password from the address. Sign-in details are not stored in URLs.' }
   if (existing.includes(parsed.href)) return { error: 'This address is already one of your sources.' }
-  if (kind === 'xmltv' || kind === 'url-list') return { error: 'Kinora can import M3U playlists so far. XMLTV guides and URL lists are not supported yet.' }
+  if (kind === 'url-list') return { error: 'Kinora can import M3U playlists and XMLTV guides so far. URL lists are not supported yet.' }
   return { url: parsed.href }
 }
 

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { channelById, scheduleFor } from '../data/channels'
+import { startOfDay } from '../data/channels'
+import type { Channel, Programme } from '../data/types'
 import { clock, dayLabel, useNow } from '../lib/time'
 import { useStore } from '../state/store'
 import { Icon } from './Icon'
@@ -9,10 +10,10 @@ import './PageHeader.css'
 export const NavMenuContext = createContext<() => void>(() => undefined)
 
 /** Reminder ids are XMLTV-style `<channelId>@<startMs>` programme ids. */
-function parseReminder(id: string) {
-  const [channelId = '', start = ''] = id.split('@')
-  const channel = channelById(channelId)
-  const programme = channel && scheduleFor(channel, Number(start)).find((p) => p.id === id)
+function parseReminder(id: string, find: (id: string) => Channel | undefined, schedule: (c: Channel, day: number) => Programme[]) {
+  const at = id.lastIndexOf('@')
+  const channel = find(id.slice(0, at))
+  const programme = channel && schedule(channel, startOfDay(Number(id.slice(at + 1)))).find((p) => p.id === id)
   return channel && programme ? { id, channel, start: programme.start, title: programme.title } : null
 }
 
@@ -21,7 +22,7 @@ function Reminders() {
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLDivElement>(null)
   const now = useNow()
-  const list = store.library.reminders.map(parseReminder).filter((r): r is NonNullable<typeof r> => !!r && r.start > now).sort((a, b) => a.start - b.start)
+  const list = store.library.reminders.map((id) => parseReminder(id, store.findChannel, store.schedule)).filter((r): r is NonNullable<typeof r> => !!r && r.start > now).sort((a, b) => a.start - b.start)
 
   useEffect(() => {
     if (!open) return

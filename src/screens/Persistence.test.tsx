@@ -6,7 +6,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter, Route, Routes, useNavigate, type NavigateFunction } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../components/Toast'
-import { IngestError, type PlaylistChannel, type PlaylistReport, type SavedSource } from '../lib/native'
+import { IngestError, type PlaylistChannel, type PlaylistReport, type SavedGuide, type SavedMapping, type SavedSource, type SavedState, type StorageNotice } from '../lib/native'
 import { StoreProvider } from '../state/store'
 import { LiveTV } from './LiveTV'
 import { Player } from './Player'
@@ -16,6 +16,7 @@ import { AddSource, Sources } from './Sources'
 const native = vi.hoisted(() => ({
   inNativeShell: vi.fn(() => true), loadSources: vi.fn(), saveSources: vi.fn(), fetchPlaylist: vi.fn(), readPlaylistFile: vi.fn(),
   openStream: vi.fn(), closeStream: vi.fn(),
+  loadGuide: vi.fn(), fetchGuide: vi.fn(), readGuideFile: vi.fn(), guideProgrammes: vi.fn(), guideChannels: vi.fn(), removeGuide: vi.fn(),
 }))
 vi.mock('../lib/native', async (importOriginal) => ({ ...(await importOriginal<typeof import('../lib/native')>()), ...native }))
 const fake = vi.hoisted(() => {
@@ -105,17 +106,25 @@ const click = (el: Element) => act(async () => { (el as HTMLElement).click() })
 const button = (label: string) => [...document.querySelectorAll('button')].find((b) => b.textContent?.trim().includes(label))!
 const navigate = async (to: string) => { await act(async () => { go(to) }); await settle() }
 const cardNames = () => [...document.querySelectorAll('.channel-wordmark')].map((e) => e.textContent)
-const lastSave = (): SavedSource[] => native.saveSources.mock.calls.at(-1)?.[0]
+const lastState = (): SavedState => native.saveSources.mock.calls.at(-1)?.[0]
+const lastSave = (): SavedSource[] => lastState().sources
+/** What Rust's load_sources returns. */
+const loaded = (sources: SavedSource[], notice: StorageNotice | null = null, guides: SavedGuide[] = [], mappings: SavedMapping[] = []) =>
+  ({ sources, guides, mappings, notice })
 
 beforeEach(() => {
   localStorage.clear()
   for (const fn of Object.values(native)) fn.mockReset()
   native.inNativeShell.mockReturnValue(true)
   native.saveSources.mockResolvedValue(undefined)
-  native.loadSources.mockResolvedValue({ sources: [], notice: null })
+  native.loadSources.mockResolvedValue(loaded([]))
   native.fetchPlaylist.mockResolvedValue(fresh)
   native.openStream.mockResolvedValue({ url: `kstream://localhost/${'1'.repeat(32)}`, session: 1 })
   native.closeStream.mockResolvedValue(undefined)
+  native.loadGuide.mockResolvedValue(null)
+  native.guideProgrammes.mockResolvedValue([])
+  native.guideChannels.mockResolvedValue([])
+  native.removeGuide.mockResolvedValue(undefined)
   fake.FakeHls.instances = []
   vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(() => Promise.resolve())
 })
@@ -127,17 +136,17 @@ afterEach(async () => {
 
 describe('restoring saved sources at start', () => {
   it('shows nothing until the saved sources are read, so demo channels never flash first', async () => {
-    const pending = deferred<{ sources: SavedSource[]; notice: null }>()
+    const pending = deferred<ReturnType<typeof loaded>>()
     native.loadSources.mockReturnValue(pending.promise)
     await mount('/live?view=channels')
     expect(text()).toBe('')
-    await act(async () => { pending.resolve({ sources: [savedFileSource], notice: null }) })
+    await act(async () => { pending.resolve(loaded([savedFileSource])) })
     await settle()
     expect(cardNames()).toEqual(['Local Feed'])
   })
 
   it('restores sources, then refreshes URL sources once through the guarded fetcher', async () => {
-    native.loadSources.mockResolvedValue({ sources: [savedUrlSource, savedFileSource], notice: null })
+    native.loadSources.mockResolvedValue(loaded([savedUrlSource, savedFileSource]))
     const refresh = deferred<PlaylistReport>()
     native.fetchPlaylist.mockReturnValue(refresh.promise)
     await mount('/sources')
@@ -153,7 +162,7 @@ describe('restoring saved sources at start', () => {
   })
 
   it('a failed startup refresh keeps the saved channels listed and says so', async () => {
-    native.loadSources.mockResolvedValue({ sources: [savedUrlSource], notice: null })
+    native.loadSources.mockResolvedValue(loaded([savedUrlSource]))
     native.fetchPlaylist.mockRejectedValue(new IngestError('network', 'Could not connect to playlists.example.'))
     await mount('/sources')
     expect(text()).toContain('Refresh failed · 2 channels kept')
@@ -163,17 +172,17 @@ describe('restoring saved sources at start', () => {
 
   it('keeps favourites and history of playlist channels across a restart', async () => {
     localStorage.setItem('kinora.library.v1', JSON.stringify({ favourites: [`channel:${channelId('pl-file1', 'tvg:local')}`], history: [] }))
-    native.loadSources.mockResolvedValue({ sources: [savedFileSource], notice: null })
+    native.loadSources.mockResolvedValue(loaded([savedFileSource]))
     await mount('/live?view=channels&group=Favourites')
     expect(cardNames()).toEqual(['Local Feed'])
   })
 
   it('never mixes demo channels in, and shows the demo catalogue only when nothing is saved', async () => {
-    native.loadSources.mockResolvedValue({ sources: [savedFileSource], notice: null })
+    native.loadSources.mockResolvedValue(loaded([savedFileSource]))
     await mount('/live?view=channels')
     expect(cardNames()).not.toContain('Northlight One')
     await unmount()
-    native.loadSources.mockResolvedValue({ sources: [], notice: null })
+    native.loadSources.mockResolvedValue(loaded([]))
     await mount('/live?view=channels')
     expect(cardNames()).toContain('Northlight One')
   })
@@ -181,7 +190,7 @@ describe('restoring saved sources at start', () => {
 
 describe('saving', () => {
   it('does not rewrite the file just for restoring it, and saves when a refresh changes it', async () => {
-    native.loadSources.mockResolvedValue({ sources: [savedUrlSource], notice: null })
+    native.loadSources.mockResolvedValue(loaded([savedUrlSource]))
     const refresh = deferred<PlaylistReport>()
     native.fetchPlaylist.mockReturnValue(refresh.promise)
     await mount('/sources')
@@ -216,7 +225,7 @@ describe('saving', () => {
       favourites: [`channel:${channelId('pl-file1', 'tvg:local')}`, `channel:${channelId('pl-url1', 'tvg:one')}`, 'movie:harbour-lights'],
       history: [{ ref: `channel:${channelId('pl-file1', 'tvg:local')}`, at: 1 }],
     }))
-    native.loadSources.mockResolvedValue({ sources: [savedUrlSource, savedFileSource], notice: null })
+    native.loadSources.mockResolvedValue(loaded([savedUrlSource, savedFileSource]))
     await mount('/sources')
     native.saveSources.mockClear()
     await click([...document.querySelectorAll('.source-main')].find((b) => b.textContent?.includes('File lineup'))!)
@@ -231,7 +240,7 @@ describe('saving', () => {
   })
 
   it('a saved file written by a newer Kinora is left alone: a notice, and no saves', async () => {
-    native.loadSources.mockResolvedValue({ sources: [], notice: 'newer-version' })
+    native.loadSources.mockResolvedValue(loaded([], 'newer-version'))
     await mount('/sources/add')
     native.readPlaylistFile.mockResolvedValue(report(entry('tvg:x', 'Xray')))
     const input = document.querySelector<HTMLInputElement>('input[type=file]')!
@@ -246,13 +255,13 @@ describe('saving', () => {
   })
 
   it('a damaged file that was set aside is reported, and saving works again', async () => {
-    native.loadSources.mockResolvedValue({ sources: [], notice: 'recovered' })
+    native.loadSources.mockResolvedValue(loaded([], 'recovered'))
     await mount('/sources')
     expect(text()).toContain('It was set aside, not deleted')
   })
 
   it('reports a failed save', async () => {
-    native.loadSources.mockResolvedValue({ sources: [savedUrlSource], notice: null })
+    native.loadSources.mockResolvedValue(loaded([savedUrlSource]))
     native.saveSources.mockRejectedValue(new IngestError('storage', 'Kinora could not save your sources.'))
     await mount('/sources')
     expect(text()).toContain('Recent changes to your sources could not be saved.')
@@ -261,7 +270,7 @@ describe('saving', () => {
 
 describe('playback after restoring', () => {
   it('a restored channel does not try to play until its source has refreshed, then plays the fresh address', async () => {
-    native.loadSources.mockResolvedValue({ sources: [savedUrlSource], notice: null })
+    native.loadSources.mockResolvedValue(loaded([savedUrlSource]))
     const refresh = deferred<PlaylistReport>()
     native.fetchPlaylist.mockReturnValue(refresh.promise)
     await mount(`/watch/${encodeURIComponent(`channel:${channelId('pl-url1', 'tvg:one')}`)}`)
@@ -275,7 +284,7 @@ describe('playback after restoring', () => {
   })
 
   it('a restored file channel explains how to play it again', async () => {
-    native.loadSources.mockResolvedValue({ sources: [savedFileSource], notice: null })
+    native.loadSources.mockResolvedValue(loaded([savedFileSource]))
     await mount(`/watch/${encodeURIComponent(`channel:${channelId('pl-file1', 'tvg:local')}`)}`)
     expect(text()).toContain('Choose the file again in Sources')
     expect(native.openStream).not.toHaveBeenCalled()
@@ -284,7 +293,7 @@ describe('playback after restoring', () => {
 
 describe('export', () => {
   it('the data export never contains playlist addresses, tokens or stream addresses', async () => {
-    native.loadSources.mockResolvedValue({ sources: [savedUrlSource], notice: null })
+    native.loadSources.mockResolvedValue(loaded([savedUrlSource]))
     const exported: Blob[] = []
     const create = vi.fn((blob: Blob) => { exported.push(blob); return 'blob:export' })
     Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() })

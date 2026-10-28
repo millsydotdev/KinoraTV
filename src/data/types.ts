@@ -66,7 +66,7 @@ export interface Channel {
   hd: boolean
   /** Playlist source the channel was read from; `null` for the demonstration catalogue. */
   sourceId: string | null
-  /** XMLTV guide id from the playlist, kept for later guide matching. */
+  /** XMLTV guide id from the playlist (`tvg-id`), matched against guide channel ids. */
   tvgId: string | null
 }
 
@@ -80,7 +80,12 @@ export interface Programme {
   desc: string
   category: string
   episode: string | null
+  /** Empty for guide programmes: artwork in XMLTV guides is never fetched. */
   art: string
+  /** XMLTV `<sub-title>`. */
+  subtitle?: string | null
+  /** The guide gave no stop time; `stop` is the next programme's start. */
+  stopEstimated?: boolean
 }
 
 export type SourceKind = 'm3u' | 'm3u8' | 'xmltv' | 'url-list'

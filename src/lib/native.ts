@@ -67,6 +67,7 @@ export interface PlaylistReport {
 const INGEST_CODES = [
   'invalid-url', 'blocked', 'too-many-redirects', 'timeout', 'too-large', 'too-many-entries',
   'http-status', 'web-page', 'hls-media', 'hls-master', 'not-playlist', 'network', 'busy', 'unsupported-stream', 'storage',
+  'not-guide',
 ] as const
 /** Codes from `ErrorCode` in ingest.rs, plus `internal` for a failure that did not come from it. */
 export type IngestErrorCode = (typeof INGEST_CODES)[number] | 'internal'
@@ -254,27 +255,232 @@ export function parseSavedSource(raw: unknown): SavedSource {
   }
 }
 
+/** Mirrors `SavedGuide` in src-tauri/src/sources.rs. `url` may carry a token: never display it. */
+export interface SavedGuide {
+  id: string
+  name: string
+  origin: 'url' | 'file'
+  url: string | null
+  label: string
+  addedAt: number
+  lastSuccess: number | null
+  /** Playlist sources whose channels this guide is matched against. */
+  playlists: string[]
+}
+
+/** Mirrors `SavedMapping` in sources.rs: a playlist channel matched by hand to a guide channel. */
+export interface SavedMapping {
+  channel: string
+  guide: string
+  xmltvId: string
+}
+
+/** Everything Rust saves (sources.rs `Saved`). */
+export interface SavedState {
+  sources: SavedSource[]
+  guides: SavedGuide[]
+  mappings: SavedMapping[]
+}
+
+const MAX_GUIDES = 8
+const GUIDE_ID = /^gd-[a-z0-9-]+$/
+
+export function parseSavedGuide(raw: unknown): SavedGuide {
+  const v = raw as Record<string, unknown> | null
+  if (typeof v !== 'object' || v === null || !isText(v.id, 48) || !GUIDE_ID.test(v.id) || !isText(v.name, 200) || !isText(v.label, 480) ||
+      !(v.origin === 'url' ? isText(v.url, 2048) : v.origin === 'file' && v.url === null) ||
+      !isTime(v.addedAt) || !(v.lastSuccess === null || isTime(v.lastSuccess)) ||
+      !Array.isArray(v.playlists) || v.playlists.length > 100 || !v.playlists.every((p): p is string => isText(p, 48))) {
+    throw new Error('Saved guide data is in an unexpected shape.')
+  }
+  const origin = v.origin === 'url' ? 'url' : 'file'
+  return {
+    id: v.id, name: v.name, origin, url: origin === 'url' && typeof v.url === 'string' ? v.url : null, label: v.label,
+    addedAt: v.addedAt, lastSuccess: v.lastSuccess, playlists: [...v.playlists],
+  }
+}
+
+export function parseSavedMapping(raw: unknown): SavedMapping {
+  const v = raw as Record<string, unknown> | null
+  if (typeof v !== 'object' || v === null || !isText(v.channel, 8192) || !isText(v.guide, 48) || !isText(v.xmltvId, 1024)) {
+    throw new Error('Saved guide match is in an unexpected shape.')
+  }
+  return { channel: v.channel, guide: v.guide, xmltvId: v.xmltvId }
+}
+
 /** Loads saved sources from Rust. `null` outside the native shell (browser dev and tests keep memory-only sources). */
-export async function loadSources(): Promise<{ sources: SavedSource[]; notice: StorageNotice | null } | null> {
+export async function loadSources(): Promise<(SavedState & { notice: StorageNotice | null }) | null> {
   if (!isTauri()) return null
   const raw = await invoke('load_sources') as Record<string, unknown> | null
   const notice = raw?.notice ?? null
-  if (typeof raw !== 'object' || raw === null || !Array.isArray(raw.sources) || !(notice === null || isNotice(notice))) {
+  if (typeof raw !== 'object' || raw === null || !Array.isArray(raw.sources) || !Array.isArray(raw.guides) || raw.guides.length > MAX_GUIDES ||
+      !Array.isArray(raw.mappings) || raw.mappings.length > 50_000 || !(notice === null || isNotice(notice))) {
     throw new Error('Saved sources arrived in an unexpected shape.')
   }
-  return { sources: raw.sources.map(parseSavedSource), notice }
+  return { sources: raw.sources.map(parseSavedSource), guides: raw.guides.map(parseSavedGuide), mappings: raw.mappings.map(parseSavedMapping), notice }
 }
 
 const saves = serial()
 
-/** Replaces the saved sources. Saves run in order, so the last one asked for is the one kept. */
-export async function saveSources(sources: SavedSource[]): Promise<void> {
+/** Replaces the saved sources, guides and matches. Saves run in order, so the last one asked for is the one kept. */
+export async function saveSources(saved: SavedState): Promise<void> {
   if (!isTauri()) return
   await saves(async () => {
     try {
-      await invoke('save_sources', { sources })
+      await invoke('save_sources', { saved })
     } catch (e) {
       throw toIngestError(e)
     }
   })
+}
+
+/** Mirrors `MAX_GUIDE_BYTES` in src-tauri/src/fetch.rs: a downloaded or picked guide, before decompression. */
+export const MAX_GUIDE_BYTES = 64 * 1024 * 1024
+
+/** Mirrors `Summary` in src-tauri/src/guides.rs: what Rust holds for one guide. */
+export interface GuideSummary {
+  channels: number
+  programmes: number
+  /** Earliest start and latest stop kept (UTC ms); null when there are no programmes. */
+  first: number | null
+  last: number | null
+  /** When the guide was read (UTC ms). */
+  fetchedAt: number
+  skipped: number
+  duplicates: number
+  warnings: string[]
+}
+
+const isOptTime = (v: unknown): v is number | null => v === null || (typeof v === 'number' && Number.isFinite(v))
+
+export function parseGuideSummary(raw: unknown): GuideSummary {
+  const v = raw as Record<string, unknown> | null
+  if (typeof v !== 'object' || v === null || !isCount(v.channels, 20_000) || !isCount(v.programmes, 150_000) ||
+      !isOptTime(v.first) || !isOptTime(v.last) || !isTime(v.fetchedAt) || !isCount(v.skipped, 2 ** 32) || !isCount(v.duplicates, 2 ** 32) ||
+      !Array.isArray(v.warnings) || v.warnings.length > 20 || !v.warnings.every((w): w is string => isText(w, 300))) {
+    throw new Error('The native shell returned a guide summary in an unexpected shape.')
+  }
+  return { channels: v.channels, programmes: v.programmes, first: v.first, last: v.last, fetchedAt: v.fetchedAt, skipped: v.skipped, duplicates: v.duplicates, warnings: [...v.warnings] }
+}
+
+async function guideCall(command: string, args: Parameters<typeof invoke>[1], options?: Parameters<typeof invoke>[2]): Promise<GuideSummary> {
+  let raw: unknown
+  try {
+    raw = await invoke(command, args, options)
+  } catch (e) {
+    throw toIngestError(e)
+  }
+  return parseGuideSummary(raw)
+}
+
+/** Downloads and parses an XMLTV guide in Rust, under the page's id for it. `null` outside the native shell. */
+export async function fetchGuide(id: string, url: string): Promise<GuideSummary | null> {
+  if (!isTauri()) return null
+  return guideCall('fetch_guide', { id, url })
+}
+
+/** Sends the bytes of a guide file the user picked (plain or gzip) to Rust; no path is shared. */
+export async function readGuideFile(id: string, file: File): Promise<GuideSummary | null> {
+  if (!isTauri()) return null
+  if (file.size > MAX_GUIDE_BYTES) throw new IngestError('too-large', 'That file is larger than the 64 MB guide limit.')
+  return guideCall('import_guide_file', new Uint8Array(await file.arrayBuffer()), { headers: { 'x-guide-id': id } })
+}
+
+/** What Rust holds for a guide (from this session or its cache); `null` when nothing is held or outside the shell. */
+export async function loadGuide(id: string): Promise<GuideSummary | null> {
+  if (!isTauri()) return null
+  let raw: unknown
+  try {
+    raw = await invoke('load_guide', { id })
+  } catch (e) {
+    throw toIngestError(e)
+  }
+  return raw === null ? null : parseGuideSummary(raw)
+}
+
+/** Mirrors `GuideChannel` in src-tauri/src/xmltv.rs. */
+export interface GuideChannel { id: string; name: string }
+
+export async function guideChannels(id: string): Promise<GuideChannel[]> {
+  if (!isTauri()) return []
+  const raw: unknown = await invoke('guide_channels', { id })
+  if (!Array.isArray(raw) || raw.length > 20_000) throw new Error('The native shell returned guide channels in an unexpected shape.')
+  return raw.map((c: unknown) => {
+    const v = c as Record<string, unknown> | null
+    if (typeof v !== 'object' || v === null || !isText(v.id, 1024) || !isText(v.name, 1024)) throw new Error('The native shell returned a guide channel in an unexpected shape.')
+    return { id: v.id, name: v.name }
+  })
+}
+
+/** Mirrors `Listed` in src-tauri/src/guides.rs: one programme, with the guide channel id it belongs to. */
+export interface GuideProgramme {
+  channel: string
+  start: number
+  stop: number
+  /** The guide gave no stop time; it is the next programme's start. */
+  stopEstimated: boolean
+  title: string
+  subtitle: string | null
+  desc: string | null
+  category: string | null
+  episode: string | null
+}
+
+/** Mirrors `Answer` in guides.rs. */
+export interface GuideAnswer {
+  guide: string
+  /** False when Rust holds no data for the guide. */
+  loaded: boolean
+  matches: { id: string; channel: string | null }[]
+  programmes: GuideProgramme[]
+}
+
+export interface GuideQuery { guide: string; ids: string[] }
+
+function parseGuideProgramme(raw: unknown): GuideProgramme {
+  const v = raw as Record<string, unknown> | null
+  if (typeof v !== 'object' || v === null || !isText(v.channel, 1024) || !isTime(v.start) || !isTime(v.stop) || v.stop <= v.start ||
+      typeof v.stopEstimated !== 'boolean' || !isText(v.title, 1000) || !isOptText(v.subtitle, 1000) || !isOptText(v.desc, 3000) ||
+      !isOptText(v.category, 300) || !isOptText(v.episode, 200)) {
+    throw new Error('The native shell returned a programme in an unexpected shape.')
+  }
+  return { channel: v.channel, start: v.start, stop: v.stop, stopEstimated: v.stopEstimated, title: v.title, subtitle: v.subtitle, desc: v.desc, category: v.category, episode: v.episode }
+}
+
+export function parseGuideAnswers(raw: unknown): GuideAnswer[] {
+  if (!Array.isArray(raw) || raw.length > MAX_GUIDES) throw new Error('The native shell returned guide data in an unexpected shape.')
+  return raw.map((a: unknown) => {
+    const v = a as Record<string, unknown> | null
+    if (typeof v !== 'object' || v === null || !isText(v.guide, 48) || typeof v.loaded !== 'boolean' || !Array.isArray(v.matches) || !Array.isArray(v.programmes)) {
+      throw new Error('The native shell returned guide data in an unexpected shape.')
+    }
+    const matches = v.matches.map((m: unknown) => {
+      const x = m as Record<string, unknown> | null
+      if (typeof x !== 'object' || x === null || !isText(x.id, 1024) || !isOptText(x.channel, 1024)) throw new Error('The native shell returned a guide match in an unexpected shape.')
+      return { id: x.id, channel: x.channel }
+    })
+    return { guide: v.guide, loaded: v.loaded, matches, programmes: v.programmes.map(parseGuideProgramme) }
+  })
+}
+
+/** Programmes overlapping `[from, to)` for the channel ids asked about, per guide. `null` outside the native shell. */
+export async function guideProgrammes(queries: GuideQuery[], from: number, to: number): Promise<GuideAnswer[] | null> {
+  if (!isTauri()) return null
+  let raw: unknown
+  try {
+    raw = await invoke('guide_programmes', { queries, from, to })
+  } catch (e) {
+    throw toIngestError(e)
+  }
+  return parseGuideAnswers(raw)
+}
+
+/** Deletes what Rust holds for a guide (programmes and cache); any import still running is dropped. */
+export async function removeGuide(id: string): Promise<void> {
+  if (!isTauri()) return
+  try {
+    await invoke('remove_guide', { id })
+  } catch (e) {
+    throw toIngestError(e)
+  }
 }

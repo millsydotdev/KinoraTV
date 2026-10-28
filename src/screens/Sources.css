@@ -60,6 +60,14 @@
 .setting-line strong { font-weight: 600; }
 .setting-line .faint { font-size: 0.8125rem; }
 
+/* Guide sources: which playlists use a guide, channels it could not match, and the hand-match search */
+.guide-for { display: grid; gap: 12px; }
+.guide-missing { display: grid; gap: 8px; margin-top: 12px; }
+.guide-missing > li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-m); }
+.match-picker { flex-basis: 100%; display: grid; gap: 10px; }
+.match-picker ul { display: grid; gap: 4px; max-height: 260px; overflow-y: auto; }
+.match-picker li .btn { width: 100%; justify-content: flex-start; text-align: left; }
+
 @media (max-width: 640px) {
   .source-main { flex-wrap: wrap; }
   .source-main .pill { margin-left: 60px; white-space: normal; }

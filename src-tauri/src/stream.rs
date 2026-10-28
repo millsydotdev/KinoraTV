@@ -865,6 +865,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        feature = "loopback-fixtures",
+        ignore = "loopback-fixtures opens 127.0.0.1, which this test checks is refused"
+    )]
     fn private_destinations_and_redirects_to_them_are_refused() {
         let port = hls_server();
         let s = Streams::new(

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { nextEpisode } from '../data/catalog'
-import { programmeAt } from '../data/channels'
 import { episodeCode, episodeRef, resolve } from '../data/refs'
 import { Icon, type IconName } from '../components/Icon'
 import { useToast } from '../components/Toast'
@@ -57,7 +56,7 @@ export function Player() {
   const toast = useToast()
   const now = useNow()
   const { prefs, library } = store
-  const item = resolve(ref, now, store.findChannel)
+  const item = resolve(ref, now, store.findChannel, store.programmeAt)
   const shell = useRef<HTMLDivElement>(null)
   const [muted, setMuted] = useState(false)
   const [volume, setVolume] = useState(80)
@@ -127,7 +126,7 @@ export function Player() {
     )
   }
 
-  const programme = item.kind === 'channel' ? programmeAt(item.item, now) : undefined
+  const programme = item.kind === 'channel' ? store.programmeAt(item.item, now) : undefined
   const audioTracks = item.kind === 'movie' ? item.item.audio : ['English stereo', 'English Audio Description']
   const subtitleTracks = item.kind === 'movie' ? item.item.subtitles : ['English', 'English (SDH)']
   const next = item.kind === 'episode' ? nextEpisode(item.series, item.item) : undefined

@@ -1,8 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { channels as demoChannels } from '../data/channels'
+import { addDays, channels as demoChannels, nextProgramme as demoNext, programmeAt as demoAt, scheduleFor as demoSchedule, startOfDay } from '../data/channels'
 import { demoProviders, demoSources } from '../data/sources'
-import type { Channel, DiscoveryProvider, Source } from '../data/types'
-import { fetchPlaylist, inNativeShell, loadSources, readPlaylistFile, saveSources, type PlaylistReport, type StorageNotice } from '../lib/native'
+import type { Channel, DiscoveryProvider, Programme, Source } from '../data/types'
+import {
+  fetchGuide, fetchPlaylist, guideProgrammes, inNativeShell, loadGuide, loadSources, readGuideFile, readPlaylistFile, removeGuide as forgetGuide, saveSources,
+  type GuideSummary, type PlaylistReport, type SavedState, type StorageNotice,
+} from '../lib/native'
+import { createGuide, guideQueries, programmesFor, resolveMatches, restoreGuide, runGuideImport, toSavedGuide, type GuideMatch, type GuideSource, type Mapping } from './guides'
 import { ACCENTS, THEME_BG, safeHex, type AccentName, type ThemeName } from '../lib/theme'
 import { activeChannels, createSource, fileLabel, removeSource, restoreSource, runImport, toSaved, type PlaylistSource } from './playlists'
 
@@ -161,7 +165,10 @@ const RESTORE_TIMEOUT_MS = 5000
 
 const toggleIn = (list: string[], item: string) => (list.includes(item) ? list.filter((x) => x !== item) : [item, ...list])
 
-function useStoreValue(initialPlaylists: PlaylistSource[]) {
+type Epg = { key: string; matches: Map<string, GuideMatch>; days: Map<number, Map<string, Programme[]>> }
+const NO_DAYS = new Map<number, Map<string, Programme[]>>()
+
+function useStoreValue(initialPlaylists: PlaylistSource[], initialGuides: GuideSource[], initialMappings: Mapping[]) {
   const [library, setLibrary] = usePersisted<Library>('kinora.library.v1', () => demoLibrary(Date.now()))
   const [prefs, setPrefs] = usePersisted<Prefs>('kinora.prefs.v2', () => defaultPrefs, sanitizePrefs)
   const [src, setSrc] = usePersisted<SourcesState>('kinora.sources.v1', () => ({ sources: demoSources(Date.now()), providers: demoProviders }))
@@ -173,6 +180,9 @@ function useStoreValue(initialPlaylists: PlaylistSource[]) {
   const [storageNotice, setStorageNotice] = useState<StorageNotice | 'save-failed' | null>(null)
   const canSave = useRef(false)
   const lastSaved = useRef('')
+  // XMLTV guides (definitions and hand-picked matches); their programmes are held by Rust.
+  const [guides, setGuides] = useState<GuideSource[]>(initialGuides)
+  const [mappings, setMappings] = useState<Mapping[]>(initialMappings)
 
   // Restore saved sources, then refresh URL sources one at a time through the guarded Rust fetcher.
   // Until a refresh succeeds a restored source's channels are listed but have no stream address.
@@ -186,10 +196,27 @@ function useStoreValue(initialPlaylists: PlaylistSource[]) {
         if (loaded === 'timeout') return setStorageNotice('unreadable') // never save over what could not be read
         setStorageNotice(loaded.notice)
         const list = loaded.sources.map(restoreSource)
+        const restoredGuides = loaded.guides.map(restoreGuide)
         canSave.current = loaded.notice !== 'newer-version' && loaded.notice !== 'unreadable'
-        lastSaved.current = JSON.stringify(list.map(toSaved))
+        lastSaved.current = JSON.stringify({ sources: list.map(toSaved), guides: restoredGuides.map(toSavedGuide), mappings: loaded.mappings })
         setPlaylists((current) => (current.length > 0 ? current : list))
+        setGuides((current) => (current.length > 0 ? current : restoredGuides))
+        setMappings((current) => (current.length > 0 ? current : loaded.mappings))
         setRestored(true)
+        // Guides: cached programmes first (local, quick), then address guides refreshed one at a time,
+        // alongside the playlist refreshes. Each is bounded by fetch.rs's limits; nothing waits on them.
+        void (async () => {
+          for (const g of loaded.guides) {
+            const summary = await loadGuide(g.id).catch(() => null)
+            if (!live) return
+            if (summary) setGuides((l) => l.map((x) => (x.id === g.id && x.status === 'saved' && !x.summary ? { ...x, summary } : x)))
+          }
+          for (const g of loaded.guides) {
+            const url = g.url
+            if (!live) return
+            if (g.origin === 'url' && url) await runGuideImport(setGuides, g.id, ++lastOp.current, () => fetchGuide(g.id, url))
+          }
+        })()
         for (const s of loaded.sources) {
           const url = s.url
           if (!live) return
@@ -206,7 +233,7 @@ function useStoreValue(initialPlaylists: PlaylistSource[]) {
   // Save whenever what is saved changes (status changes alone do not). Never while read-only.
   useEffect(() => {
     if (!restored || !canSave.current) return
-    const saved = playlists.map(toSaved)
+    const saved: SavedState = { sources: playlists.map(toSaved), guides: guides.map(toSavedGuide), mappings }
     const json = JSON.stringify(saved)
     if (json === lastSaved.current) return
     lastSaved.current = json
@@ -214,9 +241,65 @@ function useStoreValue(initialPlaylists: PlaylistSource[]) {
       () => setStorageNotice((n) => (n === 'save-failed' ? null : n)),
       () => setStorageNotice('save-failed'),
     )
-  }, [playlists, restored])
+  }, [playlists, guides, mappings, restored])
   const channels = useMemo(() => activeChannels(playlists, demoChannels), [playlists])
   const findChannel = useCallback((id: string): Channel | undefined => channels.find((c) => c.id === id), [channels])
+
+  // Guide programmes, fetched from Rust one local day at a time for the matched channels only. Results
+  // are keyed by what was asked, so an answer to an older question (before a refresh, a new match or a
+  // playlist change) is dropped instead of replacing a newer one.
+  const [today, setToday] = useState(() => startOfDay(Date.now()))
+  useEffect(() => {
+    const timer = window.setTimeout(() => setToday(startOfDay(Date.now())), addDays(today, 1) - Date.now() + 1000)
+    return () => window.clearTimeout(timer)
+  }, [today])
+  const queries = useMemo(() => guideQueries(channels, guides, mappings), [channels, guides, mappings])
+  const epgKey = useMemo(() => JSON.stringify([queries, guides.map((g) => g.summary?.fetchedAt ?? null)]), [queries, guides])
+  const currentKey = useRef(epgKey)
+  currentKey.current = epgKey
+  const requested = useRef(new Set<string>())
+  const [epg, setEpg] = useState<Epg>({ key: '', matches: new Map(), days: NO_DAYS })
+  const requestGuideDay = useCallback((day: number) => {
+    const tag = `${epgKey}|${day}`
+    if (queries.length === 0 || requested.current.has(tag)) return
+    requested.current.add(tag)
+    guideProgrammes(queries, day, addDays(day, 1)).then((answers) => {
+      if (!answers || currentKey.current !== epgKey) return
+      const matches = resolveMatches(channels, guides, mappings, answers)
+      setEpg((e) => {
+        const days = new Map(e.key === epgKey ? e.days : NO_DAYS)
+        days.set(day, programmesFor(matches, answers))
+        return { key: epgKey, matches, days }
+      })
+    }, () => { requested.current.delete(tag) })
+  }, [epgKey, queries, channels, guides, mappings])
+  useEffect(() => {
+    requestGuideDay(today)
+    requestGuideDay(addDays(today, 1))
+  }, [requestGuideDay, today])
+  const current = epg.key === epgKey
+  const days = current ? epg.days : NO_DAYS
+  const unloadedMatches = useMemo(() => resolveMatches(channels, guides, mappings, []), [channels, guides, mappings])
+  const matches = current ? epg.matches : unloadedMatches
+  const guide = useMemo(() => {
+    const listed = (c: Channel, day: number) => days.get(day)?.get(c.id) ?? []
+    return {
+      /** Programmes overlapping the local day starting at `day`: generated for demo channels, from guides otherwise. */
+      schedule: (c: Channel, day: number): Programme[] => (c.sourceId === null ? demoSchedule(c, day) : listed(c, day)),
+      programmeAt: (c: Channel, t: number): Programme | undefined =>
+        c.sourceId === null ? demoAt(c, t) : listed(c, startOfDay(t)).find((p) => p.start <= t && t < p.stop),
+      nextProgramme: (c: Channel, t: number): Programme | undefined => {
+        if (c.sourceId === null) return demoNext(c, t)
+        const day = startOfDay(t)
+        return [...listed(c, day), ...listed(c, addDays(day, 1))].find((p) => p.start > t)
+      },
+      /** Why a playlist channel has guide data or not; `undefined` for demo channels. */
+      guideMatch: (c: Channel): GuideMatch | undefined => matches.get(c.id),
+      /** False while a day's programmes are still being fetched. */
+      guideDayLoaded: (day: number) => queries.length === 0 || days.has(day),
+      requestGuideDay,
+    }
+  }, [days, matches, queries, requestGuideDay])
   const playlistActions = useMemo(() => {
     const run = (id: string, load: () => Promise<PlaylistReport | null>) => runImport(setPlaylists, id, ++lastOp.current, load)
     return {
@@ -233,9 +316,37 @@ function useStoreValue(initialPlaylists: PlaylistSource[]) {
       removePlaylist: (id: string) => {
         setPlaylists((l) => removeSource(l, id))
         setLibrary((l) => dropSourceRefs(l, id))
+        setGuides((l) => l.map((g) => (g.playlists.includes(id) ? { ...g, playlists: g.playlists.filter((p) => p !== id) } : g)))
+        setMappings((l) => l.filter((m) => !m.channel.startsWith(`${id}~`)))
       },
     }
   }, [setLibrary])
+  const guideActions = useMemo(() => {
+    const run = (id: string, load: () => Promise<GuideSummary | null>) => runGuideImport(setGuides, id, ++lastOp.current, load)
+    return {
+      /** `id` is the one the guide was read under in Add Source, so Rust already holds its programmes. */
+      addGuide: (id: string, input: { name: string; origin: GuideSource['origin']; url: string | null; label: string; playlists: string[] }, summary: GuideSummary) =>
+        setGuides((l) => [...l, createGuide(id, input, summary, Date.now())]),
+      /** Ignored while the guide is already updating, so refreshes never pile up. */
+      refreshGuide: (g: GuideSource) => {
+        const url = g.url
+        return g.status === 'importing' || !url ? Promise.resolve() : run(g.id, () => fetchGuide(g.id, url))
+      },
+      reimportGuide: (id: string, file: File) => {
+        setGuides((l) => l.map((g) => (g.id === id ? { ...g, label: fileLabel(file.name) } : g)))
+        return run(id, () => readGuideFile(id, file))
+      },
+      removeGuide: (id: string) => {
+        setGuides((l) => l.filter((g) => g.id !== id))
+        setMappings((l) => l.filter((m) => m.guide !== id))
+        void forgetGuide(id).catch(() => undefined) // its cache is also pruned at the next start
+      },
+      setGuidePlaylists: (id: string, playlists: string[]) => setGuides((l) => l.map((g) => (g.id === id ? { ...g, playlists } : g))),
+      setMapping: (channel: string, guide: string, xmltvId: string) =>
+        setMappings((l) => [...l.filter((m) => m.channel !== channel), { channel, guide, xmltvId }]),
+      clearMapping: (channel: string) => setMappings((l) => l.filter((m) => m.channel !== channel)),
+    }
+  }, [])
 
   const keepHistory = prefs.keepHistory
   const setPref = useCallback(<K extends keyof Prefs>(key: K, value: Prefs[K]) => setPrefs((p) => ({ ...p, [key]: value })), [setPrefs])
@@ -284,7 +395,7 @@ function useStoreValue(initialPlaylists: PlaylistSource[]) {
 
   return {
     library, prefs, setPref, sources: src.sources, providers: src.providers, ...actions,
-    playlists, ...playlistActions, restored, storageNotice,
+    playlists, ...playlistActions, restored, storageNotice, guides, mappings, ...guideActions, ...guide,
     /** The channel catalogue every screen shows: playlist channels, or the demonstration set when there are no playlists. */
     channels, findChannel, channelMode: playlists.length > 0 ? 'playlists' as const : 'demo' as const,
   }
@@ -293,9 +404,11 @@ function useStoreValue(initialPlaylists: PlaylistSource[]) {
 type Store = ReturnType<typeof useStoreValue>
 const StoreContext = createContext<Store | null>(null)
 
-/** `initialPlaylists` seeds imported playlists for tests; the app always starts with none. */
-export function StoreProvider({ children, initialPlaylists = [] }: { children: ReactNode; initialPlaylists?: PlaylistSource[] }) {
-  const store = useStoreValue(initialPlaylists)
+/** The `initial…` props seed imported playlists, guides and matches for tests; the app always starts with none. */
+export function StoreProvider({ children, initialPlaylists = [], initialGuides = [], initialMappings = [] }: {
+  children: ReactNode; initialPlaylists?: PlaylistSource[]; initialGuides?: GuideSource[]; initialMappings?: Mapping[]
+}) {
+  const store = useStoreValue(initialPlaylists, initialGuides, initialMappings)
   // Wait for the saved sources (a local file) so demo channels never flash before real ones.
   return <StoreContext.Provider value={store}>{store.restored ? children : null}</StoreContext.Provider>
 }

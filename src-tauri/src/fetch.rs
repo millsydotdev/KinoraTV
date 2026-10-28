@@ -24,6 +24,8 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use crate::ingest::{ErrorCode, IngestError, MAX_PLAYLIST_BYTES};
 
 const MAX_URL: usize = 2048;
+/// Upper bound for a downloaded (usually gzip-compressed) XMLTV guide. Mirrored in `src/lib/native.ts`.
+pub const MAX_GUIDE_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct Policy {
@@ -34,6 +36,8 @@ pub struct Policy {
     /// Longest wait for the next bytes of a response. `None` for playlists (the total timeout
     /// covers them); set for media, where a stalled live stream must not hold a request open.
     pub read_timeout: Option<Duration>,
+    /// What is being fetched, for error messages: "playlist" or "guide".
+    pub noun: &'static str,
     /// Test-only: lets the local test server on 127.0.0.1 be reached. Not compiled into the app.
     #[cfg(test)]
     pub allow_loopback: bool,
@@ -50,6 +54,7 @@ impl Default for Policy {
             connect_timeout: Duration::from_secs(10),
             total_timeout: Duration::from_secs(30),
             read_timeout: None,
+            noun: "playlist",
             #[cfg(test)]
             allow_loopback: false,
             #[cfg(test)]
@@ -59,6 +64,17 @@ impl Default for Policy {
 }
 
 impl Policy {
+    /// XMLTV guides: larger and slower than playlists, with the same destination checks. Only the
+    /// size and time limits differ, so playlist and stream limits are unchanged.
+    pub fn guide() -> Self {
+        Self {
+            max_bytes: MAX_GUIDE_BYTES,
+            total_timeout: Duration::from_secs(90),
+            noun: "guide",
+            ..Self::default()
+        }
+    }
+
     fn permits(&self, ip: IpAddr) -> bool {
         #[cfg(test)]
         if self.allow_loopback && ip.to_canonical().is_loopback() {
@@ -125,8 +141,8 @@ fn prohibited_v6(ip: Ipv6Addr) -> bool {
     }
 }
 
-fn blocked(host: &str) -> IngestError {
-    IngestError::new(ErrorCode::Blocked, format!("{host} is a local, private or reserved network address. Kinora only fetches playlists from public internet addresses."))
+fn blocked(host: &str, noun: &str) -> IngestError {
+    IngestError::new(ErrorCode::Blocked, format!("{host} is a local, private or reserved network address. Kinora only fetches {noun}s from public internet addresses."))
 }
 
 fn network(message: String) -> IngestError {
@@ -144,9 +160,10 @@ pub fn check_url(raw: &str, policy: &Policy) -> Result<Url, IngestError> {
     let url = Url::parse(raw)
         .map_err(|_| invalid("Use a full address starting with http:// or https://"))?;
     if !matches!(url.scheme(), "http" | "https") {
-        return Err(invalid(
-            "Only http:// and https:// playlist addresses are supported.",
-        ));
+        return Err(invalid(&format!(
+            "Only http:// and https:// {} addresses are supported.",
+            policy.noun
+        )));
     }
     if !url.username().is_empty() || url.password().is_some() {
         return Err(invalid("Remove the username and password from the address. Kinora does not use sign-in details embedded in addresses."));
@@ -163,7 +180,7 @@ pub fn check_url(raw: &str, policy: &Policy) -> Result<Url, IngestError> {
         return if policy.permits(ip) {
             Ok(url)
         } else {
-            Err(blocked(host))
+            Err(blocked(host, policy.noun))
         };
     }
     let name = host.trim_end_matches('.').to_ascii_lowercase();
@@ -178,7 +195,7 @@ pub fn check_url(raw: &str, policy: &Policy) -> Result<Url, IngestError> {
         .iter()
         .any(|s| name.ends_with(s));
     if local {
-        return Err(blocked(host));
+        return Err(blocked(host, policy.noun));
     }
     Ok(url)
 }
@@ -201,7 +218,7 @@ impl Resolve for GuardedResolver {
                 return Err(network(format!("Could not find {host}.")).into());
             }
             if addrs.iter().any(|a| !policy.permits(a.ip())) {
-                return Err(blocked(&host).into());
+                return Err(blocked(&host, policy.noun).into());
             }
             Ok(Box::new(addrs.into_iter()) as Addrs)
         })
@@ -219,7 +236,7 @@ async fn lookup(policy: &Policy, host: &str) -> std::io::Result<Vec<SocketAddr>>
 
 /// Maps a reqwest failure to a message that names the host only. reqwest's own `Display`
 /// includes the full URL (and so any query tokens), so it is never shown or logged.
-fn from_reqwest(e: &reqwest::Error, host: &str) -> IngestError {
+fn from_reqwest(e: &reqwest::Error, host: &str, noun: &str) -> IngestError {
     // Refusals from the resolver or redirect policy travel inside reqwest's error chain.
     let mut source: Option<&(dyn StdError + 'static)> = Some(e);
     while let Some(s) = source {
@@ -231,7 +248,7 @@ fn from_reqwest(e: &reqwest::Error, host: &str) -> IngestError {
     if e.is_timeout() {
         IngestError::new(
             ErrorCode::Timeout,
-            format!("{host} did not send the playlist in time."),
+            format!("{host} did not send the {noun} in time."),
         )
     } else if e.is_redirect() {
         network(format!("{host} sent an invalid redirect."))
@@ -252,7 +269,10 @@ pub fn guarded_client(policy: &Policy) -> Result<reqwest::Client, IngestError> {
             let limit = hop_policy.max_redirects;
             return attempt.error(IngestError::new(
                 ErrorCode::TooManyRedirects,
-                format!("The playlist address redirected more than {limit} times."),
+                format!(
+                    "The {} address redirected more than {limit} times.",
+                    hop_policy.noun
+                ),
             ));
         }
         match check_url(attempt.url().as_str(), &hop_policy) {
@@ -280,23 +300,33 @@ pub fn guarded_client(policy: &Policy) -> Result<reqwest::Client, IngestError> {
 
 /// Downloads playlist text. Returns the text and the host it was requested from.
 pub async fn download(raw_url: &str, policy: &Policy) -> Result<(String, String), IngestError> {
+    let accept = "audio/x-mpegurl, application/vnd.apple.mpegurl, text/plain;q=0.9, */*;q=0.1";
+    let (body, host) = download_bytes(raw_url, policy, accept).await?;
+    Ok((String::from_utf8_lossy(&body).into_owned(), host))
+}
+
+/// Downloads a body of at most `policy.max_bytes`, unchanged (a guide may be gzip-compressed).
+/// Returns the bytes and the host they were requested from.
+pub async fn download_bytes(
+    raw_url: &str,
+    policy: &Policy,
+    accept: &str,
+) -> Result<(Vec<u8>, String), IngestError> {
     let url = check_url(raw_url, policy)?;
     let host = url.host_str().unwrap_or_default().to_owned();
     let client = guarded_client(policy)?;
+    let noun = policy.noun;
 
     let mut response = client
         .get(url)
-        .header(
-            ACCEPT,
-            "audio/x-mpegurl, application/vnd.apple.mpegurl, text/plain;q=0.9, */*;q=0.1",
-        )
+        .header(ACCEPT, accept)
         .send()
         .await
-        .map_err(|e| from_reqwest(&e, &host))?;
+        .map_err(|e| from_reqwest(&e, &host, noun))?;
 
     if let Some(peer) = response.remote_addr() {
         if !policy.permits(peer.ip()) {
-            return Err(blocked(&host));
+            return Err(blocked(&host, noun));
         }
     }
     let status = response.status();
@@ -305,7 +335,7 @@ pub async fn download(raw_url: &str, policy: &Policy) -> Result<(String, String)
         let message = if matches!(code, 401 | 403) {
             format!("{host} refused access (HTTP {code}). Kinora does not bypass sign-in or access controls.")
         } else {
-            format!("{host} answered with HTTP {code} instead of a playlist.")
+            format!("{host} answered with HTTP {code} instead of a {noun}.")
         };
         return Err(IngestError::new(ErrorCode::HttpStatus, message));
     }
@@ -313,7 +343,7 @@ pub async fn download(raw_url: &str, policy: &Policy) -> Result<(String, String)
         IngestError::new(
             ErrorCode::TooLarge,
             format!(
-                "The playlist from {host} is larger than the {} MB limit.",
+                "The {noun} from {host} is larger than the {} MB limit.",
                 policy.max_bytes / (1024 * 1024)
             ),
         )
@@ -328,14 +358,14 @@ pub async fn download(raw_url: &str, policy: &Policy) -> Result<(String, String)
     while let Some(chunk) = response
         .chunk()
         .await
-        .map_err(|e| from_reqwest(&e, &host))?
+        .map_err(|e| from_reqwest(&e, &host, noun))?
     {
         if body.len() + chunk.len() > policy.max_bytes {
             return Err(too_large());
         }
         body.extend_from_slice(&chunk);
     }
-    Ok((String::from_utf8_lossy(&body).into_owned(), host))
+    Ok((body, host))
 }
 
 /// A media resource fetched for the stream protocol.
@@ -369,10 +399,13 @@ pub async fn fetch_media(
     if let Some(range) = range {
         request = request.header(RANGE, range);
     }
-    let mut response = request.send().await.map_err(|e| from_reqwest(&e, &host))?;
+    let mut response = request
+        .send()
+        .await
+        .map_err(|e| from_reqwest(&e, &host, policy.noun))?;
     if let Some(peer) = response.remote_addr() {
         if !policy.permits(peer.ip()) {
-            return Err(blocked(&host));
+            return Err(blocked(&host, policy.noun));
         }
     }
     let status = response.status().as_u16();
@@ -418,7 +451,7 @@ pub async fn fetch_media(
     while let Some(chunk) = response
         .chunk()
         .await
-        .map_err(|e| from_reqwest(&e, &host))?
+        .map_err(|e| from_reqwest(&e, &host, policy.noun))?
     {
         if body.len() + chunk.len() > max_bytes {
             return Err(too_large());
@@ -655,6 +688,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        feature = "loopback-fixtures",
+        ignore = "loopback-fixtures opens 127.0.0.1, which this test checks is refused"
+    )]
     fn address_validation() {
         let p = Policy::default();
         let c = |u: &str| check_url(u, &p).map(|_| ()).map_err(|e| e.code);
@@ -707,6 +744,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        feature = "loopback-fixtures",
+        ignore = "loopback-fixtures opens 127.0.0.1, which this test checks is refused"
+    )]
     fn production_policy_never_connects_to_loopback() {
         let (port, hits) = playlist_server();
         assert_eq!(
@@ -731,6 +772,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        feature = "loopback-fixtures",
+        ignore = "loopback-fixtures opens 127.0.0.1, which this test checks is refused"
+    )]
     fn resolved_addresses_are_checked_and_are_the_ones_connected_to() {
         let (port, hits) = playlist_server();
         let url = format!("http://playlist.test:{port}/list.m3u");
@@ -939,6 +984,127 @@ mod tests {
         assert!(
             e.code == ErrorCode::Network && !e.message.contains("hunter2"),
             "{e:?}"
+        );
+    }
+    /// The guide policy as the app uses it, with only loopback opened for the local test server.
+    fn local_guide(max_bytes: usize) -> Policy {
+        Policy {
+            max_bytes,
+            total_timeout: Duration::from_millis(1500),
+            allow_loopback: true,
+            ..Policy::guide()
+        }
+    }
+
+    fn guide_bytes(url: String, policy: &Policy) -> Result<Vec<u8>, IngestError> {
+        run(download_bytes(&url, policy, "application/xml")).map(|(b, _)| b)
+    }
+
+    #[test]
+    fn the_guide_policy_only_changes_size_and_time_limits() {
+        let (guide, playlist) = (Policy::guide(), Policy::default());
+        assert_eq!(guide.max_bytes, MAX_GUIDE_BYTES);
+        assert_eq!(guide.total_timeout, Duration::from_secs(90));
+        assert_eq!(
+            playlist.max_bytes, MAX_PLAYLIST_BYTES,
+            "playlist limits unchanged"
+        );
+        assert_eq!(playlist.total_timeout, Duration::from_secs(30));
+        assert_eq!(guide.max_redirects, playlist.max_redirects);
+        assert_eq!(guide.connect_timeout, playlist.connect_timeout);
+        assert_eq!(guide.read_timeout, playlist.read_timeout);
+        assert!(!guide.allow_loopback && guide.fake_dns.is_none());
+    }
+
+    #[test]
+    #[cfg_attr(
+        feature = "loopback-fixtures",
+        ignore = "loopback-fixtures opens 127.0.0.1, which this test checks is refused"
+    )]
+    fn guides_are_fetched_with_the_same_destination_checks() {
+        let (port, hits) = playlist_server();
+        let production = Policy::guide();
+        for url in [
+            format!("http://127.0.0.1:{port}/list.m3u"),
+            "http://10.0.0.5/epg.xml".into(),
+            "http://169.254.169.254/latest/meta-data/".into(),
+            "http://localhost/epg.xml".into(),
+            "http://[::1]/epg.xml".into(),
+        ] {
+            let e = guide_bytes(url, &production).unwrap_err();
+            assert_eq!(e.code, ErrorCode::Blocked);
+            assert!(
+                e.message.contains("Kinora only fetches guides"),
+                "{}",
+                e.message
+            );
+        }
+        assert_eq!(hits.load(Ordering::SeqCst), 0, "nothing was reached");
+        let creds =
+            guide_bytes("https://u:p@guides.example/epg.xml".into(), &production).unwrap_err();
+        assert_eq!(creds.code, ErrorCode::InvalidUrl);
+        assert_eq!(
+            guide_bytes("file:///etc/passwd".into(), &production)
+                .unwrap_err()
+                .code,
+            ErrorCode::InvalidUrl
+        );
+        // Every redirect hop is checked again, as for playlists.
+        let at = |p: &str| format!("http://127.0.0.1:{port}{p}");
+        for p in [
+            "/to-private",
+            "/to-metadata",
+            "/to-localhost",
+            "/to-file",
+            "/to-creds",
+        ] {
+            assert!(guide_bytes(at(p), &local_guide(4096)).is_err(), "{p}");
+        }
+        let e = guide_bytes(at("/r/9"), &local_guide(4096)).unwrap_err();
+        assert!(
+            e.message.contains("The guide address redirected"),
+            "{}",
+            e.message
+        );
+        assert_eq!(
+            guide_bytes(at("/r/2"), &local_guide(4096)).unwrap(),
+            PLAYLIST.as_bytes()
+        );
+    }
+
+    #[test]
+    fn guide_bodies_are_bytes_with_their_own_size_limit() {
+        let (port, _) = playlist_server();
+        let at = |p: &str| format!("http://127.0.0.1:{port}{p}");
+        for p in ["/big-declared", "/big-streamed"] {
+            let e = guide_bytes(at(p), &local_guide(4096)).unwrap_err();
+            assert_eq!(e.code, ErrorCode::TooLarge);
+            assert!(
+                e.message.starts_with("The guide from 127.0.0.1"),
+                "{}",
+                e.message
+            );
+        }
+        assert_eq!(
+            guide_bytes(at("/big-declared"), &local_guide(8192))
+                .unwrap()
+                .len(),
+            5000
+        );
+        let secret = "?token=SECRET123";
+        for p in ["/missing", "/slow", "/big-declared", "/to-private"] {
+            let e = guide_bytes(format!("{}{secret}", at(p)), &local_guide(4096)).unwrap_err();
+            assert!(
+                !e.message.contains("SECRET123") && !e.message.contains(p),
+                "{}",
+                e.message
+            );
+        }
+        let slow = guide_bytes(at("/slow"), &local_guide(4096)).unwrap_err();
+        assert!(
+            slow.message.contains("did not send the guide in time"),
+            "{}",
+            slow.message
         );
     }
 }

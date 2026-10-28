@@ -28,6 +28,10 @@ reqwest = { version = "0.13.5", default-features = false, features = ["native-tl
 tokio = { version = "1", features = ["net", "time", "sync"] }
 # Already in the tree through Tauri: the OS random source for unguessable stream handles.
 getrandom = "0.3"
+# Already in the tree through Tauri (plist, png). XMLTV guides (xmltv.rs): quick-xml never fetches
+# external resources or expands declared entities; flate2 decompresses `.xml.gz` guides with a cap.
+quick-xml = "0.42"
+flate2 = "1"
 
 [features]
 # Lets dev builds (`tauri dev`) fetch from 127.0.0.1 so native smoke tests can play local fixtures.

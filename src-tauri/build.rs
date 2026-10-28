@@ -10,6 +10,12 @@ fn main() {
             "close_stream",
             "load_sources",
             "save_sources",
+            "fetch_guide",
+            "import_guide_file",
+            "load_guide",
+            "guide_channels",
+            "guide_programmes",
+            "remove_guide",
         ]),
     ))
     .expect("failed to run the Tauri build script");

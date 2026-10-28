@@ -29,6 +29,8 @@ pub enum ErrorCode {
     UnsupportedStream,
     /// Saved sources could not be written (read-only store, disk error, or input in an unexpected shape).
     Storage,
+    /// The data is not a usable XMLTV guide (not XML, wrong root, unsupported encoding or XML features).
+    NotGuide,
 }
 
 /// Safe to show the user: messages name at most the host, never a path, query or credential.

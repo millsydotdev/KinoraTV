@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { IngestError, MAX_PLAYLIST_BYTES, closeStream, fetchPlaylist, getAppInfo, loadSources, openStream, parseAppInfo, parseOpenedStream, parsePlaylistReport, parseSavedSource, readPlaylistFile, saveSources, toIngestError, type SavedSource } from './native'
+import {
+  IngestError, MAX_GUIDE_BYTES, MAX_PLAYLIST_BYTES, closeStream, fetchGuide, fetchPlaylist, getAppInfo, guideChannels, guideProgrammes, loadGuide, loadSources, openStream,
+  parseAppInfo, parseGuideAnswers, parseGuideSummary, parseOpenedStream, parsePlaylistReport, parseSavedGuide, parseSavedMapping, parseSavedSource, readGuideFile,
+  readPlaylistFile, removeGuide, saveSources, toIngestError, type SavedGuide, type SavedMapping, type SavedSource, type SavedState,
+} from './native'
 
 // `inside` undefined keeps the real isTauri() (false under Vitest); tests set it to drive the shell path.
 const shell = vi.hoisted(() => ({ inside: undefined as boolean | undefined, invoke: vi.fn() }))
@@ -162,6 +166,12 @@ describe('stream session boundary', () => {
 })
 
 describe('saved sources boundary', () => {
+  const empty: SavedState = { sources: [], guides: [], mappings: [] }
+  const guide: SavedGuide = {
+    id: 'gd-g1', name: 'Guide', origin: 'url', url: 'https://guides.example/epg.xml.gz?token=GUIDETOKEN', label: 'https://guides.example/…',
+    addedAt: 1000, lastSuccess: null, playlists: ['pl-a1'],
+  }
+  const mapping: SavedMapping = { channel: 'pl-a1~tvg_3a_one', guide: 'gd-g1', xmltvId: 'One.uk' }
   const saved: SavedSource = {
     id: 'pl-a1', name: 'My lineup', origin: 'url', url: 'https://playlists.example/get.php?token=SECRET123', label: 'https://playlists.example/…',
     addedAt: 1000, lastSuccess: 2000, skipped: 0, duplicates: 1,
@@ -183,9 +193,11 @@ describe('saved sources boundary', () => {
 
   it('loads through Rust, validating the notice too', async () => {
     shell.inside = true
-    shell.invoke.mockResolvedValueOnce({ sources: [saved], notice: 'recovered' })
-    await expect(loadSources()).resolves.toEqual({ sources: [saved], notice: 'recovered' })
-    shell.invoke.mockResolvedValueOnce({ sources: [saved], notice: 'wiped' })
+    shell.invoke.mockResolvedValueOnce({ sources: [saved], guides: [guide], mappings: [mapping], notice: 'recovered' })
+    await expect(loadSources()).resolves.toEqual({ sources: [saved], guides: [guide], mappings: [mapping], notice: 'recovered' })
+    shell.invoke.mockResolvedValueOnce({ sources: [saved], guides: [], mappings: [], notice: 'wiped' })
+    await expect(loadSources()).rejects.toThrow()
+    shell.invoke.mockResolvedValueOnce({ sources: [saved], notice: null })
     await expect(loadSources()).rejects.toThrow()
   })
 
@@ -193,20 +205,89 @@ describe('saved sources boundary', () => {
     shell.inside = true
     let finishFirst!: (v: unknown) => void
     shell.invoke.mockImplementationOnce(() => new Promise((r) => { finishFirst = r })).mockResolvedValueOnce(undefined)
-    const first = saveSources([])
-    const second = saveSources([saved])
+    const first = saveSources(empty)
+    const second = saveSources({ ...empty, sources: [saved] })
     await Promise.resolve(); await Promise.resolve()
     expect(shell.invoke).toHaveBeenCalledTimes(1)
     finishFirst(undefined)
     await first; await second
-    expect(shell.invoke.mock.calls.map((c) => c[1])).toEqual([{ sources: [] }, { sources: [saved] }])
+    expect(shell.invoke.mock.calls.map((c) => c[1])).toEqual([{ saved: empty }, { saved: { ...empty, sources: [saved] } }])
     shell.invoke.mockRejectedValueOnce({ code: 'storage', message: 'Kinora could not save your sources.' })
-    await expect(saveSources([])).rejects.toMatchObject({ code: 'storage' })
+    await expect(saveSources(empty)).rejects.toMatchObject({ code: 'storage' })
   })
 
   it('does nothing outside the native shell', async () => {
     await expect(loadSources()).resolves.toBeNull()
-    await saveSources([])
+    await saveSources(empty)
+    expect(shell.invoke).not.toHaveBeenCalled()
+  })
+
+  it('accepts saved guides and matches, and rejects malformed ones', () => {
+    expect(parseSavedGuide({ ...guide, extra: 1 })).toEqual(guide)
+    expect(parseSavedMapping(mapping)).toEqual(mapping)
+    for (const bad of [
+      null, { ...guide, id: 'pl-a1' }, { ...guide, id: 'gd-../x' }, { ...guide, origin: 'file' }, { ...guide, playlists: 'pl-a1' },
+      { ...guide, playlists: [''] }, { ...guide, addedAt: Number.NaN },
+    ]) expect(() => parseSavedGuide(bad)).toThrow()
+    for (const bad of [null, { ...mapping, xmltvId: '' }, { ...mapping, channel: 3 }]) expect(() => parseSavedMapping(bad)).toThrow()
+  })
+})
+
+describe('guide boundary', () => {
+  const summary = { channels: 2, programmes: 3, first: 1000, last: 9000, fetchedAt: 500, skipped: 1, duplicates: 0, warnings: ['1 programme had no title and was skipped.'] }
+  const programme = { channel: 'One.uk', start: 1000, stop: 2000, stopEstimated: false, title: 'News', subtitle: null, desc: 'Text', category: 'News', episode: null }
+
+  it('validates guide summaries', () => {
+    expect(parseGuideSummary(summary)).toEqual(summary)
+    expect(parseGuideSummary({ ...summary, first: null, last: null })).toMatchObject({ first: null })
+    for (const bad of [null, { ...summary, programmes: -1 }, { ...summary, fetchedAt: 'now' }, { ...summary, warnings: [1] }]) expect(() => parseGuideSummary(bad)).toThrow()
+  })
+
+  it('validates programme answers', () => {
+    const answer = { guide: 'gd-a', loaded: true, matches: [{ id: 'one.uk', channel: 'One.uk' }, { id: 'x', channel: null }], programmes: [programme] }
+    expect(parseGuideAnswers([answer])).toEqual([answer])
+    for (const bad of [
+      { ...answer, loaded: 'yes' }, { ...answer, matches: [{ id: '', channel: null }] }, { ...answer, programmes: [{ ...programme, stop: 1000 }] },
+      { ...answer, programmes: [{ ...programme, title: '' }] }, { ...answer, programmes: [{ ...programme, stopEstimated: 1 }] },
+    ]) expect(() => parseGuideAnswers([bad])).toThrow()
+    expect(() => parseGuideAnswers({})).toThrow()
+  })
+
+  it('sends guide files as raw bytes with the id in a header, never a path', async () => {
+    shell.inside = true
+    shell.invoke.mockResolvedValueOnce(summary)
+    const file = new File([new Uint8Array([0x1f, 0x8b, 1, 2])], '/home/alice/epg.xml.gz')
+    await expect(readGuideFile('gd-a', file)).resolves.toEqual(summary)
+    const [command, body, options] = shell.invoke.mock.calls[0] ?? []
+    expect(command).toBe('import_guide_file')
+    expect(body).toBeInstanceOf(Uint8Array)
+    expect([...(body as Uint8Array)]).toEqual([0x1f, 0x8b, 1, 2])
+    expect(options).toEqual({ headers: { 'x-guide-id': 'gd-a' } })
+    expect(JSON.stringify(shell.invoke.mock.calls)).not.toContain('alice')
+  })
+
+  it('refuses oversized guide files before reading them', async () => {
+    shell.inside = true
+    const big = new File([], 'big.xml')
+    Object.defineProperty(big, 'size', { value: MAX_GUIDE_BYTES + 1 })
+    big.arrayBuffer = () => { throw new Error('the file must not be read') }
+    await expect(readGuideFile('gd-a', big)).rejects.toMatchObject({ code: 'too-large' })
+    expect(shell.invoke).not.toHaveBeenCalled()
+  })
+
+  it('maps guide errors and returns null for nothing held', async () => {
+    shell.inside = true
+    shell.invoke.mockRejectedValueOnce({ code: 'not-guide', message: 'This is XML, but not an XMLTV guide (it does not start with <tv>).' })
+    await expect(fetchGuide('gd-a', 'https://guides.example/epg.xml')).rejects.toMatchObject({ code: 'not-guide' })
+    shell.invoke.mockResolvedValueOnce(null)
+    await expect(loadGuide('gd-a')).resolves.toBeNull()
+  })
+
+  it('does nothing outside the native shell', async () => {
+    await expect(fetchGuide('gd-a', 'https://guides.example/epg.xml')).resolves.toBeNull()
+    await expect(guideProgrammes([], 0, 1)).resolves.toBeNull()
+    await expect(guideChannels('gd-a')).resolves.toEqual([])
+    await removeGuide('gd-a')
     expect(shell.invoke).not.toHaveBeenCalled()
   })
 })

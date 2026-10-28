@@ -260,7 +260,6 @@ describe('Add Source checks', () => {
     expect(error('file:///home/me/a.m3u')).toMatch(/http:\/\/ or https:\/\//)
     expect(error('https://alice:hunter2@playlists.example/a.m3u')).toMatch(/Remove the username and password/)
     expect(error('https://playlists.example/a.m3u', 'm3u', ['https://playlists.example/a.m3u'])).toMatch(/already one of your sources/)
-    expect(error('https://guide.example/epg.xml', 'xmltv')).toMatch(/not supported yet/)
     expect(error('https://lists.example/sport.txt', 'url-list')).toMatch(/not supported yet/)
   })
 

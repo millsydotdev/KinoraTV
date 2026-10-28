@@ -1691,7 +1691,9 @@ dependencies = [
 name = "kinora"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "getrandom 0.3.4",
+ "quick-xml",
  "reqwest",
  "serde",
  "serde_json",

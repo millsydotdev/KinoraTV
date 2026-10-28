@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { genresOf, movies, series, titles } from '../data/catalog'
-import { programmeAt, scheduleFor } from '../data/channels'
+import { startOfDay } from '../data/channels'
 import { episodeCode, episodeRef } from '../data/refs'
 import { Icon, type IconName } from '../components/Icon'
 import { PageHeader } from '../components/PageHeader'
@@ -58,11 +58,11 @@ export function Search() {
   if (needle) {
     groups.channels = channels.filter((c) => has(c.name, ...c.categories, String(c.number))).map((c) => ({
       key: c.id, to: `/live?channel=${c.id}`, thumb: <ChannelMark channel={c} size={44} />, title: c.name,
-      sub: `${c.number} · ${categoryLabel(c)}${programmeAt(c, now) ? ` · Now: ${programmeAt(c, now)?.title}` : ''}`,
+      sub: `${c.number} · ${categoryLabel(c)}${store.programmeAt(c, now) ? ` · Now: ${store.programmeAt(c, now)?.title}` : ''}`,
     }))
     const seen = new Set<string>()
     groups.tv = channels
-      .flatMap((c) => scheduleFor(c, now).filter((p) => p.stop > now && has(p.title, p.category)).map((p) => ({ c, p })))
+      .flatMap((c) => store.schedule(c, startOfDay(now)).filter((p) => p.stop > now && has(p.title, p.category)).map((p) => ({ c, p })))
       .sort((a, b) => a.p.start - b.p.start)
       .filter(({ c, p }) => !seen.has(c.id + p.title) && !!seen.add(c.id + p.title))
       .map(({ c, p }) => ({

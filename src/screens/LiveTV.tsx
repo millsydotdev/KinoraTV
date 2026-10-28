@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { CHANNEL_GROUPS, DAY, GUIDE_DAYS, MIN, nextProgramme, programmeAt, scheduleFor, startOfDay } from '../data/channels'
+import { CHANNEL_GROUPS, GUIDE_DAYS, MIN, addDays, startOfDay } from '../data/channels'
 import { channelRef } from '../data/refs'
 import type { Channel, Programme } from '../data/types'
 import { Dialog } from '../components/Dialog'
@@ -10,6 +10,7 @@ import { PageHeader } from '../components/PageHeader'
 import { ChannelCard } from '../components/Tiles'
 import { Art, ChannelMark, ProgressBar, StateBlock } from '../components/ui'
 import { clock, dayLabel, useNow } from '../lib/time'
+import { noListingsText } from '../state/guides'
 import { categoryLabel, channelGroups, filterChannels, inCategory } from '../state/playlists'
 import { useStore } from '../state/store'
 import './LiveTV.css'
@@ -31,7 +32,7 @@ function useMedia(query: string) {
 export function LiveTV() {
   const now = useNow(15_000)
   const store = useStore()
-  const { prefs, library, channels, findChannel, channelMode } = store
+  const { prefs, library, channels, findChannel, channelMode, requestGuideDay } = store
   const toast = useToast()
   const [params, setParams] = useSearchParams()
   const compactCol = useMedia('(max-width: 640px)')
@@ -50,8 +51,11 @@ export function LiveTV() {
   const favIds = library.favourites.filter((r) => r.startsWith('channel:')).map((r) => r.slice(8))
   const visible = filterChannels(channels, group, favIds)
 
-  const dayStart = startOfDay(now) + dayOffset * DAY
-  const rows = visible.map((c) => ({ channel: c, programmes: scheduleFor(c, dayStart) }))
+  // Local midnights, so a day with a clock change is 23 or 25 hours long.
+  const dayStart = addDays(startOfDay(now), dayOffset)
+  const dayEnd = addDays(dayStart, 1)
+  useEffect(() => requestGuideDay(dayStart), [requestGuideDay, dayStart])
+  const rows = visible.map((c) => ({ channel: c, programmes: store.schedule(c, dayStart) }))
 
   // Geometry: the visible window shows `guideZoom` hours across whatever width the guide has.
   const scroller = useRef<HTMLDivElement>(null)
@@ -80,7 +84,7 @@ export function LiveTV() {
     else scrollToTime(dayStart + 18.5 * 60 * MIN, false)
   })
 
-  const current = playing ? programmeAt(playing, now) : undefined
+  const current = playing ? store.programmeAt(playing, now) : undefined
 
   const tune = (c: Channel, announce = true) => {
     const next = new URLSearchParams(params)
@@ -156,8 +160,8 @@ export function LiveTV() {
     }
   }, [focusId])
 
-  const ticks = Array.from({ length: 48 }, (_, i) => dayStart + i * 30 * MIN)
-  const innerW = colW + x(dayStart + DAY)
+  const ticks = Array.from({ length: Math.round((dayEnd - dayStart) / (30 * MIN)) }, (_, i) => dayStart + i * 30 * MIN)
+  const innerW = colW + x(dayEnd)
   const showNow = dayOffset === 0
 
   const panel = selected && (
@@ -193,7 +197,7 @@ export function LiveTV() {
       <button type="button" className="icon-btn" onClick={() => setDayOffset((d) => Math.max(0, d - 1))} disabled={dayOffset === 0} aria-label="Previous day"><Icon name="left" size={16} /></button>
       <select className="date-select" value={dayOffset} onChange={(e) => setDayOffset(Number(e.target.value))} aria-label="Guide day">
         {Array.from({ length: GUIDE_DAYS }, (_, i) => (
-          <option key={i} value={i}>{new Date(startOfDay(now) + i * DAY).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</option>
+          <option key={i} value={i}>{new Date(addDays(startOfDay(now), i)).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</option>
         ))}
       </select>
       <button type="button" className="icon-btn" onClick={() => setDayOffset((d) => Math.min(GUIDE_DAYS - 1, d + 1))} disabled={dayOffset === GUIDE_DAYS - 1} aria-label="Next day"><Icon name="right" size={16} /></button>
@@ -237,7 +241,7 @@ export function LiveTV() {
             {channels.length === 0 ? noPlaylistChannels : visible.length === 0 ? emptyFavourites : (
               <div className="grid-cards">
                 {visible.map((c) => (
-                  <ChannelCard key={c.id} channel={c} now={programmeAt(c, now)} next={nextProgramme(c, now)} to={`/live?channel=${c.id}`} format={prefs.timeFormat} selected={c.id === playing?.id} at={now} />
+                  <ChannelCard key={c.id} channel={c} now={store.programmeAt(c, now)} next={store.nextProgramme(c, now)} to={`/live?channel=${c.id}`} format={prefs.timeFormat} selected={c.id === playing?.id} at={now} />
                 ))}
               </div>
             )}
@@ -282,11 +286,15 @@ export function LiveTV() {
                         )}
                       </div>
                       <div className="guide-track">
-                        {programmes.length === 0 && <span className="guide-noinfo faint">No guide information</span>}
+                        {programmes.length === 0 && (
+                          <span className="guide-noinfo faint">{c.sourceId === null ? 'No guide information' : noListingsText(store.guideMatch(c), !store.guideDayLoaded(dayStart))}</span>
+                        )}
                         {programmes.map((p) => {
                           const onNow = p.start <= now && now < p.stop
                           const past = p.stop <= now
-                          const w = x(p.stop) - x(p.start)
+                          // A guide programme can start before or end after the day shown: draw only its part of the day.
+                          const left = x(Math.max(p.start, dayStart))
+                          const w = x(Math.min(p.stop, dayEnd)) - left
                           return (
                             <button
                               key={p.id}
@@ -296,7 +304,7 @@ export function LiveTV() {
                               tabIndex={p.id === effectiveFocus ? 0 : -1}
                               aria-selected={selected?.id === p.id}
                               className={`prog${onNow ? ' is-now' : ''}${onNow && isPlaying ? ' is-playing' : ''}${past ? ' is-past' : ''}${selected?.id === p.id ? ' is-selected' : ''}`}
-                              style={{ left: x(p.start), width: Math.max(0, w - 4) }}
+                              style={{ left, width: Math.max(0, w - 4) }}
                               onClick={() => select(p)}
                               onFocus={() => setFocusId(p.id)}
                               aria-label={`${p.title}, ${c.name}, ${clock(p.start, prefs.timeFormat)} to ${clock(p.stop, prefs.timeFormat)}${onNow ? ', on now' : ''}`}
@@ -317,9 +325,11 @@ export function LiveTV() {
               </div>
             </div>
             <p className="guide-hint faint">
-              {channelMode === 'playlists'
-                ? 'Channels come from your imported playlists. There is no programme guide for them yet, and their streams have not been playback-tested. Page Up and Page Down change channel.'
-                : 'Arrow keys move through the guide, Enter opens a programme, Page Up and Page Down change channel. Channels and schedule are demonstration data.'}
+              {channelMode === 'demo'
+                ? 'Arrow keys move through the guide, Enter opens a programme, Page Up and Page Down change channel. Channels and schedule are demonstration data.'
+                : store.guides.length > 0
+                  ? 'Channels come from your imported playlists and programmes from your XMLTV guides, shown in your local time. Streams have not been playback-tested. Arrow keys move through the guide; Page Up and Page Down change channel.'
+                  : 'Channels come from your imported playlists. Add an XMLTV guide in Sources to see their programmes. Streams have not been playback-tested. Page Up and Page Down change channel.'}
             </p>
           </section>
         )}
@@ -400,7 +410,7 @@ function ProgrammePanel({ programme: p, channel, now, isPlayingChannel, isSelect
         <span className="label">{isSelection ? 'Selected programme' : 'Now watching'}</span>
         {isSelection && <button type="button" className="text-link" onClick={onClear}>Back to now watching</button>}
       </div>
-      {prefs.guideArt && isSelection && <Art src={p.art} className="panel-art" />}
+      {prefs.guideArt && isSelection && p.art && <Art src={p.art} className="panel-art" />}
       {channel && (
         <p className="panel-channel">
           <ChannelMark channel={channel} size={28} />
@@ -408,14 +418,16 @@ function ProgrammePanel({ programme: p, channel, now, isPlayingChannel, isSelect
         </p>
       )}
       <h2 className="panel-title">{p.title}</h2>
+      {p.subtitle && <p className="panel-subtitle">{p.subtitle}</p>}
       <div className="meta">
         <span className="tnum">{dayLabel(p.start, now)}, {clock(p.start, prefs.timeFormat)} to {clock(p.stop, prefs.timeFormat)}</span>
         <span>{mins} min</span>
-        <span>{p.category}</span>
+        {p.category && <span>{p.category}</span>}
         {p.episode && <span>{p.episode}</span>}
       </div>
+      {p.stopEstimated && <p className="faint">The guide gives no end time; this is when the next programme starts.</p>}
       {onNow && <ProgressBar value={(now - p.start) / (p.stop - p.start)} label="Programme progress" />}
-      <p className="muted panel-desc">{p.desc}</p>
+      {p.desc && <p className="muted panel-desc">{p.desc}</p>}
       <div className="panel-actions">
         {onNow && channel && !isPlayingChannel && (
           <button type="button" className="btn btn-primary" onClick={() => onTune(channel)}><Icon name="play" size={18} />Watch {channel.name}</button>
@@ -443,7 +455,7 @@ function ProgrammePanel({ programme: p, channel, now, isPlayingChannel, isSelect
         <div className="later">
           <h3 className="label">Later on {channel.name}</h3>
           <ul>
-            {[...scheduleFor(channel, now), ...scheduleFor(channel, now + DAY)].filter((x) => x.start >= p.stop).slice(0, 4).map((x) => (
+            {[...store.schedule(channel, startOfDay(now)), ...store.schedule(channel, addDays(startOfDay(now), 1))].filter((x, i, all) => x.start >= p.stop && all.findIndex((y) => y.id === x.id) === i).slice(0, 4).map((x) => (
               <li key={x.id}>
                 <button type="button" onClick={() => onSelect(x)}>
                   <span className="tnum faint">{clock(x.start, prefs.timeFormat)}</span>

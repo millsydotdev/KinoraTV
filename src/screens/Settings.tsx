@@ -241,8 +241,11 @@ function Section({ id }: { id: string }) {
           <Row title="Open the guide at">
             <Segmented label="Open the guide at" value={prefs.guideStart} onChange={(v) => setPref('guideStart', v)} options={[{ value: 'now', label: 'Now' }, { value: 'day', label: 'Start of day' }]} />
           </Row>
-          {toggle('guideArt', 'Programme artwork', 'Shows artwork in the programme details panel.')}
-          <Row title="Time zone" hint="Guide times follow this device.">
+          {toggle('guideArt', 'Programme artwork', 'Shows artwork in the programme details panel for demonstration programmes. Artwork listed in guides is never downloaded.')}
+          <Row title="Programme guides" hint="XMLTV guides are added and matched to playlist channels in Sources, by guide id or by hand.">
+            <Link to="/sources" className="text-link">{store.guides.length === 1 ? '1 guide' : `${store.guides.length} guides`}</Link>
+          </Row>
+          <Row title="Time zone" hint="Guide times follow this device, including clock changes.">
             <span className="muted">{Intl.DateTimeFormat().resolvedOptions().timeZone}</span>
           </Row>
         </Group>
@@ -250,13 +253,13 @@ function Section({ id }: { id: string }) {
     case 'sources':
       return (
         <Group title="Importing and refreshing">
-          <Row title="Refreshing" hint="Playlists are read when you add them and again only when you choose Refresh on a source. Automatic refresh is not available yet.">
+          <Row title="Refreshing" hint="Playlists and guides with an address are read when you add them, each time Kinora starts, and when you refresh one. Files are read only when you choose them. Automatic refresh is not available yet.">
             <span className="muted">Manual</span>
           </Row>
           <Row title="Stream checks" hint="Kinora reads channel lists but does not open or test streams. Checking streams is not available yet.">
             <span className="muted">Not available</span>
           </Row>
-          <Row title="Keeping sources" hint="Imported playlists are saved on this device, including their addresses, which can contain private tokens. Stream addresses are never saved, so restored channels play again once their source refreshes.">
+          <Row title="Keeping sources" hint="Imported playlists and guides are saved on this device, including their addresses, which can contain private tokens. Guide programmes are kept there too, so they show offline. Stream addresses are never saved, so restored channels play again once their source refreshes.">
             <span className="muted">On this device</span>
           </Row>
         </Group>
@@ -362,7 +365,7 @@ function About() {
     <>
       <Group title="This build">
         <BuildRow />
-        <Row title="What works" hint="Every screen, control and saved preference. Nothing streams: there is no playback service, source checking or guide import yet." ><span className="pending-tag">Frontend only</span></Row>
+        <Row title="What works" hint="In the desktop app: M3U playlists and XMLTV guides by address or file, saved on this device, and HLS playback of playlist channels. Stream checking, discovery and other stream formats are not available yet." ><span className="pending-tag">In progress</span></Row>
         <Row title="Catalogue" hint="Films, series, channels, schedules and sources are fictional demonstration data. Artwork was generated for this project."><span className="muted">Demonstration</span></Row>
       </Group>
       <Group title="Typefaces">

@@ -1,6 +1,6 @@
 import { findEpisode, movieById, seriesById } from './catalog'
 import { channelById, programmeAt } from './channels'
-import type { Channel, Episode, Movie, Series } from './types'
+import type { Channel, Episode, Movie, Programme, Series } from './types'
 
 export type Resolved =
   | { kind: 'movie'; ref: string; title: string; meta: string; art: string; focus: number; href: string; play: string; item: Movie }
@@ -16,8 +16,11 @@ export const episodeRef = (seriesId: string, episodeId: string) => `episode:${se
 export const runtimeLabel = (mins: number) => (mins >= 60 ? `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m` : `${mins}m`)
 export const episodeCode = (e: Episode) => `S${e.season} E${e.number}`
 
-/** `findChannel` defaults to the demonstration catalogue; screens pass the store's active catalogue. */
-export function resolve(ref: string, now = Date.now(), findChannel: (id: string) => Channel | undefined = channelById): Resolved | undefined {
+/** `findChannel` and `at` default to the demonstration catalogue; screens pass the store's catalogue and guide. */
+export function resolve(
+  ref: string, now = Date.now(), findChannel: (id: string) => Channel | undefined = channelById,
+  at: (c: Channel, t: number) => Programme | undefined = programmeAt,
+): Resolved | undefined {
   const [kind, rest = ''] = ref.split(':') as [string, string | undefined]
   const play = `/watch/${encodeURIComponent(ref)}`
   if (kind === 'movie') {
@@ -38,7 +41,7 @@ export function resolve(ref: string, now = Date.now(), findChannel: (id: string)
   }
   if (kind === 'channel') {
     const c = findChannel(rest)
-    const p = c && programmeAt(c, now)
+    const p = c && at(c, now)
     return c && { kind, ref, title: c.name, meta: p ? `Now: ${p.title}` : c.categories.join(' · '), art: p?.art ?? '', focus: 50, href: `/live?channel=${c.id}`, play: `/live?channel=${c.id}`, item: c }
   }
   return undefined

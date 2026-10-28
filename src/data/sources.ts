@@ -60,5 +60,5 @@ export function demoValidation(source: Source): ValidationResult[] {
 export const demoProviders: DiscoveryProvider[] = [
   { id: 'local-network', name: 'Local network tuners', description: 'Looks for HDHomeRun-style tuners and DLNA servers on your own network.', enabled: true },
   { id: 'public-directories', name: 'Public playlist directories', description: 'Checks directories you add yourself for playlists their owners publish for reuse. Unlicensed or access-restricted lists are skipped.', enabled: false },
-  { id: 'guide-providers', name: 'Programme guide providers', description: 'Matches XMLTV guides to channels by tvg-id, then by name.', enabled: true },
+  { id: 'guide-providers', name: 'Programme guide providers', description: 'Suggests XMLTV guides that list your channels.', enabled: true },
 ]

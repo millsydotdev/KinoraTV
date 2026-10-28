@@ -1,12 +1,13 @@
 # TVMovie (Kinora)
 
 Premium TV and film app: **React + TypeScript UI inside a Rust + Tauri 2 desktop shell.**
-**Phase: Gate D5 (persistent sources and user state) is complete on `main`. The next gate awaits
-the owner's approval.** Done: Rust M3U parsing and guarded fetching (D2); Sources import, refresh and removal,
+**Phase: Gate D6 (XMLTV guide ingestion and the Live TV guide) is complete on `main`. The next gate
+awaits the owner's approval.** Done: Rust M3U parsing and guarded fetching (D2); Sources import, refresh and removal,
 and playlist channels in Live TV and the other channel screens (D3); honest Settings and player
 states for playlist channels, and individual categories from `A;B` groups (D3.1); HLS playback for
-playlist channels through Rust (D4); saved sources, refreshed at startup (D5). Not approved yet: discovery, stream
-validation or probing, XMLTV, other playback formats, remote logos. Each needs the
+playlist channels through Rust (D4); saved sources, refreshed at startup (D5); XMLTV guides by address or
+file, matched to playlist channels, in Live TV (D6). Not approved yet: discovery, stream validation or
+probing, other playback formats, remote logos or guide artwork. Each needs the
 owner's explicit approval; that is a hard gate.
 
 Live path: `/home/millsy/dev/TVMovie` (symlinked from `/mnt/storage/TVMovie`). Git repo; first
@@ -29,7 +30,7 @@ npm run dev          # React UI in a browser: http://localhost:5199
 npm run tauri:dev    # native app (starts Vite itself)
 npm run typecheck    # tsc -b
 npm test             # vitest: guide schedule, next episode, theme contrast, IPC boundary
-npm run test:rust    # cargo test (src-tauri): parser, fetch policy, local-server fetch, saved-sources file
+npm run test:rust    # cargo test (src-tauri): M3U and XMLTV parsers, fetch policy, local-server fetch, saved sources, guides
 npm run tauri:build  # release binary + .rpm (src-tauri/target/release/)
 ```
 
@@ -54,13 +55,21 @@ Prerequisites and architecture diagram: `README.md`.
   without an approved policy. Display `streamDisplay`. No logger is installed; if one is ever added,
   keep `reqwest`/`hyper` at warn level and never log commands' arguments.
 - Saved sources (D5): `src-tauri/src/sources.rs` owns one file, `<app data>/sources/sources.json`
-  (folder `0700`, file `0600`, schema `version` 1, atomic temp-file-and-rename writes, every save
+  (folder `0700`, file `0600`, schema `version` 2 since D6, atomic temp-file-and-rename writes, every save
   validated with `fetch::check_url`). It holds source addresses (they may carry tokens: the
   documented residual risk is in `README.md`) and channel metadata only; never stream addresses,
   logos, sessions, handles or playback state. A damaged file is moved aside, never deleted; a newer
   or unreadable one is left alone and the store goes read-only for the session. A schema change
   bumps `SCHEMA_VERSION` and adds a migration in `Store::read`. Never put source addresses in a
   general export, an error message or a log.
+- Guides (D6): `xmltv.rs` is the only XML parser (quick-xml; never enable DTD loading or custom
+  entity resolution, keep the `<!DOCTYPE … [` refusal and every cap). Remote guides go through
+  `fetch::download_bytes` with `Policy::guide()`; change only its size/time limits, never the
+  destination checks, and never raise the playlist or stream limits for guides. `guides.rs` holds
+  parsed guides, the per-guide generation (results of superseded imports are dropped) and the
+  `guide-<id>.json` caches; guide ids are `gd-[a-z0-9-]` because they form file names. Matching is
+  `xmltv::normalize_id` (trim + ASCII case) or a saved hand match, never display names, and lives in
+  Rust: the page sends ids and gets matches back. Never fetch URLs found in a guide (icons, `<url>`).
 - Playback (D4): the page never gets an upstream stream address. `open_stream` returns
   `kstream://localhost/<128-bit handle>`; `src-tauri/src/stream.rs` serves it through `fetch.rs`'s
   guarded client and rewrites HLS playlists (`hls.rs`) so every segment, key, map and rendition gets
@@ -72,7 +81,8 @@ Prerequisites and architecture diagram: `README.md`.
   hls.js (light build, lazy, `enableWorker: false`) through MSE; stream commands are queued in
   `native.ts` so the session Rust keeps is always the last one requested.
 - `loopback-fixtures` (cargo feature) lets `tauri dev` builds fetch 127.0.0.1 for native smoke tests
-  with local fixtures. It refuses to compile without Tauri's `dev` cfg; never weaken that guard.
+  with local fixtures. It refuses to compile without Tauri's `dev` cfg; never weaken that guard. Tests
+  that check loopback is refused are ignored only under this feature (`cfg_attr(feature = …, ignore)`).
 - Keep the CSP in `tauri.conf.json` strict; do not loosen it to make something work. Example: Vite
   inlines small assets as `data:` URLs, which `font-src 'self'` blocks, so `vite.config.ts` keeps
   `.woff2` files out of inlining instead of allowing `data:` fonts. D4 added exactly two sources:
@@ -90,16 +100,22 @@ Prerequisites and architecture diagram: `README.md`.
   (error type, report, entry points), `src/m3u.rs` (pure M3U parser + tests), `src/fetch.rs` (guarded
   client, playlist download, media fetch + tests against a local test server), `src/hls.rs` (pure
   HLS rewriter + tests), `src/stream.rs` (stream sessions, handles, limits, protocol handler + tests),
-  `src/sources.rs` (saved-sources file + tests), `tauri.conf.json` (window, CSP, bundle), `capabilities/`, `build.rs`,
+  `src/sources.rs` (saved-sources file + tests), `src/xmltv.rs` (pure XMLTV parser + tests),
+  `src/guides.rs` (held guides, caches, queries + tests), `tauri.conf.json` (window, CSP, bundle), `capabilities/`, `build.rs`,
   `icons/` (generated from `app-icon.svg`).
 - `src/state/store.tsx` all local state (library, preferences, sources), persisted to localStorage
   (`kinora.library.v1`, `kinora.prefs.v2`, `kinora.sources.v1`). Imported playlists (`playlists`) are
   the exception: saved by Rust through `loadSources`/`saveSources`, never in localStorage. The
   provider renders nothing until they are restored (5 s cap), then refreshes address sources in
   turn; restored channels have `streamUrl: null` until then. Removing a source also drops its
-  `channel:` refs from the library (`dropSourceRefs`). `store.channels` is the one channel catalogue screens
+  `channel:` refs from the library (`dropSourceRefs`), and from guides' playlists and hand matches.
+  Guides and hand matches are saved the same way. Screens read programmes only through the store
+  (`schedule`, `programmeAt`, `nextProgramme`, `guideMatch`): generated for demo channels, from Rust
+  one local day at a time for playlist channels. `store.channels` is the one channel catalogue screens
   use (playlist channels if any playlist exists, else the demo set; never both); `store.findChannel`
   resolves ids, and is passed to `resolve()` for library refs.
+- `src/state/guides.ts` pure guide logic: transitions with per-operation tokens, status text, the ids
+  each guide is asked about, match states (`resolveMatches`) and programmes per channel.
 - `src/state/playlists.ts` pure playlist-source logic: transitions with a per-operation token (stale
   results are dropped), channel mapping (link-safe ids, `Uncategorised`, initials, no logos),
   categories (`group` keeps the source text; `categories` splits `A;B`, used for chips, filtering and
@@ -111,7 +127,8 @@ Prerequisites and architecture diagram: `README.md`.
   `StoreProvider initialPlaylists`. Click-through tests (`src/screens/SourceFlows.test.tsx`) opt into
   `happy-dom` per file (`// @vitest-environment happy-dom`, dev dependency only) and mock the native
   commands (`PlayerPlayback.test.tsx` also fakes hls.js; `Persistence.test.tsx` mocks
-  `loadSources`/`saveSources` to cover restore, refresh, removal and storage notices); everything else runs in Node. No test may reach the network or a stream.
+  `loadSources`/`saveSources` to cover restore, refresh, removal and storage notices;
+  `GuideFlows.test.tsx` mocks the guide commands and fixes `TZ=Europe/London`); everything else runs in Node. No test may reach the network or a stream.
 - `src/screens/` one file per screen plus its CSS. `src/components/` shared UI.
 - `public/art/` 40 AI-generated images made for this project's fictional titles. Throwaway once real
   artwork comes from sources. Do not generate more without asking the owner (it uses their credits).
@@ -122,7 +139,8 @@ Prerequisites and architecture diagram: `README.md`.
 
 - Everything is demonstration data: fictional titles, channels and schedules, `example.com` source
   URLs. Keep it labelled as such in the UI.
-- The guide schedule is generated per channel per local day (`scheduleFor`) and cached.
+- The demo guide schedule is generated per channel per local day (`scheduleFor`) and cached. Step
+  between days with `addDays` (local midnights), never `+ DAY`: clock changes make days 23 or 25 hours.
 - Colours come only from theme tokens in `global.css`; never hard-code colours in screen CSS except
   over artwork (use `rgb(var(--scrim) / x)`) or page fades (`rgb(var(--bg-rgb) / x)`).
 - The Search input owns its text and syncs to the URL afterwards; binding it straight to

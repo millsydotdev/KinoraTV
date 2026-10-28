@@ -116,6 +116,13 @@ export function startOfDay(t: number) {
   return d.getTime()
 }
 
+/** Local midnight `n` days after the local midnight `day`; 23 or 25 hours away across a clock change. */
+export function addDays(day: number, n: number) {
+  const d = new Date(day)
+  d.setDate(d.getDate() + n)
+  return startOfDay(d.getTime())
+}
+
 /** Programmes for one channel covering the local day containing `day`. Deterministic per channel and date. */
 const cache = new Map<string, Programme[]>()
 

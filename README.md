@@ -10,9 +10,10 @@ the player show only its channels; otherwise the fictional demonstration catalog
 sources are saved on this device and refreshed at startup (Gate D5); stream addresses are not saved,
 so a restored channel plays once its source has been refreshed. Streams are not checked in advance: a channel is fetched only
 when you play it, and other formats (raw MPEG-TS, MP4, RTMP, RTSP, UDP...) or DRM streams are
-refused with a message. Movies, series and the
-guide remain demonstration data. There is no discovery, stream validation or guide import; those
-wait for the owner's approval.
+refused with a message. XMLTV guides, by address (plain or `.gz`) or local file, give playlist
+channels real programme listings in Live TV and elsewhere (Gate D6); without a playlist, the guide
+shows the demonstration schedule. Movies and series remain demonstration data. There is no
+discovery or stream validation; those wait for the owner's approval.
 
 ## Architecture
 
@@ -27,14 +28,15 @@ React 19 + TypeScript (src/)          Rust + Tauri 2 (src-tauri/)
   in an ordinary browser for development and tests.
 - **Rust** (`src-tauri/`): the native application. It loads the Vite dev server in development and
   the built `dist/` in release, and owns anything native: `app_info` (version, build profile,
-  platform, shown in Settings › About), playlist ingestion, playback and saved sources. `fetch_playlist` downloads an M3U
+  platform, shown in Settings › About), playlist ingestion, playback, saved sources and XMLTV guides. `fetch_playlist` downloads an M3U
   from a user-supplied http(s) address; `parse_playlist_text` parses text from a file the user
   picked in the webview. Both return parsed channel metadata. Stream addresses are never fetched.
 - **IPC boundary**: `src/lib/native.ts` is the only place React calls Rust. It mirrors the Rust
   structs, validates every response before use, and returns `null` outside Tauri.
 - **Security**: each app command is deny-by-default (`build.rs`). `capabilities/default.json` grants
   the main window only the app's own commands: `app_info`, `fetch_playlist`, `parse_playlist_text`,
-  `open_stream`, `close_stream`, `load_sources` and `save_sources`. No
+  `open_stream`, `close_stream`, `load_sources`, `save_sources`, `fetch_guide`, `import_guide_file`,
+  `load_guide`, `guide_channels`, `guide_programmes` and `remove_guide`. No
   filesystem, shell, HTTP, dialog or other plugins. A strict Content Security Policy is set in
   `tauri.conf.json` (remote images stay blocked). Developer tools exist only in debug builds.
 - **Playlist fetching** (`src-tauri/src/fetch.rs`): http(s) only, no credentials in the address, no
@@ -75,11 +77,50 @@ React 19 + TypeScript (src/)          Rust + Tauri 2 (src-tauri/)
   nothing that session), shows them as saved, then refreshes address sources one at a time
   through `fetch_playlist`. A failed refresh keeps the saved channels and says so. File sources
   cannot refresh themselves: their channels are listed, and the player asks for the file again.
-- **Residual risk of saved addresses**: a source address can carry an account token. It is stored
+- **Residual risk of saved addresses**: a playlist or guide address can carry an account token. It is stored
   in plain text, readable only by your OS user, but also by anything running as that user, by root,
   and by backup or sync tools that copy your home folder. Kinora does not export it. If that matters,
   exclude the folder above from cloud backups and remove sources you no longer use; removing a
   source rewrites the file without it (older copies in backups are outside Kinora's control).
+- **XMLTV guides** (`src-tauri/src/xmltv.rs`, `guides.rs`): `fetch_guide` downloads a guide through
+  the same guarded client as playlists (`fetch::Policy::guide()`: every destination and redirect
+  check is the same; only the limits differ, 64 MB and 90 s, and playlist and stream limits are
+  unchanged). `import_guide_file` takes the bytes of a file picked in the webview, never a path.
+  Gzip is decompressed with a 128 MB cap, so a small file cannot expand without limit. Text must be
+  UTF-8. The parser (quick-xml) never loads a DTD or any external resource and expands only XML's
+  five built-in entities and character references; a `<!DOCTYPE>` that declares its own entities is
+  refused, as is any reference to an undefined entity, so entity-expansion attacks have nothing to
+  work with. Nesting (16 levels), channels (20,000), programmes (150,000 in the window) and every
+  kept text field are capped. Icons, artwork and links in a guide are ignored, never fetched.
+- **Guide times**: `YYYYMMDDhhmmss` (or a leading part, down to `YYYYMMDD`) with an optional offset
+  (`+0100`, `-05:30`, `Z`). A time without an offset is UTC, as the XMLTV DTD says. Everything is
+  stored in UTC and shown in this device's time zone; guide days run from local midnight to local
+  midnight, so a day with a clock change shows 23 or 25 hours. Programmes from 12 hours ago to 8
+  days ahead are kept. A missing stop time is taken from the next programme on the channel (the
+  XMLTV convention, and the details panel says so); a programme with no stop and nothing after it,
+  invalid or impossible times, or one overlapping an earlier programme on the same channel is
+  skipped and counted. Gaps stay gaps: nothing is invented, and "on now" means the current time is
+  between the listed start and stop.
+- **Channel matching**: a playlist channel's `tvg-id` is compared with the guide's channel ids after
+  trimming spaces and ignoring the case of ASCII letters; nothing else (no punctuation or suffix
+  stripping, no display names). Each guide is used for the playlists you choose. A channel takes its
+  programmes from the first of its guides that lists its id, or from a guide channel you match it
+  to by hand in the guide's details (the search lists the guide's channels; nothing is matched until
+  you choose one). Unmatched channels are listed there with the reason, and Live TV says why a row
+  is empty.
+- **Guide storage**: guide definitions (name, address or file label, which playlists use it) and
+  hand matches are saved in `sources.json`, now schema 2. A schema 1 file loads unchanged and is
+  copied to `sources.v1.json` before it is first rewritten. Each guide's programmes are also kept
+  in `sources/guide-<id>.json` (`0600`, written atomically): the last good copy, so listings show at
+  startup and offline and a failed refresh never loses them. It holds channel ids, names and
+  programme text only, never the guide's address. It is derived data: one that cannot be read is
+  ignored and replaced by the next successful update. Removing a guide deletes it and its hand
+  matches; caches no saved guide owns are deleted at startup. Rust holds parsed guides in memory and
+  the page asks for one local day at a time, for the matched channels only.
+- **Guide refresh**: at startup, cached programmes are read first, then address guides are updated
+  one at a time alongside playlists, and on request. Neither blocks the window. Each update has a
+  generation number in Rust and an operation token in the page, so a slow, older update never
+  replaces a newer one, and a guide removed while updating stays removed.
 - **Codecs**: decoding is done by WebKitGTK through GStreamer. H.264/AAC streams need the
   corresponding GStreamer plugins (for example `gstreamer1-plugin-openh264` or `gstreamer1-plugin-libav`);
   without them Kinora shows a decode error.

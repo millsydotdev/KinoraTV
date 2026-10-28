@@ -1,5 +1,11 @@
-//! Saved playlist sources (Gate D5): one JSON file owned by Rust, in a private folder of the app's
-//! data directory, `<app data>/sources/sources.json` (folder 0700, file 0600 on Unix).
+//! Saved playlist sources (Gate D5) and guide sources (Gate D6): one JSON file owned by Rust, in a
+//! private folder of the app's data directory, `<app data>/sources/sources.json` (folder 0700, file
+//! 0600 on Unix). Guide programme caches live beside it (see guides.rs).
+//!
+//! Schema 2 (D6) adds `guides` (XMLTV guide definitions: address or file label, and the playlist
+//! sources each one is used for) and `mappings` (a playlist channel matched by hand to a guide
+//! channel id). A schema 1 file loads unchanged with neither, and is copied to `sources.v1.json`
+//! before it is first rewritten as schema 2, so an older Kinora's data is never lost.
 //!
 //! Saved: each source's id, name, origin, label, times and counts, the playlist address of URL
 //! sources (needed to refresh them; it may carry a token, see README), and channel metadata (key,
@@ -23,13 +29,15 @@ use serde::{Deserialize, Serialize};
 use crate::fetch::{self, Policy};
 use crate::ingest::{ErrorCode, IngestError};
 
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 const FILE_NAME: &str = "sources.json";
-const TEMP_NAME: &str = "sources.json.tmp";
+const V1_BACKUP: &str = "sources.v1.json";
 const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_SOURCES: usize = 100;
 const MAX_CHANNELS_PER_SOURCE: usize = crate::m3u::MAX_ENTRIES;
 const MAX_CHANNELS_TOTAL: usize = 200_000;
+pub const MAX_GUIDES: usize = 8;
+const MAX_MAPPINGS: usize = 50_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -79,11 +87,83 @@ impl fmt::Debug for SavedSource {
     }
 }
 
+/// A saved XMLTV guide. Mirrored by `SavedGuide` in `src/lib/native.ts`.
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SavedGuide {
+    pub id: String,
+    pub name: String,
+    pub origin: Origin,
+    /// URL guides only. May carry a token: never logged, shown or included in `Debug`.
+    pub url: Option<String>,
+    pub label: String,
+    pub added_at: f64,
+    pub last_success: Option<f64>,
+    /// Ids of the playlist sources whose channels this guide is matched against.
+    pub playlists: Vec<String>,
+}
+
+impl fmt::Debug for SavedGuide {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SavedGuide")
+            .field("id", &self.id)
+            .field("name", &self.name)
+            .field("origin", &self.origin)
+            .field("url", &self.url.as_ref().map(|_| "<redacted>"))
+            .field("playlists", &self.playlists)
+            .finish()
+    }
+}
+
+/// A playlist channel (`<source id>~<escaped key>`, stable across refreshes) matched by hand to a
+/// channel of one guide. Mirrored by `SavedMapping` in `src/lib/native.ts`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SavedMapping {
+    pub channel: String,
+    pub guide: String,
+    pub xmltv_id: String,
+}
+
+/// Everything saved: what `save` takes and `load` returns.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Saved {
+    pub sources: Vec<SavedSource>,
+    #[serde(default)]
+    pub guides: Vec<SavedGuide>,
+    #[serde(default)]
+    pub mappings: Vec<SavedMapping>,
+}
+
+// Fields listed out rather than flattened: serde's `flatten` does not honour `deny_unknown_fields`.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SavedFile {
     version: u32,
     sources: Vec<SavedSource>,
+    #[serde(default)]
+    guides: Vec<SavedGuide>,
+    #[serde(default)]
+    mappings: Vec<SavedMapping>,
+}
+
+impl SavedFile {
+    fn new(version: u32, saved: Saved) -> Self {
+        Self {
+            version,
+            sources: saved.sources,
+            guides: saved.guides,
+            mappings: saved.mappings,
+        }
+    }
+    fn into_saved(self) -> Saved {
+        Saved {
+            sources: self.sources,
+            guides: self.guides,
+            mappings: self.mappings,
+        }
+    }
 }
 
 /// Why the saved sources could not simply be loaded. Mirrored by `StorageNotice` in native.ts.
@@ -100,7 +180,8 @@ pub enum Notice {
 
 #[derive(Debug, Serialize)]
 pub struct Loaded {
-    pub sources: Vec<SavedSource>,
+    #[serde(flatten)]
+    pub saved: Saved,
     pub notice: Option<Notice>,
 }
 
@@ -108,6 +189,8 @@ pub struct Store {
     dir: Option<PathBuf>,
     /// Set when the file on disk must not be overwritten this session.
     read_only: Mutex<bool>,
+    /// Set when a schema 1 file was loaded: it is backed up before the first schema 2 write.
+    upgrade_v1: Mutex<bool>,
     /// The first notice this session: a later load (the page remounting) must still report it.
     notice: Mutex<Option<Notice>>,
     /// One write at a time.
@@ -124,33 +207,53 @@ fn chars_between(s: &str, min: usize, max: usize) -> bool {
 }
 
 /// Checks everything that crosses into the file: from the page on save, and from disk on load.
-fn validate(sources: &[SavedSource]) -> Result<(), &'static str> {
+/// `pl-…` (playlists) and `gd-…` (guides): lower-case letters, digits and hyphens only, so an id is
+/// always safe as part of a file name.
+fn id_ok(id: &str, prefix: &str) -> bool {
+    id.len() <= 48
+        && id.strip_prefix(prefix).is_some_and(|rest| {
+            !rest.is_empty()
+                && rest
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        })
+}
+
+pub fn guide_id_ok(id: &str) -> bool {
+    id_ok(id, "gd-")
+}
+
+fn origin_ok(origin: Origin, url: &Option<String>) -> bool {
+    match (origin, url) {
+        // The same check Add Source and every fetch use: http(s), no sign-in details, no local address.
+        (Origin::Url, Some(url)) => fetch::check_url(url, &Policy::default()).is_ok(),
+        (Origin::File, None) => true,
+        _ => false,
+    }
+}
+
+fn time_ok(t: f64) -> bool {
+    t.is_finite() && t >= 0.0
+}
+
+/// Checks everything that crosses into the file: from the page on save, and from disk on load.
+fn validate(saved: &Saved) -> Result<(), &'static str> {
+    let sources = &saved.sources;
     if sources.len() > MAX_SOURCES {
         return Err("too many sources");
     }
     let mut ids = std::collections::HashSet::new();
     let mut total = 0usize;
     for s in sources {
-        let id_ok = s.id.len() <= 48
-            && s.id.strip_prefix("pl-").is_some_and(|rest| {
-                !rest.is_empty()
-                    && rest
-                        .bytes()
-                        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-            });
-        if !id_ok || !ids.insert(s.id.as_str()) {
+        if !id_ok(&s.id, "pl-") || !ids.insert(s.id.as_str()) {
             return Err("bad or repeated source id");
         }
         if !chars_between(s.name.trim(), 1, 48) || !chars_between(&s.label, 1, 120) {
             return Err("bad name or label");
         }
-        match (s.origin, &s.url) {
-            // The same check Add Source and every fetch use: http(s), no sign-in details, no local address.
-            (Origin::Url, Some(url)) if fetch::check_url(url, &Policy::default()).is_ok() => {}
-            (Origin::File, None) => {}
-            _ => return Err("bad address for the source's origin"),
+        if !origin_ok(s.origin, &s.url) {
+            return Err("bad address for the source's origin");
         }
-        let time_ok = |t: f64| t.is_finite() && t >= 0.0;
         if !time_ok(s.added_at) || s.last_success.is_some_and(|t| !time_ok(t)) {
             return Err("bad time");
         }
@@ -172,6 +275,53 @@ fn validate(sources: &[SavedSource]) -> Result<(), &'static str> {
     if total > MAX_CHANNELS_TOTAL {
         return Err("too many channels");
     }
+    if saved.guides.len() > MAX_GUIDES {
+        return Err("too many guides");
+    }
+    let mut guide_ids = std::collections::HashSet::new();
+    for g in &saved.guides {
+        if !guide_id_ok(&g.id) || !guide_ids.insert(g.id.as_str()) {
+            return Err("bad or repeated guide id");
+        }
+        if !chars_between(g.name.trim(), 1, 48) || !chars_between(&g.label, 1, 120) {
+            return Err("bad guide name or label");
+        }
+        if !origin_ok(g.origin, &g.url) {
+            return Err("bad address for the guide's origin");
+        }
+        if !time_ok(g.added_at) || g.last_success.is_some_and(|t| !time_ok(t)) {
+            return Err("bad guide time");
+        }
+        let mut used = std::collections::HashSet::new();
+        if !g
+            .playlists
+            .iter()
+            .all(|p| ids.contains(p.as_str()) && used.insert(p))
+        {
+            return Err("guide refers to a missing or repeated playlist");
+        }
+    }
+    if saved.mappings.len() > MAX_MAPPINGS {
+        return Err("too many mappings");
+    }
+    let mut mapped = std::collections::HashSet::new();
+    for m in &saved.mappings {
+        // Channel ids are `<source id>~<key escaped to [A-Za-z0-9._-]>` (playlists.ts, toChannels).
+        let channel_ok = m.channel.len() <= 8192
+            && m.channel.split_once('~').is_some_and(|(source, key)| {
+                ids.contains(source)
+                    && !key.is_empty()
+                    && key
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+            });
+        let target_ok = guide_ids.contains(m.guide.as_str())
+            && chars_between(m.xmltv_id.trim(), 1, crate::xmltv::MAX_ID_CHARS)
+            && !m.xmltv_id.chars().any(char::is_control);
+        if !channel_ok || !target_ok || !mapped.insert(m.channel.as_str()) {
+            return Err("bad or repeated mapping");
+        }
+    }
     Ok(())
 }
 
@@ -192,6 +342,7 @@ impl Store {
         Self {
             dir,
             read_only: Mutex::new(read_only),
+            upgrade_v1: Mutex::new(false),
             notice: Mutex::new(None),
             writing: Mutex::new(()),
         }
@@ -212,7 +363,7 @@ impl Store {
 
     fn read(&self) -> Loaded {
         let empty = |notice| Loaded {
-            sources: Vec::new(),
+            saved: Saved::default(),
             notice,
         };
         let Some(dir) = &self.dir else {
@@ -220,7 +371,7 @@ impl Store {
         };
         let path = dir.join(FILE_NAME);
         // A temporary file left by an interrupted write: the real file is still the last complete one.
-        let _ = fs::remove_file(dir.join(TEMP_NAME));
+        let _ = fs::remove_file(dir.join(temp_name(FILE_NAME)));
         match fs::metadata(&path) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return empty(None),
             Err(_) => {
@@ -245,16 +396,23 @@ impl Store {
                 self.mark_read_only();
                 empty(Some(Notice::NewerVersion))
             }
-            // Version 1 is the first schema; a future migration from it belongs here.
-            Some(v) if v == u64::from(SCHEMA_VERSION) => {
-                match serde_json::from_slice::<SavedFile>(&bytes) {
-                    Ok(file) if validate(&file.sources).is_ok() => Loaded {
-                        sources: file.sources,
+            // Schema 1 (D5) is schema 2 without guides or mappings, so it reads as schema 2 with
+            // neither; strict parsing still refuses anything else a schema 1 file should not hold.
+            Some(v @ (1 | 2)) => match serde_json::from_slice::<SavedFile>(&bytes)
+                .map(SavedFile::into_saved)
+            {
+                Ok(saved)
+                    if validate(&saved).is_ok()
+                        && (v == 2 || (saved.guides.is_empty() && saved.mappings.is_empty())) =>
+                {
+                    *self.upgrade_v1.lock().unwrap_or_else(|p| p.into_inner()) = v == 1;
+                    Loaded {
+                        saved,
                         notice: None,
-                    },
-                    _ => self.set_aside(&path),
+                    }
                 }
-            }
+                _ => self.set_aside(&path),
+            },
             _ => self.set_aside(&path),
         }
     }
@@ -269,18 +427,18 @@ impl Store {
             // Could not move it: leave it exactly as it is and save nothing over it.
             self.mark_read_only();
             return Loaded {
-                sources: Vec::new(),
+                saved: Saved::default(),
                 notice: Some(Notice::Unreadable),
             };
         }
         Loaded {
-            sources: Vec::new(),
+            saved: Saved::default(),
             notice: Some(Notice::Recovered),
         }
     }
 
-    /// Replaces the saved sources atomically.
-    pub fn save(&self, sources: &[SavedSource]) -> Result<(), IngestError> {
+    /// Replaces the saved sources and guides atomically.
+    pub fn save(&self, saved: &Saved) -> Result<(), IngestError> {
         if *self.read_only.lock().unwrap_or_else(|p| p.into_inner()) {
             return Err(storage_error(
                 "Saved sources are read-only this session, so changes were not saved.",
@@ -289,23 +447,36 @@ impl Store {
         let Some(dir) = &self.dir else {
             return Err(storage_error("There is nowhere to save sources."));
         };
-        validate(sources)
+        validate(saved)
             .map_err(|_| storage_error("Kinora refused to save sources in an unexpected shape."))?;
-        let json = serde_json::to_vec(&SavedFile {
-            version: SCHEMA_VERSION,
-            sources: sources.to_vec(),
-        })
-        .map_err(|_| storage_error("Kinora could not save your sources."))?;
+        let json = serde_json::to_vec(&SavedFile::new(SCHEMA_VERSION, saved.clone()))
+            .map_err(|_| storage_error("Kinora could not save your sources."))?;
+        let failed = || storage_error("Kinora could not save your sources.");
         let _one_at_a_time = self.writing.lock().unwrap_or_else(|p| p.into_inner());
-        write_atomically(dir, &json)
-            .map_err(|_| storage_error("Kinora could not save your sources."))
+        let mut upgrade = self.upgrade_v1.lock().unwrap_or_else(|p| p.into_inner());
+        if *upgrade {
+            // Keep the schema 1 file an older Kinora can read; an existing backup is never replaced.
+            let backup = dir.join(V1_BACKUP);
+            if !backup.exists() {
+                let v1 = fs::read(dir.join(FILE_NAME)).map_err(|_| failed())?;
+                write_atomically(dir, V1_BACKUP, &v1).map_err(|_| failed())?;
+            }
+            *upgrade = false;
+        }
+        write_atomically(dir, FILE_NAME, &json).map_err(|_| failed())
     }
 }
 
-fn write_atomically(dir: &Path, bytes: &[u8]) -> std::io::Result<()> {
+pub(crate) fn temp_name(name: &str) -> String {
+    format!("{name}.tmp")
+}
+
+/// Writes `dir/name` so that a crash leaves either the old file or the new one, never a mix: a
+/// private temporary file is written and synced, renamed over the old one, and the folder synced.
+pub(crate) fn write_atomically(dir: &Path, name: &str, bytes: &[u8]) -> std::io::Result<()> {
     fs::create_dir_all(dir)?;
     private(dir, 0o700)?;
-    let temp = dir.join(TEMP_NAME);
+    let temp = dir.join(temp_name(name));
     let mut options = OpenOptions::new();
     options.write(true).create(true).truncate(true);
     #[cfg(unix)]
@@ -315,7 +486,7 @@ fn write_atomically(dir: &Path, bytes: &[u8]) -> std::io::Result<()> {
     file.write_all(bytes)?;
     file.sync_all()?;
     drop(file);
-    fs::rename(&temp, dir.join(FILE_NAME))?;
+    fs::rename(&temp, dir.join(name))?;
     // Make the rename itself durable.
     File::open(dir)?.sync_all()
 }
@@ -381,6 +552,12 @@ mod tests {
             ],
         }
     }
+    fn only(sources: Vec<SavedSource>) -> Saved {
+        Saved {
+            sources,
+            ..Saved::default()
+        }
+    }
     fn file_source(id: &str) -> SavedSource {
         SavedSource {
             origin: Origin::File,
@@ -393,14 +570,15 @@ mod tests {
     #[test]
     fn saves_and_restores_across_store_instances() {
         let tmp = TempDir::new("roundtrip");
-        let saved = vec![source("pl-a1"), file_source("pl-b2")];
+        let saved = only(vec![source("pl-a1"), file_source("pl-b2")]);
         Store::new(Some(tmp.store_dir())).save(&saved).unwrap();
         // A new Store is a restart: nothing is shared but the file.
         let loaded = Store::new(Some(tmp.store_dir())).load();
         assert_eq!(loaded.notice, None);
-        assert!(loaded.sources == saved, "restored exactly");
+        assert!(loaded.saved == saved, "restored exactly");
         assert!(
-            Store::new(Some(tmp.store_dir())).load().sources[0].channels[1].name == "Ünïcode ✓"
+            Store::new(Some(tmp.store_dir())).load().saved.sources[0].channels[1].name
+                == "Ünïcode ✓"
         );
     }
 
@@ -408,7 +586,7 @@ mod tests {
     fn a_missing_file_is_an_empty_store() {
         let tmp = TempDir::new("missing");
         let loaded = Store::new(Some(tmp.store_dir())).load();
-        assert!(loaded.sources.is_empty() && loaded.notice.is_none());
+        assert!(loaded.saved.sources.is_empty() && loaded.notice.is_none());
     }
 
     #[cfg(unix)]
@@ -417,7 +595,7 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
         let tmp = TempDir::new("perms");
         Store::new(Some(tmp.store_dir()))
-            .save(&[source("pl-a1")])
+            .save(&only(vec![source("pl-a1")]))
             .unwrap();
         let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode(&tmp.store_dir()), 0o700);
@@ -443,7 +621,7 @@ mod tests {
             let store = Store::new(Some(dir.clone()));
             let loaded = store.load();
             assert_eq!(loaded.notice, Some(Notice::Recovered), "case {i}");
-            assert!(loaded.sources.is_empty());
+            assert!(loaded.saved.sources.is_empty());
             assert!(
                 !dir.join(FILE_NAME).exists(),
                 "case {i}: moved, not left in place"
@@ -462,7 +640,7 @@ mod tests {
                 "case {i}: the damaged bytes are kept"
             );
             // After recovery, saving works again.
-            store.save(&[source("pl-a1")]).unwrap();
+            store.save(&only(vec![source("pl-a1")])).unwrap();
             fs::remove_file(dir.join(FILE_NAME)).unwrap();
             std::thread::sleep(std::time::Duration::from_millis(2)); // distinct aside names
         }
@@ -487,11 +665,7 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         let mut credentialed = source("pl-a1");
         credentialed.url = Some("https://alice:pw@playlists.example/list.m3u".into());
-        let json = serde_json::to_vec(&SavedFile {
-            version: 1,
-            sources: vec![credentialed],
-        })
-        .unwrap();
+        let json = serde_json::to_vec(&SavedFile::new(1, only(vec![credentialed]))).unwrap();
         fs::write(dir.join(FILE_NAME), json).unwrap();
         assert_eq!(Store::new(Some(dir)).load().notice, Some(Notice::Recovered));
     }
@@ -501,11 +675,11 @@ mod tests {
         let tmp = TempDir::new("newer");
         let dir = tmp.store_dir();
         fs::create_dir_all(&dir).unwrap();
-        let future = b"{\"version\":2,\"sources\":[],\"somethingNew\":true}";
+        let future = b"{\"version\":3,\"sources\":[],\"somethingNew\":true}";
         fs::write(dir.join(FILE_NAME), future).unwrap();
         let store = Store::new(Some(dir.clone()));
         assert_eq!(store.load().notice, Some(Notice::NewerVersion));
-        let e = store.save(&[source("pl-a1")]).unwrap_err();
+        let e = store.save(&only(vec![source("pl-a1")])).unwrap_err();
         assert_eq!(e.code, ErrorCode::Storage);
         assert_eq!(fs::read(dir.join(FILE_NAME)).unwrap(), future);
     }
@@ -515,13 +689,13 @@ mod tests {
         let tmp = TempDir::new("failwrite");
         let dir = tmp.store_dir();
         let store = Store::new(Some(dir.clone()));
-        store.save(&[source("pl-a1")]).unwrap();
+        store.save(&only(vec![source("pl-a1")])).unwrap();
         let before = fs::read(dir.join(FILE_NAME)).unwrap();
         // A directory where the temporary file must go: the write fails before the atomic rename.
-        fs::create_dir(dir.join(TEMP_NAME)).unwrap();
+        fs::create_dir(dir.join(temp_name(FILE_NAME))).unwrap();
         assert_eq!(
             store
-                .save(&[source("pl-a1"), file_source("pl-b2")])
+                .save(&only(vec![source("pl-a1"), file_source("pl-b2")]))
                 .unwrap_err()
                 .code,
             ErrorCode::Storage
@@ -531,8 +705,8 @@ mod tests {
             before,
             "the last complete file is untouched"
         );
-        fs::remove_dir(dir.join(TEMP_NAME)).unwrap();
-        assert!(Store::new(Some(dir)).load().sources == vec![source("pl-a1")]);
+        fs::remove_dir(dir.join(temp_name(FILE_NAME))).unwrap();
+        assert!(Store::new(Some(dir)).load().saved == only(vec![source("pl-a1")]));
     }
 
     #[test]
@@ -540,18 +714,18 @@ mod tests {
         let tmp = TempDir::new("interrupted");
         let dir = tmp.store_dir();
         Store::new(Some(dir.clone()))
-            .save(&[source("pl-a1")])
+            .save(&only(vec![source("pl-a1")]))
             .unwrap();
         fs::write(
-            dir.join(TEMP_NAME),
+            dir.join(temp_name(FILE_NAME)),
             b"{\"version\":1,\"sources\":[{\"id\":\"pl-hal",
         )
         .unwrap(); // crashed mid-write
         let loaded = Store::new(Some(dir.clone())).load();
         assert_eq!(loaded.notice, None);
-        assert!(loaded.sources == vec![source("pl-a1")]);
+        assert!(loaded.saved == only(vec![source("pl-a1")]));
         assert!(
-            !dir.join(TEMP_NAME).exists(),
+            !dir.join(temp_name(FILE_NAME)).exists(),
             "the leftover temporary file is cleaned up"
         );
     }
@@ -563,7 +737,7 @@ mod tests {
         let with = |f: &dyn Fn(&mut SavedSource)| {
             let mut s = source("pl-a1");
             f(&mut s);
-            store.save(&[s]).map_err(|e| e.code)
+            store.save(&only(vec![s])).map_err(|e| e.code)
         };
         assert_eq!(
             with(&|s| s.url = Some("https://alice:pw@playlists.example/x.m3u".into())),
@@ -586,7 +760,7 @@ mod tests {
         );
         assert_eq!(
             store
-                .save(&[source("pl-a1"), source("pl-a1")])
+                .save(&only(vec![source("pl-a1"), source("pl-a1")]))
                 .unwrap_err()
                 .code,
             ErrorCode::Storage
@@ -594,7 +768,7 @@ mod tests {
         let mut file_with_url = file_source("pl-b2");
         file_with_url.url = Some(TOKEN_URL.into());
         assert_eq!(
-            store.save(&[file_with_url]).unwrap_err().code,
+            store.save(&only(vec![file_with_url])).unwrap_err().code,
             ErrorCode::Storage
         );
         assert!(
@@ -608,9 +782,152 @@ mod tests {
         let store = Store::new(None);
         assert_eq!(store.load().notice, Some(Notice::Unreadable));
         assert_eq!(
-            store.save(&[source("pl-a1")]).unwrap_err().code,
+            store.save(&only(vec![source("pl-a1")])).unwrap_err().code,
             ErrorCode::Storage
         );
+    }
+
+    fn guide(id: &str, playlists: &[&str]) -> SavedGuide {
+        SavedGuide {
+            id: id.into(),
+            name: "Guide".into(),
+            origin: Origin::Url,
+            url: Some("https://guides.example/epg.xml.gz?token=GUIDETOKEN".into()),
+            label: "https://guides.example/…".into(),
+            added_at: 1_000.0,
+            last_success: None,
+            playlists: playlists.iter().map(|p| (*p).into()).collect(),
+        }
+    }
+    fn with_guide() -> Saved {
+        Saved {
+            sources: vec![source("pl-a1"), file_source("pl-b2")],
+            guides: vec![guide("gd-g1", &["pl-a1", "pl-b2"])],
+            mappings: vec![SavedMapping {
+                channel: "pl-a1~name_3a_00ff00ff00ff00ff_23_2".into(),
+                guide: "gd-g1".into(),
+                xmltv_id: "Two.uk".into(),
+            }],
+        }
+    }
+
+    #[test]
+    fn guides_and_mappings_round_trip() {
+        let tmp = TempDir::new("guides");
+        Store::new(Some(tmp.store_dir()))
+            .save(&with_guide())
+            .unwrap();
+        let loaded = Store::new(Some(tmp.store_dir())).load();
+        assert_eq!(loaded.notice, None);
+        assert_eq!(loaded.saved, with_guide());
+        let text = fs::read_to_string(tmp.store_dir().join(FILE_NAME)).unwrap();
+        assert!(text.starts_with("{\"version\":2,"), "{text}");
+    }
+
+    #[test]
+    fn a_schema_1_file_loads_and_is_backed_up_before_its_first_rewrite() {
+        let tmp = TempDir::new("migrate");
+        let dir = tmp.store_dir();
+        fs::create_dir_all(&dir).unwrap();
+        // Exactly what D5 wrote: version 1, sources only.
+        let v1 =
+            serde_json::to_vec(&serde_json::json!({ "version": 1, "sources": [source("pl-a1")] }))
+                .unwrap();
+        fs::write(dir.join(FILE_NAME), &v1).unwrap();
+        let store = Store::new(Some(dir.clone()));
+        let loaded = store.load();
+        assert_eq!(loaded.notice, None);
+        assert_eq!(loaded.saved, only(vec![source("pl-a1")]));
+        assert!(
+            !dir.join(V1_BACKUP).exists(),
+            "loading alone writes nothing"
+        );
+        store.save(&with_guide()).unwrap();
+        assert_eq!(
+            fs::read(dir.join(V1_BACKUP)).unwrap(),
+            v1,
+            "the schema 1 file is kept as it was"
+        );
+        // Later saves never replace the backup.
+        store.save(&only(vec![source("pl-a1")])).unwrap();
+        assert_eq!(fs::read(dir.join(V1_BACKUP)).unwrap(), v1);
+        assert_eq!(
+            Store::new(Some(dir.clone())).load().saved,
+            only(vec![source("pl-a1")])
+        );
+        // A schema 1 file cannot carry schema 2 data.
+        fs::write(
+            dir.join(FILE_NAME),
+            serde_json::to_vec(&SavedFile::new(1, with_guide())).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(Store::new(Some(dir)).load().notice, Some(Notice::Recovered));
+    }
+
+    #[test]
+    fn unknown_fields_in_the_file_are_refused() {
+        let tmp = TempDir::new("unknown");
+        let dir = tmp.store_dir();
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join(FILE_NAME),
+            b"{\"version\":2,\"sources\":[],\"guides\":[],\"extra\":1}",
+        )
+        .unwrap();
+        assert_eq!(Store::new(Some(dir)).load().notice, Some(Notice::Recovered));
+    }
+
+    #[test]
+    fn guides_and_mappings_are_validated() {
+        let tmp = TempDir::new("guidecheck");
+        let store = Store::new(Some(tmp.store_dir()));
+        let with = |f: &dyn Fn(&mut Saved)| {
+            let mut s = with_guide();
+            f(&mut s);
+            store.save(&s).map_err(|e| e.code)
+        };
+        assert_eq!(with(&|_| {}), Ok(()));
+        let refused = Err(ErrorCode::Storage);
+        assert_eq!(with(&|s| s.guides[0].id = "gd-../../etc".into()), refused);
+        assert_eq!(with(&|s| s.guides[0].id = "pl-a1".into()), refused);
+        assert_eq!(
+            with(&|s| s.guides[0].url = Some("https://u:p@guides.example/x.xml".into())),
+            refused
+        );
+        assert_eq!(
+            with(&|s| s.guides[0].url = Some("http://10.0.0.5/epg.xml".into())),
+            refused
+        );
+        assert_eq!(with(&|s| s.guides[0].origin = Origin::File), refused);
+        assert_eq!(
+            with(&|s| s.guides[0].playlists = vec!["pl-gone".into()]),
+            refused
+        );
+        assert_eq!(
+            with(&|s| s.guides[0].playlists = vec!["pl-a1".into(), "pl-a1".into()]),
+            refused
+        );
+        assert_eq!(with(&|s| s.guides.push(s.guides[0].clone())), refused);
+        assert_eq!(
+            with(&|s| s.guides = (0..9)
+                .map(|i| guide(&format!("gd-{i}"), &[]))
+                .collect::<Vec<_>>())
+            .map(|_| ()),
+            Ok(()).and(refused)
+        );
+        assert_eq!(with(&|s| s.mappings[0].guide = "gd-gone".into()), refused);
+        assert_eq!(
+            with(&|s| s.mappings[0].channel = "pl-gone~x".into()),
+            refused
+        );
+        assert_eq!(
+            with(&|s| s.mappings[0].channel = "pl-a1~../x".into()),
+            refused
+        );
+        assert_eq!(with(&|s| s.mappings[0].xmltv_id = " ".into()), refused);
+        assert_eq!(with(&|s| s.mappings.push(s.mappings[0].clone())), refused);
+        // Removing a playlist without dropping what refers to it is refused, not half-saved.
+        assert_eq!(with(&|s| s.sources.remove(0).id.clear()), refused);
     }
 
     #[test]
@@ -623,7 +940,7 @@ mod tests {
         let store = Store::new(Some(tmp.store_dir()));
         let mut bad = source("pl-a1");
         bad.url = Some("https://alice:hunter2@playlists.example/?token=SECRET123".into());
-        let e = store.save(&[bad]).unwrap_err();
+        let e = store.save(&only(vec![bad])).unwrap_err();
         for secret in [
             "hunter2",
             "SECRET123",
@@ -634,5 +951,6 @@ mod tests {
             assert!(!e.message.contains(secret), "{}", e.message);
         }
         assert!(!format!("{:?}", store.load()).contains("hunter2"));
+        assert!(!format!("{:?}", guide("gd-g1", &[])).contains("GUIDETOKEN"));
     }
 }
