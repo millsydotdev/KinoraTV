@@ -30,10 +30,14 @@
 .cell-stack { display: grid; font-weight: 600; }
 .cell-stack .faint { font-weight: 500; font-size: 0.75rem; }
 
-.provider-list { display: grid; gap: 10px; margin-top: 16px; max-width: 1100px; }
-.provider { display: grid; grid-template-columns: 44px 1fr auto; gap: 16px; align-items: start; padding: 16px; border: 1px solid var(--line); border-radius: var(--r-l); background: var(--surface); }
-.provider strong { font-weight: 700; }
-.provider p { font-size: 0.875rem; margin: 4px 0 10px; max-width: 64ch; }
+/* Discovery: the public catalogue (provider note, freshness bar, kind filter and search, paged list) */
+.discovery { display: grid; gap: 16px; max-width: 1100px; }
+.catalogue-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; min-height: 36px; }
+.catalogue-bar .faint { font-size: 0.875rem; }
+.catalogue-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+.catalogue-search { flex: 1 1 240px; max-width: 360px; }
+.discovery .source-icon { font-size: 1.375rem; }
+.catalogue-more { justify-self: start; }
 
 /* Add Source page */
 .add-source { max-width: 760px; }

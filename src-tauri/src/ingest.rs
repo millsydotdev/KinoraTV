@@ -31,6 +31,8 @@ pub enum ErrorCode {
     Storage,
     /// The data is not a usable XMLTV guide (not XML, wrong root, unsupported encoding or XML features).
     NotGuide,
+    /// The source catalogue could not be read (format changed, or not the catalogue at all).
+    NotCatalogue,
 }
 
 /// Safe to show the user: messages name at most the host, never a path, query or credential.

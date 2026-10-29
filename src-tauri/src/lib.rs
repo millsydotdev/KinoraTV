@@ -3,8 +3,10 @@
 //! (`open_stream`, `close_stream` and the `kstream` protocol, see `stream.rs`), saved sources
 //! (`load_sources`, `save_sources`, see `sources.rs`) and XMLTV guides (`fetch_guide`,
 //! `import_guide_file`, `load_guide`, `guide_channels`, `guide_programmes`, `remove_guide`, see
-//! `guides.rs` and `xmltv.rs`).
+//! `guides.rs` and `xmltv.rs`) and the public source catalogue (`load_catalogue`,
+//! `refresh_catalogue`, see `catalogue.rs`).
 
+mod catalogue;
 mod fetch;
 mod guides;
 mod hls;
@@ -231,6 +233,25 @@ fn remove_guide(
     guides.remove(&id)
 }
 
+/// The cached public source catalogue, if there is a usable one. Reads only Kinora's own cache.
+#[tauri::command]
+async fn load_catalogue(
+    catalogue: tauri::State<'_, catalogue::CatalogueStore>,
+) -> Result<Option<catalogue::Catalogue>, ingest::IngestError> {
+    Ok(catalogue.load())
+}
+
+/// Fetches the public source catalogue from its one fixed address (no input from the page) and
+/// caches it. Importing an entry is a separate, ordinary `fetch_playlist`.
+#[tauri::command]
+async fn refresh_catalogue(
+    catalogue: tauri::State<'_, catalogue::CatalogueStore>,
+) -> Result<catalogue::Catalogue, ingest::IngestError> {
+    catalogue
+        .refresh(&fetch::Policy::catalogue(), now_ms())
+        .await
+}
+
 /// The page origin allowed to read `kstream` responses: the dev server in `tauri dev`, otherwise
 /// the bundled app's origin (verified as `tauri://localhost` on Linux in the D4A spike).
 fn app_origin(config: &tauri::Config) -> String {
@@ -254,6 +275,7 @@ pub fn run() {
             // A private folder inside the app's data directory; without one, sources are not saved.
             let dir = app.path().app_data_dir().ok().map(|d| d.join("sources"));
             app.manage(guides::GuideStore::new(dir.clone()));
+            app.manage(catalogue::CatalogueStore::new(dir.clone()));
             app.manage(sources::Store::new(dir));
             app.manage(stream::Streams::new(
                 fetch::Policy::default(),
@@ -307,7 +329,9 @@ pub fn run() {
             load_guide,
             guide_channels,
             guide_programmes,
-            remove_guide
+            remove_guide,
+            load_catalogue,
+            refresh_catalogue
         ])
         .run(tauri::generate_context!());
 

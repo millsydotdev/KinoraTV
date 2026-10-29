@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  IngestError, MAX_GUIDE_BYTES, MAX_PLAYLIST_BYTES, closeStream, fetchGuide, fetchPlaylist, getAppInfo, guideChannels, guideProgrammes, loadGuide, loadSources, openStream,
+  IngestError, MAX_GUIDE_BYTES, loadCatalogue, parseCatalogue, refreshCatalogue, MAX_PLAYLIST_BYTES, closeStream, fetchGuide, fetchPlaylist, getAppInfo, guideChannels, guideProgrammes, loadGuide, loadSources, openStream,
   parseAppInfo, parseGuideAnswers, parseGuideSummary, parseOpenedStream, parsePlaylistReport, parseSavedGuide, parseSavedMapping, parseSavedSource, readGuideFile,
   readPlaylistFile, removeGuide, saveSources, toIngestError, type SavedGuide, type SavedMapping, type SavedSource, type SavedState,
 } from './native'
@@ -288,6 +288,42 @@ describe('guide boundary', () => {
     await expect(guideProgrammes([], 0, 1)).resolves.toBeNull()
     await expect(guideChannels('gd-a')).resolves.toEqual([])
     await removeGuide('gd-a')
+    expect(shell.invoke).not.toHaveBeenCalled()
+  })
+})
+
+describe('catalogue boundary', () => {
+  const uk = { id: 'countries/uk', kind: 'country', code: 'uk', name: 'United Kingdom', flag: '🇬🇧', parent: null, channels: null, url: 'https://iptv-org.github.io/iptv/countries/uk.m3u' }
+  const good = { fetchedAt: 1000, entries: [uk], skipped: 2 }
+
+  it('accepts only entries whose address, kind, code and id agree', () => {
+    expect(parseCatalogue(good)).toEqual(good)
+    for (const bad of [
+      { ...uk, url: 'https://evil.example/iptv/countries/uk.m3u' },
+      { ...uk, url: 'http://iptv-org.github.io/iptv/countries/uk.m3u' },
+      { ...uk, url: 'https://iptv-org.github.io/iptv/countries/uk.m3u?token=SECRET' },
+      { ...uk, url: 'https://user:pw@iptv-org.github.io/iptv/countries/uk.m3u' },
+      { ...uk, url: 'https://iptv-org.github.io/iptv/raw/uk.m3u' },
+      { ...uk, kind: 'language' }, { ...uk, code: 'gb' }, { ...uk, id: 'countries/gb' }, { ...uk, name: '' }, { ...uk, channels: -1 },
+    ]) expect(() => parseCatalogue({ ...good, entries: [bad] }), JSON.stringify(bad)).toThrow()
+    expect(() => parseCatalogue({ ...good, entries: Array(5001).fill(uk) })).toThrow()
+    expect(() => parseCatalogue(null)).toThrow()
+  })
+
+  it('loads the cache, refreshes through Rust and maps refusals', async () => {
+    shell.inside = true
+    shell.invoke.mockResolvedValueOnce(null)
+    await expect(loadCatalogue()).resolves.toBeNull()
+    shell.invoke.mockResolvedValueOnce(good)
+    await expect(refreshCatalogue()).resolves.toEqual(good)
+    expect(shell.invoke.mock.calls.map((c) => c.slice(0, 2))).toEqual([['load_catalogue'], ['refresh_catalogue']])
+    shell.invoke.mockRejectedValueOnce({ code: 'not-catalogue', message: 'The catalogue could not be read. Its format may have changed; your sources are not affected.' })
+    await expect(refreshCatalogue()).rejects.toMatchObject({ code: 'not-catalogue' })
+  })
+
+  it('does nothing outside the native shell', async () => {
+    await expect(loadCatalogue()).resolves.toBeNull()
+    await expect(refreshCatalogue()).resolves.toBeNull()
     expect(shell.invoke).not.toHaveBeenCalled()
   })
 })

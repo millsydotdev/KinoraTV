@@ -36,8 +36,13 @@ pub struct Policy {
     /// Longest wait for the next bytes of a response. `None` for playlists (the total timeout
     /// covers them); set for media, where a stalled live stream must not hold a request open.
     pub read_timeout: Option<Duration>,
-    /// What is being fetched, for error messages: "playlist" or "guide".
+    /// What is being fetched, for error messages: "playlist", "guide" or "catalogue".
     pub noun: &'static str,
+    /// When not empty, the only host names this policy fetches from, on every request and redirect
+    /// hop. Narrows the destination checks; it never replaces them.
+    pub only_hosts: &'static [&'static str],
+    /// Refuse plain http, on every request and redirect hop.
+    pub https_only: bool,
     /// Test-only: lets the local test server on 127.0.0.1 be reached. Not compiled into the app.
     #[cfg(test)]
     pub allow_loopback: bool,
@@ -55,6 +60,8 @@ impl Default for Policy {
             total_timeout: Duration::from_secs(30),
             read_timeout: None,
             noun: "playlist",
+            only_hosts: &[],
+            https_only: false,
             #[cfg(test)]
             allow_loopback: false,
             #[cfg(test)]
@@ -71,6 +78,20 @@ impl Policy {
             max_bytes: MAX_GUIDE_BYTES,
             total_timeout: Duration::from_secs(90),
             noun: "guide",
+            ..Self::default()
+        }
+    }
+
+    /// The public source catalogue (catalogue.rs): one fixed https address on one host. Every
+    /// destination check still applies; this policy only narrows them.
+    pub fn catalogue() -> Self {
+        Self {
+            max_bytes: 2 * 1024 * 1024,
+            max_redirects: 3,
+            total_timeout: Duration::from_secs(20),
+            noun: "catalogue",
+            only_hosts: &[crate::catalogue::HOST],
+            https_only: true,
             ..Self::default()
         }
     }
@@ -165,12 +186,32 @@ pub fn check_url(raw: &str, policy: &Policy) -> Result<Url, IngestError> {
             policy.noun
         )));
     }
+    if policy.https_only && url.scheme() != "https" {
+        return Err(invalid(&format!(
+            "Kinora only fetches the {} over https://.",
+            policy.noun
+        )));
+    }
     if !url.username().is_empty() || url.password().is_some() {
         return Err(invalid("Remove the username and password from the address. Kinora does not use sign-in details embedded in addresses."));
     }
     let host = url
         .host_str()
         .ok_or_else(|| invalid("The address has no host name."))?;
+    if !policy.only_hosts.is_empty()
+        && !policy
+            .only_hosts
+            .contains(&host.trim_end_matches('.').to_ascii_lowercase().as_str())
+    {
+        return Err(IngestError::new(
+            ErrorCode::Blocked,
+            format!(
+                "Kinora only fetches the {} from {}.",
+                policy.noun,
+                policy.only_hosts.join(", ")
+            ),
+        ));
+    }
     // The url crate has already normalised numeric forms (2130706433, 0x7f.1) to dotted IPv4.
     if let Ok(ip) = host
         .trim_start_matches('[')

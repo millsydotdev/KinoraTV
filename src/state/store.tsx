@@ -1,11 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { addDays, channels as demoChannels, nextProgramme as demoNext, programmeAt as demoAt, scheduleFor as demoSchedule, startOfDay } from '../data/channels'
-import { demoProviders, demoSources } from '../data/sources'
-import type { Channel, DiscoveryProvider, Programme, Source } from '../data/types'
+import { demoSources } from '../data/sources'
+import type { Channel, Programme, Source } from '../data/types'
 import {
-  fetchGuide, fetchPlaylist, guideProgrammes, inNativeShell, loadGuide, loadSources, readGuideFile, readPlaylistFile, removeGuide as forgetGuide, saveSources,
+  fetchGuide, fetchPlaylist, guideProgrammes, inNativeShell, loadCatalogue, loadGuide, loadSources, readGuideFile, readPlaylistFile, refreshCatalogue,
+  removeGuide as forgetGuide, saveSources,
   type GuideSummary, type PlaylistReport, type SavedState, type StorageNotice,
 } from '../lib/native'
+import { idleCatalogue, isStale, runCatalogue, type CatalogueState } from './catalogue'
 import { createGuide, guideQueries, programmesFor, resolveMatches, restoreGuide, runGuideImport, toSavedGuide, type GuideMatch, type GuideSource, type Mapping } from './guides'
 import { ACCENTS, THEME_BG, safeHex, type AccentName, type ThemeName } from '../lib/theme'
 import { activeChannels, createSource, fileLabel, removeSource, restoreSource, runImport, toSaved, type PlaylistSource } from './playlists'
@@ -110,7 +112,7 @@ export function demoLibrary(now: number): Library {
   }
 }
 
-interface SourcesState { sources: Source[]; providers: DiscoveryProvider[] }
+interface SourcesState { sources: Source[] }
 
 function load<T>(key: string, fallback: () => T): T {
   try {
@@ -171,7 +173,8 @@ const NO_DAYS = new Map<number, Map<string, Programme[]>>()
 function useStoreValue(initialPlaylists: PlaylistSource[], initialGuides: GuideSource[], initialMappings: Mapping[]) {
   const [library, setLibrary] = usePersisted<Library>('kinora.library.v1', () => demoLibrary(Date.now()))
   const [prefs, setPrefs] = usePersisted<Prefs>('kinora.prefs.v2', () => defaultPrefs, sanitizePrefs)
-  const [src, setSrc] = usePersisted<SourcesState>('kinora.sources.v1', () => ({ sources: demoSources(Date.now()), providers: demoProviders }))
+  // `providers` (the demonstration discovery switches before D7) is dropped from older saved copies.
+  const [src, setSrc] = usePersisted<SourcesState>('kinora.sources.v1', () => ({ sources: demoSources(Date.now()) }), ({ sources }) => ({ sources }))
 
   // Imported playlists: saved by Rust (sources.rs), never in localStorage. Restored once at start.
   const [playlists, setPlaylists] = useState<PlaylistSource[]>(initialPlaylists)
@@ -321,6 +324,38 @@ function useStoreValue(initialPlaylists: PlaylistSource[], initialGuides: GuideS
       },
     }
   }, [setLibrary])
+  // The public source catalogue (Discovery). Only read when Discovery opens, never at startup, so a
+  // missing network never touches anything else.
+  const [catalogue, setCatalogue] = useState<CatalogueState>(idleCatalogue)
+  const catalogueOp = useRef(0)
+  const catalogueOpened = useRef(false)
+  const catalogueBusy = useRef(false)
+  const catalogueActions = useMemo(() => {
+    const refresh = async () => {
+      if (catalogueBusy.current) return // one refresh at a time
+      catalogueBusy.current = true
+      try {
+        await runCatalogue(setCatalogue, ++catalogueOp.current, refreshCatalogue)
+      } finally {
+        catalogueBusy.current = false
+      }
+    }
+    return {
+      /** The cached copy first, then a refresh when there is none or it is out of date. Once per session. */
+      openCatalogue: async () => {
+        if (catalogueOpened.current) return
+        catalogueOpened.current = true
+        const op = ++catalogueOp.current
+        setCatalogue((s) => ({ ...s, status: 'loading', op }))
+        const cached = await loadCatalogue().catch(() => null)
+        if (catalogueOp.current !== op) return
+        if (cached) setCatalogue({ status: 'ready', catalogue: cached, error: null, op })
+        if (!cached || isStale(cached, Date.now())) await refresh()
+      },
+      refreshCatalogue: refresh,
+    }
+  }, [])
+
   const guideActions = useMemo(() => {
     const run = (id: string, load: () => Promise<GuideSummary | null>) => runGuideImport(setGuides, id, ++lastOp.current, load)
     return {
@@ -388,13 +423,11 @@ function useStoreValue(initialPlaylists: PlaylistSource[], initialGuides: GuideS
     addSource: (s: Source) => setSrc((x) => ({ ...x, sources: [...x.sources, s] })),
     removeSource: (id: string) => setSrc((x) => ({ ...x, sources: x.sources.filter((s) => s.id !== id) })),
     queueRefresh: (id: string) => setSrc((x) => ({ ...x, sources: x.sources.map((s) => (s.id === id ? { ...s, status: 'queued' as const } : s)) })),
-    toggleProvider: (id: string) =>
-      setSrc((x) => ({ ...x, providers: x.providers.map((p) => (p.id === id ? { ...p, enabled: !p.enabled } : p)) })),
-    resetSources: () => setSrc({ sources: demoSources(Date.now()), providers: demoProviders }),
+    resetSources: () => setSrc({ sources: demoSources(Date.now()) }),
   }), [setLibrary, setPrefs, setSrc, keepHistory])
 
   return {
-    library, prefs, setPref, sources: src.sources, providers: src.providers, ...actions,
+    library, prefs, setPref, sources: src.sources, ...actions, catalogue, ...catalogueActions,
     playlists, ...playlistActions, restored, storageNotice, guides, mappings, ...guideActions, ...guide,
     /** The channel catalogue every screen shows: playlist channels, or the demonstration set when there are no playlists. */
     channels, findChannel, channelMode: playlists.length > 0 ? 'playlists' as const : 'demo' as const,

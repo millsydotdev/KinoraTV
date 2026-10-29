@@ -1,13 +1,15 @@
 # TVMovie (Kinora)
 
 Premium TV and film app: **React + TypeScript UI inside a Rust + Tauri 2 desktop shell.**
-**Phase: Gate D6 (XMLTV guide ingestion and the Live TV guide) is complete on `main`. The next gate
+**Phase: Gate D7 (public source discovery and a safe catalogue) is complete on `main`. The next gate
 awaits the owner's approval.** Done: Rust M3U parsing and guarded fetching (D2); Sources import, refresh and removal,
 and playlist channels in Live TV and the other channel screens (D3); honest Settings and player
 states for playlist channels, and individual categories from `A;B` groups (D3.1); HLS playback for
 playlist channels through Rust (D4); saved sources, refreshed at startup (D5); XMLTV guides by address or
-file, matched to playlist channels, in Live TV (D6). Not approved yet: discovery, stream validation or
-probing, other playback formats, remote logos or guide artwork. Each needs the
+file, matched to playlist channels, in Live TV (D6); Sources › Discovery browsing the iptv-org public
+playlist catalogue, with explicit import through the ordinary playlist path (D7). Not approved yet:
+stream validation or probing, other playback formats, remote logos or guide artwork, other catalogue
+providers. Each needs the
 owner's explicit approval; that is a hard gate.
 
 Live path: `/home/millsy/dev/TVMovie` (symlinked from `/mnt/storage/TVMovie`). Git repo; first
@@ -30,7 +32,7 @@ npm run dev          # React UI in a browser: http://localhost:5199
 npm run tauri:dev    # native app (starts Vite itself)
 npm run typecheck    # tsc -b
 npm test             # vitest: guide schedule, next episode, theme contrast, IPC boundary
-npm run test:rust    # cargo test (src-tauri): M3U and XMLTV parsers, fetch policy, local-server fetch, saved sources, guides
+npm run test:rust    # cargo test (src-tauri): M3U, XMLTV and catalogue parsers, fetch policies, local-server fetch, saved sources, guides
 npm run tauri:build  # release binary + .rpm (src-tauri/target/release/)
 ```
 
@@ -70,6 +72,14 @@ Prerequisites and architecture diagram: `README.md`.
   `guide-<id>.json` caches; guide ids are `gd-[a-z0-9-]` because they form file names. Matching is
   `xmltv::normalize_id` (trim + ASCII case) or a saved hand match, never display names, and lives in
   Rust: the page sends ids and gets matches back. Never fetch URLs found in a guide (icons, `<url>`).
+- Discovery (D7): `catalogue.rs` fetches one constant address (`catalogue::URL`) with
+  `Policy::catalogue()` (`only_hosts` + `https_only` narrow `check_url` on every hop; never use them
+  to widen anything). The page never sends a catalogue address. Entries must match
+  `https://iptv-org.github.io/iptv/<folder>/<code>.m3u` exactly, in Rust (`playlist_address`) and
+  again in `native.ts` (`CATALOGUE_ADDRESS`). Importing is `fetch_playlist`, unchanged: discovered
+  sources are ordinary playlists, never a special type. Duplicates are by exact address, never name.
+  Show provider facts and Kinora's own read results separately; never invent counts or freshness.
+  The catalogue is only read when Discovery opens, never at startup.
 - Playback (D4): the page never gets an upstream stream address. `open_stream` returns
   `kstream://localhost/<128-bit handle>`; `src-tauri/src/stream.rs` serves it through `fetch.rs`'s
   guarded client and rewrites HLS playlists (`hls.rs`) so every segment, key, map and rendition gets
@@ -101,7 +111,8 @@ Prerequisites and architecture diagram: `README.md`.
   client, playlist download, media fetch + tests against a local test server), `src/hls.rs` (pure
   HLS rewriter + tests), `src/stream.rs` (stream sessions, handles, limits, protocol handler + tests),
   `src/sources.rs` (saved-sources file + tests), `src/xmltv.rs` (pure XMLTV parser + tests),
-  `src/guides.rs` (held guides, caches, queries + tests), `tauri.conf.json` (window, CSP, bundle), `capabilities/`, `build.rs`,
+  `src/guides.rs` (held guides, caches, queries + tests), `src/catalogue.rs` (Discovery index parser,
+  fixed fetch, cache + tests), `tauri.conf.json` (window, CSP, bundle), `capabilities/`, `build.rs`,
   `icons/` (generated from `app-icon.svg`).
 - `src/state/store.tsx` all local state (library, preferences, sources), persisted to localStorage
   (`kinora.library.v1`, `kinora.prefs.v2`, `kinora.sources.v1`). Imported playlists (`playlists`) are
@@ -114,6 +125,8 @@ Prerequisites and architecture diagram: `README.md`.
   one local day at a time for playlist channels. `store.channels` is the one channel catalogue screens
   use (playlist channels if any playlist exists, else the demo set; never both); `store.findChannel`
   resolves ids, and is passed to `resolve()` for library refs.
+- `src/state/catalogue.ts` pure Discovery logic: kind filters, accent-insensitive search, paging,
+  staleness, duplicate detection by address, unique names, refresh transitions with op tokens.
 - `src/state/guides.ts` pure guide logic: transitions with per-operation tokens, status text, the ids
   each guide is asked about, match states (`resolveMatches`) and programmes per channel.
 - `src/state/playlists.ts` pure playlist-source logic: transitions with a per-operation token (stale
@@ -128,7 +141,8 @@ Prerequisites and architecture diagram: `README.md`.
   `happy-dom` per file (`// @vitest-environment happy-dom`, dev dependency only) and mock the native
   commands (`PlayerPlayback.test.tsx` also fakes hls.js; `Persistence.test.tsx` mocks
   `loadSources`/`saveSources` to cover restore, refresh, removal and storage notices;
-  `GuideFlows.test.tsx` mocks the guide commands and fixes `TZ=Europe/London`); everything else runs in Node. No test may reach the network or a stream.
+  `GuideFlows.test.tsx` mocks the guide commands and fixes `TZ=Europe/London`; `DiscoveryFlows.test.tsx`
+  mocks the catalogue commands); everything else runs in Node. No test may reach the network or a stream.
 - `src/screens/` one file per screen plus its CSS. `src/components/` shared UI.
 - `public/art/` 40 AI-generated images made for this project's fictional titles. Throwaway once real
   artwork comes from sources. Do not generate more without asking the owner (it uses their credits).

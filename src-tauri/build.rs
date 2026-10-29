@@ -16,6 +16,8 @@ fn main() {
             "guide_channels",
             "guide_programmes",
             "remove_guide",
+            "load_catalogue",
+            "refresh_catalogue",
         ]),
     ))
     .expect("failed to run the Tauri build script");

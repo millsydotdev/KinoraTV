@@ -67,7 +67,7 @@ export interface PlaylistReport {
 const INGEST_CODES = [
   'invalid-url', 'blocked', 'too-many-redirects', 'timeout', 'too-large', 'too-many-entries',
   'http-status', 'web-page', 'hls-media', 'hls-master', 'not-playlist', 'network', 'busy', 'unsupported-stream', 'storage',
-  'not-guide',
+  'not-guide', 'not-catalogue',
 ] as const
 /** Codes from `ErrorCode` in ingest.rs, plus `internal` for a failure that did not come from it. */
 export type IngestErrorCode = (typeof INGEST_CODES)[number] | 'internal'
@@ -483,4 +483,75 @@ export async function removeGuide(id: string): Promise<void> {
   } catch (e) {
     throw toIngestError(e)
   }
+}
+
+/** Mirrors `Kind` in src-tauri/src/catalogue.rs: how a catalogue playlist groups its channels. */
+export type CatalogueKind = 'category' | 'language' | 'country' | 'region' | 'subdivision' | 'city'
+const CATALOGUE_FOLDERS: Record<string, CatalogueKind> = {
+  categories: 'category', languages: 'language', countries: 'country', regions: 'region', subdivisions: 'subdivision', cities: 'city',
+}
+
+/** Mirrors `Entry` in catalogue.rs. Provider-supplied facts only: nothing here has been checked by Kinora. */
+export interface CatalogueEntry {
+  /** `<folder>/<code>`: the entry's stable identity. */
+  id: string
+  kind: CatalogueKind
+  code: string
+  name: string
+  flag: string | null
+  /** The entry this one is listed under, by id. */
+  parent: string | null
+  /** The channel count the provider prints; null where it gives none. */
+  channels: number | null
+  url: string
+}
+
+/** Mirrors `Catalogue` in catalogue.rs. */
+export interface Catalogue {
+  /** When Kinora fetched it (UTC ms). */
+  fetchedAt: number
+  entries: CatalogueEntry[]
+  skipped: number
+}
+
+/** The only playlist addresses a catalogue entry may have; Rust applies the same rule. */
+const CATALOGUE_ADDRESS = /^https:\/\/iptv-org\.github\.io\/iptv\/([a-z]+)\/([a-z0-9-]{1,32})\.m3u$/
+
+function parseCatalogueEntry(raw: unknown): CatalogueEntry {
+  const v = raw as Record<string, unknown> | null
+  const m = typeof v?.url === 'string' ? CATALOGUE_ADDRESS.exec(v.url) : null
+  const kind = m ? CATALOGUE_FOLDERS[m[1] ?? ''] : undefined
+  if (typeof v !== 'object' || v === null || !m || !kind || v.kind !== kind || v.code !== m[2] || v.id !== `${m[1]}/${m[2]}` ||
+      typeof v.url !== 'string' || !isText(v.name, 200) || !isOptText(v.flag, 16) || !isOptText(v.parent, 64) ||
+      !(v.channels === null || isCount(v.channels, 10_000_000))) {
+    throw new Error('The native shell returned a catalogue entry in an unexpected shape.')
+  }
+  return { id: v.id, kind, code: m[2] ?? '', name: v.name, flag: v.flag, parent: v.parent, channels: v.channels, url: v.url }
+}
+
+export function parseCatalogue(raw: unknown): Catalogue {
+  const v = raw as Record<string, unknown> | null
+  if (typeof v !== 'object' || v === null || !isTime(v.fetchedAt) || !Array.isArray(v.entries) || v.entries.length > 5000 || !isCount(v.skipped, 2 ** 32)) {
+    throw new Error('The native shell returned a catalogue in an unexpected shape.')
+  }
+  return { fetchedAt: v.fetchedAt, entries: v.entries.map(parseCatalogueEntry), skipped: v.skipped }
+}
+
+/** The cached catalogue; `null` when there is none, or outside the native shell. */
+export async function loadCatalogue(): Promise<Catalogue | null> {
+  if (!isTauri()) return null
+  const raw: unknown = await invoke('load_catalogue')
+  return raw === null ? null : parseCatalogue(raw)
+}
+
+/** Fetches the catalogue in Rust from its one fixed address. `null` outside the native shell. */
+export async function refreshCatalogue(): Promise<Catalogue | null> {
+  if (!isTauri()) return null
+  let raw: unknown
+  try {
+    raw = await invoke('refresh_catalogue')
+  } catch (e) {
+    throw toIngestError(e)
+  }
+  return parseCatalogue(raw)
 }

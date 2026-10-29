@@ -12,8 +12,9 @@ so a restored channel plays once its source has been refreshed. Streams are not 
 when you play it, and other formats (raw MPEG-TS, MP4, RTMP, RTSP, UDP...) or DRM streams are
 refused with a message. XMLTV guides, by address (plain or `.gz`) or local file, give playlist
 channels real programme listings in Live TV and elsewhere (Gate D6); without a playlist, the guide
-shows the demonstration schedule. Movies and series remain demonstration data. There is no
-discovery or stream validation; those wait for the owner's approval.
+shows the demonstration schedule. Sources › Discovery browses the iptv-org catalogue of public
+playlists and adds one only when you choose to (Gate D7). Movies and series remain demonstration
+data. There is no stream validation; that waits for the owner's approval.
 
 ## Architecture
 
@@ -36,7 +37,8 @@ React 19 + TypeScript (src/)          Rust + Tauri 2 (src-tauri/)
 - **Security**: each app command is deny-by-default (`build.rs`). `capabilities/default.json` grants
   the main window only the app's own commands: `app_info`, `fetch_playlist`, `parse_playlist_text`,
   `open_stream`, `close_stream`, `load_sources`, `save_sources`, `fetch_guide`, `import_guide_file`,
-  `load_guide`, `guide_channels`, `guide_programmes` and `remove_guide`. No
+  `load_guide`, `guide_channels`, `guide_programmes`, `remove_guide`, `load_catalogue` and
+  `refresh_catalogue`. No
   filesystem, shell, HTTP, dialog or other plugins. A strict Content Security Policy is set in
   `tauri.conf.json` (remote images stay blocked). Developer tools exist only in debug builds.
 - **Playlist fetching** (`src-tauri/src/fetch.rs`): http(s) only, no credentials in the address, no
@@ -77,6 +79,8 @@ React 19 + TypeScript (src/)          Rust + Tauri 2 (src-tauri/)
   nothing that session), shows them as saved, then refreshes address sources one at a time
   through `fetch_playlist`. A failed refresh keeps the saved channels and says so. File sources
   cannot refresh themselves: their channels are listed, and the player asks for the file again.
+- **Third-party streams**: Kinora does not run, check or endorse catalogue playlists or the streams
+  in them, and cannot say whether they are legal to watch where you live; Discovery says so.
 - **Residual risk of saved addresses**: a playlist or guide address can carry an account token. It is stored
   in plain text, readable only by your OS user, but also by anything running as that user, by root,
   and by backup or sync tools that copy your home folder. Kinora does not export it. If that matters,
@@ -121,6 +125,34 @@ React 19 + TypeScript (src/)          Rust + Tauri 2 (src-tauri/)
   one at a time alongside playlists, and on request. Neither blocks the window. Each update has a
   generation number in Rust and an operation token in the page, so a slow, older update never
   replaces a newer one, and a guide removed while updating stays removed.
+- **Discovery catalogue** (`src-tauri/src/catalogue.rs`): the provider is
+  [iptv-org](https://github.com/iptv-org/iptv). Its lists are released under the Unlicense (public
+  domain, no attribution required; Kinora credits it anyway), it is actively maintained (tens of
+  thousands of commits, automated updates), and it documents its playlist addresses. Its legal note
+  says the repository holds user-submitted links to publicly available streams and no video. The
+  index is its generated `PLAYLISTS.md`, the only list of the per-country, language, category,
+  region, subdivision and city playlists that actually exist (the iptv-org API lists thousands of
+  codes with no playlist). `refresh_catalogue` takes no input and fetches that one fixed https
+  address through the guarded client with `Policy::catalogue()`: only `raw.githubusercontent.com`,
+  https only, on every redirect hop too, 2 MB and 20 s, with every existing destination check. The
+  text is untrusted: only lines whose address is exactly
+  `https://iptv-org.github.io/iptv/<folder>/<code>.m3u` become entries (5,000 at most, names
+  stripped of markup and capped), and nothing else in the file is followed. Entries with a
+  provider count of 0 are left out (that is iptv-org's withdrawn NSFW category).
+- **Discovery cache and freshness**: the parsed catalogue is kept in
+  `sources/catalogue.json` (`0600`, atomic, 4 MB cap, re-checked entry by entry when read). It is
+  only read when Discovery is opened, never at startup, so no network does not affect sources,
+  guides, favourites or playback. A copy over a day old is refreshed when Discovery opens and shown
+  as possibly out of date; a failed refresh keeps the copy shown and says why. Refreshes run one at
+  a time in Rust, and the page drops answers to older requests. The provider does not publish when
+  its index last changed, so Kinora shows when it fetched it.
+- **Adding from Discovery**: an entry shows the provider's facts only (type, place, the channel
+  count iptv-org prints where it prints one, the address, licence). "Read this playlist" is an
+  ordinary `fetch_playlist`, so Kinora's own result (channels, groups, skipped entries) is shown
+  separately before anything is added, and no stream is opened. A read can be cancelled; its late
+  result is ignored. The added playlist is an ordinary saved source, refreshed and removed like any
+  other. An entry counts as already added only when a source has exactly its address, never by name.
+  No guide, reminder or playback starts as a side effect.
 - **Codecs**: decoding is done by WebKitGTK through GStreamer. H.264/AAC streams need the
   corresponding GStreamer plugins (for example `gstreamer1-plugin-openh264` or `gstreamer1-plugin-libav`);
   without them Kinora shows a decode error.

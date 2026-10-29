@@ -365,7 +365,7 @@ function About() {
     <>
       <Group title="This build">
         <BuildRow />
-        <Row title="What works" hint="In the desktop app: M3U playlists and XMLTV guides by address or file, saved on this device, and HLS playback of playlist channels. Stream checking, discovery and other stream formats are not available yet." ><span className="pending-tag">In progress</span></Row>
+        <Row title="What works" hint="In the desktop app: M3U playlists and XMLTV guides by address or file, saved on this device, a catalogue of public playlists to browse and add (Sources › Discovery), and HLS playback of playlist channels. Stream checking and other stream formats are not available yet." ><span className="pending-tag">In progress</span></Row>
         <Row title="Catalogue" hint="Films, series, channels, schedules and sources are fictional demonstration data. Artwork was generated for this project."><span className="muted">Demonstration</span></Row>
       </Group>
       <Group title="Typefaces">

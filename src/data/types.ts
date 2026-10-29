@@ -110,10 +110,3 @@ export interface Source {
   history: HealthCheck[]
   refreshInterval: string
 }
-
-export interface DiscoveryProvider {
-  id: string
-  name: string
-  description: string
-  enabled: boolean
-}

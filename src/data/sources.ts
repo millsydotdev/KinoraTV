@@ -1,7 +1,7 @@
 // Demonstration sources. URLs use reserved example domains or a private LAN address;
 // nothing is fetched, scanned or validated in this build.
 import { channels } from './channels'
-import type { DiscoveryProvider, HealthCheck, Source } from './types'
+import type { HealthCheck, Source } from './types'
 
 const HOUR = 3_600_000
 
@@ -56,9 +56,3 @@ export function demoValidation(source: Source): ValidationResult[] {
     return { channel: c.name, group: c.group, status: 'working', responseMs: 120 + Math.round(roll * 600), detail: c.hd ? 'HLS, 1080p' : 'HLS, 576p' }
   })
 }
-
-export const demoProviders: DiscoveryProvider[] = [
-  { id: 'local-network', name: 'Local network tuners', description: 'Looks for HDHomeRun-style tuners and DLNA servers on your own network.', enabled: true },
-  { id: 'public-directories', name: 'Public playlist directories', description: 'Checks directories you add yourself for playlists their owners publish for reuse. Unlicensed or access-restricted lists are skipped.', enabled: false },
-  { id: 'guide-providers', name: 'Programme guide providers', description: 'Suggests XMLTV guides that list your channels.', enabled: true },
-]

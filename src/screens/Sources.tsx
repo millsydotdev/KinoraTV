@@ -10,8 +10,9 @@ import { DemoNote, ProgressBar, Segmented, StateBlock, Switch } from '../compone
 import { clock, dayLabel, relative, useNow } from '../lib/time'
 import {
   fetchGuide, fetchPlaylist, guideChannels, guideProgrammes, readGuideFile, readPlaylistFile, removeGuide,
-  type GuideChannel, type GuideSummary, type PlaylistReport, type StorageNotice,
+  type Catalogue, type CatalogueEntry, type GuideChannel, type GuideSummary, type PlaylistReport, type StorageNotice,
 } from '../lib/native'
+import { FILTERS, KIND_LABEL, PAGE_SIZE, PROVIDER, PROVIDER_URL, filterEntries, importedAs, isStale, placeOf, uniqueName, type CatalogueFilter } from '../state/catalogue'
 import { GUIDE_ACCEPT, checkGuideUrl, guideFileName, guideStatusText, guideStatusTone, readGuideForPreview, type GuideSource } from '../state/guides'
 import {
   NOT_TESTED, UNCATEGORISED, addressLabel, channelGroups, checkPlaylistUrl, defaultName, fileLabel, readForPreview, statusText, statusTone, toChannels, unavailableReason,
@@ -480,31 +481,185 @@ function SourceDetail({ source: s, onRefresh, onRemove }: { source: Source; onRe
   )
 }
 
+const channelCount = (n: number) => `${n} ${n === 1 ? 'channel' : 'channels'}`
+
+/** The public catalogue: iptv-org's playlists, listed for browsing. Nothing is fetched from a playlist until one is chosen. */
 function Discovery() {
   const store = useStore()
-  const toast = useToast()
+  const now = useNow()
+  const { openCatalogue } = store
+  const [filter, setFilter] = useState<CatalogueFilter>('country')
+  const [query, setQuery] = useState('')
+  const [shown, setShown] = useState(PAGE_SIZE)
+  const [openId, setOpenId] = useState<string | null>(null)
+  useEffect(() => { void openCatalogue() }, [openCatalogue])
+  const { status, catalogue: c, error } = store.catalogue
+  const results = c ? filterEntries(c.entries, filter, query) : []
+  const open = c?.entries.find((e) => e.id === openId)
+  const changeFilter = (f: CatalogueFilter) => { setFilter(f); setShown(PAGE_SIZE) }
+
   return (
     <div className="discovery">
-      <p className="muted" style={{ maxWidth: '64ch' }}>
-        Discovery providers suggest sources for you to review. Nothing is added without your confirmation, and only sources whose owners publish them for reuse are considered.
-      </p>
-      <ul className="provider-list">
-        {store.providers.map((p) => (
-          <li key={p.id} className="provider">
-            <span className="source-icon"><Icon name="radar" /></span>
-            <div>
-              <strong id={`prov-${p.id}`}>{p.name}</strong>
-              <p className="muted">{p.description}</p>
-              <span className="pending-tag">Not connected yet</span>
-            </div>
-            <Switch
-              checked={p.enabled}
-              label={p.name}
-              onChange={() => { store.toggleProvider(p.id); toast(`${p.name} ${p.enabled ? 'turned off' : 'turned on'}. Takes effect once discovery is connected.`) }}
-            />
-          </li>
-        ))}
-      </ul>
+      <DemoNote>
+        These playlists come from the <a className="text-link" href={PROVIDER_URL} target="_blank" rel="noreferrer">{PROVIDER}</a> project,
+        which collects links to publicly available streams and puts its lists in the public domain. Kinora does not run, check or endorse
+        them or the streams they list, and cannot tell you whether they are legal to watch where you live. A playlist is only downloaded
+        when you choose to read it, and streams only when you play a channel.
+      </DemoNote>
+
+      <div className="catalogue-bar" role="status">
+        <span className="faint">
+          {status === 'loading' ? (c ? 'Checking for an updated catalogue…' : 'Loading the catalogue…')
+            : c ? `${c.entries.length} playlists · catalogue fetched ${relative(c.fetchedAt, now)}${isStale(c, now) ? ', so it may be out of date' : ''}` : ''}
+        </span>
+        {(c || status === 'failed') && (
+          <button type="button" className="btn btn-ghost btn-small" onClick={() => void store.refreshCatalogue()} disabled={status === 'loading'}>
+            <Icon name="refresh" size={16} />{c ? 'Check for updates' : 'Try again'}
+          </button>
+        )}
+      </div>
+      {status === 'failed' && error && c && <p className="field-error" role="alert">{error} The copy fetched {relative(c.fetchedAt, now)} is shown.</p>}
+
+      {!c ? (
+        status === 'failed'
+          ? <StateBlock icon="warning" title="The catalogue is not available">{error} Your sources, guides and favourites are not affected.</StateBlock>
+          : <StateBlock icon="radar" title="Loading the catalogue" />
+      ) : (
+        <>
+          <div className="catalogue-filters">
+            <Segmented label="Show" value={filter} onChange={changeFilter} options={FILTERS} />
+            <label className="field catalogue-search">
+              <span className="sr-only">Search the catalogue</span>
+              <input className="input" type="search" value={query} placeholder="Search by name or code" onChange={(e) => { setQuery(e.target.value); setShown(PAGE_SIZE) }} />
+            </label>
+          </div>
+          {results.length === 0 ? (
+            <p className="muted" role="status">{query.trim() ? `No ${FILTERS.find((f) => f.value === filter)?.label.toLowerCase()} match “${query.trim()}”.` : 'The catalogue lists none of these.'}</p>
+          ) : (
+            <>
+              <p className="faint" role="status">{results.length} {results.length === 1 ? 'playlist' : 'playlists'}</p>
+              <ul className="source-list">
+                {results.slice(0, shown).map((e) => {
+                  const added = importedAs(e, store.playlists)
+                  const place = placeOf(e, c.entries)
+                  return (
+                    <li key={e.id} className="source-row">
+                      <button type="button" className="source-main" onClick={() => setOpenId(e.id)} aria-label={`${e.name}, ${KIND_LABEL[e.kind]}${added ? ', added' : ''}. Open details`}>
+                        <span className="source-icon" aria-hidden="true">{e.flag ?? <Icon name="live" />}</span>
+                        <span className="source-id">
+                          <strong>{e.name}</strong>
+                          <span className="faint">{[KIND_LABEL[e.kind], place, e.channels !== null ? `${channelCount(e.channels)} listed by ${PROVIDER}` : null].filter(Boolean).join(' · ')}</span>
+                        </span>
+                        {added && <span className="pill pill-healthy">Added</span>}
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+              {results.length > shown && (
+                <button type="button" className="btn btn-secondary catalogue-more" onClick={() => setShown((n) => n + PAGE_SIZE)}>
+                  Show {Math.min(PAGE_SIZE, results.length - shown)} more of {results.length - shown}
+                </button>
+              )}
+            </>
+          )}
+        </>
+      )}
+
+      <Dialog open={!!open} onClose={() => setOpenId(null)} title={open?.name ?? ''} variant="sheet">
+        {open && c && <CatalogueDetail key={open.id} entry={open} catalogue={c} />}
+      </Dialog>
+    </div>
+  )
+}
+
+/** One catalogue playlist: the provider's facts, then an explicit read and add through the guarded import. Exported for tests. */
+export function CatalogueDetail({ entry, catalogue }: { entry: CatalogueEntry; catalogue: Catalogue }) {
+  const store = useStore()
+  const toast = useToast()
+  const now = useNow()
+  const [state, setState] = useState<{ phase: 'idle' | 'reading' } | { phase: 'preview'; report: PlaylistReport } | { phase: 'error'; error: string }>({ phase: 'idle' })
+  const [name, setName] = useState('')
+  const [nameError, setNameError] = useState<string | null>(null)
+  const attempt = useRef(0)
+  const added = importedAs(entry, store.playlists)
+  const place = placeOf(entry, catalogue.entries)
+  const taken = () => [...store.playlists, ...store.sources, ...store.guides].map((x) => x.name)
+
+  const read = async () => {
+    const token = ++attempt.current
+    setState({ phase: 'reading' })
+    const result = await readForPreview(() => fetchPlaylist(entry.url))
+    if (token !== attempt.current) return // cancelled, or a newer read started
+    if ('error' in result) return setState({ phase: 'error', error: result.error })
+    setName(uniqueName(entry, taken()))
+    setState({ phase: 'preview', report: result.report })
+  }
+  const cancel = () => { attempt.current++; setState({ phase: 'idle' }); setNameError(null) }
+  const add = () => {
+    if (state.phase !== 'preview' || importedAs(entry, store.playlists)) return
+    const n = name.trim()
+    if (!n) return setNameError('Give the source a name you will recognise.')
+    if (taken().some((t) => t.toLowerCase() === n.toLowerCase())) return setNameError('You already have a source with this name.')
+    store.addPlaylist({ name: n, origin: 'url', url: entry.url, label: addressLabel(entry.url) }, state.report)
+    toast(`Added ${n}: ${channelCount(state.report.channels.length)}. Streams have not been playback-tested.`)
+    setState({ phase: 'idle' })
+  }
+  const groups = state.phase === 'preview' ? channelGroups(toChannels('preview', state.report.channels)).length : 0
+
+  return (
+    <div className="source-detail">
+      <dl className="detail-facts">
+        <div><dt>Type</dt><dd>{KIND_LABEL[entry.kind]}</dd></div>
+        {place && <div><dt>Part of</dt><dd>{place}</dd></div>}
+        <div><dt>Channels</dt><dd className="tnum">{entry.channels !== null ? `${entry.channels}, as listed by ${PROVIDER}` : `Not stated by ${PROVIDER}`}</dd></div>
+        <div><dt>Provider</dt><dd>{PROVIDER}, public domain (Unlicense). Not checked or endorsed by Kinora.</dd></div>
+        <div><dt>Address</dt><dd className="source-url-full">{entry.url}</dd></div>
+        <div><dt>Catalogue</dt><dd>Fetched {relative(catalogue.fetchedAt, now)}. The provider does not publish when it last changed.</dd></div>
+      </dl>
+
+      {added ? (
+        <div className="validate-box">
+          <p className="validate-status is-ok"><Icon name="check" size={18} />Added as {added.name}</p>
+          <p className="muted">It is one of your sources now. Open Live TV to see its channels, or Sources to refresh or remove it.</p>
+          <div className="title-actions"><Link to="/live?view=channels" className="btn btn-ghost btn-small"><Icon name="live" size={16} />Open Live TV</Link></div>
+        </div>
+      ) : state.phase === 'preview' ? (
+        <form className="validate-box" onSubmit={(e) => { e.preventDefault(); add() }}>
+          <p className="validate-status is-ok"><Icon name="check" size={18} />Kinora read the playlist: {channelCount(state.report.channels.length)}</p>
+          <ul className="check-list">
+            <li><Icon name="check" size={16} />{groups} {groups === 1 ? 'group' : 'groups'}</li>
+            {state.report.skipped > 0 && <li><Icon name="warning" size={16} />{state.report.skipped} malformed {state.report.skipped === 1 ? 'entry was' : 'entries were'} skipped</li>}
+            <li><Icon name="info" size={16} />Streams have not been playback-tested.</li>
+          </ul>
+          <label className="field">
+            <span>Name</span>
+            <input className="input" value={name} maxLength={48} onChange={(e) => { setName(e.target.value); setNameError(null) }} aria-invalid={nameError ? true : undefined} />
+            {nameError && <span className="field-error">{nameError}</span>}
+          </label>
+          <div className="add-actions">
+            <button type="button" className="btn btn-secondary" onClick={cancel}>Cancel</button>
+            <button type="submit" className="btn btn-primary"><Icon name="plus" size={18} />Add to my sources</button>
+          </div>
+        </form>
+      ) : (
+        <div className="validate-box">
+          {state.phase === 'error' && <p className="field-error" role="alert">{state.error}</p>}
+          <p className="muted">Kinora downloads the playlist through its guarded fetcher and lists its channels, so you can check it before adding it. No stream is opened.</p>
+          <div className="title-actions">
+            {state.phase === 'reading' ? (
+              <>
+                <span className="faint" role="status">Reading playlist…</span>
+                <button type="button" className="btn btn-ghost btn-small" onClick={cancel}>Cancel</button>
+              </>
+            ) : (
+              <button type="button" className="btn btn-primary btn-small" onClick={() => void read()}>
+                <Icon name="download" size={16} />{state.phase === 'error' ? 'Try again' : 'Read this playlist'}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
