@@ -30,11 +30,14 @@ npm run dev &                                                  # dev phases load
 (cd src-tauri && cargo build --features loopback-fixtures)     # dev phases fetch 127.0.0.1 fixtures
 
 S=scripts/native-smoke/run.sh
-for p in fresh playback fullscreen guide bigplaylist associate perf discovery restart; do bash $S A dev $p; done
-bash $S A dev offline ns                                       # offline, fixture server inside the namespace
-bash $S A dev offline-all ns                                   # offline, nothing reachable at all
+# Environment A: one profile used start to finish (each phase builds on the previous ones).
+for p in fresh playback recovery fullscreen guide associate perf discovery discovery-more restart perms external-link; do bash $S A dev $p; done
+for p in offline offline-all discovery-stale-offline; do bash $S A dev $p ns; done   # no internet; offline-all: no fixtures either
 bash $S A dev removeguide; bash $S A dev removal
-bash $S B dev dst host America/New_York                        # needs a US clock change within 6 days
+# Clock changes: a zone with a change within the guide's 7 days (KINORA_DST_DAY / KINORA_DST_TICKS for others).
+bash $S B dev dst host America/New_York
+# Guide edge cases, refusals and a real-world guide, in local UK time.
+for p in guide-edge guide-errors realguide; do bash $S F dev $p host Europe/London; done
 ```
 
 Storage edge cases each need a prepared `env-<name>/data/io.github.millsydotdev.kinora/sources/sources.json`
@@ -42,8 +45,18 @@ Storage edge cases each need a prepared `env-<name>/data/io.github.millsydotdev.
 truncated JSON), then `bash $S <name> dev <phase>`.
 
 Packaged release: build with `npm run tauri:build`, unpack the RPM without installing it
-(`rpm2cpio …rpm | cpio -idm` inside `$KINORA_SMOKE_DIR/pkg`), then
-`bash $S R release release`, `bash $S R release release-restart` and `bash $S S release release-perf`.
+(`rpm2cpio …rpm | cpio -idm` inside `$KINORA_SMOKE_DIR/pkg`), then:
+
+```bash
+for p in release release-player release-restart; do bash $S R release $p; done
+bash $S R release release-offline ns; bash $S R release release-removal; bash $S R release external-link
+bash $S S release release-perf; bash $S T release realguide
+```
+
+A 23-hour (clocks-forward) day needs a faked clock when no real zone changes within the guide's
+week. libfaketime works without installing it: `dnf download libfaketime`, check it with `rpm -K`,
+unpack with `rpm2cpio … | cpio -idm` into `$KINORA_SMOKE_DIR/faketime`, then for example
+`LD_PRELOAD=$KINORA_SMOKE_DIR/faketime/usr/lib64/libfaketime.so.1 FAKETIME='@2027-03-26 12:00:00' FAKETIME_DONT_FAKE_MONOTONIC=1 KINORA_DST_DAY='28 Mar' KINORA_DST_TICKS=46 bash $S G dev dst host Europe/London`.
 Release builds cannot reach 127.0.0.1 (checked by the `release` phase), so they import files and use
 the public test stream instead.
 

@@ -122,6 +122,9 @@ describe('browsing', () => {
     await mount('/sources?tab=discovery')
     expect(text()).toContain('iptv-org')
     expect(text()).toContain('does not run, check or endorse')
+    // The desktop app has no way to open an outside address, so the credit is text, not a dead link.
+    expect(document.querySelector('.discovery .demo-note a')).toBeNull()
+    expect(text()).toContain('github.com/iptv-org/iptv')
     expect(rows()).toEqual(['United Kingdom', 'Côte d’Ivoire', 'Albania'])
     await search('cote')
     expect(rows()).toEqual(['Côte d’Ivoire'])

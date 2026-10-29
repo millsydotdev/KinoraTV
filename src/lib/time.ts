@@ -15,8 +15,18 @@ export function useNow(everyMs = 30_000) {
   return now
 }
 
+// One formatter per format: building one per call (toLocaleTimeString) made each Live TV render take
+// hundreds of milliseconds, since a page of the guide formats thousands of times.
+// shortcut: a formatter keeps the time zone it was created in; a changed system zone applies after a restart.
+const clockFormats = new Map<'24h' | '12h', Intl.DateTimeFormat>()
+
 export function clock(t: number, format: '24h' | '12h' = '24h') {
-  return new Date(t).toLocaleTimeString('en-GB', { hour: format === '24h' ? '2-digit' : 'numeric', minute: '2-digit', hour12: format === '12h' })
+  let f = clockFormats.get(format)
+  if (!f) {
+    f = new Intl.DateTimeFormat('en-GB', { hour: format === '24h' ? '2-digit' : 'numeric', minute: '2-digit', hour12: format === '12h' })
+    clockFormats.set(format, f)
+  }
+  return f.format(t)
 }
 
 export function relative(t: number, now = Date.now()) {

@@ -501,7 +501,7 @@ function Discovery() {
   return (
     <div className="discovery">
       <DemoNote>
-        These playlists come from the <a className="text-link" href={PROVIDER_URL} target="_blank" rel="noreferrer">{PROVIDER}</a> project,
+        These playlists come from the {PROVIDER} project ({PROVIDER_URL.replace('https://', '')}),
         which collects links to publicly available streams and puts its lists in the public domain. Kinora does not run, check or endorse
         them or the streams they list, and cannot tell you whether they are legal to watch where you live. A playlist is only downloaded
         when you choose to read it, and streams only when you play a channel.

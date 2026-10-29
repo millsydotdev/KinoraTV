@@ -63,6 +63,27 @@ for i in range(-4, 40):
     p.append(f'<programme start="{fmt(s)}" stop="{fmt(s + 1800)}" channel="fx.other"><title>Other Show {i}</title></programme>')
 p.append('</tv>')
 open(f'{F}/guide.xml.gz', 'wb').write(gzip.compress(''.join(p).encode()))
+# Edge cases for fx.hls, in local (Europe/London) terms: a programme across midnight, a two-hour gap,
+# and times written with different offsets that mean the same instants.
+import calendar
+day = calendar.timegm(time.strptime(time.strftime('%Y%m%d', time.gmtime(now)), '%Y%m%d'))  # today 00:00 UTC
+def at(h, off):  # local hour h written with offset `off` hours
+    t = day + h * 3600
+    sign = '+' if off >= 0 else '-'
+    return time.strftime('%Y%m%d%H%M%S', time.gmtime(t + off * 3600)) + f' {sign}{abs(off):02d}00'
+e = ['<?xml version="1.0" encoding="UTF-8"?>\n<tv><channel id="fx.hls"><display-name>Fixture HLS</display-name></channel>']
+for title, a, b in [('Edge Morning', at(9, 0), at(10, 0)), ('Edge Offset Plus', at(10, 1), at(11, 1)), ('Edge Offset Minus', at(11, -5), at(12, -5)),
+                    ('Edge After Gap', at(14, 0), at(15, 0)), ('Edge Late Film', at(23, 0), at(25, 0))]:
+    e.append(f'<programme start="{a}" stop="{b}" channel="fx.hls"><title>{title}</title></programme>')
+e.append('</tv>')
+open(f'{F}/guide-edge.xml', 'w').write(''.join(e))
+open(f'{F}/guide-truncated.xml', 'w').write(''.join(e)[:-60])
+with open(f'{F}/guide-huge.xml', 'w') as h:  # over the 64 MB download limit, uncompressed
+    h.write('<tv>')
+    pad = '<!-- ' + 'x' * 1000 + ' -->\n'
+    for _ in range(66 * 1024):
+        h.write(pad)
+    h.write('</tv>')
 with gzip.open(f'{F}/guide-bomb.xml.gz', 'wb', compresslevel=9) as z:  # ~140 KB that inflates past 128 MB
     z.write(b'<tv>')
     for _ in range(140): z.write(b' ' * (1 << 20))

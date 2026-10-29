@@ -18,9 +18,9 @@ inner() {
   if [ "$NS" = ns ]; then
     ip link set lo up
     if [ "$KIND" = dev ]; then setsid npm run dev > $D/vite-ns.log 2>&1 & VG=$!; fi
-    [ "$PHASE" != offline-all ] && { python3 $HERE/server.py $D/fx 18765 $D/fixture.log & FX=$!; }
+    [ "$PHASE" != offline-all ] && [ "$PHASE" != release-offline ] && { python3 $HERE/server.py $D/fx 18765 $D/fixture.log & FX=$!; }
   fi
-  [ "$PHASE" != offline-all ] && until curl -s -o /dev/null http://127.0.0.1:18765/channels.m3u; do sleep 0.5; done
+  [ "$PHASE" != offline-all ] && [ "$PHASE" != release-offline ] && until curl -s -o /dev/null http://127.0.0.1:18765/channels.m3u; do sleep 0.5; done
   [ "$KIND" = dev ] && until curl -s -o /dev/null http://localhost:5199/; do sleep 0.5; done
   tauri-driver --port 4444 > $D/tauri-driver.log 2>&1 & DRV=$!; sleep 2
   KINORA_SMOKE_DIR=$D timeout 600 node $HERE/smoke.mjs "$BIN" "$PHASE" "$KIND"

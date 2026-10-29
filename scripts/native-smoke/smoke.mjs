@@ -182,7 +182,10 @@ try {
 
   if (phase === 'associate') {
     await go('/sources'); await clickText('.source-main', 'Big guide'); await wait(500)
-    await clickSel('[aria-label="Use Big guide for Big playlist"]'); await wait(800)
+    // Only switch it on: a guide added after the playlist is already used for it.
+    if ((await js(`return document.querySelector('[aria-label="Use Big guide for Big playlist"]')?.getAttribute('aria-checked')`)) !== 'true') {
+      await clickSel('[aria-label="Use Big guide for Big playlist"]'); await wait(800)
+    }
     ok('the big guide is used for the big playlist', (await js(`return document.querySelector('[aria-label="Use Big guide for Big playlist"]')?.getAttribute('aria-checked')`)) === 'true')
   }
 
@@ -339,11 +342,9 @@ try {
   }
 
   if (phase === 'removal') {
-    const cache = () => fs.readdirSync(STORE).filter((f) => f.startsWith('guide-'))
-    const before = cache().length
-    await go('/sources'); await clickText('.source-main', 'Big guide'); await wait(400)
-    await clickText('dialog[open] button', 'Remove'); await wait(300); await clickText('dialog[open] button', 'Remove source'); await wait(1000)
-    ok('removing a guide deletes its cache', cache().length === before - 1, `${before} -> ${cache().length}`)
+    // Run after removeguide (which covers guide and cache removal): removes the fixture playlist.
+    await go('/sources')
+    await until(`[...document.querySelectorAll('.source-row .pill')].every(p => !/Importing|Updating/.test(p.textContent))`, 120000)
     await clickText('.source-main', 'Fixture web'); await wait(400)
     await clickText('dialog[open] button', 'Remove'); await wait(300); await clickText('dialog[open] button', 'Remove source'); await wait(1000)
     const saved = JSON.parse(fs.readFileSync(`${STORE}/sources.json`, 'utf8'))
@@ -356,13 +357,16 @@ try {
     await go('/live')
     note('time zone', await js(`return Intl.DateTimeFormat().resolvedOptions().timeZone`))
     const days = await js(`return [...document.querySelectorAll('.date-select')[0].options].map(o => o.value + '=' + o.textContent)`)
-    const nov1 = days.find((d) => / 1 Nov/.test(d))
-    ok('the guide can show Sunday 1 November', !!nov1, days.join(' | '))
+    // Defaults: the US change on 1 Nov 2026 (25 hours). KINORA_DST_DAY / KINORA_DST_TICKS test another day.
+    const dayText = process.env.KINORA_DST_DAY ?? ' 1 Nov'
+    const wantTicks = Number(process.env.KINORA_DST_TICKS ?? 50)
+    const nov1 = days.find((d) => d.includes(dayText))
+    ok(`the guide can show the clock-change day (${dayText.trim()})`, !!nov1, days.join(' | '))
     if (nov1) {
       await js(`const s = document.querySelector('.date-select'); s.value = arguments[0]; s.dispatchEvent(new Event('change', { bubbles: true }))`, nov1.split('=')[0]); await wait(600)
       const ticks = await js(`return document.querySelectorAll('.guide-ticks .tick').length`)
       const labels = await js(`return [...document.querySelectorAll('.guide-ticks .tick')].slice(2, 6).map(t => t.textContent).join(' ')`)
-      ok('the US clock-change day is 25 hours (50 half-hour ticks)', ticks === 50, `${ticks} ticks; ${labels}`)
+      ok(`the clock-change day is ${wantTicks / 2} hours (${wantTicks} half-hour ticks)`, ticks === wantTicks, `${ticks} ticks; ${labels}`)
       await js(`const s = document.querySelector('.date-select'); s.value = '0'; s.dispatchEvent(new Event('change', { bubbles: true }))`); await wait(400)
       ok('an ordinary day is 24 hours', (await js(`return document.querySelectorAll('.guide-ticks .tick').length`)) === 48)
     }
@@ -395,11 +399,11 @@ try {
     ok('release: first run shows the demo catalogue', (await text()).includes('Northlight One'))
     ok('release: loopback is refused (no fixture bypass in release)', /local, private or reserved/.test(await addUrl(`${S1}/channels.m3u`) ?? ''))
     await go('/sources/add')
-    await fileInput('test-streams.m3u', '#EXTM3U\n#EXTINF:-1 tvg-id="FX.HLS" group-title="Test streams",Big Buck Bunny (Mux test stream)\nhttps://test-streams.mux.dev/x36xhzz/url_6/193039199_mp4_h264_aac_hq_7.m3u8\n')
+    await fileInput('test-streams.m3u', '#EXTM3U\n#EXTINF:-1 tvg-id="FX.HLS" group-title="Test streams",Big Buck Bunny 480p\nhttps://test-streams.mux.dev/x36xhzz/url_6/193039199_mp4_h264_aac_hq_7.m3u8\n#EXTINF:-1 tvg-id="mux.bbb" group-title="Test streams",Big Buck Bunny adaptive\nhttps://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8\n')
     ok('release: a local M3U file is read', !!(await until(`document.querySelector('.validate-status.is-ok')`)))
     await setValue('.add-form input.input', 'Test streams'); await clickText('button', 'Continue'); await wait(300)
     await clickText('.add-actions button', 'Add Source'); await wait(800)
-    await watch('Big Buck Bunny')
+    await watch('Big Buck Bunny 480p')
     const p = await playing(45000, 3)
     ok('release: a public HLS test stream plays through kstream', !!p, p ?? await status())
     await clickSel('[aria-label="Pause"]'); await wait(800)
@@ -410,7 +414,7 @@ try {
     await setValue('.add-form input.input', 'Guide file'); await clickText('button', 'Continue'); await wait(300)
     await clickText('.add-actions button', 'Add Source'); await wait(800)
     await go('/live')
-    ok('release: guide listings match the channel', /Fixture News/.test(await until(`[...document.querySelectorAll('.guide-row')].find(r => r.textContent.includes('Big Buck Bunny'))?.querySelector('.prog.is-now')?.textContent`) ?? ''))
+    ok('release: guide listings match the channel', /Fixture News/.test(await until(`[...document.querySelectorAll('.guide-row')].find(r => r.textContent.includes('Big Buck Bunny 480p'))?.querySelector('.prog.is-now')?.textContent`) ?? ''))
     await go('/sources?tab=discovery')
     ok('release: the live catalogue loads', !!(await until(`/playlists · catalogue fetched/.test(document.querySelector('.catalogue-bar')?.textContent ?? '')`, 40000)))
     await noSecrets()
@@ -422,11 +426,187 @@ try {
     await until(`[...document.querySelectorAll('.source-row .pill')].length > 0 && [...document.querySelectorAll('.source-row .pill')].every(p => !/Importing|Updating/.test(p.textContent))`, 60000)
     const t = await text()
     ok('release: sources and guide restored', t.includes('Test streams') && t.includes('Guide file'))
-    ok('release: the file source asks for its file again', /Saved · 1 channel/.test(await pill('Test streams')))
+    ok('release: the file source asks for its file again', /Saved · 2 channels/.test(await pill('Test streams')))
     await go('/live')
-    ok('release: cached guide listings shown after restart', /Fixture News/.test(await until(`[...document.querySelectorAll('.guide-row')].find(r => r.textContent.includes('Big Buck Bunny'))?.querySelector('.prog.is-now')?.textContent`) ?? ''))
+    ok('release: cached guide listings shown after restart', /Fixture News/.test(await until(`[...document.querySelectorAll('.guide-row')].find(r => r.textContent.includes('Big Buck Bunny 480p'))?.querySelector('.prog.is-now')?.textContent`) ?? ''))
     await go('/sources?tab=discovery')
     ok('release: the catalogue opens from its cache', !!(await until(`document.querySelectorAll('.discovery .source-row').length > 0`)))
+  }
+
+  if (phase === 'recovery') {
+    // A failing stream recovers with Retry once its server has the segments again.
+    await watch('Fixture Missing')
+    ok('a stream with missing segments shows Retry', !!(await until(`[...document.querySelectorAll('.player-status button')].some(b => b.textContent.includes('Retry'))`, 40000)))
+    for (const f of ['seg00.ts', 'seg01.ts']) fs.copyFileSync(`${FX}/hls/${f}`, `${FX}/missing/${f}`)
+    try {
+      await clickText('.player-status button', 'Retry')
+      ok('Retry recovers once the segments exist', !!(await playing(30000, 0.5)), await status())
+    } finally {
+      for (const f of ['seg00.ts', 'seg01.ts']) fs.rmSync(`${FX}/missing/${f}`, { force: true })
+    }
+    // Switching away from a slow stream stops its requests.
+    const LOG = `${process.env.KINORA_SMOKE_DIR ?? '/tmp/kinora-smoke'}/fixture.log`
+    await watch('Fixture Slow'); await wait(1500)
+    const switched = Date.now() / 1000
+    await watch('Fixture HLS')
+    ok('the next channel plays', !!(await playing()))
+    await wait(12000)
+    const late = fs.readFileSync(LOG, 'utf8').split('\n').filter((l) => l.includes('/slow/') && Number(l.split(' ')[0]) > switched + 1)
+    ok('no slow-stream requests after switching away', late.length === 0, late.join(' ; '))
+  }
+
+  if (phase === 'guide-edge') {
+    ok('fixture playlist added', /Playlist read: 6 channels/.test(await addUrl(`${S1}/channels.m3u?token=PLAYLISTTOKEN`, 'Fixture web') ?? ''))
+    ok('edge-case guide added', /Guide read: 1 channels, 5 programmes/.test(await addUrl(`${S1}/guide-edge.xml`, 'Edge guide', { guide: true }) ?? ''))
+    await go('/live')
+    const progs = async () => js(`return [...([...document.querySelectorAll('.guide-row')].find(r => r.textContent.includes('Fixture HLS'))?.querySelectorAll('.prog') ?? [])].map(p => ({ t: p.querySelector('.prog-title')?.textContent, a: p.getAttribute('aria-label'), l: parseFloat(p.style.left), w: parseFloat(p.style.width) }))`)
+    await until(`[...document.querySelectorAll('.guide-row')].find(r => r.textContent.includes('Fixture HLS'))?.querySelectorAll('.prog').length >= 5`)
+    const today = await progs()
+    note('today', today.map((p) => p.a).join(' | '))
+    const get = (t) => today.find((p) => p.t?.includes(t))
+    ok('+0100 time shown in local time', /10:00 to 11:00/.test(get('Edge Offset Plus')?.a ?? ''))
+    ok('-0500 time shown in local time', /11:00 to 12:00/.test(get('Edge Offset Minus')?.a ?? ''))
+    const minus = get('Edge Offset Minus'), after = get('Edge After Gap')
+    ok('a two-hour gap stays empty', !!minus && !!after && after.l - (minus.l + minus.w) > 100, minus && after ? `${minus.l + minus.w} -> ${after.l}` : '')
+    ok('a programme crossing midnight shows its real times', /23:00 to 01:00/.test(get('Edge Late Film')?.a ?? ''))
+    await clickSel('[aria-label="Next day"]'); await wait(800)
+    const next = await progs()
+    const late = next.find((p) => p.t?.includes('Edge Late Film'))
+    ok('next day starts with the rest of it, cut at midnight', !!late && late.l === 0, JSON.stringify(late))
+  }
+
+  if (phase === 'guide-errors') {
+    for (const [file, re, label] of [
+      ['guide-truncated.xml', /not well-formed XML|ends before its closing <\/tv> tag/, 'a truncated (malformed) guide'],
+      ['guide-huge.xml?token=GUIDETOKEN', /larger than the 64 MB limit/, 'a download over 64 MB'],
+      ['guide-bomb.xml.gz?token=GUIDETOKEN', /larger than 128 MB once uncompressed/, 'a gzip bomb'],
+      ['guide-over.xml.gz?token=GUIDETOKEN', /more than 150000 programmes/, 'a guide over the programme cap'],
+    ]) {
+      const r = await addUrl(`${S1}/${file}`, null, { guide: true, wait: 90000 })
+      ok(`${label} is refused`, re.test(r ?? ''), r)
+      ok(`its message names no token or path`, !/GUIDETOKEN|guide-|\.xml/.test(r ?? ''), r)
+    }
+    await go('/sources'); await go('/sources/add'); await clickText('button', 'XMLTV Guide'); await wait(200)
+    await fileInput('laughs.xml', fs.readFileSync(`${FX}/laughs.xml`, 'utf8'))
+    ok('an entity-expansion guide is refused', /declares its own XML entities/.test(await until(`document.querySelector('.field-error')?.textContent`) ?? ''))
+  }
+
+  if (phase === 'realguide') {
+    const t = Date.now()
+    const r = await addUrl('https://raw.githubusercontent.com/dp247/Freeview-EPG/master/epg.xml', 'Freeview EPG', { guide: true, wait: 120000 })
+    ok('a real-world XMLTV guide (Freeview-EPG, 21 MB) is read through the guarded fetch', /Guide read: \d+ channels, \d+ programmes/.test(r ?? ''), r)
+    note('real guide read + add (s)', ((Date.now() - t) / 1000).toFixed(1))
+    note('memory', rss())
+    const caches = fs.readdirSync(STORE).filter((f) => f.startsWith('guide-')).map((f) => fs.readFileSync(`${STORE}/${f}`, 'utf8'))
+    ok('its cache keeps no logo or other addresses', caches.length > 0 && caches.every((c) => !/tv-logos|https?:\/\//.test(c)))
+    await go('/sources'); await clickText('.source-main', 'Freeview EPG'); await wait(500)
+    note('detail', (await js(`return document.querySelector('dialog[open]')?.innerText ?? ''`)).split('\n').filter((l) => /Listings|Guide|Skipped|programme|channel/i.test(l)).slice(0, 8).join(' | '))
+  }
+
+  if (phase === 'discovery-more' || phase === 'discovery-stale-offline') {
+    // Age the cached catalogue before Discovery opens (it is only read when Discovery opens).
+    const file = `${STORE}/catalogue.json`
+    const c = JSON.parse(fs.readFileSync(file, 'utf8'))
+    c.catalogue.fetchedAt = Date.now() - 3 * 86400000
+    fs.writeFileSync(file, JSON.stringify(c))
+    await go('/sources?tab=discovery')
+    const first = await until(`(() => { const t = document.querySelector('.catalogue-bar')?.textContent ?? ''; return document.querySelectorAll('.discovery .source-row').length > 0 && t ? t : null })()`, 20000)
+    ok('a 3-day-old copy opens with a usable list', !!first, first)
+    if (phase === 'discovery-more') {
+      ok('and is updated because it is out of date', !!(await until(`/fetched just now/.test(document.querySelector('.catalogue-bar')?.textContent ?? '')`, 40000)))
+      ok('the update replaced the cached copy', Date.now() - JSON.parse(fs.readFileSync(file, 'utf8')).catalogue.fetchedAt < 120000)
+      await clickText('.discovery button', 'Languages'); await setValue('.catalogue-search input', 'english')
+      await until(`document.querySelector('.discovery .source-row strong')?.textContent === 'English'`)
+      ok('an imported entry is marked Added in the list', (await js(`return document.querySelector('.discovery .source-row')?.textContent ?? ''`)).includes('Added'))
+      await js(`document.querySelector('.discovery .source-main').click()`); await wait(400)
+      const d = await js(`return document.querySelector('dialog[open]')?.innerText ?? ''`)
+      ok('and offers no second import', /Added as iptv-org · English/.test(d) && !/Read this playlist/.test(d))
+    } else {
+      const err = await until(`document.querySelector('.discovery .field-error')?.textContent`, 40000)
+      ok('offline: the update fails with a reason and the old copy stays', /is shown\./.test(err ?? ''), err)
+      ok('offline: it says the copy may be out of date', /may be out of date/.test(await js(`return document.querySelector('.catalogue-bar')?.textContent ?? ''`)))
+      await clickText('.discovery button', 'Check for updates')
+      ok('offline: retry fails safely again', /is shown\./.test(await until(`document.querySelector('.discovery .field-error')?.textContent`, 40000) ?? ''))
+      ok('offline: the list is still usable', (await js(`return document.querySelectorAll('.discovery .source-row').length`)) > 0)
+    }
+  }
+
+  if (phase === 'perms') {
+    const mode = (p) => (fs.statSync(p).mode & 0o777).toString(8)
+    ok('the saved-sources folder is 0700', mode(STORE) === '700', mode(STORE))
+    const files = fs.readdirSync(STORE).map((f) => `${f}=${mode(`${STORE}/${f}`)}`)
+    ok('every file in it is 0600', files.every((f) => f.endsWith('=600')), files.join(', '))
+  }
+
+  if (phase === 'release-player') {
+    // A file source has no stream addresses after a restart: choose the file again, as a user would.
+    await go('/sources'); await clickText('.source-main', 'Test streams'); await wait(400)
+    await fileInput('test-streams.m3u', '#EXTM3U\n#EXTINF:-1 tvg-id="FX.HLS" group-title="Test streams",Big Buck Bunny 480p\nhttps://test-streams.mux.dev/x36xhzz/url_6/193039199_mp4_h264_aac_hq_7.m3u8\n#EXTINF:-1 tvg-id="mux.bbb" group-title="Test streams",Big Buck Bunny adaptive\nhttps://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8\n')
+    ok('release: choosing the file again re-reads it', /Parsed · 2 channels/.test(await until(`(() => { const t = document.querySelector('dialog[open] .pill')?.textContent ?? ''; return /Parsed/.test(t) ? t : null })()`, 20000) ?? ''))
+    await js(`document.querySelector('dialog[open] [aria-label="Close"]')?.click()`); await wait(300)
+    await watch('Big Buck Bunny 480p')
+    ok('release: the stream plays', !!(await playing(45000, 2)))
+    await clickSel('[aria-label="Mute"]'); await wait(300)
+    ok('release: mute', await js(`return document.querySelector('video.player-video').muted`))
+    await clickSel('[aria-label="Unmute"]'); await wait(200)
+    await js(`const i = document.querySelector('input[aria-label="Volume"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, '30'); i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true }))`); await wait(300)
+    ok('release: volume', Math.abs((await js(`return document.querySelector('video.player-video').volume`)) - 0.3) < 0.02)
+    const realClick = async (css) => { const el = await wd('POST', `${S}/element`, { using: 'css selector', value: css }); await wd('POST', `${S}/element/${Object.values(el)[0]}/click`, {}) }
+    await realClick('[aria-label="Full screen"]'); await wait(1200)
+    ok('release: full screen from a real click', await js(`return !!document.fullscreenElement`))
+    await realClick('[aria-label="Exit full screen"]'); await wait(1000)
+    ok('release: leaves full screen', !(await js(`return !!document.fullscreenElement`)))
+    await clickSel('[aria-label="Pause"]'); await wait(800)
+    ok('release: pause', await js(`return document.querySelector('video.player-video').paused`))
+    await clickSel('[aria-label="Play"]')
+    ok('release: resume', !!(await playing(15000, 0)))
+    await watch('Big Buck Bunny adaptive')
+    ok('release: switching to an adaptive (master) stream plays', !!(await playing(45000, 2)))
+    await js(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`); await wait(800)
+    ok('release: Escape leaves the player', !(await js(`return location.pathname`)).startsWith('/watch'))
+    await go('/library')
+    ok('release: history records it', (await text()).includes('Big Buck Bunny'))
+    await noSecrets()
+  }
+
+  if (phase === 'release-offline') {
+    await go('/sources')
+    await until(`[...document.querySelectorAll('.source-row .pill')].length > 0 && [...document.querySelectorAll('.source-row .pill')].every(p => !/Importing|Updating/.test(p.textContent))`, 60000)
+    const t = await text()
+    ok('release offline: sources and guide restored', t.includes('Test streams') && t.includes('Guide file'))
+    await go('/live')
+    ok('release offline: cached listings shown', /Fixture News/.test(await until(`[...document.querySelectorAll('.guide-row')].find(r => r.textContent.includes('Big Buck Bunny 480p'))?.querySelector('.prog.is-now')?.textContent`) ?? ''))
+    await go('/sources?tab=discovery')
+    ok('release offline: cached catalogue browsable', !!(await until(`document.querySelectorAll('.discovery .source-row').length > 0`)))
+    await watch('Big Buck Bunny 480p')
+    const st = await until(`document.querySelector('.player-status')?.textContent`, 20000)
+    ok('release offline: a restored file channel says why it cannot play', /Choose the file again/.test(st ?? ''), st)
+  }
+
+  if (phase === 'release-removal') {
+    const cache = () => fs.readdirSync(STORE).filter((f) => f.startsWith('guide-'))
+    const before = cache().length
+    await go('/sources')
+    await until(`[...document.querySelectorAll('.source-row .pill')].every(p => !/Importing|Updating/.test(p.textContent))`, 60000)
+    await clickText('.source-main', 'Guide file'); await wait(400)
+    await clickText('dialog[open] button', 'Remove'); await wait(300); await clickText('dialog[open] button', 'Remove source'); await wait(1200)
+    ok('release: removing a guide deletes its cache', cache().length === before - 1, `${before} -> ${cache().length}`)
+    await clickText('.source-main', 'Test streams'); await wait(400)
+    await clickText('dialog[open] button', 'Remove'); await wait(300); await clickText('dialog[open] button', 'Remove source'); await wait(1200)
+    const saved = JSON.parse(fs.readFileSync(`${STORE}/sources.json`, 'utf8'))
+    ok('release: removing the playlist leaves nothing behind', saved.sources.length === 0 && saved.guides.length === 0 && saved.mappings.length === 0, JSON.stringify(saved).slice(0, 120))
+    await go('/live?view=channels')
+    ok('release: the demo catalogue returns', (await text()).includes('Northlight One'))
+    await go('/library')
+    ok('release: its history entries are gone', !(await text()).includes('Big Buck Bunny'))
+  }
+
+  if (phase === 'external-link') {
+    // The desktop app cannot open outside addresses (no opener plugin): the provider credit must be text.
+    await go('/sources?tab=discovery')
+    await until(`document.querySelectorAll('.discovery .source-row').length > 0`, 40000)
+    ok('the provider credit is plain text, not a dead link', (await js(`return document.querySelector('.discovery .demo-note a') === null && document.querySelector('.discovery .demo-note').textContent.includes('github.com/iptv-org/iptv')`)) === true)
+    ok('the app window stays in Kinora', !/github\.com/.test(await wd('GET', `${S}/url`)))
   }
 
   const csp = await js('return window.__csp'); ok('no CSP violations', csp.length === 0, csp.join(','))
