@@ -1,8 +1,9 @@
 # TVMovie (Kinora)
 
 Premium TV and film app: **React + TypeScript UI inside a Rust + Tauri 2 desktop shell.**
-**Phase: Gate D7 (public source discovery and a safe catalogue) is complete on `main`. The next gate
-awaits the owner's approval.** Done: Rust M3U parsing and guarded fetching (D2); Sources import, refresh and removal,
+**Phase: Gate D8 (end-to-end testing, reliability and release readiness) is complete on `main`. The
+next gate awaits the owner's approval.** Status of every tested and untested case, measurements and
+the recommendation: `docs/RELEASE-READINESS.md`. Done: Rust M3U parsing and guarded fetching (D2); Sources import, refresh and removal,
 and playlist channels in Live TV and the other channel screens (D3); honest Settings and player
 states for playlist channels, and individual categories from `A;B` groups (D3.1); HLS playback for
 playlist channels through Rust (D4); saved sources, refreshed at startup (D5); XMLTV guides by address or
@@ -99,7 +100,12 @@ Prerequisites and architecture diagram: `README.md`.
   `connect-src kstream://localhost` (hls.js reads playlists and segments) and `media-src blob:` (MSE).
   Never add `http:`/`https:` hosts or `worker-src`.
 - Native verification: run one app instance at a time (check `ps` first; start, check, stop).
-  `npm run tauri:dev` and a tauri-driver session each open their own window.
+  `npm run tauri:dev` and a tauri-driver session each open their own window. Use
+  `scripts/native-smoke/` (README there): it runs every launch with its own `XDG_*` folders, so it
+  never touches the owner's real Kinora data. Never test against the real data folder.
+- Live TV renders a page of channels (`GUIDE_PAGE` rows, `CARD_PAGE` cards) with "Show more". Do not
+  render every channel: unbounded, 10,000 channels took 13 s to render and over 1 s per scrolled
+  frame. A virtualised guide is the proposed follow-up (see `docs/RELEASE-READINESS.md`).
 
 ## Layout
 

@@ -14,7 +14,8 @@ refused with a message. XMLTV guides, by address (plain or `.gz`) or local file,
 channels real programme listings in Live TV and elsewhere (Gate D6); without a playlist, the guide
 shows the demonstration schedule. Sources › Discovery browses the iptv-org catalogue of public
 playlists and adds one only when you choose to (Gate D7). Movies and series remain demonstration
-data. There is no stream validation; that waits for the owner's approval.
+data. There is no stream validation; that waits for the owner's approval. What has been tested,
+where, and what has not: `docs/RELEASE-READINESS.md`.
 
 ## Architecture
 

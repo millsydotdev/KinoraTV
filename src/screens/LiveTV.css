@@ -132,3 +132,6 @@
   .guide-hint { display: none; }
   .now-playing { left: var(--gutter); right: var(--gutter); justify-content: center; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 }
+
+/* Large playlists render a page of rows or cards at a time (see GUIDE_PAGE in LiveTV.tsx). */
+.live-more { margin-top: 12px; }

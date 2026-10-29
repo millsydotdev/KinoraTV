@@ -17,6 +17,10 @@ import './LiveTV.css'
 
 // Guide row height per density setting (px), mirrored by --guide-row in global.css.
 const ROW_H = { compact: 52, comfortable: 64, spacious: 76 } as const
+// Rows and cards rendered per page. Unbounded, 10,000 channels took seconds per render and per
+// scrolled frame (D8 measurements); a virtualised guide would lift this limit.
+const GUIDE_PAGE = 100
+const CARD_PAGE = 120
 
 function useMedia(query: string) {
   const [match, setMatch] = useState(() => window.matchMedia(query).matches)
@@ -50,12 +54,26 @@ export function LiveTV() {
 
   const favIds = library.favourites.filter((r) => r.startsWith('channel:')).map((r) => r.slice(8))
   const visible = filterChannels(channels, group, favIds)
+  // How many of `visible` to render; back to one page whenever the view or category changes.
+  const [paged, setPaged] = useState({ key: '', count: 0 })
+  const pageKey = `${view}:${group}`
+  const pageSize = view === 'guide' ? GUIDE_PAGE : CARD_PAGE
+  const shownCount = paged.key === pageKey ? paged.count : pageSize
+  const shown = visible.slice(0, shownCount)
+  const more = visible.length - shown.length
+  const showMore = (
+    more > 0 && (
+      <button type="button" className="btn btn-secondary btn-small live-more" onClick={() => setPaged({ key: pageKey, count: shownCount + pageSize })}>
+        Show {Math.min(pageSize, more)} more of {more} channels
+      </button>
+    )
+  )
 
   // Local midnights, so a day with a clock change is 23 or 25 hours long.
   const dayStart = addDays(startOfDay(now), dayOffset)
   const dayEnd = addDays(dayStart, 1)
   useEffect(() => requestGuideDay(dayStart), [requestGuideDay, dayStart])
-  const rows = visible.map((c) => ({ channel: c, programmes: store.schedule(c, dayStart) }))
+  const rows = shown.map((c) => ({ channel: c, programmes: store.schedule(c, dayStart) }))
 
   // Geometry: the visible window shows `guideZoom` hours across whatever width the guide has.
   const scroller = useRef<HTMLDivElement>(null)
@@ -239,11 +257,14 @@ export function LiveTV() {
               ))}
             </div>
             {channels.length === 0 ? noPlaylistChannels : visible.length === 0 ? emptyFavourites : (
-              <div className="grid-cards">
-                {visible.map((c) => (
-                  <ChannelCard key={c.id} channel={c} now={store.programmeAt(c, now)} next={store.nextProgramme(c, now)} to={`/live?channel=${c.id}`} format={prefs.timeFormat} selected={c.id === playing?.id} at={now} />
-                ))}
-              </div>
+              <>
+                <div className="grid-cards">
+                  {shown.map((c) => (
+                    <ChannelCard key={c.id} channel={c} now={store.programmeAt(c, now)} next={store.nextProgramme(c, now)} to={`/live?channel=${c.id}`} format={prefs.timeFormat} selected={c.id === playing?.id} at={now} />
+                  ))}
+                </div>
+                {showMore}
+              </>
             )}
           </>
         ) : (
@@ -324,6 +345,7 @@ export function LiveTV() {
                 {showNow && visible.length > 0 && <div className="now-line" style={{ left: colW + x(now) }} aria-hidden="true" />}
               </div>
             </div>
+            {showMore}
             <p className="guide-hint faint">
               {channelMode === 'demo'
                 ? 'Arrow keys move through the guide, Enter opens a programme, Page Up and Page Down change channel. Channels and schedule are demonstration data.'

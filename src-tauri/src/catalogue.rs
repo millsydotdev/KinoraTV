@@ -192,11 +192,24 @@ pub fn parse(text: &str, now: i64) -> Result<Catalogue, IngestError> {
         );
         let trimmed = line.trim_start();
         let (name, flag, channels, parent) = if trimmed.starts_with("<tr>") {
-            let cells = cells(line);
-            let count = cells
-                .get(1)
-                .and_then(|c| strip_tags(c).trim().parse::<u32>().ok());
-            (cells.first().and_then(|c| clean_name(c)), None, count, None)
+            // Cells are told apart by what they hold, so reordered or added columns read the same:
+            // the address cell holds `<code>`, the count is all digits, the name is the first other text.
+            let texts: Vec<String> = cells(line)
+                .into_iter()
+                .filter(|c| !c.contains("<code>"))
+                .map(|c| strip_tags(c).trim().to_owned())
+                .filter(|t| !t.is_empty())
+                .collect();
+            let digits = |t: &str| t.bytes().all(|b| b.is_ascii_digit());
+            let count = texts
+                .iter()
+                .find(|t| digits(t))
+                .and_then(|t| t.parse::<u32>().ok());
+            let name = texts
+                .iter()
+                .find(|t| !digits(t))
+                .and_then(|t| clean_name(t));
+            (name, None, count, None)
         } else if let Some(item) = trimmed.strip_prefix("- ") {
             let indent = line.len() - trimmed.len();
             while parents.last().is_some_and(|(i, _)| *i >= indent) {
@@ -426,6 +439,52 @@ https://iptv-org.github.io/iptv/index.category.m3u
         for bad in ["evil.example", "SECRET", "..", "http://"] {
             assert!(!json.contains(bad), "{bad}");
         }
+    }
+
+    #[test]
+    fn an_upstream_format_change_is_read_safely() {
+        // Columns reordered, a count missing, an extra column, CRLF endings, tab-indented nesting,
+        // headings renamed and unrelated tables: each field is found by what it holds, not by position.
+        let changed = concat!(
+            "## Something new\r\n",
+            "<tr><td align=\"right\">177</td><td>Animation</td><td><code>https://iptv-org.github.io/iptv/categories/animation.m3u</code></td></tr>\r\n",
+            "<tr><td><code>https://iptv-org.github.io/iptv/categories/news.m3u</code></td><td>News</td></tr>\r\n",
+            "<tr><td>Kids</td><td>12</td><td>extra</td><td><code>https://iptv-org.github.io/iptv/categories/kids.m3u</code></td></tr>\r\n",
+            "<tr><td></td><td>5</td><td><code>https://iptv-org.github.io/iptv/categories/nameless.m3u</code></td></tr>\r\n",
+            "<tr><td>Owner</td><td>Licence</td></tr>\r\n",
+            "- \u{1F1E6}\u{1F1F1} Albania <code>https://iptv-org.github.io/iptv/countries/al.m3u</code> (new note)\r\n",
+            "\t- Fier <code>https://iptv-org.github.io/iptv/subdivisions/al-04.m3u</code>\r\n",
+        );
+        let c = parse(changed, NOW).unwrap();
+        let got: Vec<_> = c
+            .entries
+            .iter()
+            .map(|e| (e.id.as_str(), e.name.as_str(), e.channels))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("categories/animation", "Animation", Some(177)),
+                ("categories/news", "News", None),
+                ("categories/kids", "Kids", Some(12)),
+                ("countries/al", "Albania", None),
+                ("subdivisions/al-04", "Fier", None),
+            ]
+        );
+        assert_eq!(c.skipped, 1, "the row with no name");
+        assert_eq!(c.entries[3].flag.as_deref(), Some("\u{1F1E6}\u{1F1F1}"));
+        assert_eq!(
+            c.entries[4].parent.as_deref(),
+            Some("countries/al"),
+            "tab indentation still nests"
+        );
+        assert!(c.entries.iter().all(|e| !e.name.contains('\r')));
+        // A format with no recognisable entries at all is refused as a whole, never half-read.
+        let markdown_table = "| Country | Playlist |\n| --- | --- |\n| UK | https://iptv-org.github.io/iptv/countries/uk.m3u |";
+        assert_eq!(
+            parse(markdown_table, NOW).unwrap_err().code,
+            ErrorCode::NotCatalogue
+        );
     }
 
     #[test]
