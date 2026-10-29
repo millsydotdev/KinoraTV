@@ -98,11 +98,20 @@ pub struct Guide {
     pub warnings: Vec<String>,
 }
 
-/// The only channel-id comparison Kinora makes: surrounding whitespace removed and ASCII letters
-/// lower-cased, so `BBC1.uk` matches ` bbc1.UK`. Nothing else is changed (no punctuation or suffix
-/// stripping), and display names are never used for matching.
+/// The channel-id comparison Kinora makes: surrounding whitespace removed and ASCII letters
+/// lower-cased, so `BBC1.uk` matches ` bbc1.UK`. Nothing else is changed (no punctuation stripping),
+/// and display names are never used for matching. The one fallback is `without_feed`.
 pub fn normalize_id(id: &str) -> String {
     id.trim().to_ascii_lowercase()
+}
+
+/// iptv-org playlists write `<channel>@<feed>` (`BBCNews.uk@UKHD`) where guides usually list only the
+/// channel (`BBCNews.uk`). Used only when the full id matches nothing: the channel part, if any.
+pub fn without_feed(id: &str) -> Option<&str> {
+    id.trim()
+        .split_once('@')
+        .map(|(channel, _)| channel)
+        .filter(|c| !c.is_empty())
 }
 
 fn not_guide(message: impl Into<String>) -> IngestError {

@@ -107,8 +107,10 @@ React 19 + TypeScript (src/)          Rust + Tauri 2 (src-tauri/)
   skipped and counted. Gaps stay gaps: nothing is invented, and "on now" means the current time is
   between the listed start and stop.
 - **Channel matching**: a playlist channel's `tvg-id` is compared with the guide's channel ids after
-  trimming spaces and ignoring the case of ASCII letters; nothing else (no punctuation or suffix
-  stripping, no display names). Each guide is used for the playlists you choose. A channel takes its
+  trimming spaces and ignoring the case of ASCII letters; no punctuation stripping and no display
+  names. One fallback: iptv-org playlists write ids as `channel@feed` (`BBCNews.uk@UKHD`) while most
+  guides list `BBCNews.uk`, so an id that matches nothing exactly is tried without its `@feed` part.
+  Each guide is used for the playlists you choose. A channel takes its
   programmes from the first of its guides that lists its id, or from a guide channel you match it
   to by hand in the guide's details (the search lists the guide's channels; nothing is matched until
   you choose one). Unmatched channels are listed there with the reason, and Live TV says why a row

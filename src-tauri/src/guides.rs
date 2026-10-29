@@ -112,7 +112,7 @@ pub struct Query {
 pub struct Match {
     /// The id as asked for.
     pub id: String,
-    /// The guide's channel id it matched (see `xmltv::normalize_id`), or `None`.
+    /// The guide's channel id it matched (see `xmltv::normalize_id` and `without_feed`), or `None`.
     pub channel: Option<String>,
 }
 
@@ -347,7 +347,15 @@ impl GuideStore {
                     q.ids
                         .iter()
                         .map(|id| {
-                            let index = held.index.get(&xmltv::normalize_id(id)).copied();
+                            // Exact first; then an iptv-org `channel@feed` id by its channel part.
+                            let index = held
+                                .index
+                                .get(&xmltv::normalize_id(id))
+                                .or_else(|| {
+                                    xmltv::without_feed(id)
+                                        .and_then(|c| held.index.get(&xmltv::normalize_id(c)))
+                                })
+                                .copied();
                             if let Some(i) = index.filter(|i| listed.insert(*i)) {
                                 let schedule = &held.guide.schedules[i];
                                 // Sorted and non-overlapping, so stops are sorted too.
@@ -491,6 +499,54 @@ mod tests {
         assert!(
             store.query(&[], NOW, NOW + 3 * 24 * HOUR).is_err(),
             "window too long"
+        );
+    }
+
+    #[test]
+    fn iptv_org_feed_ids_fall_back_to_the_channel_id_but_exact_ids_win() {
+        // iptv-org playlists write `<channel>@<feed>`; guides usually list only `<channel>`.
+        let store = GuideStore::new(None);
+        let guide = br#"<tv><channel id="BBCNews.uk"/><channel id="ITV2.uk"/><channel id="ITV2.uk@HD"/>
+            <programme start="20260329120000" stop="20260329130000" channel="BBCNews.uk"><title>News</title></programme>
+            <programme start="20260329120000" stop="20260329130000" channel="ITV2.uk"><title>Plain</title></programme>
+            <programme start="20260329120000" stop="20260329130000" channel="ITV2.uk@HD"><title>Feed</title></programme></tv>"#;
+        store.import("gd-a", guide.to_vec(), NOW).unwrap();
+        let a = ask(
+            &store,
+            &[
+                "BBCNews.uk@UKHD",
+                "bbcnews.UK@sd",
+                "ITV2.uk@HD",
+                "ITV2.uk@SD",
+                "@UKHD",
+                "Other.uk@SD",
+                "BBCNews.uk@",
+            ],
+            NOW,
+            NOW + HOUR,
+        );
+        let chans: Vec<_> = a.matches.iter().map(|m| m.channel.as_deref()).collect();
+        assert_eq!(
+            chans,
+            [
+                Some("BBCNews.uk"),
+                Some("BBCNews.uk"),
+                Some("ITV2.uk@HD"),
+                Some("ITV2.uk"),
+                None,
+                None,
+                Some("BBCNews.uk")
+            ]
+        );
+        let titles: Vec<_> = a
+            .programmes
+            .iter()
+            .map(|p| p.programme.title.as_str())
+            .collect();
+        assert_eq!(
+            titles,
+            ["News", "Feed", "Plain"],
+            "each guide channel listed once"
         );
     }
 

@@ -1,6 +1,7 @@
 // XMLTV guide sources (Gate D6). Rust parses and holds each guide (src-tauri/src/guides.rs) and keeps
 // a cached copy; the page keeps only definitions, matches and the programmes of the days it shows.
-// Matching is by `tvg-id` (Rust compares ids after trimming and ASCII case-folding, nothing more) or
+// Matching is by `tvg-id` (Rust compares ids after trimming and ASCII case-folding; an iptv-org
+// `channel@feed` id that matches nothing exactly is tried by its channel part) or
 // by a match the user picked by hand. Display names are never used to match.
 import type { Channel, Programme } from '../data/types'
 import { IngestError, type GuideAnswer, type GuideQuery, type GuideSummary, type SavedGuide, type SavedMapping } from '../lib/native'

@@ -71,7 +71,8 @@ Prerequisites and architecture diagram: `README.md`.
   destination checks, and never raise the playlist or stream limits for guides. `guides.rs` holds
   parsed guides, the per-guide generation (results of superseded imports are dropped) and the
   `guide-<id>.json` caches; guide ids are `gd-[a-z0-9-]` because they form file names. Matching is
-  `xmltv::normalize_id` (trim + ASCII case) or a saved hand match, never display names, and lives in
+  `xmltv::normalize_id` (trim + ASCII case), then, only if that finds nothing, `xmltv::without_feed`
+  (iptv-org's `channel@feed` ids by their channel part), or a saved hand match; never display names. It lives in
   Rust: the page sends ids and gets matches back. Never fetch URLs found in a guide (icons, `<url>`).
 - Discovery (D7): `catalogue.rs` fetches one constant address (`catalogue::URL`) with
   `Policy::catalogue()` (`only_hosts` + `https_only` narrow `check_url` on every hop; never use them
