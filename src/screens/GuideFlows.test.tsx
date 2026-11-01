@@ -132,6 +132,8 @@ const loaded = (guides: SavedGuide[] = [savedGuide], mappings: SavedMapping[] = 
 const openSource = (name: string) => click([...document.querySelectorAll('.source-main')].find((b) => b.textContent?.includes(name))!)
 
 beforeEach(() => {
+  // Fixed midday: the listings below span three hours around now and must not cross a local midnight.
+  vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 9, 20, 11) })
   now = Date.now()
   listings = {
     'one.uk': { id: 'One.uk', programmes: [

@@ -26,7 +26,11 @@ const clickSel = (sel) => js(`const el = document.querySelector(arguments[0]); i
 const setValue = (sel, v) => js(`const i = document.querySelector(arguments[0]); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, arguments[1]); i.dispatchEvent(new Event('input', { bubbles: true })); return true`, sel, v)
 const text = () => js('return document.body.innerText')
 const pill = (name) => js(`return [...document.querySelectorAll('.source-row')].find(r => r.querySelector('strong')?.textContent.includes(arguments[0]))?.querySelector('.pill')?.textContent ?? ''`, name)
-const rss = () => { try { return execFileSync('ps', ['-C', 'kinora,WebKitWebProces', '-o', 'comm=,rss=']).toString().trim().split('\n').map((l) => l.trim().split(/\s+/)).map(([c, k]) => `${c} ${Math.round(Number(k) / 1024)} MB`).join(', ') } catch { return 'n/a' } }
+const rss = () => { try {
+  const rows = execFileSync('ps', ['-eo', 'pid=,ppid=,comm=,rss=']).toString().trim().split('\n').map((l) => l.trim().split(/\s+/))
+  const mine = new Set(rows.filter((r) => r[2] === 'kinora').map((r) => r[0]))
+  return rows.filter((r) => mine.has(r[0]) || mine.has(r[1])).map(([, , c, k]) => `${c} ${Math.round(Number(k) / 1024)} MB`).join(', ')
+} catch { return 'unavailable' } }
 /** Runs `action` in the page and returns ms until `ready` is true (checked every frame), or -1 after 60 s. */
 const timed = (action, ready) => jsAsync(`const done = arguments[arguments.length - 1]; const t0 = performance.now();
   (${action})(); const check = () => { let r = false; try { r = (${ready})() } catch {} if (r) done(Math.round(performance.now() - t0)); else if (performance.now() - t0 > 60000) done(-1); else requestAnimationFrame(check) }; requestAnimationFrame(check)`)
@@ -301,7 +305,7 @@ try {
     await until(`[...document.querySelectorAll('.source-row .pill')].length > 0 && [...document.querySelectorAll('.source-row .pill')].every(p => !/Importing|Updating/.test(p.textContent))`, 120000)
     const pills = await js(`return [...document.querySelectorAll('.source-row')].filter(r => !r.textContent.includes('Sample')).map(r => r.querySelector('strong').textContent + ' = ' + r.querySelector('.pill').textContent)`)
     note('sources with nothing reachable', pills.join(' | '))
-    ok('every playlist keeps its channels', ['Fixture web = Refresh failed · 6 channels kept', 'Big playlist = Refresh failed · 10000 channels kept', 'iptv-org · English = Refresh failed · 3016 channels kept'].every((p) => pills.includes(p)))
+    ok('every playlist keeps its channels', ['Fixture web = Refresh failed · 6 channels kept', 'Big playlist = Refresh failed · 10000 channels kept'].every((p) => pills.includes(p)) && pills.some((p) => /^iptv-org · English = Refresh failed · \d+ channels kept$/.test(p)))
     ok('every guide keeps its programmes', ['Fixture guide = Refresh failed · 88 programmes kept', 'Big guide = Refresh failed · 136000 programmes kept'].every((p) => pills.includes(p)))
     await go('/live')
     ok('cached listings still shown', /Fixture News/.test(await until(`[...document.querySelectorAll('.guide-row')].find(r => r.textContent.includes('Fixture HLS'))?.querySelector('.prog.is-now')?.textContent`) ?? ''))
@@ -456,6 +460,8 @@ try {
   }
 
   if (phase === 'guide-edge') {
+    // Fixtures are today's, and guides drop programmes that ended over 12 hours ago: the morning ones must still be kept.
+    if (new Date().getHours() >= 20) { note('skipped', 'run guide-edge between 00:00 and 20:00 local time (use libfaketime if needed)'); throw new Error('guide-edge is clock-bound') }
     ok('fixture playlist added', /Playlist read: 6 channels/.test(await addUrl(`${S1}/channels.m3u?token=PLAYLISTTOKEN`, 'Fixture web') ?? ''))
     ok('edge-case guide added', /Guide read: 1 channels, 5 programmes/.test(await addUrl(`${S1}/guide-edge.xml`, 'Edge guide', { guide: true }) ?? ''))
     await go('/live')

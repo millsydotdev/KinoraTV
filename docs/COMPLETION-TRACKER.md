@@ -1,0 +1,105 @@
+# Kinora completion tracker
+
+Source: the release readiness audit of 1 November 2026 (evidence in
+`/home/millsy/dev/TVMovie-audit-2026-11-01/`). Nothing leaves this file. An item is **DONE** only when it
+does its job in the integrated app, with the evidence named here. Statuses: OPEN, IN PROGRESS,
+DONE (a = automated, n = native dev, p = packaged), NEEDS OWNER (blocked on a named decision or
+something only the owner can supply), LIMIT (cannot be finished by code here; reason stated).
+
+Milestones: **M0** foundations (CI, tests, licences inventory). **M1** honest first run. **M2**
+playback. **M3** guide and refresh. **M4** films, series, artwork. **M5** LAN, reminders, backup,
+settings. **M6** release operations and docs.
+
+## The 22 audit findings
+
+| # | Finding | Before | Finished outcome | Done so far | Evidence | Depends on / approval | M | Status |
+|---|---|---|---|---|---|---|---|---|
+| 1 | No onboarding | Lands in fictional catalogue | Skippable setup, revisitable, reaches a real channel | | | | M1 | OPEN |
+| 2 | Fictional default content | Demo library and titles by default | Demo only by explicit opt-in, always labelled | Uncommitted hide-fiction change kept and extended | | | M1 | IN PROGRESS |
+| 3 | Leftover fake data | Sample sources, counts, collections survive import | Separated; real data preserved; migration tested | | | | M1 | OPEN |
+| 4 | No films or series | Demo screens only | Metadata, search, details, art, seasons, library, progress, lawful playback | | | Provider and VOD model: owner | M4 | OPEN |
+| 5 | H.264 missing on clean Fedora | RPM pulls no decoder | Detection, packaging dependency, guidance, licensing recorded | | | | M2 | OPEN |
+| 6 | Player hangs on failure | "Loading stream…" forever | Bounded timeouts, cancel, real errors, recovery | | | | M2 | OPEN |
+| 7 | No licence or notices | None | Inventory, notices shipped, licence applied | `public/THIRD-PARTY-NOTICES.txt` generated and checked in CI; `license: UNLICENSED` stated until chosen | `cargo deny` licences ok | Licence choice: owner; legal review | M0 | NEEDS OWNER |
+| 8 | Guide match 35/299 | Exact id only | Measured improvement, no false matches | | | Alternative matching: owner | M3 | OPEN |
+| 9 | Stream formats | HLS only; unknowns | Formats detected, unsupported explained, DASH decided, unknowns tested | | | DASH dependency: owner | M2 | OPEN |
+| 10 | Real streams untested | Test streams only | Authorised matrix run and published | | | Stream permission: owner | M2 | OPEN |
+| 11 | No real artwork | None in real mode | Logos, programme, Home, posters, backdrops, episodes, setup art | | | Remote images: owner | M4 | OPEN |
+| 12 | False WATCHING | First channel marked | State follows real player events | | | | M1 | OPEN |
+| 13 | Install and upgrades | Unsigned RPM | Upgrades tested, data preserved, signing and distribution process | | | Hosting, keys: owner | M6 | OPEN |
+| 14 | CI and test quality | No CI, clock tests, fmt failing | CI, fixed clocks, no provider counts, cargo-deny config | `.github/workflows/ci.yml`, `scripts/ci-local.sh`, `src-tauri/deny.toml`; clocks fixed in GuideFlows and DiscoveryFlows; provider count removed; fmt clean; harness memory counts only Kinora | Vitest 212/212 at 12 clock and zone combinations; deny all ok | Workflow has never run on GitHub: no remote (owner) | M0 | DONE a; remote run NEEDS OWNER |
+| 15 | Backup and removal | Partial export, no restore or erase | Restore, erase, token handling, corrupt-file tests | | | | M5 | OPEN |
+| 16 | Dead settings | 5 toggles read by nothing, stale tags | Every setting works or is gone | | | | M1 | OPEN |
+| 17 | Privacy and support docs | README notes | Privacy, install, troubleshooting, support docs | | | Support contact: owner | M6 | OPEN |
+| 18 | Refresh only at start | No schedule | Scheduled refresh, backoff, cancel, status, controls | | | | M3 | OPEN |
+| 19 | Reminders do not fire | Stored list | Reminders notify | | | Notification plugin: owner | M5 | OPEN |
+| 20 | LAN tuners refused | Refused | Separate consented local policy with security tests | | | Network policy: owner | M5 | OPEN |
+| 21 | Dependency warnings | 2 via GTK 3 | Mitigated or tracked upstream with evidence | Chain traced, ignores with reasons, re-check rule in `docs/DEPENDENCIES.md` | `cargo tree -i glib`; latest tauri on crates.io is a 3.0 alpha | Upstream Tauri | M0 | LIMIT: upstream |
+| 22 | Visual polish | Overlap, clipping, wrong copy | Fixed and checked on screen | | | | M1 | OPEN |
+
+## Capability rows A to J
+
+| Area | Capability | Audit | Finished outcome | Done so far / evidence | Findings | Status |
+|---|---|---|---|---|---|---|
+| A | Onboarding or setup | NOT IMPLEMENTED | See finding 1 | | 1 | OPEN |
+| A | Fresh Home | PARTIAL | Honest, useful, not fictional | | 2 | OPEN |
+| A | Blank Home | Not reproduced | Explain startup wait; bound it | | 2 | OPEN |
+| A | Home with a real playlist | PARTIAL | Populated, with art | | 11 | OPEN |
+| A | Useful offline | VERIFIED p | Keep verified | | | OPEN |
+| B | Metadata provider, API setup | NOT IMPLEMENTED | See finding 4 | | 4 | OPEN |
+| B | Real films and series | NOT IMPLEMENTED | See finding 4 | | 4 | OPEN |
+| B | Film and series screens | PARTIAL | Real data | | 4 | OPEN |
+| C | M3U by address and file | VERIFIED p | Keep verified | | | OPEN |
+| C | HLS on this machine | VERIFIED p | Keep verified | | | OPEN |
+| C | HLS on clean Fedora | FAILS | Plays or explains | | 5, 6 | OPEN |
+| C | AES-128, DRM refusal, retry, cancel | VERIFIED n | Also packaged where possible | | | OPEN |
+| C | fMP4, HEVC, sliding live, alternate audio | UNKNOWN | Tested with fixtures | | 9 | OPEN |
+| C | Long-running live streams | UNKNOWN | Soak test | | 9, 10 | OPEN |
+| C | DASH | NOT IMPLEMENTED | Decided, then built or refused clearly | | 9 | OPEN |
+| C | Referrer and user-agent options | NOT IMPLEMENTED | Decided, then honoured or explained | | 9 | OPEN |
+| C | Real broadcaster streams | BLOCKED | Run what the owner authorises | | 10 | NEEDS OWNER |
+| D | XMLTV, gzip, files, caps, hand matches | VERIFIED n/p | Keep verified | | | OPEN |
+| D | Offsets, gaps, midnight | VERIFIED n | Keep verified; test not clock-bound | | 14 | OPEN |
+| D | 25-hour day | VERIFIED n | Also packaged | | | OPEN |
+| D | 23-hour day | AUTOMATED ONLY | Native packaged run | | | OPEN |
+| D | Large guides | VERIFIED n | Large real guide; decide 64 MB cap | | 8 | OPEN |
+| D | Guide match rate | PARTIAL | See finding 8 | | 8 | OPEN |
+| E | iptv-org Discovery | VERIFIED p | Keep verified | | | OPEN |
+| E | Automatic setup | NOT IMPLEMENTED | Setup picks country, playlist, guide | | 1, 8 | OPEN |
+| E | Guide discovery | NOT IMPLEMENTED | Built-in route to a guide | | 8 | OPEN |
+| E | Refresh | PARTIAL | See finding 18 | | 18 | OPEN |
+| E | Dead-stream handling | NOT IMPLEMENTED | Failures remembered and shown from real plays; no background probing unless approved | | 6, 18 | OPEN |
+| F | Saved sources, migration, corrupt, future files | VERIFIED n/p | Keep verified | | | OPEN |
+| F | Permissions, stored fields | VERIFIED p | Keep verified | | | OPEN |
+| F | Backup and restore | PARTIAL | See finding 15 | | 15 | OPEN |
+| F | Upgrade across releases | NOT IMPLEMENTED | Tested from an old build | | 13 | OPEN |
+| F | In-app erase | NOT IMPLEMENTED | See finding 15 | | 15 | OPEN |
+| F | Large saved-data startup | UNKNOWN | Measured, packaged | | | OPEN |
+| G | Keyboard, labels, overflow | VERIFIED p | Keep verified, including new screens | | | OPEN |
+| G | Screen reader | UNKNOWN | Tested with Orca where possible; result recorded | | | OPEN |
+| G | Settings honesty | PARTIAL | See finding 16 | | 16 | OPEN |
+| H | Network behaviour | VERIFIED p | Re-trace after each network feature | | | OPEN |
+| H | Stream hosts during browsing | VERIFIED p | Re-trace | | | OPEN |
+| H | Telemetry, crash reports, updater | None found | Documented; updater only if approved | | 13, 17 | OPEN |
+| I | Kinora licence, notices | NOT IMPLEMENTED | See finding 7 | | 7 | OPEN |
+| I | AI art, stream risk, provider terms | Flagged | Recorded for legal review; demo art optional | | 7, 11 | OPEN |
+| J | Fedora RPM | PARTIAL | Real desktop install by owner or container proof | | 13 | OPEN |
+| J | Other distros, Windows, macOS | NOT IMPLEMENTED | Supported list stated; builds in CI where feasible | | 13 | OPEN |
+| J | Other GPUs, desktops | UNKNOWN | What can be run here is run; rest stated | | 13 | OPEN |
+| J | Signing, updates, rollback, notes, diagnostics | NOT IMPLEMENTED | See finding 13, 17 | | 13, 17 | OPEN |
+
+## Decisions log
+
+The owner did not answer the approval questions of 1 November 2026, and said to use best judgement. These are
+the most conservative choices that still let work proceed. Each can be changed by the owner.
+
+| Decision | Choice in force | Reversible by |
+|---|---|---|
+| Application licence | **Not chosen.** Inventory and notices prepared; `private: true` stays. Recommended: Apache-2.0 | Owner names a licence |
+| Remote images | Built, **off by default**; nothing is requested until the user turns it on in setup or Settings, with the IP exposure stated at the switch | Owner may change the default |
+| Films and series | Video only from the user's own playlists and media server. Metadata provider interface; provider active only with a key the user pastes | Owner picks a provider |
+| LAN | Per-device consent as the owner's brief describes; off by default | Owner may refuse |
+| Stream tests | Published developer test streams only; no broadcaster stream opened | Owner names streams |
+| Distribution | Packages and CI config built locally. **No repository created, nothing pushed, no updater keys generated** | Owner picks hosting |
+| Notifications | Official Tauri notification plugin, required by finding 19; sends nothing over the network | Owner may refuse (falls back to in-app banner) |
+| DASH | dash.js (BSD-3) if the guarded rewrite proves sound | Owner may refuse |

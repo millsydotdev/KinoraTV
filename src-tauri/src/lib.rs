@@ -35,7 +35,11 @@ fn build_info(name: &str, version: &str) -> AppInfo {
     AppInfo {
         name: name.to_owned(),
         version: version.to_owned(),
-        profile: if cfg!(debug_assertions) { "debug" } else { "release" },
+        profile: if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        },
         os: std::env::consts::OS,
         arch: std::env::consts::ARCH,
         tauri_version: tauri::VERSION,
@@ -351,16 +355,35 @@ mod tests {
         let info = build_info("Kinora", "0.1.0");
         assert_eq!(info.name, "Kinora");
         assert_eq!(info.version, "0.1.0");
-        assert_eq!(info.profile, if cfg!(debug_assertions) { "debug" } else { "release" });
+        assert_eq!(
+            info.profile,
+            if cfg!(debug_assertions) {
+                "debug"
+            } else {
+                "release"
+            }
+        );
         assert_eq!(info.os, std::env::consts::OS);
-        assert!(info.tauri_version.starts_with("2."), "expected Tauri 2, got {}", info.tauri_version);
+        assert!(
+            info.tauri_version.starts_with("2."),
+            "expected Tauri 2, got {}",
+            info.tauri_version
+        );
     }
 
     #[test]
     fn app_info_serialises_with_the_field_names_the_frontend_expects() {
         let json = serde_json::to_value(build_info("Kinora", "0.1.0")).unwrap();
-        let mut keys: Vec<&str> = json.as_object().unwrap().keys().map(String::as_str).collect();
+        let mut keys: Vec<&str> = json
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
         keys.sort_unstable();
-        assert_eq!(keys, ["arch", "name", "os", "profile", "tauriVersion", "version"]);
+        assert_eq!(
+            keys,
+            ["arch", "name", "os", "profile", "tauriVersion", "version"]
+        );
     }
 }

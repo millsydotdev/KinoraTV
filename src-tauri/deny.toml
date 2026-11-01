@@ -1,0 +1,30 @@
+# cargo deny --manifest-path src-tauri/Cargo.toml check
+[graph]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[advisories]
+# Both come only through Tauri's GTK 3 stack (tauri, tao, muda -> gtk 0.18 -> glib 0.18) and cannot be
+# changed without Tauri moving off gtk-rs 0.18. Review on every Tauri upgrade. See docs/DEPENDENCIES.md.
+ignore = [
+  { id = "RUSTSEC-2024-0429", reason = "glib 0.18 VariantStrIter unsound; Kinora never calls it; needs a Tauri upgrade" },
+  { id = "RUSTSEC-2024-0370", reason = "proc-macro-error unmaintained; build time only, via glib-macros 0.18; needs a Tauri upgrade" },
+]
+
+[licenses]
+confidence-threshold = 0.9
+allow = [
+  "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause", "BSD-3-Clause", "BSL-1.0", "CDLA-Permissive-2.0",
+  "ISC", "MIT", "MPL-2.0", "OpenSSL", "Unicode-3.0", "Unlicense", "Zlib", "bzip2-1.0.6",
+]
+
+[licenses.private]
+# Kinora itself has no licence until the owner chooses one (docs/COMPLETION-TRACKER.md, finding 7).
+ignore = true
+
+[bans]
+multiple-versions = "allow"
+wildcards = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

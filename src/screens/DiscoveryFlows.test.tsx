@@ -91,6 +91,7 @@ const openEntry = (name: string) => click([...document.querySelectorAll('.discov
 const lastState = (): SavedState => native.saveSources.mock.calls.at(-1)?.[0]
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 9, 20, 11) }) // "3 days ago" must not cross a clock change
   localStorage.clear()
   for (const fn of Object.values(native)) fn.mockReset()
   native.inNativeShell.mockReturnValue(true)
@@ -103,6 +104,7 @@ beforeEach(() => {
   native.refreshCatalogue.mockResolvedValue(catalogue())
 })
 afterEach(async () => {
+  vi.useRealTimers()
   if (root) await act(async () => root!.unmount())
   root = null
   document.body.replaceChildren()
