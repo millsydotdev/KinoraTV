@@ -1,4 +1,4 @@
-import { NavLink, useSearchParams } from 'react-router-dom'
+import { Link, NavLink, useSearchParams } from 'react-router-dom'
 import { genresOf, movies } from '../data/catalog'
 import { movieRef, runtimeLabel } from '../data/refs'
 import type { Movie } from '../data/types'
@@ -8,6 +8,20 @@ import { PosterCard, WideCard } from '../components/Tiles'
 import { Segmented, StateBlock } from '../components/ui'
 import { useStore } from '../state/store'
 import './Browse.css'
+
+/** Shown instead of the fictional catalogue once real playlists exist: Kinora has no film or series source yet. */
+export function NoTitles({ kind }: { kind: 'films' | 'series' }) {
+  return (
+    <>
+      <PageHeader title={kind === 'films' ? 'Movies' : 'Series'} tabs={<BrowseTabs />} />
+      <div className="page">
+        <StateBlock icon={kind === 'films' ? 'film' : 'series'} title={kind === 'films' ? 'No films yet' : 'No series yet'} action={<Link to="/live" className="btn btn-ghost">Go to Live TV</Link>}>
+          Kinora has no source for films and series yet. Your imported playlists provide live TV.
+        </StateBlock>
+      </div>
+    </>
+  )
+}
 
 export function BrowseTabs() {
   return (
@@ -49,6 +63,7 @@ export function Movies() {
     .filter((m) => !prefs.hideWatched || !library.watched.includes(movieRef(m.id)))
     .sort((sorts[sort] ?? sorts.added).fn)
   const filtered = genre !== 'All' || year !== 'All'
+  if (!store.demoTitles) return <NoTitles kind="films" />
 
   return (
     <>

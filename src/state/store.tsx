@@ -431,6 +431,8 @@ function useStoreValue(initialPlaylists: PlaylistSource[], initialGuides: GuideS
     playlists, ...playlistActions, restored, storageNotice, guides, mappings, ...guideActions, ...guide,
     /** The channel catalogue every screen shows: playlist channels, or the demonstration set when there are no playlists. */
     channels, findChannel, channelMode: playlists.length > 0 ? 'playlists' as const : 'demo' as const,
+    /** The fictional films and series are a first-run preview only: hidden once any real playlist exists. */
+    demoTitles: playlists.length === 0,
   }
 }
 

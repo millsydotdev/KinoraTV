@@ -1,4 +1,5 @@
 import { Link, useParams } from 'react-router-dom'
+import { NoTitles } from './Movies'
 import { movieById, movies } from '../data/catalog'
 import { movieRef, runtimeLabel } from '../data/refs'
 import { Icon } from '../components/Icon'
@@ -16,6 +17,7 @@ export function MovieDetail() {
   const store = useStore()
   const toast = useToast()
 
+  if (!store.demoTitles) return <NoTitles kind="films" />
   if (!movie) {
     return (
       <div className="page">

@@ -7,14 +7,14 @@ import { PosterCard } from '../components/Tiles'
 import { StateBlock } from '../components/ui'
 import { seriesNextUp } from '../lib/library'
 import { useStore } from '../state/store'
-import { BrowseTabs } from './Movies'
+import { BrowseTabs, NoTitles } from './Movies'
 import './Browse.css'
 
 const sorts = { added: 'Sort: Recently added', title: 'Sort: Title A to Z', episodes: 'Sort: Most episodes' } as const
 type SortKey = keyof typeof sorts
 
 export function SeriesBrowse() {
-  const { library } = useStore()
+  const { library, demoTitles } = useStore()
   const [params, setParams] = useSearchParams()
   const genre = params.get('genre') ?? 'All'
   const sort = (params.get('sort') ?? 'added') as SortKey
@@ -37,6 +37,7 @@ export function SeriesBrowse() {
           : b.s.added.localeCompare(a.s.added),
     )
 
+  if (!demoTitles) return <NoTitles kind="series" />
   return (
     <>
       <PageHeader title="Series" tabs={<BrowseTabs />} />

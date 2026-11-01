@@ -56,7 +56,7 @@ export function Player() {
   const toast = useToast()
   const now = useNow()
   const { prefs, library } = store
-  const item = resolve(ref, now, store.findChannel, store.programmeAt)
+  const item = resolve(ref, now, store.findChannel, store.programmeAt, store.demoTitles)
   const shell = useRef<HTMLDivElement>(null)
   const [muted, setMuted] = useState(false)
   const [volume, setVolume] = useState(80)

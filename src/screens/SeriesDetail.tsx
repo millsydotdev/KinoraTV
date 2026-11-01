@@ -1,4 +1,5 @@
 import { useRef, type KeyboardEvent } from 'react'
+import { NoTitles } from './Movies'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { seriesById } from '../data/catalog'
 import { episodeCode, episodeRef } from '../data/refs'
@@ -20,6 +21,7 @@ export function SeriesDetail() {
   const tabs = useRef<(HTMLButtonElement | null)[]>([])
   const s = seriesById(id)
 
+  if (!store.demoTitles) return <NoTitles kind="series" />
   if (!s) {
     return (
       <div className="page">

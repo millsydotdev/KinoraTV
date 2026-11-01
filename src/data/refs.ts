@@ -20,8 +20,10 @@ export const episodeCode = (e: Episode) => `S${e.season} E${e.number}`
 export function resolve(
   ref: string, now = Date.now(), findChannel: (id: string) => Channel | undefined = channelById,
   at: (c: Channel, t: number) => Programme | undefined = programmeAt,
+  titles = true,
 ): Resolved | undefined {
   const [kind, rest = ''] = ref.split(':') as [string, string | undefined]
+  if (!titles && kind !== 'channel') return undefined // fictional titles are hidden next to real playlists
   const play = `/watch/${encodeURIComponent(ref)}`
   if (kind === 'movie') {
     const m = movieById(rest)

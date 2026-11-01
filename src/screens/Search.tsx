@@ -69,13 +69,13 @@ export function Search() {
         key: p.id, to: `/live?channel=${c.id}`, thumb: <Art src={p.art} />, title: p.title,
         sub: `${p.start <= now ? 'On now' : clock(p.start, prefs.timeFormat)} · ${c.name} · ${p.category}`,
       }))
-    groups.films = movies.filter((m) => has(m.title, m.synopsis, ...m.genres)).map((m) => ({
+    groups.films = !store.demoTitles ? [] : movies.filter((m) => has(m.title, m.synopsis, ...m.genres)).map((m) => ({
       key: m.id, to: `/movies/${m.id}`, thumb: <Art src={m.art} focus={m.focus} />, title: m.title, sub: `Movie · ${m.year} · ${m.genres.join(' / ')}`,
     }))
-    groups.series = series.filter((s) => has(s.title, s.synopsis, ...s.genres)).map((s) => ({
+    groups.series = !store.demoTitles ? [] : series.filter((s) => has(s.title, s.synopsis, ...s.genres)).map((s) => ({
       key: s.id, to: `/series/${s.id}`, thumb: <Art src={s.art} focus={s.focus} />, title: s.title, sub: `Series · ${s.seasons.length} season${s.seasons.length > 1 ? 's' : ''} · ${s.genres.join(' / ')}`,
     }))
-    groups.episodes = series.flatMap((s) =>
+    groups.episodes = !store.demoTitles ? [] : series.flatMap((s) =>
       s.seasons.flat().filter((e) => has(e.title, e.synopsis)).map((e) => ({
         key: `${s.id}/${e.id}`, to: `/watch/${encodeURIComponent(episodeRef(s.id, e.id))}`, thumb: <Art src={e.still} focus={e.stillFocus} />,
         title: e.title, sub: `${s.title} · ${episodeCode(e)} · ${e.runtime} min`,

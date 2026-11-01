@@ -23,8 +23,8 @@ const tabs = [
 type TabId = (typeof tabs)[number]['id']
 type Kind = 'all' | 'channel' | 'movie' | 'series'
 
-const resolveAll = (refs: string[], now: number, find: (id: string) => Channel | undefined, at: (c: Channel, t: number) => Programme | undefined) =>
-  refs.map((r) => resolve(r, now, find, at)).filter((r): r is Resolved => !!r)
+const resolveAll = (refs: string[], now: number, find: (id: string) => Channel | undefined, at: (c: Channel, t: number) => Programme | undefined, titles: boolean) =>
+  refs.map((r) => resolve(r, now, find, at, titles)).filter((r): r is Resolved => !!r)
 
 export function Library() {
   const [params, setParams] = useSearchParams()
@@ -68,14 +68,14 @@ export function Library() {
 
 function Overview({ go }: { go: (t: TabId) => void }) {
   const now = useNow()
-  const { library, findChannel, programmeAt } = useStore()
+  const { library, findChannel, programmeAt, demoTitles } = useStore()
   const [, setParams] = useSearchParams()
-  const resume = continueWatching(library)
-  const favs = resolveAll(library.favourites, now, findChannel, programmeAt)
+  const resume = continueWatching(library, demoTitles)
+  const favs = resolveAll(library.favourites, now, findChannel, programmeAt, demoTitles)
   const channels = favs.filter((r) => r.kind === 'channel')
   const films = favs.filter((r) => r.kind === 'movie')
   const shows = favs.filter((r) => r.kind === 'series')
-  const recent = resolveAll(library.history.map((h) => h.ref), now, findChannel, programmeAt).slice(0, 8)
+  const recent = resolveAll(library.history.map((h) => h.ref), now, findChannel, programmeAt, demoTitles).slice(0, 8)
   const seeAll = (t: TabId) => <button type="button" className="view-all" onClick={() => go(t)}>View All<Icon name="right" size={16} /></button>
 
   if (!resume.length && !favs.length && !recent.length && !library.watchlist.length && !library.collections.length) {
@@ -161,7 +161,7 @@ function SavedList({ list }: { list: 'watchlist' | 'favourites' }) {
   const toast = useToast()
   const [kind, setKind] = useState<Kind>('all')
   const [sort, setSort] = useState<'added' | 'title'>('added')
-  const all = resolveAll(store.library[list], now, store.findChannel, store.programmeAt)
+  const all = resolveAll(store.library[list], now, store.findChannel, store.programmeAt, store.demoTitles)
   const items = all.filter((r) => kind === 'all' || r.kind === kind).sort((a, b) => (sort === 'title' ? a.title.localeCompare(b.title) : 0))
   const kinds: Kind[] = list === 'favourites' ? ['all', 'channel', 'movie', 'series'] : ['all', 'movie', 'series']
   const kindLabel: Record<Kind, string> = { all: 'All', channel: 'Channels', movie: 'Films', series: 'Series' }
@@ -207,11 +207,11 @@ function SavedList({ list }: { list: 'watchlist' | 'favourites' }) {
 }
 
 function CollectionCards({ collections, onOpen }: { collections: Collection[]; onOpen: (id: string) => void }) {
-  const { findChannel, programmeAt } = useStore()
+  const { findChannel, programmeAt, demoTitles } = useStore()
   return (
     <ul className="collection-cards">
       {collections.map((c) => {
-        const art = resolveAll(c.items, Date.now(), findChannel, programmeAt).slice(0, 3)
+        const art = resolveAll(c.items, Date.now(), findChannel, programmeAt, demoTitles).slice(0, 3)
         return (
           <li key={c.id}>
             <button type="button" className="card collection-card" onClick={() => onOpen(c.id)}>
@@ -271,7 +271,7 @@ function Collections() {
   )
 
   if (open) {
-    const items = resolveAll(open.items, now, store.findChannel, store.programmeAt)
+    const items = resolveAll(open.items, now, store.findChannel, store.programmeAt, store.demoTitles)
     return (
       <>
         <div className="collection-head">
@@ -329,7 +329,7 @@ function History() {
   const store = useStore()
   const toast = useToast()
   const [confirm, setConfirm] = useState(false)
-  const entries = store.library.history.map((h) => ({ h, r: resolve(h.ref, now, store.findChannel, store.programmeAt) })).filter((x): x is { h: typeof x.h; r: Resolved } => !!x.r)
+  const entries = store.library.history.map((h) => ({ h, r: resolve(h.ref, now, store.findChannel, store.programmeAt, store.demoTitles) })).filter((x): x is { h: typeof x.h; r: Resolved } => !!x.r)
   const byDay = new Map<string, typeof entries>()
   for (const e of entries) {
     const k = dayLabel(e.h.at, now)

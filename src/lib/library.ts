@@ -19,11 +19,11 @@ export function seriesNextUp(library: Library, s: Series): { episode: Episode; s
   return next ? { episode: next, state: 'next' } : { episode: first, state: 'rewatch' }
 }
 
-export function continueWatching(library: Library): (Resolved & { progress: number; secondsLeft: number })[] {
+export function continueWatching(library: Library, titles = true): (Resolved & { progress: number; secondsLeft: number })[] {
   return Object.entries(library.progress)
     .sort(([, a], [, b]) => b.at - a.at)
     .flatMap(([ref, p]) => {
-      const r = resolve(ref)
+      const r = resolve(ref, Date.now(), undefined, undefined, titles)
       if (!r || library.watched.includes(ref)) return []
       return [{ ...r, progress: Math.min(1, p.pos / p.dur), secondsLeft: p.dur - p.pos }]
     })

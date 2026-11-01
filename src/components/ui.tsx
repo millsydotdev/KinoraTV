@@ -21,7 +21,7 @@ export function Art({ src, alt = '', focus = 50, className = '', eager = false, 
           onError={() => setState('error')}
         />
       )}
-      {state === 'error' && <div className="art-fallback">{alt ? `Artwork unavailable: ${alt}` : 'Artwork unavailable'}</div>}
+      {state === 'error' && src && <div className="art-fallback">{alt ? `Artwork unavailable: ${alt}` : 'Artwork unavailable'}</div>}
       {children}
     </div>
   )

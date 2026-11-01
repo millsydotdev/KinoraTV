@@ -57,8 +57,8 @@ function Hero() {
 
 export function Home() {
   const now = useNow()
-  const { library, prefs, channels, findChannel, channelMode, programmeAt, nextProgramme } = useStore()
-  const resume = continueWatching(library)
+  const { library, prefs, channels, findChannel, channelMode, programmeAt, nextProgramme, demoTitles } = useStore()
+  const resume = continueWatching(library, demoTitles)
   const newFilms = [...movies].sort((a, b) => b.added.localeCompare(a.added))
   const newSeries = [...series].sort((a, b) => b.added.localeCompare(a.added))
   const lastChannel = library.history.find((h) => h.ref.startsWith('channel:'))?.ref.slice(8)
@@ -72,7 +72,7 @@ export function Home() {
 
   return (
     <>
-      <Hero />
+      {demoTitles ? <Hero /> : <PageHeader title="Home" />}
       <div className="page stack home-body">
         {resume.length > 0 && (
           <Section icon="history" title="Continue Watching" viewAll="/library?tab=history" grid="grid-4">
@@ -97,13 +97,13 @@ export function Home() {
           ))}
         </Section>
 
-        <Section icon="film" title="New Movies" viewAll="/movies" grid="grid-7">
+        {demoTitles && <Section icon="film" title="New Movies" viewAll="/movies" grid="grid-7">
           {newFilms.slice(0, 7).map((m) => (
             <PosterCard key={m.id} to={`/movies/${m.id}`} title={m.title} art={m.art} focus={m.focus} line={`${m.year} · ${m.genres[0]}`} />
           ))}
-        </Section>
+        </Section>}
 
-        <Section icon="series" title="Series" viewAll="/series" grid="grid-4">
+        {demoTitles && <Section icon="series" title="Series" viewAll="/series" grid="grid-4">
           {newSeries.slice(0, 4).map((s) => {
             const up = seriesNextUp(library, s)
             const watching = up.state === 'resume' || up.state === 'next'
@@ -119,7 +119,7 @@ export function Home() {
               />
             )
           })}
-        </Section>
+        </Section>}
 
         <div className="home-pair">
           {favChannels.length > 0 && (
@@ -148,7 +148,7 @@ export function Home() {
 
         <p className="footer-note faint">
           {channelMode === 'playlists'
-            ? `Kinora interface preview. Channels come from your imported playlists (${NOT_TESTED.toLowerCase()}); movies, series and the guide are fictional demonstration data. Nothing is streamed.`
+            ? `Channels come from your imported playlists (${NOT_TESTED.toLowerCase()}). Kinora has no source for films and series yet.`
             : 'Kinora interface preview. Movies, series, channels and the guide are fictional demonstration data; nothing is streamed.'}
         </p>
       </div>
