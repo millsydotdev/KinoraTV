@@ -78,12 +78,14 @@
 .now-line { position: absolute; top: 38px; bottom: 0; width: 2px; margin-left: -1px; background: var(--accent); z-index: 1; pointer-events: none; }
 .now-line::before { content: ''; position: absolute; top: -5px; left: -4px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--bg); }
 .guide-hint { margin-top: 10px; font-size: 0.8125rem; }
-.guide-empty { padding: 16px 0; }
+/* Keeps the hint clear of the fixed Now Playing pill. */
+.live:has(.now-playing) .guide-hint { padding-right: min(46vw, 480px); }
 
 /* Docked player opened from the Now Playing pill */
 .mini-player { position: fixed; right: var(--gutter); bottom: 76px; z-index: 31; width: min(440px, calc(100vw - 2 * var(--gutter))); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6); border-radius: var(--r-l); animation: dialog-in 200ms var(--ease); }
 .live-player { position: relative; aspect-ratio: 16 / 9; border-radius: var(--r-l); overflow: hidden; background: #000; isolation: isolate; border: 1px solid var(--line-strong); }
 .live-player > .art { position: absolute; inset: 0; z-index: -2; }
+.live-player-video { position: absolute; inset: 0; z-index: -1; width: 100%; height: 100%; object-fit: contain; background: #000; }
 .live-player-shade { position: absolute; inset: 0; z-index: -1; background: linear-gradient(to top, rgb(var(--scrim) / 0.95), rgb(var(--scrim) / 0.35) 45%, rgb(var(--scrim) / 0.6)); }
 .live-player-bug { position: absolute; top: 10px; left: 12px; display: flex; align-items: center; gap: 8px; font-size: 0.8125rem; }
 .live-player-bug > span { display: grid; line-height: 1.25; }

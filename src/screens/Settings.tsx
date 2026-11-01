@@ -13,8 +13,8 @@ import './Settings.css'
 // Categories follow the mockup's Settings list (Playback, Interface, EPG, Sources, Library, Advanced),
 // split further where the brief asks for Audio, Subtitles, Data and About.
 const sections: { id: string; label: string; icon: IconName; blurb: string }[] = [
-  { id: 'playback', label: 'Playback', icon: 'play', blurb: 'Video quality, resuming, hardware acceleration' },
-  { id: 'audio', label: 'Audio', icon: 'audio', blurb: 'Language, output, loudness' },
+  { id: 'playback', label: 'Playback', icon: 'play', blurb: 'Video quality, resuming, next episode' },
+  { id: 'audio', label: 'Audio', icon: 'audio', blurb: 'Preferred language' },
   { id: 'subtitles', label: 'Subtitles', icon: 'subtitles', blurb: 'Language, size, style' },
   { id: 'appearance', label: 'Appearance', icon: 'palette', blurb: 'Theme, accent colour, density, text size, motion' },
   { id: 'epg', label: 'EPG', icon: 'guide', blurb: 'Guide settings, time format, timezone' },
@@ -166,14 +166,12 @@ function Section({ id }: { id: string }) {
                 <option value="auto">Auto</option><option value="2160p">4K (2160p)</option><option value="1080p">1080p</option><option value="720p">720p</option><option value="480p">480p, saves data</option>
               </select>
             </Row>
-            {toggle('hardwareDecoding', 'Hardware decoding', 'Uses your graphics chip to decode video. Turn off if playback stutters or shows green frames.', true)}
           </Group>
           <Group title="Watching">
             <Row title="When reopening a title" hint="What happens when you play something you have started.">
               <Segmented label="Resume behaviour" value={prefs.resume} onChange={(v) => setPref('resume', v)} options={[{ value: 'resume', label: 'Resume' }, { value: 'ask', label: 'Ask' }, { value: 'start', label: 'Start over' }]} />
             </Row>
             {toggle('autoplayNext', 'Play next episode automatically', 'Starts the next episode after a short countdown.', true)}
-            {toggle('skipIntros', 'Skip intros', 'Skips title sequences when the source marks them.', true)}
           </Group>
         </>
       )
@@ -185,11 +183,6 @@ function Section({ id }: { id: string }) {
               {['English', 'French', 'German', 'Spanish', 'Welsh', 'Original language'].map((l) => <option key={l}>{l}</option>)}
             </select>
           </Row>
-          <Row title="Output" hint="Surround passes 5.1 and Atmos tracks through to your receiver." pending>
-            <Segmented label="Audio output" value={prefs.audioOutput} onChange={(v) => setPref('audioOutput', v)} options={[{ value: 'stereo', label: 'Stereo' }, { value: 'surround', label: 'Surround' }]} />
-          </Row>
-          {toggle('dialogueBoost', 'Clearer dialogue', 'Lifts voices above music and effects.', true)}
-          {toggle('normaliseVolume', 'Even out loudness', 'Keeps channels and adverts at a similar volume.', true)}
         </Group>
       )
     case 'subtitles':
@@ -241,7 +234,6 @@ function Section({ id }: { id: string }) {
           <Row title="Open the guide at">
             <Segmented label="Open the guide at" value={prefs.guideStart} onChange={(v) => setPref('guideStart', v)} options={[{ value: 'now', label: 'Now' }, { value: 'day', label: 'Start of day' }]} />
           </Row>
-          {toggle('guideArt', 'Programme artwork', 'Shows artwork in the programme details panel for demonstration programmes. Artwork listed in guides is never downloaded.')}
           <Row title="Programme guides" hint="XMLTV guides are added and matched to playlist channels in Sources, by guide id or by hand.">
             <Link to="/sources" className="text-link">{store.guides.length === 1 ? '1 guide' : `${store.guides.length} guides`}</Link>
           </Row>
@@ -298,15 +290,29 @@ function DataSection() {
           <button type="button" className="btn btn-ghost btn-small" onClick={() => ask('Clear viewing history?', 'Recently watched and resume points are removed. Favourites, watchlist and collections stay.', 'Clear history', () => store.clearHistory())}>Clear</button>
         </Row>
       </Group>
-      <Group title="Demonstration data">
-        <Row title="Empty the library" hint="Removes the sample favourites, watchlist, collections and history so you can see the empty states.">
+      <Group title="Setup and samples">
+        <Row title="Run setup again" hint="Choose channels and a guide step by step. Nothing you already have is removed.">
+          <Link to="/setup" className="btn btn-ghost btn-small" onClick={() => store.restartSetup()}>Open setup</Link>
+        </Row>
+        {store.playlists.length === 0 && (
+          <Row title="Sample mode" hint="Fills Kinora with fictional films, series and channels so you can look around. Nothing streams. Your real library is kept apart, and sample mode ends when you add a source.">
+            <Switch checked={store.prefs.demoMode} onChange={(v) => store.setPref('demoMode', v)} label="Sample mode" />
+          </Row>
+        )}
+        {store.channelMode === 'demo' && (
+          <>
+            <Row title="Restore sample library" hint="Puts the sample activity back.">
+              <button type="button" className="btn btn-ghost btn-small" onClick={() => { store.resetLibrary('demo'); toast('Sample library restored') }}>Restore</button>
+            </Row>
+            <Row title="Restore sample sources" hint="Resets the Sources screen to its sample list.">
+              <button type="button" className="btn btn-ghost btn-small" onClick={() => { store.resetSources(); toast('Sample sources restored') }}>Restore</button>
+            </Row>
+          </>
+        )}
+      </Group>
+      <Group title="Reset">
+        <Row title="Empty the library" hint="Removes favourites, watchlist, collections, progress and history from this device. Sources stay.">
           <button type="button" className="btn btn-ghost btn-small" onClick={() => ask('Empty the library?', 'Favourites, watchlist, collections, progress and history are all removed from this device.', 'Empty library', () => store.resetLibrary('empty'))}>Empty</button>
-        </Row>
-        <Row title="Restore sample library" hint="Puts the sample activity back.">
-          <button type="button" className="btn btn-ghost btn-small" onClick={() => { store.resetLibrary('demo'); toast('Sample library restored') }}>Restore</button>
-        </Row>
-        <Row title="Restore sample sources" hint="Resets the Sources screen to its demonstration list.">
-          <button type="button" className="btn btn-ghost btn-small" onClick={() => { store.resetSources(); toast('Sample sources restored') }}>Restore</button>
         </Row>
         <Row title="Reset all settings" hint="Every preference on this page goes back to its default.">
           <button type="button" className="btn btn-ghost btn-small" onClick={() => ask('Reset all settings?', 'Appearance, playback, subtitle and guide preferences return to their defaults. Your library is not touched.', 'Reset settings', () => store.resetPrefs())}>Reset</button>
@@ -350,6 +356,7 @@ function BuildRow() {
 }
 
 function About() {
+  const store = useStore()
   const shortcuts: [string, string][] = [
     ['/', 'Search from anywhere'],
     ['Page Up / Page Down', 'Change channel in Live TV'],
@@ -365,11 +372,14 @@ function About() {
     <>
       <Group title="This build">
         <BuildRow />
-        <Row title="What works" hint="In the desktop app: M3U playlists and XMLTV guides by address or file, saved on this device, a catalogue of public playlists to browse and add (Sources › Discovery), and HLS playback of playlist channels. Stream checking and other stream formats are not available yet." ><span className="pending-tag">In progress</span></Row>
-        <Row title="Catalogue" hint="Films, series, channels, schedules and sources are fictional demonstration data. Artwork was generated for this project."><span className="muted">Demonstration</span></Row>
+        <Row title="Your content" hint="Kinora has no channels or films of its own. It plays the sources you add, and is not responsible for what they contain."><span className="muted">Your sources</span></Row>
+        <Row title="Sample mode" hint="Optional. Its films, series, channels and schedules are fictional, and its artwork was generated by AI for this project."><span className="muted">{store.channelMode === 'demo' ? 'On' : 'Off'}</span></Row>
       </Group>
       <Group title="Typefaces">
         <Row title="Hanken Grotesk" hint="Interface text. SIL Open Font License 1.1."><span className="muted">OFL</span></Row>
+        <Row title="Third-party notices" hint="Every package Kinora ships, with its licence text.">
+          <a href="/THIRD-PARTY-NOTICES.txt" target="_self" className="text-link">Open</a>
+        </Row>
       </Group>
       <Group title="Keyboard shortcuts">
         <dl className="shortcut-list">

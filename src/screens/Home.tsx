@@ -5,7 +5,7 @@ import { Icon } from '../components/Icon'
 import { PageHeader } from '../components/PageHeader'
 import { ChannelCard, PosterCard, Section, WideCard, idleLabel } from '../components/Tiles'
 import { useToast } from '../components/Toast'
-import { Art, ChannelMark } from '../components/ui'
+import { Art, ChannelMark, StateBlock } from '../components/ui'
 import { continueWatching, seriesNextUp } from '../lib/library'
 import { minutesLeft, useNow } from '../lib/time'
 import { NOT_TESTED } from '../state/playlists'
@@ -57,11 +57,12 @@ function Hero() {
 
 export function Home() {
   const now = useNow()
-  const { library, prefs, channels, findChannel, channelMode, programmeAt, nextProgramme, demoTitles } = useStore()
+  const { library, prefs, setPref, channels, findChannel, channelMode, programmeAt, nextProgramme, demoTitles } = useStore()
   const resume = continueWatching(library, demoTitles)
   const newFilms = [...movies].sort((a, b) => b.added.localeCompare(a.added))
   const newSeries = [...series].sort((a, b) => b.added.localeCompare(a.added))
-  const lastChannel = library.history.find((h) => h.ref.startsWith('channel:'))?.ref.slice(8)
+  // Channels with something on first: a row of "no guide information" tells nobody what to watch.
+  const onNow = [...channels.filter((c) => programmeAt(c, now)), ...channels.filter((c) => !programmeAt(c, now))].slice(0, 6)
   const favChannels = library.favourites.filter((r) => r.startsWith('channel:')).map((r) => findChannel(r.slice(8))).filter((c) => !!c)
   const shortcuts = [
     { to: '/library?tab=watchlist', label: 'Watchlist', count: library.watchlist.length, icon: 'bookmark' as const },
@@ -69,6 +70,29 @@ export function Home() {
     { to: '/library?tab=collections', label: 'Collections', count: library.collections.length, icon: 'folder' as const },
     { to: '/library?tab=history', label: 'Recently watched', count: library.history.length, icon: 'history' as const },
   ]
+
+  if (channelMode === 'none') {
+    return (
+      <>
+        <PageHeader title="Home" />
+        <div className="page home-empty">
+          <StateBlock
+            icon="tv"
+            title="Nothing to watch yet"
+            action={(
+              <div className="home-empty-actions">
+                <Link to="/setup" className="btn btn-primary">Set up Kinora</Link>
+                <Link to="/sources/add" className="btn btn-secondary">Add your own source</Link>
+                <button type="button" className="btn btn-ghost" onClick={() => setPref('demoMode', true)}>Look around with sample data</button>
+              </div>
+            )}
+          >
+            Kinora has no channels or films of its own. It plays the sources you add, such as a TV playlist you are allowed to use.
+          </StateBlock>
+        </div>
+      </>
+    )
+  }
 
   return (
     <>
@@ -92,8 +116,8 @@ export function Home() {
         )}
 
         <Section icon="tv" title="On Now" sub="Live TV" viewAll="/live">
-          {channels.slice(0, 6).map((c) => (
-            <ChannelCard key={c.id} channel={c} now={programmeAt(c, now)} next={nextProgramme(c, now)} to={`/live?channel=${c.id}`} format={prefs.timeFormat} selected={c.id === lastChannel} at={now} />
+          {onNow.map((c) => (
+            <ChannelCard key={c.id} channel={c} now={programmeAt(c, now)} next={nextProgramme(c, now)} to={`/live?channel=${c.id}`} format={prefs.timeFormat} at={now} />
           ))}
         </Section>
 
@@ -149,7 +173,7 @@ export function Home() {
         <p className="footer-note faint">
           {channelMode === 'playlists'
             ? `Channels come from your imported playlists (${NOT_TESTED.toLowerCase()}). Kinora has no source for films and series yet.`
-            : 'Kinora interface preview. Movies, series, channels and the guide are fictional demonstration data; nothing is streamed.'}
+            : 'Sample mode: movies, series, channels and the guide are fictional, and nothing is streamed. Add a source, or turn sample mode off in Settings › Data.'}
         </p>
       </div>
     </>

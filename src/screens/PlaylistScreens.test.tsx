@@ -35,10 +35,10 @@ const lineup = createSource('pl-a', { name: 'My lineup', origin: 'url', url: 'ht
 ]), Date.now())
 const [toons, laughs, mystery] = lineup.channels as [PlaylistSource['channels'][number], PlaylistSource['channels'][number], PlaylistSource['channels'][number]]
 
-function render(path: string, element: ReactNode, playlists: PlaylistSource[] = [lineup], route = '*') {
+function render(path: string, element: ReactNode, playlists: PlaylistSource[] = [lineup], route = '*', demo = playlists.length === 0) {
   return renderToStaticMarkup(
     <MemoryRouter initialEntries={[path]}>
-      <StoreProvider initialPlaylists={playlists}>
+      <StoreProvider initialPlaylists={playlists} initialDemo={demo}>
         <ToastProvider><Routes><Route path={route} element={element} /></Routes></ToastProvider>
       </StoreProvider>
     </MemoryRouter>,
@@ -52,7 +52,7 @@ describe('Live TV catalogue', () => {
   it('shows the demonstration catalogue when there are no playlist sources', () => {
     const t = text(render('/live', <LiveTV />, []))
     expect(t).toContain('Northlight One')
-    expect(t).toContain('demonstration data')
+    expect(t).toContain('fictional')
     expect(t).not.toContain('Toon Time')
   })
 
@@ -65,9 +65,10 @@ describe('Live TV catalogue', () => {
     for (const s of SECRETS) expect(html).not.toContain(s)
   })
 
-  it('goes back to the demonstration catalogue when the last source is removed', () => {
-    const t = text(render('/live', <LiveTV />, removeSource([lineup], 'pl-a')))
-    expect(t).toContain('Northlight One')
+  it('shows nothing fictional when the last source is removed', () => {
+    const t = text(render('/live', <LiveTV />, removeSource([lineup], 'pl-a'), '*', false))
+    expect(t).not.toContain('Northlight One')
+    expect(t).toContain('No channels yet')
     expect(t).not.toContain('Toon Time')
   })
 
@@ -90,8 +91,9 @@ describe('Live TV catalogue', () => {
     expect(ids).toEqual([toons.id, laughs.id, mystery.id])
     // Following the link selects that channel, not the first one.
     const html = render(`/live?channel=${laughs.id}`, <LiveTV />)
-    expect(html).toMatch(new RegExp(`aria-label="Watch \\d+ Laugh Line, now watching"`))
-    expect(html.match(/now watching"/g)).toHaveLength(1)
+    expect(html.match(/aria-current="true"/g)).toHaveLength(1)
+    expect(html).toMatch(/aria-label="Watch \d+ Laugh Line" aria-current="true"/)
+    expect(html).not.toContain('now watching') // chosen is not playing
   })
 })
 
@@ -138,7 +140,7 @@ describe('other channel screens and Sources', () => {
     expect(t).toContain('My lineup')
     expect(t).toContain('Parsed · 3 channels')
     expect(t).toContain('Streams not playback-tested')
-    expect(t).toContain('Sample')
+    expect(t).not.toContain('Sample')
     expect(html).not.toContain('get.php')
     for (const s of SECRETS) expect(html).not.toContain(s)
   })

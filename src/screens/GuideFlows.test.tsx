@@ -178,7 +178,7 @@ describe('Live TV with a guide', () => {
     expect(row('Gone Channel').textContent).toContain('Not found in its guide; match it in Sources')
     expect(row('No Id Channel').textContent).toContain('No guide id; match it in Sources')
     expect(text()).toContain('programmes from your XMLTV guides, shown in your local time')
-    expect(text()).toContain('Now Playing: Channel One - Current Show')
+    expect(text()).not.toContain('Now Playing') // nothing is tuned until the user chooses a channel
     for (const s of SECRETS) expect(document.documentElement.outerHTML).not.toContain(s)
   })
 
@@ -190,6 +190,8 @@ describe('Live TV with a guide', () => {
     expect(text()).toContain('S2 E5')
     await click([...row('Channel One').querySelectorAll('.prog')].find((p) => p.textContent?.includes('Next Show'))!)
     expect(text()).toContain('The guide gives no end time; this is when the next programme starts.')
+    await click([...row('Channel One').querySelectorAll('.prog')].find((p) => p.textContent?.includes('Current Show'))!)
+    await click(button('Watch Channel One'))
     await click([...row('Channel One').querySelectorAll('.prog')].find((p) => p.textContent?.includes('Current Show'))!)
     const open = [...document.querySelectorAll('a')].find((a) => a.textContent?.includes('Open player'))!
     expect(open.getAttribute('href')).toBe(`/watch/${encodeURIComponent(`channel:${channelId('tvg:one')}`)}`)

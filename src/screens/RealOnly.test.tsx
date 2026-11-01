@@ -34,7 +34,7 @@ const fictional = [film.title, show.title, 'Featured movie', 'New Movies', 'Cont
 function render(path: string, route: string, element: ReactNode, withPlaylist = true) {
   return renderToStaticMarkup(
     <MemoryRouter initialEntries={[path]}>
-      <StoreProvider initialPlaylists={withPlaylist ? [real] : []}>
+      <StoreProvider initialPlaylists={withPlaylist ? [real] : []} initialDemo={!withPlaylist}>
         <ToastProvider><Routes><Route path={route} element={element} /></Routes></ToastProvider>
       </StoreProvider>
     </MemoryRouter>,
@@ -70,7 +70,7 @@ describe('with a real playlist, no fictional films or series anywhere', () => {
     expect(text(render('/library', '/library', <Library />))).not.toContain(film.title)
   })
 
-  it('without a playlist, the first-run preview still shows the demonstration catalogue', () => {
+  it('sample mode shows the demonstration catalogue', () => {
     expect(text(render('/movies', '/movies', <Movies />, false))).toContain(film.title)
   })
 

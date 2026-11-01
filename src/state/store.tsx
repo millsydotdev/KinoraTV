@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { addDays, channels as demoChannels, nextProgramme as demoNext, programmeAt as demoAt, scheduleFor as demoSchedule, startOfDay } from '../data/channels'
+import { realLibrary } from '../lib/migrate'
 import { demoSources } from '../data/sources'
 import type { Channel, Programme, Source } from '../data/types'
 import {
@@ -42,12 +43,7 @@ export interface Prefs {
   autoplayNext: boolean
   resume: 'resume' | 'ask' | 'start'
   quality: 'auto' | '2160p' | '1080p' | '720p' | '480p'
-  hardwareDecoding: boolean
-  skipIntros: boolean
   audioLanguage: string
-  audioOutput: 'stereo' | 'surround'
-  dialogueBoost: boolean
-  normaliseVolume: boolean
   subtitles: boolean
   subtitleLanguage: string
   subtitleSize: 'small' | 'medium' | 'large'
@@ -56,26 +52,32 @@ export interface Prefs {
   guideZoom: 2 | 3 | 4
   guideArt: boolean
   guideStart: 'now' | 'day'
+  /** Fictional sample content, only when the user asks for it and has no real source. */
+  demoMode: boolean
 }
 
 /** Source-checking settings removed in D3.1: nothing used them. Stripped from saved prefs so they stop being stored. */
-type RemovedPrefs = { autoRefresh?: unknown; refreshInterval?: unknown; validateOnAdd?: unknown; dropAfterFailures?: unknown; parallelChecks?: unknown }
+type RemovedPrefs = {
+  autoRefresh?: unknown; refreshInterval?: unknown; validateOnAdd?: unknown; dropAfterFailures?: unknown; parallelChecks?: unknown
+  // Removed after the completion audit: nothing could honour them (WebKit decides decoding and audio output).
+  hardwareDecoding?: unknown; skipIntros?: unknown; audioOutput?: unknown; dialogueBoost?: unknown; normaliseVolume?: unknown
+}
 
 const DAY = 86_400_000
 
 export const defaultPrefs: Prefs = {
   theme: 'dark', accent: 'red', customAccent: '#d6202e', density: 'comfortable', textSize: 'standard', reduceMotion: false, movieLayout: 'poster', hideWatched: false, keepHistory: true,
-  autoplayNext: true, resume: 'resume', quality: 'auto', hardwareDecoding: true, skipIntros: false,
-  audioLanguage: 'English', audioOutput: 'stereo', dialogueBoost: false, normaliseVolume: true,
+  autoplayNext: true, resume: 'resume', quality: 'auto',
+  audioLanguage: 'English',
   subtitles: false, subtitleLanguage: 'English', subtitleSize: 'medium', subtitleStyle: 'shadow',
-  timeFormat: '24h', guideZoom: 3, guideArt: true, guideStart: 'now',
+  timeFormat: '24h', guideZoom: 3, guideArt: true, guideStart: 'now', demoMode: false,
 }
 
 export const emptyLibrary: Library = {
   favourites: [], watchlist: [], progress: {}, watched: [], history: [], collections: [], reminders: [], recentSearches: [],
 }
 
-/** Sample activity so the library screens have something to show. Clearly reset-able from Settings > Data. */
+/** Sample activity for sample mode only. It is kept apart from the real library and never mixed with it. */
 export function demoLibrary(now: number): Library {
   const p = (pos: number, dur: number, daysAgo: number): Progress => ({ pos, dur, at: now - daysAgo * DAY })
   const ninthS1 = [1, 2, 3, 4, 5, 6].map((e) => `episode:ninth-ward/s1e${e}`)
@@ -138,7 +140,10 @@ function usePersisted<T>(key: string, fallback: () => T, sanitize: (v: T) => T =
 
 /** Stored preferences come from localStorage, so out-of-range values (or ones from older builds) fall back to defaults. */
 export function sanitizePrefs(stored: Prefs & RemovedPrefs): Prefs {
-  const { autoRefresh: _a, refreshInterval: _r, validateOnAdd: _v, dropAfterFailures: _d, parallelChecks: _p, ...p } = stored
+  const {
+    autoRefresh: _a, refreshInterval: _r, validateOnAdd: _v, dropAfterFailures: _d, parallelChecks: _p,
+    hardwareDecoding: _h, skipIntros: _s, audioOutput: _o, dialogueBoost: _b, normaliseVolume: _n, ...p
+  } = stored
   const pick = <K extends keyof Prefs>(key: K, allowed: readonly Prefs[K][]) => (allowed.includes(p[key]) ? p[key] : defaultPrefs[key])
   return {
     ...p,
@@ -170,9 +175,22 @@ const toggleIn = (list: string[], item: string) => (list.includes(item) ? list.f
 type Epg = { key: string; matches: Map<string, GuideMatch>; days: Map<number, Map<string, Programme[]>> }
 const NO_DAYS = new Map<number, Map<string, Programme[]>>()
 
-function useStoreValue(initialPlaylists: PlaylistSource[], initialGuides: GuideSource[], initialMappings: Mapping[]) {
-  const [library, setLibrary] = usePersisted<Library>('kinora.library.v1', () => demoLibrary(Date.now()))
-  const [prefs, setPrefs] = usePersisted<Prefs>('kinora.prefs.v2', () => defaultPrefs, sanitizePrefs)
+/** The real library: new profiles start empty; one from an older build keeps only its real entries. */
+function initialLibrary(): Library {
+  try {
+    const old = localStorage.getItem('kinora.library.v1')
+    if (old) return realLibrary({ ...emptyLibrary, ...(JSON.parse(old) as Library) })
+  } catch {
+    // Unreadable: start empty. The old copy stays where it is.
+  }
+  return emptyLibrary
+}
+
+function useStoreValue(initialPlaylists: PlaylistSource[], initialGuides: GuideSource[], initialMappings: Mapping[], initialDemo: boolean) {
+  const [realLib, setRealLib] = usePersisted<Library>('kinora.library.v2', initialLibrary)
+  const [demoLib, setDemoLib] = usePersisted<Library>('kinora.demoLibrary.v1', () => demoLibrary(Date.now()))
+  const [prefs, setPrefs] = usePersisted<Prefs>('kinora.prefs.v2', () => ({ ...defaultPrefs, demoMode: initialDemo }), sanitizePrefs)
+  const [setup, setSetup] = usePersisted<{ done: boolean }>('kinora.setup.v1', () => ({ done: false }))
   // `providers` (the demonstration discovery switches before D7) is dropped from older saved copies.
   const [src, setSrc] = usePersisted<SourcesState>('kinora.sources.v1', () => ({ sources: demoSources(Date.now()) }), ({ sources }) => ({ sources }))
 
@@ -245,7 +263,11 @@ function useStoreValue(initialPlaylists: PlaylistSource[], initialGuides: GuideS
       () => setStorageNotice('save-failed'),
     )
   }, [playlists, guides, mappings, restored])
-  const channels = useMemo(() => activeChannels(playlists, demoChannels), [playlists])
+  // Sample content needs an explicit opt-in, and goes away as soon as there is a real source.
+  const demoActive = prefs.demoMode && playlists.length === 0
+  const library = demoActive ? demoLib : realLib
+  const setLibrary = demoActive ? setDemoLib : setRealLib
+  const channels = useMemo(() => activeChannels(playlists, demoActive ? demoChannels : []), [playlists, demoActive])
   const findChannel = useCallback((id: string): Channel | undefined => channels.find((c) => c.id === id), [channels])
 
   // Guide programmes, fetched from Rust one local day at a time for the matched channels only. Results
@@ -318,12 +340,12 @@ function useStoreValue(initialPlaylists: PlaylistSource[], initialGuides: GuideS
       },
       removePlaylist: (id: string) => {
         setPlaylists((l) => removeSource(l, id))
-        setLibrary((l) => dropSourceRefs(l, id))
+        setRealLib((l) => dropSourceRefs(l, id))
         setGuides((l) => l.map((g) => (g.playlists.includes(id) ? { ...g, playlists: g.playlists.filter((p) => p !== id) } : g)))
         setMappings((l) => l.filter((m) => !m.channel.startsWith(`${id}~`)))
       },
     }
-  }, [setLibrary])
+  }, [setRealLib])
   // The public source catalogue (Discovery). Only read when Discovery opens, never at startup, so a
   // missing network never touches anything else.
   const [catalogue, setCatalogue] = useState<CatalogueState>(idleCatalogue)
@@ -418,6 +440,7 @@ function useStoreValue(initialPlaylists: PlaylistSource[], initialGuides: GuideS
     addRecentSearch: (q: string) =>
       setLibrary((l) => ({ ...l, recentSearches: [q, ...l.recentSearches.filter((s) => s.toLowerCase() !== q.toLowerCase())].slice(0, 8) })),
     removeRecentSearch: (q: string) => setLibrary((l) => ({ ...l, recentSearches: l.recentSearches.filter((s) => s !== q) })),
+    /** Empties the library in use; in sample mode, puts the sample activity back instead when asked. */
     resetLibrary: (to: 'empty' | 'demo') => setLibrary(to === 'empty' ? emptyLibrary : demoLibrary(Date.now())),
     resetPrefs: () => setPrefs(defaultPrefs),
     addSource: (s: Source) => setSrc((x) => ({ ...x, sources: [...x.sources, s] })),
@@ -427,24 +450,27 @@ function useStoreValue(initialPlaylists: PlaylistSource[], initialGuides: GuideS
   }), [setLibrary, setPrefs, setSrc, keepHistory])
 
   return {
-    library, prefs, setPref, sources: src.sources, ...actions, catalogue, ...catalogueActions,
+    library, prefs, setPref, sources: demoActive ? src.sources : [], ...actions, catalogue, ...catalogueActions,
+    setupDone: setup.done || playlists.length > 0 || guides.length > 0,
+    finishSetup: () => setSetup({ done: true }),
+    restartSetup: () => setSetup({ done: false }),
     playlists, ...playlistActions, restored, storageNotice, guides, mappings, ...guideActions, ...guide,
-    /** The channel catalogue every screen shows: playlist channels, or the demonstration set when there are no playlists. */
-    channels, findChannel, channelMode: playlists.length > 0 ? 'playlists' as const : 'demo' as const,
-    /** The fictional films and series are a first-run preview only: hidden once any real playlist exists. */
-    demoTitles: playlists.length === 0,
+    /** The channel catalogue every screen shows: playlist channels, the sample set in sample mode, or nothing. */
+    channels, findChannel, channelMode: playlists.length > 0 ? 'playlists' as const : demoActive ? 'demo' as const : 'none' as const,
+    /** The fictional films and series exist only in sample mode. */
+    demoTitles: demoActive,
   }
 }
 
 type Store = ReturnType<typeof useStoreValue>
 const StoreContext = createContext<Store | null>(null)
 
-/** The `initial…` props seed imported playlists, guides and matches for tests; the app always starts with none. */
-export function StoreProvider({ children, initialPlaylists = [], initialGuides = [], initialMappings = [] }: {
-  children: ReactNode; initialPlaylists?: PlaylistSource[]; initialGuides?: GuideSource[]; initialMappings?: Mapping[]
+/** The `initial…` props seed imported playlists, guides, matches and sample mode for tests; the app always starts with none. */
+export function StoreProvider({ children, initialPlaylists = [], initialGuides = [], initialMappings = [], initialDemo = false }: {
+  children: ReactNode; initialPlaylists?: PlaylistSource[]; initialGuides?: GuideSource[]; initialMappings?: Mapping[]; initialDemo?: boolean
 }) {
-  const store = useStoreValue(initialPlaylists, initialGuides, initialMappings)
-  // Wait for the saved sources (a local file) so demo channels never flash before real ones.
+  const store = useStoreValue(initialPlaylists, initialGuides, initialMappings, initialDemo)
+  // Wait for the saved sources (a local file) so an empty Home never flashes before real channels.
   return <StoreContext.Provider value={store}>{store.restored ? children : null}</StoreContext.Provider>
 }
 

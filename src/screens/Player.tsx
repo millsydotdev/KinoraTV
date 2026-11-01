@@ -6,7 +6,7 @@ import { Icon, type IconName } from '../components/Icon'
 import { useToast } from '../components/Toast'
 import { Art, StateBlock } from '../components/ui'
 import { clock, timecode, useNow } from '../lib/time'
-import { useStreamPlayback, type PlaybackState } from '../lib/playback'
+import { playbackText, useStreamPlayback } from '../lib/playback'
 import { categoryLabel, unavailableReason } from '../state/playlists'
 import { useStore, type Prefs } from '../state/store'
 import './Player.css'
@@ -39,14 +39,6 @@ function MenuOption({ selected, onSelect, children }: { selected: boolean; onSel
       {children}
     </button>
   )
-}
-
-/** The status line for a playlist stream; messages never contain a stream address. */
-function playbackText(s: PlaybackState): string {
-  if (s.message) return s.message
-  if (s.status === 'buffering') return 'Buffering…'
-  if (s.status === 'paused') return 'Paused'
-  return 'Loading stream…'
 }
 
 export function Player() {
@@ -156,7 +148,7 @@ export function Player() {
           ) : (
             <p className="player-status" role="status">
               <Icon name="sources" size={14} />
-              {`No stream connected: demonstration ${item.kind === 'channel' ? 'channel' : 'title'}.`}
+              {`No stream connected: sample ${item.kind === 'channel' ? 'channel' : 'title'}.`}
               {' '}<Link to="/sources" className="text-link">Manage sources</Link>
             </p>
           )}

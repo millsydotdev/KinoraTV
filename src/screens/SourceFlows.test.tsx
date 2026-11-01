@@ -238,14 +238,13 @@ describe('refreshing and removing', () => {
     expect(cardNames()).toEqual(['Zulu Extra'])
   })
 
-  it('restores the demonstration catalogue when the last source is removed', async () => {
+  it('shows no channels when the last source is removed', async () => {
     await mount('/sources', [seeded()])
     await openSource()
     await click(button('Remove'))
     await click(button('Remove source'))
     await navigate('/live?view=channels')
-    expect(cardNames()).toContain('Northlight One')
-    expect(cardNames()).not.toContain('Alpha One')
+    expect(cardNames()).toEqual([])
   })
 })
 
@@ -258,10 +257,11 @@ describe('playlist channel links', () => {
     for (const name of ['Odd Feed', 'Hash Feed']) {
       await navigate('/live?view=channels')
       const link = [...document.querySelectorAll<HTMLAnchorElement>('a.channel-card')].find((a) => a.textContent?.includes(name))!
-      await click(link) // a card opens the guide with that channel selected
+      await click(link) // a card opens the guide with that channel selected, which is not yet playing
       const watching = [...document.querySelectorAll('.guide-channel-tune[aria-current="true"]')]
       expect(watching).toHaveLength(1)
-      expect(watching[0]?.getAttribute('aria-label')).toContain(`${name}, now watching`)
+      expect(watching[0]?.getAttribute('aria-label')).toContain(name)
+      expect(watching[0]?.getAttribute('aria-label')).not.toContain('now watching')
     }
   })
 })

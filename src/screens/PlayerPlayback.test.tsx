@@ -72,7 +72,7 @@ async function mount(path: string, playlists: PlaylistSource[] = [source]) {
   await act(async () => {
     root.render(
       <MemoryRouter initialEntries={[path]}>
-        <StoreProvider initialPlaylists={playlists}>
+        <StoreProvider initialPlaylists={playlists} initialDemo={playlists.length === 0}>
           <ToastProvider>
             <Navigator />
             <Routes><Route path="/watch/:ref" element={<Player />} /><Route path="*" element={<p>elsewhere</p>} /></Routes>
@@ -302,10 +302,11 @@ describe('switching and leaving', () => {
 
 describe('demo channels', () => {
   it('keep their demonstration player and never open a stream', async () => {
+    localStorage.setItem('kinora.prefs.v2', JSON.stringify({ demoMode: true }))
     await mount(watch('northlight-one'), [])
     expect(native.openStream).not.toHaveBeenCalled()
     expect(document.querySelector('video')).toBeNull()
-    expect(text()).toContain('No stream connected: demonstration channel.')
+    expect(text()).toContain('No stream connected: sample channel.')
     for (const label of ['Mute', 'Volume', 'Subtitles', 'Play, unavailable: no stream connected']) expect(control(label)).not.toBeNull()
   })
 })

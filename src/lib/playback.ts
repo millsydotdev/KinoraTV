@@ -51,6 +51,14 @@ function fromOpenError(e: unknown): PlaybackState {
   return state('error', 'Playback could not start.', true)
 }
 
+/** The status line for a playlist stream; messages never contain a stream address. */
+export function playbackText(s: PlaybackState): string {
+  if (s.message) return s.message
+  if (s.status === 'buffering') return 'Buffering…'
+  if (s.status === 'paused') return 'Paused'
+  return 'Loading stream…'
+}
+
 export interface Playback {
   state: PlaybackState
   muted: boolean

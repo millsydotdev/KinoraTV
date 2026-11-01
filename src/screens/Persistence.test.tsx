@@ -177,14 +177,14 @@ describe('restoring saved sources at start', () => {
     expect(cardNames()).toEqual(['Local Feed'])
   })
 
-  it('never mixes demo channels in, and shows the demo catalogue only when nothing is saved', async () => {
+  it('never shows demo channels unless sample mode was asked for', async () => {
     native.loadSources.mockResolvedValue(loaded([savedFileSource]))
     await mount('/live?view=channels')
     expect(cardNames()).not.toContain('Northlight One')
     await unmount()
     native.loadSources.mockResolvedValue(loaded([]))
     await mount('/live?view=channels')
-    expect(cardNames()).toContain('Northlight One')
+    expect(cardNames()).toEqual([])
   })
 })
 
@@ -221,7 +221,7 @@ describe('saving', () => {
   })
 
   it('removing a source saves without it and drops only its channels from the library', async () => {
-    localStorage.setItem('kinora.library.v1', JSON.stringify({
+    localStorage.setItem('kinora.library.v2', JSON.stringify({
       favourites: [`channel:${channelId('pl-file1', 'tvg:local')}`, `channel:${channelId('pl-url1', 'tvg:one')}`, 'movie:harbour-lights'],
       history: [{ ref: `channel:${channelId('pl-file1', 'tvg:local')}`, at: 1 }],
     }))
@@ -234,7 +234,7 @@ describe('saving', () => {
     await click(button('Remove source'))
     await settle()
     expect(lastSave().map((s) => s.id)).toEqual(['pl-url1'])
-    const library = JSON.parse(localStorage.getItem('kinora.library.v1') ?? '{}')
+    const library = JSON.parse(localStorage.getItem('kinora.library.v2') ?? '{}')
     expect(library.favourites).toEqual([`channel:${channelId('pl-url1', 'tvg:one')}`, 'movie:harbour-lights'])
     expect(library.history).toEqual([])
   })

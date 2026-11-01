@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { BrowserRouter, Link, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { ToastProvider } from './components/Toast'
 import { NavMenuContext, PageHeader } from './components/PageHeader'
@@ -11,6 +11,7 @@ import { MovieDetail } from './screens/MovieDetail'
 import { Movies } from './screens/Movies'
 import { Player } from './screens/Player'
 import { Search } from './screens/Search'
+import { Setup } from './screens/Setup'
 import { SeriesBrowse } from './screens/SeriesBrowse'
 import { SeriesDetail } from './screens/SeriesDetail'
 import { Settings } from './screens/Settings'
@@ -19,10 +20,11 @@ import { ACCENTS, accentTokens } from './lib/theme'
 import { StoreProvider, useStore } from './state/store'
 
 function Shell() {
-  const { prefs } = useStore()
+  const { prefs, setupDone } = useStore()
   const navigate = useNavigate()
   const { pathname } = useLocation()
-  const inPlayer = pathname.startsWith('/watch/')
+  // Full-window screens: no sidebar.
+  const inPlayer = pathname.startsWith('/watch/') || pathname === '/setup'
   const [navOpen, setNavOpen] = useState(false)
   const closeNav = useCallback(() => setNavOpen(false), [])
   const openNav = useCallback(() => setNavOpen(true), [])
@@ -42,6 +44,14 @@ function Shell() {
   useEffect(() => {
     window.scrollTo(0, 0)
   }, [pathname])
+
+  // A new profile opens on setup, once per launch; it can be skipped and run again from Settings › Data.
+  const offeredSetup = useRef(false)
+  useEffect(() => {
+    if (offeredSetup.current) return
+    offeredSetup.current = true
+    if (!setupDone && pathname === '/') navigate('/setup', { replace: true })
+  }, [setupDone, pathname, navigate])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -76,6 +86,7 @@ function Shell() {
           <Route path="/settings" element={<Settings />} />
           <Route path="/settings/:section" element={<Settings />} />
           <Route path="/watch/:ref" element={<Player />} />
+          <Route path="/setup" element={<Setup />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
@@ -89,7 +100,7 @@ function NotFound() {
     <div className="page">
       <PageHeader title="Not found" />
       <StateBlock icon="warning" title="This page does not exist" action={<Link to="/" className="btn btn-primary">Back to Home</Link>}>
-        The address may be mistyped, or the title was removed from the demonstration catalogue.
+        The address may be mistyped, or what it pointed to has been removed.
       </StateBlock>
     </div>
   )

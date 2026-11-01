@@ -53,7 +53,7 @@ export function Library() {
     <>
     <PageHeader title="Library" tabs={tabList} />
     <div className="page library">
-      <p className="page-intro">Everything you have saved, started and sorted, kept on this device. The starting contents are sample activity you can clear in Settings › Data.</p>
+      <p className="page-intro">Everything you have saved, started and sorted, kept on this device.</p>
       <div id="lib-panel" role="tabpanel" aria-labelledby={`lib-tab-${tab}`} className="lib-panel">
         {tab === 'overview' && <Overview go={go} />}
         {tab === 'watchlist' && <SavedList list="watchlist" />}

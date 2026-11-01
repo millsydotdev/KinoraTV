@@ -94,3 +94,12 @@ export async function runCatalogue(
     return null
   }
 }
+
+/** The country the system locale names (iptv-org writes GB as `uk`), then the most listed countries. */
+export function suggestedEntries(entries: CatalogueEntry[], region: string | null, count = 12): CatalogueEntry[] {
+  const code = region?.toLowerCase() === 'gb' ? 'uk' : region?.toLowerCase()
+  const countries = entries.filter((e) => e.kind === 'country')
+  const mine = countries.filter((e) => e.code.toLowerCase() === code)
+  const rest = countries.filter((e) => !mine.includes(e)).sort((a, b) => (b.channels ?? 0) - (a.channels ?? 0))
+  return [...mine, ...rest].slice(0, count)
+}

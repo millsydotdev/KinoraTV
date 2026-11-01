@@ -9,9 +9,10 @@ import { useToast } from '../components/Toast'
 import { PageHeader } from '../components/PageHeader'
 import { ChannelCard } from '../components/Tiles'
 import { Art, ChannelMark, ProgressBar, StateBlock } from '../components/ui'
+import { useStreamPlayback, playbackText, type PlaybackStatus } from '../lib/playback'
 import { clock, dayLabel, useNow } from '../lib/time'
 import { noListingsText } from '../state/guides'
-import { categoryLabel, channelGroups, filterChannels, inCategory } from '../state/playlists'
+import { categoryLabel, channelGroups, filterChannels, inCategory, unavailableReason } from '../state/playlists'
 import { useStore } from '../state/store'
 import './LiveTV.css'
 
@@ -41,7 +42,8 @@ export function LiveTV() {
   const [params, setParams] = useSearchParams()
   const compactCol = useMedia('(max-width: 640px)')
 
-  const playing = findChannel(params.get('channel') ?? '') ?? channels[0]
+  // Only a channel the user chose: nothing is tuned just because it is first in the list.
+  const playing = findChannel(params.get('channel') ?? '')
   const categories = channelMode === 'playlists' ? channelGroups(channels) : CHANNEL_GROUPS.filter((g) => channels.some((c) => inCategory(c, g)))
   const groups = ['All', 'Favourites', ...categories]
   const requestedGroup = params.get('group')
@@ -49,7 +51,10 @@ export function LiveTV() {
   const view = params.get('view') === 'channels' ? 'channels' : 'guide'
   const [dayOffset, setDayOffset] = useState(0)
   const [selected, setSelected] = useState<Programme | null>(null)
-  const [playerOpen, setPlayerOpen] = useState(false)
+  const [playerOpen, setPlayerOpen] = useState(() => !!params.get('channel'))
+  const [playerStatus, setPlayerStatus] = useState<PlaybackStatus>('idle')
+  // "Watching" follows the media element's real state, never just the selection.
+  const reallyPlaying = playerOpen && ['playing', 'buffering', 'paused'].includes(playerStatus)
   const [focusId, setFocusId] = useState<string | null>(null)
 
   const favIds = library.favourites.filter((r) => r.startsWith('channel:')).map((r) => r.slice(8))
@@ -228,7 +233,11 @@ export function LiveTV() {
     </div>
   )
 
-  const noPlaylistChannels = (
+  const noPlaylistChannels = channelMode === 'none' ? (
+    <StateBlock icon="sources" title="No channels yet" action={<Link to="/setup" className="btn btn-primary">Set up Kinora</Link>}>
+      Add a TV playlist you are allowed to use and its channels appear here.
+    </StateBlock>
+  ) : (
     <StateBlock icon="sources" title="No channels to show yet" action={<Link to="/sources" className="btn btn-ghost">Open Sources</Link>}>
       {store.playlists.some((s) => s.status === 'importing')
         ? 'A playlist is still being imported.'
@@ -260,17 +269,19 @@ export function LiveTV() {
               <>
                 <div className="grid-cards">
                   {shown.map((c) => (
-                    <ChannelCard key={c.id} channel={c} now={store.programmeAt(c, now)} next={store.nextProgramme(c, now)} to={`/live?channel=${c.id}`} format={prefs.timeFormat} selected={c.id === playing?.id} at={now} />
+                    <ChannelCard key={c.id} channel={c} now={store.programmeAt(c, now)} next={store.nextProgramme(c, now)} to={`/live?channel=${c.id}`} format={prefs.timeFormat} selected={reallyPlaying && c.id === playing?.id} at={now} />
                   ))}
                 </div>
                 {showMore}
               </>
             )}
           </>
+        ) : visible.length === 0 ? (
+          channels.length === 0 ? noPlaylistChannels : emptyFavourites
         ) : (
           <section className="guide" aria-label="TV guide">
             <div className="guide-scroll" ref={scroller} style={{ ['--col-w' as string]: `${colW}px`, ['--row-h' as string]: `${ROW_H[prefs.density]}px` }}>
-              <div className="guide-inner" style={{ width: visible.length ? innerW : undefined }} role="grid" aria-label={`Programme guide, ${dayLabel(dayStart, now)}`} aria-rowcount={rows.length + 1} onKeyDown={onGridKey}>
+              <div className="guide-inner" style={{ width: innerW }} role="grid" aria-label={`Programme guide, ${dayLabel(dayStart, now)}`} aria-rowcount={rows.length + 1} onKeyDown={onGridKey}>
                 <div className="guide-head" role="row">
                   <div className="guide-corner" role="columnheader">
                     <select className="corner-select" value={group} onChange={(e) => setGroup(e.target.value)} aria-label="Channel category">
@@ -283,14 +294,14 @@ export function LiveTV() {
                     ))}
                   </div>
                 </div>
-                {visible.length === 0 && <div className="guide-empty">{channels.length === 0 ? noPlaylistChannels : emptyFavourites}</div>}
                 {rows.map(({ channel: c, programmes }) => {
                   const fav = favIds.includes(c.id)
-                  const isPlaying = c.id === playing?.id
+                  const isTuned = c.id === playing?.id
+                  const isPlaying = reallyPlaying && isTuned
                   return (
-                    <div key={c.id} className={`guide-row${isPlaying ? ' is-playing' : ''}`} role="row">
+                    <div key={c.id} className={`guide-row${isTuned ? ' is-playing' : ''}`} role="row">
                       <div className="guide-channel" role="rowheader">
-                        <button type="button" className="guide-channel-tune" onClick={() => tune(c)} aria-label={`Watch ${c.number} ${c.name}${isPlaying ? ', now watching' : ''}`} aria-current={isPlaying ? 'true' : undefined}>
+                        <button type="button" className="guide-channel-tune" onClick={() => tune(c)} aria-label={`Watch ${c.number} ${c.name}${isPlaying ? ', now watching' : ''}`} aria-current={isTuned ? 'true' : undefined}>
                           <ChannelMark channel={c} size={compactCol ? 32 : 34} />
                           {!compactCol && (
                             <span className="guide-channel-name">
@@ -332,7 +343,7 @@ export function LiveTV() {
                             >
                               <span className="prog-label">
                                 <span className="prog-title">{onNow && isPlaying && <Icon name="play" size={10} className="prog-playing" />}{p.title}</span>
-                                {w > 90 && <span className="prog-time tnum">{clock(p.start, prefs.timeFormat)} - {clock(p.stop, prefs.timeFormat)}</span>}
+                                {w >= 76 && <span className="prog-time tnum">{w >= 132 ? `${clock(p.start, prefs.timeFormat)} - ${clock(p.stop, prefs.timeFormat)}` : clock(p.start, prefs.timeFormat)}</span>}
                               </span>
                               {library.reminders.includes(p.id) && <Icon name="bell" size={13} className="prog-bell" />}
                             </button>
@@ -342,30 +353,30 @@ export function LiveTV() {
                     </div>
                   )
                 })}
-                {showNow && visible.length > 0 && <div className="now-line" style={{ left: colW + x(now) }} aria-hidden="true" />}
+                {showNow && <div className="now-line" style={{ left: colW + x(now) }} aria-hidden="true" />}
               </div>
             </div>
             {showMore}
             <p className="guide-hint faint">
               {channelMode === 'demo'
-                ? 'Arrow keys move through the guide, Enter opens a programme, Page Up and Page Down change channel. Channels and schedule are demonstration data.'
+                ? 'Arrow keys move through the guide, Enter opens a programme, Page Up and Page Down change channel. Sample mode: channels and schedule are fictional.'
                 : store.guides.length > 0
-                  ? 'Channels come from your imported playlists and programmes from your XMLTV guides, shown in your local time. Streams have not been playback-tested. Arrow keys move through the guide; Page Up and Page Down change channel.'
-                  : 'Channels come from your imported playlists. Add an XMLTV guide in Sources to see their programmes. Streams have not been playback-tested. Page Up and Page Down change channel.'}
+                  ? 'Channels come from your imported playlists and programmes from your XMLTV guides, shown in your local time. Whether a stream plays depends on its host. Arrow keys move through the guide; Page Up and Page Down change channel.'
+                  : 'Channels come from your imported playlists. Add an XMLTV guide in Sources to see their programmes. Whether a stream plays depends on its host. Page Up and Page Down change channel.'}
             </p>
           </section>
         )}
 
         {playing && playerOpen && (
           <aside className="mini-player" aria-label="Player">
-            <LivePlayer channel={playing} programme={current} now={now} onStep={step} onClose={() => setPlayerOpen(false)} />
+            <LivePlayer channel={playing} programme={current} now={now} onStep={step} onClose={() => setPlayerOpen(false)} onStatus={setPlayerStatus} />
           </aside>
         )}
 
-        {playing && current && (
+        {playing && (
           <button type="button" className="now-playing" aria-expanded={playerOpen} onClick={() => setPlayerOpen(!playerOpen)}>
             <span className="np-dot" aria-hidden="true" />
-            Now Playing: {playing.name} - {current.title}
+            {reallyPlaying ? 'Now Playing' : playerOpen ? 'Opening' : 'Selected'}: {playing.name}{current ? ` - ${current.title}` : ''}
           </button>
         )}
 
@@ -377,11 +388,25 @@ export function LiveTV() {
   )
 }
 
-function LivePlayer({ channel, programme, now, onStep, onClose }: { channel: Channel; programme?: Programme; now: number; onStep: (dir: number) => void; onClose: () => void }) {
-  const { prefs } = useStore()
+function LivePlayer({ channel, programme, now, onStep, onClose, onStatus }: {
+  channel: Channel; programme?: Programme; now: number; onStep: (dir: number) => void; onClose: () => void; onStatus: (s: PlaybackStatus) => void
+}) {
+  const store = useStore()
+  const { prefs } = store
+  const video = useRef<HTMLVideoElement>(null)
+  const playback = useStreamPlayback(channel.sourceId ? channel.streamUrl : null, video)
+  const status = playback.state.status
+  useEffect(() => {
+    onStatus(status)
+    return () => onStatus('idle')
+  }, [status, onStatus])
+  const noAddress = channel.sourceId && channel.streamUrl === null
+    ? unavailableReason(store.playlists.find((s) => s.id === channel.sourceId)) ?? 'This channel cannot play yet.'
+    : null
   return (
     <div className="live-player force-dark">
       <Art key={programme?.art} src={programme?.art ?? ''} alt="" eager />
+      {channel.sourceId && <video ref={video} className="live-player-video" playsInline aria-label={`${channel.name} video`} />}
       <div className="live-player-shade" />
       <div className="live-player-bug">
         <ChannelMark channel={channel} size={30} />
@@ -390,16 +415,18 @@ function LivePlayer({ channel, programme, now, onStep, onClose }: { channel: Cha
           <span className="faint">{categoryLabel(channel)}{channel.hd ? ' · HD' : ''}</span>
         </span>
       </div>
-      <div className="live-player-status" role="status">
-        <Icon name="sources" size={18} />
-        {channel.sourceId
-          ? <span>Open the full-screen player to watch</span>
-          : <span>No stream connected. <Link to="/sources" className="text-link">Add a source</Link></span>}
-      </div>
+      {status !== 'playing' && (
+        <div className="live-player-status" role="status">
+          <Icon name="sources" size={18} />
+          {channel.sourceId
+            ? <span>{noAddress ?? playbackText(playback.state)}{playback.state.canRetry && <>{' '}<button type="button" className="text-link" onClick={playback.retry}>Retry</button></>}</span>
+            : <span>No stream connected: sample channel. <Link to="/sources" className="text-link">Add a source</Link></span>}
+        </div>
+      )}
       <div className="live-player-bar">
         {programme && (
           <div className="live-player-now">
-            <span className="live-dot">Live</span>
+            {status === 'playing' && <span className="live-dot">Live</span>}
             <span className="tnum faint">{clock(programme.start, prefs.timeFormat)} - {clock(programme.stop, prefs.timeFormat)}</span>
             <ProgressBar value={(now - programme.start) / (programme.stop - programme.start)} label="Programme progress" />
           </div>
@@ -429,7 +456,7 @@ function ProgrammePanel({ programme: p, channel, now, isPlayingChannel, isSelect
   return (
     <div className="panel-inner">
       <div className="panel-head">
-        <span className="label">{isSelection ? 'Selected programme' : 'Now watching'}</span>
+        <span className="label">Selected programme</span>
         {isSelection && <button type="button" className="text-link" onClick={onClear}>Back to now watching</button>}
       </div>
       {prefs.guideArt && isSelection && p.art && <Art src={p.art} className="panel-art" />}

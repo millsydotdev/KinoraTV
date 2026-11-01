@@ -47,3 +47,6 @@
 .channel-card .card-top { min-width: 0; }
 .channel-card .channel-wordmark { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 1280px) { .channel-card .card-media { aspect-ratio: 4 / 3; } }
+
+.home-empty-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
+.home-empty .btn { min-height: 0; }

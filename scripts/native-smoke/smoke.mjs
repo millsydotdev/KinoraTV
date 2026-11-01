@@ -77,7 +77,7 @@ try {
 
   if (phase === 'fresh') {
     await go('/live?view=channels')
-    ok('first run shows the demo catalogue', (await text()).includes('Northlight One'))
+    ok('first run shows nothing fictional', !(await text()).includes('Northlight One'))
     await go('/settings/appearance'); await clickText('.theme-pick', 'Light'); await wait(300)
     ok('theme set to Light', (await js('return document.documentElement.dataset.theme')) === 'light')
     ok('credentials in an address are refused', /username and password/.test(await addUrl('https://alice:pw@playlists.example/list.m3u')))
@@ -400,7 +400,7 @@ try {
 
   if (phase === 'release') {
     await go('/live?view=channels')
-    ok('release: first run shows the demo catalogue', (await text()).includes('Northlight One'))
+    ok('release: first run shows nothing fictional', !(await text()).includes('Northlight One'))
     ok('release: loopback is refused (no fixture bypass in release)', /local, private or reserved/.test(await addUrl(`${S1}/channels.m3u`) ?? ''))
     await go('/sources/add')
     await fileInput('test-streams.m3u', '#EXTM3U\n#EXTINF:-1 tvg-id="FX.HLS" group-title="Test streams",Big Buck Bunny 480p\nhttps://test-streams.mux.dev/x36xhzz/url_6/193039199_mp4_h264_aac_hq_7.m3u8\n#EXTINF:-1 tvg-id="mux.bbb" group-title="Test streams",Big Buck Bunny adaptive\nhttps://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8\n')
@@ -602,7 +602,7 @@ try {
     const saved = JSON.parse(fs.readFileSync(`${STORE}/sources.json`, 'utf8'))
     ok('release: removing the playlist leaves nothing behind', saved.sources.length === 0 && saved.guides.length === 0 && saved.mappings.length === 0, JSON.stringify(saved).slice(0, 120))
     await go('/live?view=channels')
-    ok('release: the demo catalogue returns', (await text()).includes('Northlight One'))
+    ok('release: no fictional channels return', !(await text()).includes('Northlight One'))
     await go('/library')
     ok('release: its history entries are gone', !(await text()).includes('Big Buck Bunny'))
   }

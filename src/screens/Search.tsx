@@ -127,7 +127,7 @@ export function Search() {
           </button>
         )}
       </div>
-      <p id="search-help" className="faint search-help">Searches the demonstration catalogue and today's guide. Down arrow moves into the results, Escape clears.</p>
+      <p id="search-help" className="faint search-help">Searches {store.demoTitles ? 'the sample catalogue' : 'your channels'} and today's guide. Down arrow moves into the results, Escape clears.</p>
 
       {needle && (
         <div className="chips search-filters" role="group" aria-label="Result type">

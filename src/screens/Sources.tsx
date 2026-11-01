@@ -120,7 +120,8 @@ export function Sources() {
         <div className="sources-foot">
           <DemoNote>
             {store.playlists.length + store.guides.length > 0 && 'Imported playlists and guides are saved on this device, including their addresses, which can contain private tokens. Guide programmes are kept on this device too. Streams are only fetched when you play a channel. '}
-            Sources marked Sample are demonstration data: nothing is fetched, scanned or validated for them, and their counts are sample values. Open a source to refresh or remove it.
+            {store.sources.length > 0 && ' Sources marked Sample are demonstration data: nothing is fetched, scanned or validated for them, and their counts are sample values.'}
+            {' '}Open a source to refresh or remove it.
           </DemoNote>
         </div>
 

@@ -50,10 +50,15 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             <p><span className="status-dot" aria-hidden="true" />Imported playlists</p>
             <p className="faint">{playlists.length} {playlists.length === 1 ? 'source' : 'sources'} · {channels.length} channels</p>
           </div>
-        ) : (
-          <div className="sidebar-status" title="Demonstration mode">
-            <p><span className="status-dot" aria-hidden="true" />Demonstration mode</p>
+        ) : channelMode === 'demo' ? (
+          <div className="sidebar-status" title="Sample mode: fictional content, nothing streams">
+            <p><span className="status-dot" aria-hidden="true" />Sample mode</p>
             <p className="faint">{sources.length} sample sources · {channels.length} channels</p>
+          </div>
+        ) : (
+          <div className="sidebar-status" title="No sources added yet">
+            <p><span className="status-dot" aria-hidden="true" />No sources yet</p>
+            <p className="faint"><NavLink to="/setup" className="text-link">Set up Kinora</NavLink></p>
           </div>
         )}
       </aside>

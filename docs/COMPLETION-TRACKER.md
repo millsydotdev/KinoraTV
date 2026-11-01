@@ -14,9 +14,9 @@ settings. **M6** release operations and docs.
 
 | # | Finding | Before | Finished outcome | Done so far | Evidence | Depends on / approval | M | Status |
 |---|---|---|---|---|---|---|---|---|
-| 1 | No onboarding | Lands in fictional catalogue | Skippable setup, revisitable, reaches a real channel | | | | M1 | OPEN |
-| 2 | Fictional default content | Demo library and titles by default | Demo only by explicit opt-in, always labelled | Uncommitted hide-fiction change kept and extended | | | M1 | IN PROGRESS |
-| 3 | Leftover fake data | Sample sources, counts, collections survive import | Separated; real data preserved; migration tested | | | | M1 | OPEN |
+| 1 | No onboarding | Lands in fictional catalogue | Skippable setup, revisitable, reaches a real channel | `/setup` opens on a new profile; choose a country, read, add; every step skippable; offline handled; Settings › Data reopens it. Guide and image steps follow in M3 and M4 | `Setup.test.tsx`; packaged walk with real iptv-org catalogue (screenshots viewed) | | M1 | IN PROGRESS: guide and image steps |
+| 2 | Fictional default content | Demo library and titles by default | Demo only by explicit opt-in, always labelled | Sample mode is a preference, off by default, ends when a source is added, labelled in sidebar, footer and player | `Setup.test.tsx`, `RealOnly.test.tsx`, packaged walk | | M1 | DONE a p |
+| 3 | Leftover fake data | Sample sources, counts, collections survive import | Separated; real data preserved; migration tested | `lib/migrate.ts` moves real entries to `kinora.library.v2`, sample activity lives in its own key, old key kept as a safety copy | `migrate.test.ts`, packaged walk | | M1 | DONE a p; upgrade from a real old build tested in M6 |
 | 4 | No films or series | Demo screens only | Metadata, search, details, art, seasons, library, progress, lawful playback | | | Provider and VOD model: owner | M4 | OPEN |
 | 5 | H.264 missing on clean Fedora | RPM pulls no decoder | Detection, packaging dependency, guidance, licensing recorded | | | | M2 | OPEN |
 | 6 | Player hangs on failure | "Loading stream…" forever | Bounded timeouts, cancel, real errors, recovery | | | | M2 | OPEN |
@@ -25,24 +25,24 @@ settings. **M6** release operations and docs.
 | 9 | Stream formats | HLS only; unknowns | Formats detected, unsupported explained, DASH decided, unknowns tested | | | DASH dependency: owner | M2 | OPEN |
 | 10 | Real streams untested | Test streams only | Authorised matrix run and published | | | Stream permission: owner | M2 | OPEN |
 | 11 | No real artwork | None in real mode | Logos, programme, Home, posters, backdrops, episodes, setup art | | | Remote images: owner | M4 | OPEN |
-| 12 | False WATCHING | First channel marked | State follows real player events | | | | M1 | OPEN |
+| 12 | False WATCHING | First channel marked | State follows real player events | Nothing selected by default; docked player really plays; Watching, Now Playing and Live only from media events | `Setup.test.tsx`; native check in M2 | | M1 | DONE a; native in M2 |
 | 13 | Install and upgrades | Unsigned RPM | Upgrades tested, data preserved, signing and distribution process | | | Hosting, keys: owner | M6 | OPEN |
 | 14 | CI and test quality | No CI, clock tests, fmt failing | CI, fixed clocks, no provider counts, cargo-deny config | `.github/workflows/ci.yml`, `scripts/ci-local.sh`, `src-tauri/deny.toml`; clocks fixed in GuideFlows and DiscoveryFlows; provider count removed; fmt clean; harness memory counts only Kinora | Vitest 212/212 at 12 clock and zone combinations; deny all ok | Workflow has never run on GitHub: no remote (owner) | M0 | DONE a; remote run NEEDS OWNER |
 | 15 | Backup and removal | Partial export, no restore or erase | Restore, erase, token handling, corrupt-file tests | | | | M5 | OPEN |
-| 16 | Dead settings | 5 toggles read by nothing, stale tags | Every setting works or is gone | | | | M1 | OPEN |
+| 16 | Dead settings | 5 toggles read by nothing, stale tags | Every setting works or is gone | Removed hardware decoding, skip intros, audio output, clearer dialogue, even loudness, programme art row; stripped from saved prefs. Quality, audio and subtitle language wired in M2; next episode and resume in M4 | Source search; tests | | M1 | IN PROGRESS |
 | 17 | Privacy and support docs | README notes | Privacy, install, troubleshooting, support docs | | | Support contact: owner | M6 | OPEN |
 | 18 | Refresh only at start | No schedule | Scheduled refresh, backoff, cancel, status, controls | | | | M3 | OPEN |
 | 19 | Reminders do not fire | Stored list | Reminders notify | | | Notification plugin: owner | M5 | OPEN |
 | 20 | LAN tuners refused | Refused | Separate consented local policy with security tests | | | Network policy: owner | M5 | OPEN |
 | 21 | Dependency warnings | 2 via GTK 3 | Mitigated or tracked upstream with evidence | Chain traced, ignores with reasons, re-check rule in `docs/DEPENDENCIES.md` | `cargo tree -i glib`; latest tauri on crates.io is a 3.0 alpha | Upstream Tauri | M0 | LIMIT: upstream |
-| 22 | Visual polish | Overlap, clipping, wrong copy | Fixed and checked on screen | | | | M1 | OPEN |
+| 22 | Visual polish | Overlap, clipping, wrong copy | Fixed and checked on screen | Hint clears the pill; times no longer clip at 960; real-mode copy corrected; empty Live TV no longer clipped | Screenshots viewed | | M1 | IN PROGRESS: art pass in M4 |
 
 ## Capability rows A to J
 
 | Area | Capability | Audit | Finished outcome | Done so far / evidence | Findings | Status |
 |---|---|---|---|---|---|---|
-| A | Onboarding or setup | NOT IMPLEMENTED | See finding 1 | | 1 | OPEN |
-| A | Fresh Home | PARTIAL | Honest, useful, not fictional | | 2 | OPEN |
+| A | Onboarding or setup | NOT IMPLEMENTED | See finding 1 | Built | 1 | IN PROGRESS |
+| A | Fresh Home | PARTIAL | Honest, useful, not fictional | Empty state with three routes; opens setup | 2 | DONE a p |
 | A | Blank Home | Not reproduced | Explain startup wait; bound it | | 2 | OPEN |
 | A | Home with a real playlist | PARTIAL | Populated, with art | | 11 | OPEN |
 | A | Useful offline | VERIFIED p | Keep verified | | | OPEN |
