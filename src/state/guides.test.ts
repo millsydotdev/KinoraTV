@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Channel } from '../data/types'
 import { IngestError, type GuideAnswer, type GuideSummary } from '../lib/native'
 import {
-  checkGuideUrl, createGuide, guideQueries, guideStatusText, guideStatusTone, noListingsText, programmesFor, readGuideForPreview, resolveMatches,
+  checkGuideUrl, createGuide, guideQueries, guideStatusText, guideStatusTone, includePlaylistsInGuides, noListingsText, programmesFor, readGuideForPreview, resolveMatches,
   restoreGuide, runGuideImport, toSavedGuide, type GuideSource, type Mapping,
 } from './guides'
 import { DESKTOP_ONLY } from './playlists'
@@ -54,6 +54,13 @@ describe('saving and restoring guides', () => {
     expect(r).toMatchObject({ status: 'saved', summary: null, error: null, playlists: ['pl-1'] })
     expect(guideStatusText(r, NOW)).toBe('No programmes yet')
     expect(guideStatusText({ ...r, origin: 'file' }, NOW)).toBe('No programmes · choose the file again')
+  })
+
+  it('includes new playlists in each existing guide without duplicating assignments', () => {
+    const guides = [guide('gd-a', ['pl-1']), guide('gd-b', [])]
+    const updated = includePlaylistsInGuides(guides, ['pl-1', 'pl-2'])
+    expect(updated.map((g) => g.playlists)).toEqual([['pl-1', 'pl-2'], ['pl-1', 'pl-2']])
+    expect(guides.map((g) => g.playlists)).toEqual([['pl-1'], []])
   })
 })
 
@@ -176,8 +183,21 @@ describe('matching playlist channels to guides', () => {
     const m = resolveMatches(channels.slice(0, 1), guides, [], answers)
     expect(programmesFor(m, answers).get('pl-1~a')).toEqual([{
       id: `pl-1~a@${NOW}`, channelId: 'pl-1~a', start: NOW, stop: NOW + HOUR, title: 'News', subtitle: 'Midday', desc: 'Headlines',
-      category: 'News', episode: 'S1 E2', art: '', stopEstimated: true,
+      category: 'News', episode: 'S1 E2', art: undefined, stopEstimated: true, icon: null,
     }])
+  })
+
+  it('preserves genuine programme icon and leaves art undefined for honest channel fallback', () => {
+    const answers = [answer('gd-first', [['One.uk', 'one.UK']], [
+      { ...prog('one.UK', NOW, 'Football Live'), category: 'Sport', icon: 'https://img.example/match.jpg' },
+      { ...prog('one.UK', NOW + HOUR, 'Mystery Movie'), category: 'Cinema' },
+      { ...prog('one.UK', NOW + 2 * HOUR, 'Mystery Show'), category: 'Unknown' },
+    ])]
+    const m = resolveMatches(channels.slice(0, 1), guides, [], answers)
+    const list = programmesFor(m, answers).get('pl-1~a')!
+    expect(list[0]).toMatchObject({ art: undefined, icon: 'https://img.example/match.jpg' })
+    expect(list[1]).toMatchObject({ art: undefined, icon: null })
+    expect(list[2]).toMatchObject({ art: undefined, icon: null })
   })
 
   it('labels empty guide rows honestly', () => {

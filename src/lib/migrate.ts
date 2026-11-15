@@ -2,7 +2,7 @@
 // `kinora.library.v1` is left in place as a safety copy; the new key holds only real data.
 import { movies, series } from '../data/catalog'
 import { channels } from '../data/channels'
-import type { Library } from '../state/store'
+import type { Library } from '../data/types'
 
 const fictionalMovies = new Set(movies.map((m) => m.id))
 const fictionalSeries = new Set(series.map((s) => s.id))

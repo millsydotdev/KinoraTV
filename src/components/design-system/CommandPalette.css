@@ -1,0 +1,151 @@
+/* Command Palette Styling */
+
+.ds-command-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 0.75);
+  backdrop-filter: blur(4px);
+  z-index: 10000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  animation: ds-fade-in 0.15s ease-out;
+}
+
+.ds-command-dialog {
+  width: 90vw;
+  max-width: 640px;
+  background: var(--surface-pop, #161822);
+  border: 1px solid rgb(255 255 255 / 0.15);
+  border-radius: var(--radius-lg, 12px);
+  box-shadow: 0 20px 40px rgb(0 0 0 / 0.6);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.ds-command-header {
+  display: flex;
+  align-items: center;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+  gap: 12px;
+}
+
+.ds-command-search-icon {
+  color: var(--text-muted, #94a3b8);
+  flex-shrink: 0;
+}
+
+.ds-command-input {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--text, #f0f2f5);
+  font-family: inherit;
+  font-size: 16px;
+  outline: none;
+}
+.ds-command-input::placeholder {
+  color: var(--text-faint, #64748b);
+}
+
+.ds-command-badge {
+  font-family: monospace;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 0.08);
+  color: var(--text-muted, #94a3b8);
+  border: 1px solid rgb(255 255 255 / 0.12);
+}
+
+.ds-command-body {
+  max-height: 380px;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.ds-command-empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--text-muted, #94a3b8);
+  font-size: 14px;
+  margin: 0;
+}
+
+.ds-command-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ds-command-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+  color: var(--text, #f0f2f5);
+  transition: background-color 0.1s ease;
+}
+
+.ds-command-item.is-selected {
+  background: rgb(var(--accent-rgb, 229 9 20) / 0.18);
+  color: #fff;
+}
+
+.ds-command-item-icon {
+  color: var(--text-muted, #94a3b8);
+  flex-shrink: 0;
+}
+.ds-command-item.is-selected .ds-command-item-icon {
+  color: var(--accent, #e50914);
+}
+
+.ds-command-item-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ds-command-item-title {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ds-command-item-sub {
+  font-size: 12px;
+  color: var(--text-muted, #94a3b8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ds-command-item.is-selected .ds-command-item-sub {
+  color: rgb(255 255 255 / 0.7);
+}
+
+.ds-command-item-cat {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint, #64748b);
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 0.04);
+  flex-shrink: 0;
+}
+
+@keyframes ds-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

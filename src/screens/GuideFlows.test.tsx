@@ -15,6 +15,7 @@ import {
   type SavedMapping, type SavedSource, type SavedState,
 } from '../lib/native'
 import { StoreProvider } from '../state/store'
+import { Home } from './Home'
 import { LiveTV } from './LiveTV'
 import { Player } from './Player'
 import { Settings } from './Settings'
@@ -26,7 +27,7 @@ const native = vi.hoisted(() => ({
   loadGuide: vi.fn(), fetchGuide: vi.fn(), readGuideFile: vi.fn(), guideProgrammes: vi.fn(), guideChannels: vi.fn(), removeGuide: vi.fn(),
 }))
 vi.mock('../lib/native', async (importOriginal) => ({ ...(await importOriginal<typeof import('../lib/native')>()), ...native }))
-vi.mock('hls.js/light', () => ({
+vi.mock('hls.js', () => ({
   default: class { static isSupported = () => true; static Events = {}; static ErrorTypes = {}; on() {} attachMedia() {} loadSource() {} destroy() {} },
 }))
 
@@ -98,6 +99,7 @@ async function mount(path: string) {
           <ToastProvider>
             <Navigator />
             <Routes>
+              <Route path="/" element={<Home />} />
               <Route path="/sources" element={<Sources />} />
               <Route path="/sources/add" element={<AddSource />} />
               <Route path="/live" element={<LiveTV />} />
@@ -259,6 +261,50 @@ describe('startup', () => {
     expect(row('Channel One').textContent).toContain('New Current Show')
     expect(text()).not.toContain('Old ')
   })
+
+  it('previously loaded guide listings remain visible while a refreshed guide query is in flight', async () => {
+    const refresh = deferred<GuideSummary>()
+    native.fetchGuide.mockReturnValue(refresh.promise)
+    await mount('/live?view=channels')
+    const channelOneCard = () => [...document.querySelectorAll('.channel-card')].find((c) => c.textContent?.includes('Channel One'))!
+    expect(channelOneCard().textContent).toContain('Current Show')
+
+    // When the background guide refresh completes (changing fetchedAt and epgKey), the next guideProgrammes call is slow:
+    const nextQuery = deferred<GuideAnswer[]>()
+    native.guideProgrammes.mockImplementation(() => nextQuery.promise)
+    await act(async () => { refresh.resolve(summary({ fetchedAt: 8000 })) })
+    await settle()
+
+    // Previously loaded programmes on Channel One stay visible instead of flashing back to "No guide information"
+    expect(channelOneCard().textContent).toContain('Current Show')
+    expect(channelOneCard().textContent).not.toContain('No guide information')
+
+    // Once the new query resolves, the updated programme title replaces the previous one
+    const updated = answerWith((p) => `Refreshed ${p.title}`)
+    await act(async () => {
+      nextQuery.resolve(await updated([{ guide: 'gd-g1', ids: ['One.uk'] }], now - 86_400_000, now + 86_400_000))
+    })
+    await settle()
+    expect(channelOneCard().textContent).toContain('Refreshed Current Show')
+  })
+
+  it('RealHero on Home prefers a current programme with genuine EPG artwork and valid title over a placeholder slot', async () => {
+    listings = {
+      'one.uk': {
+        id: 'One.uk',
+        programmes: [show('.programmes start at 7.00am', -30, 30)],
+      },
+      'gone.uk': {
+        id: 'gone.uk',
+        programmes: [show('Evening Drama', -30, 30, { icon: 'https://images.metadata.sky.com/drama.jpg', desc: 'A detective story set in Yorkshire.' })],
+      },
+    }
+    await mount('/')
+    const heroTitle = document.querySelector('#hero-title')?.textContent?.trim()
+    expect(heroTitle).toBe('Evening Drama')
+    expect(document.querySelector('.hero')?.textContent).toContain('Now on Gone Channel')
+    expect(document.querySelector('.hero')?.textContent).toContain('A detective story set in Yorkshire.')
+  })
 })
 
 describe('adding a guide', () => {
@@ -371,7 +417,7 @@ describe('managing a guide', () => {
     await openSource('Web lineup')
     await click(button('Remove'))
     await click(button('Remove source'))
-    expect(lastState()).toEqual({ sources: [], guides: [expect.objectContaining({ id: 'gd-g1', playlists: [] })], mappings: [] })
+    expect(lastState()).toEqual({ xtreamSources: [], sources: [], guides: [expect.objectContaining({ id: 'gd-g1', playlists: [] })], mappings: [] })
   })
 
   it('the data export holds no guide address or token', async () => {

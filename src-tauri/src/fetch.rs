@@ -19,6 +19,7 @@ use std::time::Duration;
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 use reqwest::header::{ACCEPT, CONTENT_RANGE, CONTENT_TYPE, RANGE};
 use reqwest::{redirect, Url};
+use serde::{Deserialize, Serialize};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use crate::ingest::{ErrorCode, IngestError, MAX_PLAYLIST_BYTES};
@@ -36,7 +37,7 @@ pub struct Policy {
     /// Longest wait for the next bytes of a response. `None` for playlists (the total timeout
     /// covers them); set for media, where a stalled live stream must not hold a request open.
     pub read_timeout: Option<Duration>,
-    /// What is being fetched, for error messages: "playlist", "guide" or "catalogue".
+    /// What is being fetched, for error messages: "playlist", "guide", "logo", "catalogue" or "provider catalogue".
     pub noun: &'static str,
     /// When not empty, the only host names this policy fetches from, on every request and redirect
     /// hop. Narrows the destination checks; it never replaces them.
@@ -71,6 +72,30 @@ impl Default for Policy {
 }
 
 impl Policy {
+    /// Small channel logos use the same destination and redirect guards as every remote fetch.
+    pub fn logo() -> Self {
+        Self {
+            max_bytes: 256 * 1024,
+            max_redirects: 3,
+            connect_timeout: Duration::from_secs(5),
+            total_timeout: Duration::from_secs(10),
+            noun: "logo",
+            ..Self::default()
+        }
+    }
+
+    /// Movie, series and programme artwork: posters, backdrops, episode stills.
+    pub fn artwork() -> Self {
+        Self {
+            max_bytes: 4 * 1024 * 1024,
+            max_redirects: 3,
+            connect_timeout: Duration::from_secs(8),
+            total_timeout: Duration::from_secs(20),
+            noun: "artwork",
+            ..Self::default()
+        }
+    }
+
     /// XMLTV guides: larger and slower than playlists, with the same destination checks. Only the
     /// size and time limits differ, so playlist and stream limits are unchanged.
     pub fn guide() -> Self {
@@ -91,6 +116,57 @@ impl Policy {
             total_timeout: Duration::from_secs(20),
             noun: "catalogue",
             only_hosts: &[crate::catalogue::HOST],
+            https_only: true,
+            ..Self::default()
+        }
+    }
+
+    /// User-selected Xtream-compatible provider API data, bounded independently from playlists.
+    pub fn xtream() -> Self {
+        Self {
+            max_bytes: 32 * 1024 * 1024,
+            max_redirects: 3,
+            connect_timeout: Duration::from_secs(8),
+            total_timeout: Duration::from_secs(45),
+            noun: "provider catalogue",
+            ..Self::default()
+        }
+    }
+
+    /// Safe connection testing policy: bounded connect and total timeouts, small byte limit.
+    pub fn connection_test() -> Self {
+        Self {
+            max_bytes: 64 * 1024,
+            max_redirects: 3,
+            connect_timeout: Duration::from_secs(5),
+            total_timeout: Duration::from_secs(10),
+            noun: "source",
+            ..Self::default()
+        }
+    }
+
+    /// Approved metadata provider APIs: The Movie Database and TVmaze.
+    pub fn metadata() -> Self {
+        Self {
+            max_bytes: 512 * 1024,
+            max_redirects: 3,
+            connect_timeout: Duration::from_secs(5),
+            total_timeout: Duration::from_secs(10),
+            noun: "metadata",
+            only_hosts: &["api.themoviedb.org", "api.tvmaze.com"],
+            https_only: true,
+            ..Self::default()
+        }
+    }
+
+    /// Official application update manifest policy: bounded to 64 KB, HTTPS only, 10s timeout.
+    pub fn updater() -> Self {
+        Self {
+            max_bytes: 64 * 1024,
+            max_redirects: 3,
+            connect_timeout: Duration::from_secs(5),
+            total_timeout: Duration::from_secs(10),
+            noun: "updater",
             https_only: true,
             ..Self::default()
         }
@@ -409,6 +485,112 @@ pub async fn download_bytes(
     Ok((body, host))
 }
 
+/// Queries an approved metadata provider API (The Movie Database or TVmaze).
+pub async fn fetch_metadata(
+    raw_url: &str,
+    auth_header: Option<&str>,
+) -> Result<String, IngestError> {
+    let policy = Policy::metadata();
+    let url = check_url(raw_url, &policy)?;
+    let host = url.host_str().unwrap_or_default().to_owned();
+    let client = guarded_client(&policy)?;
+    let noun = policy.noun;
+
+    let mut req = client.get(url).header(ACCEPT, "application/json");
+
+    if let Some(auth) = auth_header {
+        req = req.header(reqwest::header::AUTHORIZATION, auth);
+    }
+
+    let mut response = req
+        .send()
+        .await
+        .map_err(|e| from_reqwest(&e, &host, noun))?;
+
+    if let Some(peer) = response.remote_addr() {
+        if !policy.permits(peer.ip()) {
+            return Err(blocked(&host, noun));
+        }
+    }
+    let status = response.status();
+    if !status.is_success() {
+        let code = status.as_u16();
+        let message = if matches!(code, 401 | 403) {
+            format!("{host} refused metadata access (HTTP {code}). Check API credentials.")
+        } else {
+            format!("{host} answered with HTTP {code} instead of metadata.")
+        };
+        return Err(IngestError::new(ErrorCode::HttpStatus, message));
+    }
+
+    let mut body = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|e| from_reqwest(&e, &host, noun))?
+    {
+        if body.len() + chunk.len() > policy.max_bytes {
+            return Err(IngestError::new(
+                ErrorCode::TooLarge,
+                format!("Metadata response from {host} exceeded maximum size limit."),
+            ));
+        }
+        body.extend_from_slice(&chunk);
+    }
+
+    Ok(String::from_utf8_lossy(&body).into_owned())
+}
+
+/// Fetches an official update manifest JSON through the guarded network client.
+pub async fn fetch_updater_manifest(raw_url: &str) -> Result<String, IngestError> {
+    let policy = Policy::updater();
+    let url = check_url(raw_url, &policy)?;
+    let host = url.host_str().unwrap_or_default().to_owned();
+    let client = guarded_client(&policy)?;
+    let noun = policy.noun;
+
+    let req = client.get(url).header(ACCEPT, "application/json");
+
+    let mut response = req
+        .send()
+        .await
+        .map_err(|e| from_reqwest(&e, &host, noun))?;
+
+    if let Some(peer) = response.remote_addr() {
+        if !policy.permits(peer.ip()) {
+            return Err(blocked(&host, noun));
+        }
+    }
+    let status = response.status();
+    if !status.is_success() {
+        let code = status.as_u16();
+        let message = format!("{host} answered with HTTP {code} instead of update manifest.");
+        return Err(IngestError::new(ErrorCode::HttpStatus, message));
+    }
+
+    let mut body = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|e| from_reqwest(&e, &host, noun))?
+    {
+        if body.len() + chunk.len() > policy.max_bytes {
+            return Err(IngestError::new(
+                ErrorCode::TooLarge,
+                format!("Update manifest from {host} exceeded maximum size limit."),
+            ));
+        }
+        body.extend_from_slice(&chunk);
+    }
+
+    String::from_utf8(body).map_err(|_| {
+        IngestError::new(
+            ErrorCode::Network,
+            format!("Update manifest from {host} is not valid UTF-8."),
+        )
+    })
+}
+
 /// A media resource fetched for the stream protocol.
 pub struct Fetched {
     /// 200, or 206 when the upstream answered a byte range.
@@ -514,6 +696,205 @@ pub async fn fetch_media(
         body,
         budget: held,
     })
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionTestResult {
+    pub ok: bool,
+    pub status: Option<u16>,
+    pub host: String,
+    pub round_trip_ms: u64,
+    pub message: String,
+    pub category: ConnectionResultCategory,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ConnectionResultCategory {
+    Success,
+    AuthRequired,
+    HttpError,
+    DnsFailure,
+    ConnectionRefused,
+    Timeout,
+    InvalidUrl,
+    SecurityBlocked,
+    NetworkUnavailable,
+    Unknown,
+}
+
+/// Safely tests connectivity to a remote source URL.
+/// Validates the destination, checks DNS, inspects status headers, and drops the response
+/// without buffering or downloading the full playlist or guide body.
+pub async fn test_connection(raw_url: &str, policy: &Policy) -> ConnectionTestResult {
+    let start = std::time::Instant::now();
+    let url = match check_url(raw_url, policy) {
+        Ok(u) => u,
+        Err(e) => {
+            let cat = if e.code == ErrorCode::Blocked {
+                ConnectionResultCategory::SecurityBlocked
+            } else {
+                ConnectionResultCategory::InvalidUrl
+            };
+            return ConnectionTestResult {
+                ok: false,
+                status: None,
+                host: extract_host_display(raw_url),
+                round_trip_ms: 0,
+                message: e.to_string(),
+                category: cat,
+            };
+        }
+    };
+
+    let host = url.host_str().unwrap_or("unknown").to_owned();
+    let client = match guarded_client(policy) {
+        Ok(c) => c,
+        Err(e) => {
+            return ConnectionTestResult {
+                ok: false,
+                status: None,
+                host,
+                round_trip_ms: start.elapsed().as_millis() as u64,
+                message: e.to_string(),
+                category: ConnectionResultCategory::NetworkUnavailable,
+            };
+        }
+    };
+
+    // Range header requests up to the first 1KB so remote servers supporting Range do not stream large bodies.
+    // Even if the server ignores Range, we only read response headers and drop the response stream immediately.
+    let response_res = client
+        .get(url)
+        .header(RANGE, "bytes=0-1024")
+        .header(ACCEPT, "audio/x-mpegurl, application/vnd.apple.mpegurl, application/xml, text/xml, text/plain;q=0.9, */*;q=0.1")
+        .send()
+        .await;
+
+    let round_trip_ms = start.elapsed().as_millis() as u64;
+
+    let response = match response_res {
+        Ok(resp) => resp,
+        Err(err) => {
+            let mut source: Option<&(dyn StdError + 'static)> = Some(&err);
+            let mut category = ConnectionResultCategory::Unknown;
+            let mut msg = format!("Failed to reach {host}.");
+
+            while let Some(s) = source {
+                if let Some(own) = s.downcast_ref::<IngestError>() {
+                    if own.code == ErrorCode::Blocked {
+                        category = ConnectionResultCategory::SecurityBlocked;
+                        msg = own.to_string();
+                        break;
+                    }
+                    if own.code == ErrorCode::TooManyRedirects {
+                        category = ConnectionResultCategory::HttpError;
+                        msg = own.to_string();
+                        break;
+                    }
+                }
+                source = s.source();
+            }
+
+            if category == ConnectionResultCategory::Unknown {
+                if err.is_timeout() {
+                    category = ConnectionResultCategory::Timeout;
+                    msg = format!(
+                        "{host} did not respond within {} seconds.",
+                        policy.total_timeout.as_secs()
+                    );
+                } else if err.is_connect() {
+                    let err_str = err.to_string().to_lowercase();
+                    if err_str.contains("dns")
+                        || err_str.contains("resolve")
+                        || err_str.contains("not find")
+                    {
+                        category = ConnectionResultCategory::DnsFailure;
+                        msg = format!("Could not resolve host name: {host}");
+                    } else {
+                        category = ConnectionResultCategory::ConnectionRefused;
+                        msg = format!("Connection refused or host unreachable: {host}");
+                    }
+                } else {
+                    let ing = from_reqwest(&err, &host, policy.noun);
+                    if ing.code == ErrorCode::Blocked {
+                        category = ConnectionResultCategory::SecurityBlocked;
+                    } else {
+                        category = ConnectionResultCategory::NetworkUnavailable;
+                    }
+                    msg = ing.to_string();
+                }
+            }
+
+            return ConnectionTestResult {
+                ok: false,
+                status: None,
+                host,
+                round_trip_ms,
+                message: msg,
+                category,
+            };
+        }
+    };
+
+    // Check final peer IP address
+    if let Some(peer) = response.remote_addr() {
+        if !policy.permits(peer.ip()) {
+            return ConnectionTestResult {
+                ok: false,
+                status: None,
+                host: host.clone(),
+                round_trip_ms,
+                message: format!("Connection to {host} refused: destination IP is prohibited by security policy."),
+                category: ConnectionResultCategory::SecurityBlocked,
+            };
+        }
+    }
+
+    let status = response.status();
+    let code = status.as_u16();
+
+    // Drop response body immediately without buffering or downloading!
+    drop(response);
+
+    if status.is_success() {
+        ConnectionTestResult {
+            ok: true,
+            status: Some(code),
+            host: host.clone(),
+            round_trip_ms,
+            message: format!("Host reachable (HTTP {code} OK, {round_trip_ms}ms)"),
+            category: ConnectionResultCategory::Success,
+        }
+    } else if code == 401 || code == 403 {
+        ConnectionTestResult {
+            ok: false,
+            status: Some(code),
+            host: host.clone(),
+            round_trip_ms,
+            message: format!("{host} refused access (HTTP {code}). Authentication required."),
+            category: ConnectionResultCategory::AuthRequired,
+        }
+    } else {
+        ConnectionTestResult {
+            ok: false,
+            status: Some(code),
+            host: host.clone(),
+            round_trip_ms,
+            message: format!("{host} returned HTTP {code}."),
+            category: ConnectionResultCategory::HttpError,
+        }
+    }
+}
+
+fn extract_host_display(raw: &str) -> String {
+    if let Ok(u) = Url::parse(raw.trim()) {
+        if let Some(h) = u.host_str() {
+            return h.to_owned();
+        }
+    }
+    "unknown".to_owned()
 }
 
 /// Local HTTP test server shared by the fetch and stream tests. Test builds only.
@@ -639,6 +1020,12 @@ mod tests {
             p if p.starts_with("/slow") => http("200 OK", "", PLAYLIST),
             p if p.starts_with("/missing") => http("404 Not Found", "", "nope"),
             "/forbidden" => http("403 Forbidden", "", "no"),
+            "/unauthorized" => http(
+                "401 Unauthorized",
+                "WWW-Authenticate: Basic\r\n",
+                "auth required",
+            ),
+            "/server-error" => http("500 Internal Server Error", "", "internal error"),
             "/login" => http(
                 "200 OK",
                 "Content-Type: text/html\r\n",
@@ -1147,5 +1534,132 @@ mod tests {
             "{}",
             slow.message
         );
+    }
+
+    #[test]
+    fn connection_test_success_200() {
+        let (port, _) = playlist_server();
+        let url = format!("http://127.0.0.1:{port}/list.m3u");
+        let res = run(test_connection(&url, &local()));
+        assert!(res.ok, "Expected ok to be true, got: {:?}", res);
+        assert_eq!(res.status, Some(200));
+        assert_eq!(res.category, ConnectionResultCategory::Success);
+        assert_eq!(res.host, "127.0.0.1");
+        assert!(res.message.contains("HTTP 200 OK"));
+    }
+
+    #[test]
+    fn connection_test_auth_required_401_and_403() {
+        let (port, _) = playlist_server();
+        let at = |p: &str| format!("http://127.0.0.1:{port}{p}");
+
+        let res401 = run(test_connection(&at("/unauthorized"), &local()));
+        assert!(!res401.ok);
+        assert_eq!(res401.status, Some(401));
+        assert_eq!(res401.category, ConnectionResultCategory::AuthRequired);
+        assert!(res401.message.contains("Authentication required"));
+
+        let res403 = run(test_connection(&at("/forbidden"), &local()));
+        assert!(!res403.ok);
+        assert_eq!(res403.status, Some(403));
+        assert_eq!(res403.category, ConnectionResultCategory::AuthRequired);
+        assert!(res403.message.contains("Authentication required"));
+    }
+
+    #[test]
+    fn connection_test_http_errors_404_and_500() {
+        let (port, _) = playlist_server();
+        let at = |p: &str| format!("http://127.0.0.1:{port}{p}");
+
+        let res404 = run(test_connection(&at("/missing"), &local()));
+        assert!(!res404.ok);
+        assert_eq!(res404.status, Some(404));
+        assert_eq!(res404.category, ConnectionResultCategory::HttpError);
+        assert!(res404.message.contains("HTTP 404"));
+
+        let res500 = run(test_connection(&at("/server-error"), &local()));
+        assert!(!res500.ok);
+        assert_eq!(res500.status, Some(500));
+        assert_eq!(res500.category, ConnectionResultCategory::HttpError);
+        assert!(res500.message.contains("HTTP 500"));
+    }
+
+    #[test]
+    fn connection_test_invalid_url_and_credentials() {
+        let res_scheme = run(test_connection("ftp://example.com/playlist.m3u", &local()));
+        assert!(!res_scheme.ok);
+        assert_eq!(res_scheme.category, ConnectionResultCategory::InvalidUrl);
+
+        let res_invalid = run(test_connection("not-a-valid-url", &local()));
+        assert!(!res_invalid.ok);
+        assert_eq!(res_invalid.category, ConnectionResultCategory::InvalidUrl);
+
+        let res_creds = run(test_connection(
+            "http://user:supersecretpass@example.com/test",
+            &local(),
+        ));
+        assert!(!res_creds.ok);
+        assert_eq!(res_creds.category, ConnectionResultCategory::InvalidUrl);
+        assert!(!res_creds.message.contains("supersecretpass"));
+    }
+
+    #[test]
+    #[cfg_attr(
+        feature = "loopback-fixtures",
+        ignore = "loopback-fixtures opens 127.0.0.1, which this test checks is refused"
+    )]
+    fn connection_test_security_blocked() {
+        let prod_policy = Policy::connection_test();
+        for addr in [
+            "http://127.0.0.1:8080/list.m3u",
+            "http://10.0.0.1/test.m3u",
+            "http://192.168.1.1/test.m3u",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://localhost:5000/playlist.m3u",
+        ] {
+            let res = run(test_connection(addr, &prod_policy));
+            assert!(!res.ok, "Expected {} to be blocked", addr);
+            assert_eq!(
+                res.category,
+                ConnectionResultCategory::SecurityBlocked,
+                "Expected {} to be blocked",
+                addr
+            );
+        }
+    }
+
+    #[test]
+    fn connection_test_redacts_tokens_and_paths_in_errors() {
+        let (port, _) = playlist_server();
+        let token_url = format!("http://127.0.0.1:{port}/missing?token=VERY_SECRET_AUTH_TOKEN_999");
+        let res = run(test_connection(&token_url, &local()));
+        assert!(!res.ok);
+        assert!(!res.message.contains("VERY_SECRET_AUTH_TOKEN_999"));
+        assert!(!res.message.contains("/missing"));
+    }
+
+    #[test]
+    fn metadata_policy_allows_tmdb_and_tvmaze() {
+        let policy = Policy::metadata();
+        assert!(check_url(
+            "https://api.themoviedb.org/3/search/movie?query=Dune",
+            &policy
+        )
+        .is_ok());
+        assert!(check_url("https://api.tvmaze.com/search/shows?q=Doctor+Who", &policy).is_ok());
+    }
+
+    #[test]
+    fn metadata_policy_rejects_insecure_or_disallowed_hosts() {
+        let policy = Policy::metadata();
+        // Insecure HTTP rejected
+        assert!(check_url("http://api.themoviedb.org/3/search/movie", &policy).is_err());
+        assert!(check_url("http://api.tvmaze.com/search/shows", &policy).is_err());
+        // Unapproved hosts rejected
+        assert!(check_url("https://example.com/api", &policy).is_err());
+        assert!(check_url("https://google.com/", &policy).is_err());
+        // Loopback / private rejected
+        assert!(check_url("https://127.0.0.1:8080/api", &policy).is_err());
+        assert!(check_url("https://10.0.0.1/api", &policy).is_err());
     }
 }

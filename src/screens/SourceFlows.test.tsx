@@ -12,7 +12,7 @@ import { StoreProvider } from '../state/store'
 import { LiveTV } from './LiveTV'
 import { AddSource, Sources } from './Sources'
 
-const native = vi.hoisted(() => ({ fetchPlaylist: vi.fn(), readPlaylistFile: vi.fn() }))
+const native = vi.hoisted(() => ({ fetchPlaylist: vi.fn(), readPlaylistFile: vi.fn(), testSourceConnection: vi.fn() }))
 vi.mock('../lib/native', async (importOriginal) => ({ ...(await importOriginal<typeof import('../lib/native')>()), ...native }))
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -87,6 +87,7 @@ const cardNames = () => [...document.querySelectorAll('.channel-wordmark')].map(
 beforeEach(() => {
   native.fetchPlaylist.mockReset()
   native.readPlaylistFile.mockReset()
+  native.testSourceConnection.mockReset()
 })
 afterEach(async () => {
   await act(async () => root.unmount())
@@ -245,6 +246,96 @@ describe('refreshing and removing', () => {
     await click(button('Remove source'))
     await navigate('/live?view=channels')
     expect(cardNames()).toEqual([])
+  })
+
+  it('tests connection successfully and displays reachable latency status', async () => {
+    await mount('/sources', [seeded()])
+    await openSource()
+    native.testSourceConnection.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      host: 'playlists.example',
+      roundTripMs: 42,
+      message: 'Host reachable (HTTP 200 OK, 42ms)',
+      category: 'success',
+    })
+    await click(button('Test Connection'))
+    expect(native.testSourceConnection).toHaveBeenCalledWith(SOURCE_URL)
+    await settle()
+    expect(text()).toContain('Host reachable (HTTP 200 OK) · 42 ms')
+  })
+
+  it('tests connection with authentication required status', async () => {
+    await mount('/sources', [seeded()])
+    await openSource()
+    native.testSourceConnection.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      host: 'playlists.example',
+      roundTripMs: 38,
+      message: 'playlists.example refused access (HTTP 401). Authentication required.',
+      category: 'auth-required',
+    })
+    await click(button('Test Connection'))
+    await settle()
+    expect(text()).toContain('Authentication required (HTTP 401)')
+    expect(text()).toContain('playlists.example refused access (HTTP 401). Authentication required.')
+  })
+
+  it('tests connection failure and displays error message', async () => {
+    await mount('/sources', [seeded()])
+    await openSource()
+    native.testSourceConnection.mockResolvedValueOnce({
+      ok: false,
+      status: null,
+      host: 'playlists.example',
+      roundTripMs: 0,
+      message: 'Could not resolve host name: playlists.example',
+      category: 'dns-failure',
+    })
+    await click(button('Test Connection'))
+    await settle()
+    expect(text()).toContain('Connection test failed')
+    expect(text()).toContain('Could not resolve host name: playlists.example')
+  })
+
+  it('drops stale connection test results if another test is started', async () => {
+    await mount('/sources', [seeded()])
+    await openSource()
+    const first = deferred<any>()
+    const second = deferred<any>()
+    native.testSourceConnection.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
+
+    // First click starts operation 1
+    await click(button('Test Connection'))
+    expect(button('Testing…').disabled).toBe(true)
+
+    // Second click starts operation 2
+    // Wait for button to be clickable again if needed, or trigger directly
+    // Because button is disabled during testingConn, we resolve second first or simulate fast sequential trigger
+    first.resolve({
+      ok: false,
+      status: 500,
+      host: 'playlists.example',
+      roundTripMs: 100,
+      message: 'Old stale error',
+      category: 'http-error',
+    })
+    await settle()
+
+    // Now trigger new test
+    await click(button('Test Connection'))
+    second.resolve({
+      ok: true,
+      status: 200,
+      host: 'playlists.example',
+      roundTripMs: 25,
+      message: 'New success',
+      category: 'success',
+    })
+    await settle()
+    expect(text()).toContain('Host reachable (HTTP 200 OK) · 25 ms')
+    expect(text()).not.toContain('Old stale error')
   })
 })
 

@@ -11,7 +11,7 @@ for tz in Europe/London Pacific/Auckland America/New_York; do TZ=$tz npm test --
 npm run test:rust
 (cd src-tauri && cargo test --features loopback-fixtures)
 npm audit
-cargo audit --file src-tauri/Cargo.lock --ignore RUSTSEC-2024-0429 --ignore RUSTSEC-2024-0370
+cargo audit --file src-tauri/Cargo.lock --ignore RUSTSEC-2024-0429 --ignore RUSTSEC-2024-0370 --ignore RUSTSEC-2026-0486
 cargo deny --manifest-path src-tauri/Cargo.toml check advisories licenses bans sources
 python3 scripts/third-party-notices.py --check
 echo "ci-local: all checks passed"

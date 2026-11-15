@@ -2,7 +2,26 @@
 .browse-bar .filters { margin-right: auto; }
 /* Five posters across at desktop width, as in the mockup's Movies grid. */
 .browse .grid-posters { grid-template-columns: repeat(auto-fill, minmax(clamp(160px, 15vw, 300px), 1fr)); gap: 20px; }
+.browse .catalogue-more { justify-self: start; margin-top: 18px; }
+.provider-search { display: block; width: min(420px, 100%); margin: 0 0 14px; }
 .browse-count { margin: 14px 0 16px; font-size: 0.8125rem; }
+
+/* Ensure lower-third broadcast graphics or bright text baked into third-party EPG stills
+   never bleed through behind the card overlay title and next-slot metadata. */
+.channel-card .card-shade::after {
+  background: linear-gradient(
+    to top,
+    rgb(var(--scrim) / 0.96) 0%,
+    rgb(var(--scrim) / 0.86) 24%,
+    rgb(var(--scrim) / 0.34) 48%,
+    rgb(var(--scrim) / 0.14) 68%,
+    rgb(var(--scrim) / 0.58) 100%
+  );
+}
+.card-overlay strong,
+.card-overlay span {
+  text-shadow: 0 1px 8px rgb(0 0 0 / 0.85);
+}
 
 @media (max-width: 520px) {
   .grid-posters, .browse .grid-posters { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }

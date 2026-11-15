@@ -1,0 +1,252 @@
+/* Book / Document Reader Modal Styles */
+.book-reader-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  backdrop-filter: blur(12px);
+  animation: bookFadeIn 180ms var(--ease);
+}
+
+@keyframes bookFadeIn {
+  from { opacity: 0; transform: scale(0.99); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Reader Themes */
+.book-reader-overlay.theme-dark {
+  background: #0f1319;
+  color: #e2e8f0;
+}
+.book-reader-overlay.theme-sepia {
+  background: #f5eedb;
+  color: #3e3223;
+}
+.book-reader-overlay.theme-black {
+  background: #000000;
+  color: #a1a1aa;
+}
+.book-reader-overlay.theme-light {
+  background: #ffffff;
+  color: #1e293b;
+}
+
+/* Header Bar */
+.book-reader-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.12);
+  gap: 16px;
+}
+.theme-sepia .book-reader-header {
+  border-bottom-color: rgba(62, 50, 35, 0.15);
+  background: rgba(255, 255, 255, 0.35);
+}
+.theme-light .book-reader-header {
+  border-bottom-color: rgba(0, 0, 0, 0.08);
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.book-reader-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.book-reader-book-title {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.book-reader-author {
+  font-size: 0.8125rem;
+  opacity: 0.7;
+}
+
+.book-reader-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.book-reader-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--r-s);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 120ms var(--ease);
+}
+.theme-sepia .book-reader-tool-btn {
+  background: #ede3ce;
+  border-color: rgba(62, 50, 35, 0.2);
+  color: #3e3223;
+}
+.theme-light .book-reader-tool-btn {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #1e293b;
+}
+.book-reader-tool-btn:hover {
+  filter: brightness(1.1);
+}
+
+/* Settings Bar */
+.book-reader-settings-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 10px 20px;
+  background: rgba(0, 0, 0, 0.18);
+  border-bottom: 1px solid var(--line);
+  font-size: 0.8125rem;
+}
+.theme-sepia .book-reader-settings-bar {
+  background: rgba(62, 50, 35, 0.05);
+  border-bottom-color: rgba(62, 50, 35, 0.15);
+}
+
+.book-setting-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.book-setting-label {
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.book-theme-options {
+  display: flex;
+  gap: 6px;
+}
+.book-theme-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 120ms var(--ease);
+}
+.book-theme-swatch:hover {
+  transform: scale(1.15);
+}
+.book-theme-swatch.is-active {
+  border-color: var(--accent, #6366f1);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.4);
+}
+.swatch-dark { background: #0f1319; }
+.swatch-sepia { background: #f5eedb; }
+.swatch-black { background: #000000; }
+.swatch-light { background: #ffffff; }
+
+/* Main Reading Content Area */
+.book-reader-content-wrap {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  justify-content: center;
+  padding: 40px 24px;
+}
+
+.book-reader-page {
+  max-width: 720px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.book-reader-page.font-serif {
+  font-family: Georgia, 'Times New Roman', Cambria, serif;
+}
+.book-reader-page.font-sans {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+.book-reader-page.font-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.book-reader-page-header {
+  margin-bottom: 32px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+}
+.book-reader-chapter-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+.book-reader-chapter-sub {
+  font-size: 0.875rem;
+  opacity: 0.7;
+}
+
+.book-reader-text {
+  margin: 0;
+}
+.book-reader-text p {
+  margin: 0 0 1.5em;
+  text-align: justify;
+  text-indent: 1.5em;
+}
+.book-reader-text p:first-of-type {
+  text-indent: 0;
+}
+.book-reader-text p:first-of-type::first-letter {
+  font-size: 3.2em;
+  float: left;
+  line-height: 0.8;
+  margin-right: 0.12em;
+  font-weight: 700;
+}
+
+/* Footer Navigation Bar */
+.book-reader-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  border-top: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.12);
+  gap: 16px;
+}
+.theme-sepia .book-reader-footer {
+  border-top-color: rgba(62, 50, 35, 0.15);
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.book-reader-page-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.book-reader-progress-bar {
+  width: 140px;
+  height: 6px;
+  background: rgba(128, 128, 128, 0.25);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.book-reader-progress-fill {
+  height: 100%;
+  background: var(--accent, #6366f1);
+  border-radius: 3px;
+  transition: width 140ms var(--ease);
+}

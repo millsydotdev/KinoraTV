@@ -1,0 +1,294 @@
+/* Full-Screen Now Playing Audio Visualizer Modal */
+.audio-now-playing-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 105;
+  background: radial-gradient(circle at 50% 30%, color-mix(in oklab, hsl(var(--track-hue, 220) 70% 30%) 40%, #08090b) 0%, #08090b 85%);
+  backdrop-filter: blur(24px);
+  display: flex;
+  flex-direction: column;
+  animation: audioModalFadeIn 220ms var(--ease);
+  color: #fff;
+  overflow-y: auto;
+}
+
+@keyframes audioModalFadeIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Header */
+.anp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 32px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.anp-badge-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.anp-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 9999px;
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+.anp-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ef4444;
+  animation: anpPulse 1.5s infinite;
+}
+@keyframes anpPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+.anp-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+  cursor: pointer;
+  transition: all 140ms var(--ease);
+}
+.anp-close-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: scale(1.05);
+}
+
+/* Main Body Layout */
+.anp-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 24px;
+  max-width: 680px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Artwork / Visualizer Stage */
+.anp-stage {
+  position: relative;
+  width: 260px;
+  height: 260px;
+  margin-bottom: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.anp-ambient-glow {
+  position: absolute;
+  inset: -20px;
+  border-radius: 50%;
+  background: radial-gradient(circle, hsl(var(--track-hue, 220) 80% 50% / 0.45) 0%, transparent 70%);
+  filter: blur(28px);
+  pointer-events: none;
+  animation: anpGlowBreath 4s ease-in-out infinite alternate;
+}
+@keyframes anpGlowBreath {
+  from { transform: scale(0.9); opacity: 0.6; }
+  to { transform: scale(1.15); opacity: 0.95; }
+}
+
+.anp-art-tile {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+  border: 1px solid var(--graphite-border, #292d33);
+  background: var(--surface-2, #12151a);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.anp-art-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.anp-art-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Spectrum Wave Visualizer */
+.anp-visualizer-bars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4px;
+  height: 48px;
+  width: 100%;
+  margin-bottom: 24px;
+  padding: 0 20px;
+}
+.anp-bar {
+  flex: 1;
+  max-width: 6px;
+  background: linear-gradient(to top, hsl(var(--track-hue, 220) 80% 50%), #a5b4fc);
+  border-radius: 3px;
+  min-height: 4px;
+  transition: height 80ms ease;
+}
+.anp-bar.is-animated {
+  animation: anpBarBounce 1.2s ease-in-out infinite alternate;
+}
+@keyframes anpBarBounce {
+  0% { height: 15%; }
+  50% { height: 85%; }
+  100% { height: 35%; }
+}
+
+/* Track Information */
+.anp-meta {
+  text-align: center;
+  margin-bottom: 28px;
+}
+.anp-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0 0 8px;
+  color: #fff;
+  line-height: 1.25;
+}
+.anp-provider {
+  font-size: 0.9375rem;
+  color: rgba(255, 255, 255, 0.65);
+  margin: 0 0 12px;
+}
+.anp-format-tags {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.anp-format-badge {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* Equalizer Presets */
+.anp-eq-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 32px;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 4px 6px;
+  border-radius: var(--r-s);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.anp-eq-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+  padding-left: 6px;
+}
+.anp-eq-btn {
+  padding: 5px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-s);
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  transition: all 120ms var(--ease);
+}
+.anp-eq-btn:hover {
+  color: #fff;
+}
+.anp-eq-btn.is-active {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Main Controls */
+.anp-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+.anp-btn-play {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: #fff;
+  color: #000;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4);
+  transition: transform 140ms var(--ease), filter 140ms var(--ease);
+}
+.anp-btn-play:hover {
+  transform: scale(1.08);
+  filter: brightness(1.1);
+}
+.anp-btn-skip {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 140ms var(--ease);
+}
+.anp-btn-skip:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Volume Slider */
+.anp-volume-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 240px;
+}
+.anp-volume-slider {
+  flex: 1;
+  accent-color: #fff;
+  cursor: pointer;
+}

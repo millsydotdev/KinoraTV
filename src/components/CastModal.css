@@ -1,0 +1,188 @@
+/* Cast Modal CSS */
+.cast-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  animation: castFadeIn 160ms var(--ease);
+}
+
+@keyframes castFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.cast-modal {
+  width: 100%;
+  max-width: 440px;
+  background: var(--surface-3, #181b20);
+  border: 1px solid var(--graphite-border, #292d33);
+  border-radius: var(--r-l, 12px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), 0 0 24px rgba(255, 26, 42, 0.15);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.cast-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.cast-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.cast-modal-title svg {
+  color: var(--accent, #ff1a2a);
+}
+
+.cast-close-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-s, 4px);
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  transition: color 120ms var(--ease), background 120ms var(--ease);
+}
+
+.cast-close-btn:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+.cast-modal-body {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.cast-device-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cast-device-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-radius: var(--r-m, 8px);
+  background: var(--surface-card, #0d0f12);
+  border: 1px solid var(--graphite-border, #292d33);
+  cursor: pointer;
+  transition: background 140ms var(--ease), border-color 140ms var(--ease), transform 120ms var(--ease);
+}
+
+.cast-device-item:hover {
+  background: var(--surface-2, #12151a);
+  border-color: var(--strong-divider, #383d44);
+  transform: translateY(-1px);
+}
+
+.cast-device-item.is-connected {
+  border-color: var(--accent, #ff1a2a);
+  background: rgba(255, 26, 42, 0.08);
+  box-shadow: 0 0 12px rgba(255, 26, 42, 0.2);
+}
+
+.cast-device-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cast-device-name {
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: #ffffff;
+}
+
+.cast-device-sub {
+  font-size: 0.75rem;
+  color: var(--text-3);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cast-proto-badge {
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-2);
+}
+
+.cast-connected-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  background: rgba(255, 26, 42, 0.05);
+  border: 1px solid rgba(255, 26, 42, 0.3);
+  border-radius: var(--r-m);
+}
+
+.cast-volume-slider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cast-volume-slider input[type='range'] {
+  flex: 1;
+  accent-color: var(--accent, #ff1a2a);
+}
+
+.cast-modal-footer {
+  padding: 12px 20px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cast-scan-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-2);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--line);
+  padding: 6px 12px;
+  border-radius: var(--r-s);
+  transition: color 120ms, border-color 120ms;
+}
+
+.cast-scan-btn:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.25);
+}

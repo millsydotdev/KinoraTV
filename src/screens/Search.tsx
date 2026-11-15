@@ -5,15 +5,34 @@ import { startOfDay } from '../data/channels'
 import { episodeCode, episodeRef } from '../data/refs'
 import { Icon, type IconName } from '../components/Icon'
 import { PageHeader } from '../components/PageHeader'
-import { Art, ChannelMark, StateBlock } from '../components/ui'
+import { XtreamArt } from '../components/Tiles'
+import { Art, ChannelMark, ProgrammeArt, StateBlock } from '../components/ui'
 import { clock, useNow } from '../lib/time'
-import { categoryLabel } from '../state/playlists'
+import { categoryLabel, cleanChannelTitle } from '../state/playlists'
+import { isLogoArtwork, getRoleLabel } from '../components/ResourceCard'
 import { useStore } from '../state/store'
+import { useToast } from '../components/Toast'
+import {
+  filterKidSafeChannels,
+  filterKidSafeProgrammes,
+  filterKidSafeResources,
+  filterKidSafeTitles,
+  filterKidSafeXtreamTitles,
+  isSearchQueryKidSafe,
+} from '../lib/kidsMode'
 import './Search.css'
 
-type Group = 'channels' | 'tv' | 'films' | 'series' | 'episodes'
-const groupLabels: Record<Group, string> = { channels: 'Channels', tv: 'On TV Today', films: 'Movies', series: 'Series', episodes: 'Episodes' }
-const groupIcons: Record<Group, IconName> = { channels: 'tv', tv: 'guide', films: 'film', series: 'series', episodes: 'play' }
+interface SavedSearch {
+  id: string
+  query: string
+  type?: string
+  hdOnly?: boolean
+  savedAt: number
+}
+
+type Group = 'channels' | 'tv' | 'films' | 'series' | 'episodes' | 'resources'
+const groupLabels: Record<Group, string> = { channels: 'Channels', tv: 'On TV Today', films: 'Movies', series: 'Series', episodes: 'Episodes', resources: 'Media Resources' }
+const groupIcons: Record<Group, IconName> = { channels: 'tv', tv: 'guide', films: 'film', series: 'series', episodes: 'play', resources: 'sources' }
 const PER_GROUP = 8
 
 type Hit = { key: string; to: string; thumb: ReactNode; title: string; sub: string }
@@ -33,9 +52,72 @@ export function Search() {
   // The input owns its text; the URL follows it, so fast typing never waits on navigation.
   const [q, setQ] = useState(() => params.get('q') ?? '')
   const filter = (params.get('type') ?? 'all') as Group | 'all'
+  const [hdOnly, setHdOnly] = useState(false)
+  const [scope, setScope] = useState<'all' | 'library' | 'guide'>('all')
+  const [sortBy, setSortBy] = useState<'relevance' | 'newest' | 'title'>('relevance')
+  const [showSuggestions, setShowSuggestions] = useState(false)
   const input = useRef<HTMLInputElement>(null)
   const results = useRef<HTMLDivElement>(null)
   const needle = q.trim().toLowerCase()
+
+  const toast = useToast()
+  const profileId = store.activeProfile?.id ?? 'default'
+  const savedKey = profileId === 'default' ? 'kinora.saved_searches.v1' : `kinora.saved_searches.v1.${profileId}`
+
+  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>(() => {
+    try {
+      const saved = localStorage.getItem(savedKey)
+      return saved ? (JSON.parse(saved) as SavedSearch[]) : []
+    } catch {
+      return []
+    }
+  })
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(savedKey)
+      setSavedSearches(saved ? (JSON.parse(saved) as SavedSearch[]) : [])
+    } catch {}
+  }, [savedKey])
+
+  const persistSavedSearches = (list: SavedSearch[]) => {
+    setSavedSearches(list)
+    try {
+      localStorage.setItem(savedKey, JSON.stringify(list))
+    } catch {}
+  }
+
+  const isCurrentSaved = savedSearches.some((s) => s.query.toLowerCase() === q.trim().toLowerCase())
+
+  const toggleSaveCurrentSearch = () => {
+    const trimmed = q.trim()
+    if (!trimmed) return
+    if (isCurrentSaved) {
+      persistSavedSearches(savedSearches.filter((s) => s.query.toLowerCase() !== trimmed.toLowerCase()))
+      toast(`Removed “${trimmed}” from saved searches`)
+    } else {
+      const newItem: SavedSearch = {
+        id: `search-${Date.now()}`,
+        query: trimmed,
+        type: filter === 'all' ? undefined : filter,
+        hdOnly: hdOnly || undefined,
+        savedAt: Date.now(),
+      }
+      persistSavedSearches([newItem, ...savedSearches])
+      toast(`Saved search “${trimmed}”`)
+    }
+  }
+
+  const removeSavedSearch = (id: string) => {
+    persistSavedSearches(savedSearches.filter((s) => s.id !== id))
+    toast('Saved search removed')
+  }
+
+  const applySavedSearch = (s: SavedSearch) => {
+    setQ(s.query)
+    setHdOnly(!!s.hdOnly)
+    update('type', s.type ?? '')
+  }
 
   useEffect(() => input.current?.focus(), [])
   useEffect(() => {
@@ -54,44 +136,197 @@ export function Search() {
   }
 
   const has = (...fields: string[]) => fields.some((f) => f.toLowerCase().includes(needle))
-  const groups: Record<Group, Hit[]> = { channels: [], tv: [], films: [], series: [], episodes: [] }
-  if (needle) {
-    groups.channels = channels.filter((c) => has(c.name, ...c.categories, String(c.number))).map((c) => ({
-      key: c.id, to: `/live?channel=${c.id}`, thumb: <ChannelMark channel={c} size={44} />, title: c.name,
-      sub: `${c.number} · ${categoryLabel(c)}${store.programmeAt(c, now) ? ` · Now: ${store.programmeAt(c, now)?.title}` : ''}`,
-    }))
+  const isSafeSearchBlocked = store.isKidsMode && needle ? !isSearchQueryKidSafe(needle) : false
+  const groups: Record<Group, Hit[]> = { channels: [], tv: [], films: [], series: [], episodes: [], resources: [] }
+  if (needle && !isSafeSearchBlocked) {
+    const rawResources = filterKidSafeResources(store.mediaLibrary.allResources, store.isKidsMode)
+    groups.resources = rawResources
+      .filter((r) => has(r.name, r.provider, r.category, r.subcategory, r.description, ...(r.tags ?? [])))
+      .map((r) => {
+        let to = `/sources?tab=my-sources&select=${encodeURIComponent(r.id)}`
+        if (r.category === 'radio') to = '/radio'
+        else if (r.category === 'podcasts') to = '/podcasts'
+        else if (r.category === 'music') to = '/music'
+        else if (r.category === 'audiobooks') to = '/audiobooks'
+        else if (r.category === 'books') to = '/books'
+        else if (r.category === 'documentaries') to = '/documentaries'
+        else if (r.category === 'news') to = '/news'
+        else if (r.category === 'sports') to = '/sports'
+        else if (r.category === 'education') to = '/education'
+        else if (r.category === 'gaming') to = '/gaming'
+        else if (r.category === 'nature-science') to = '/nature-science'
+        else if (r.category === 'archives') to = '/archives'
+        else if (r.category === 'culture') to = '/culture'
+        const isLogo = isLogoArtwork(r)
+        return {
+          key: `res:${r.id}`,
+          to,
+          thumb: r.artworkUrl ? (
+            <div style={{ width: 44, height: 44, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-3)', overflow: 'hidden', border: '1px solid var(--line)' }}>
+              <img src={r.artworkUrl} alt="" style={{ width: '100%', height: '100%', objectFit: isLogo ? 'contain' : 'cover', padding: isLogo ? 3 : 0 }} />
+            </div>
+          ) : (
+            <div style={{ width: 44, height: 44, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-3)', color: 'var(--accent-text)', border: '1px solid var(--line)' }}>
+              <Icon name={r.category === 'radio' ? 'radio' : r.category === 'podcasts' ? 'podcast' : r.category === 'music' ? 'music' : 'sources'} size={20} />
+            </div>
+          ),
+          title: r.name,
+          sub: `${getRoleLabel(r)} · ${r.provider}${r.country ? ` · ${r.country}` : ''}`,
+        }
+      })
+
+    const safeChannels = filterKidSafeChannels(channels, store.isKidsMode)
+    groups.channels = safeChannels
+      .filter((c) => (!hdOnly || c.hd) && has(c.name, ...c.categories, String(c.number)))
+      .map((c) => {
+      const displayName = cleanChannelTitle(c.name)
+      return {
+        key: c.id, to: `/live?channel=${c.id}`, thumb: <ChannelMark channel={c} size={44} />, title: displayName,
+        sub: `${c.number} · ${categoryLabel(c)}${c.hd ? ' · HD' : ''}${store.programmeAt(c, now) ? ` · Now: ${store.programmeAt(c, now)?.title}` : ''}`,
+      }
+    })
     const seen = new Set<string>()
-    groups.tv = channels
-      .flatMap((c) => store.schedule(c, startOfDay(now)).filter((p) => p.stop > now && has(p.title, p.category)).map((p) => ({ c, p })))
+    groups.tv = safeChannels
+      .flatMap((c) => {
+        const schedule = store.schedule(c, startOfDay(now))
+        const safeSchedule = store.isKidsMode ? filterKidSafeProgrammes(schedule, store.isKidsMode) : schedule
+        return safeSchedule.filter((p) => p.stop > now && has(p.title, p.category)).map((p) => ({ c, p }))
+      })
       .sort((a, b) => a.p.start - b.p.start)
       .filter(({ c, p }) => !seen.has(c.id + p.title) && !!seen.add(c.id + p.title))
       .map(({ c, p }) => ({
-        key: p.id, to: `/live?channel=${c.id}`, thumb: <Art src={p.art} />, title: p.title,
+        key: p.id, to: `/live?channel=${c.id}`, thumb: (p.art || p.icon) ? <ProgrammeArt programme={p} channel={c} /> : <ChannelMark channel={c} size={44} />, title: p.title,
         sub: `${p.start <= now ? 'On now' : clock(p.start, prefs.timeFormat)} · ${c.name} · ${p.category}`,
       }))
-    groups.films = !store.demoTitles ? [] : movies.filter((m) => has(m.title, m.synopsis, ...m.genres)).map((m) => ({
-      key: m.id, to: `/movies/${m.id}`, thumb: <Art src={m.art} focus={m.focus} />, title: m.title, sub: `Movie · ${m.year} · ${m.genres.join(' / ')}`,
-    }))
-    groups.series = !store.demoTitles ? [] : series.filter((s) => has(s.title, s.synopsis, ...s.genres)).map((s) => ({
-      key: s.id, to: `/series/${s.id}`, thumb: <Art src={s.art} focus={s.focus} />, title: s.title, sub: `Series · ${s.seasons.length} season${s.seasons.length > 1 ? 's' : ''} · ${s.genres.join(' / ')}`,
-    }))
-    groups.episodes = !store.demoTitles ? [] : series.flatMap((s) =>
+
+    const safeXtreamMovies = filterKidSafeXtreamTitles(store.xtreamCatalogue.movies, store.isKidsMode)
+    const xtMovies = safeXtreamMovies.filter((m) => has(m.name, String(m.year ?? ''))).map((m) => {
+      const routeId = `xt:${m.sourceId}:${m.id}`
+      return {
+        key: `xt:movie:${m.sourceId}:${m.id}`,
+        to: `/movies/${encodeURIComponent(routeId)}`,
+        thumb: <XtreamArt artworkKey={m.artworkKey} fallbackTitle={m.name} fallbackYear={m.year} className="result-poster" />,
+        title: m.name,
+        sub: `Movie · ${m.year ?? 'Provider catalogue'}`,
+      }
+    })
+    const safeXtreamSeries = filterKidSafeXtreamTitles(store.xtreamCatalogue.series, store.isKidsMode)
+    const xtSeries = safeXtreamSeries.filter((s) => has(s.name, String(s.year ?? ''))).map((s) => {
+      const routeId = `xt:${s.sourceId}:${s.id}`
+      return {
+        key: `xt:series:${s.sourceId}:${s.id}`,
+        to: `/series/${encodeURIComponent(routeId)}`,
+        thumb: <XtreamArt artworkKey={s.artworkKey} fallbackTitle={s.name} fallbackYear={s.year} className="result-poster" />,
+        title: s.name,
+        sub: `Series · ${s.year ?? 'Provider catalogue'}`,
+      }
+    })
+
+    const safeMovies = filterKidSafeTitles(movies, store.isKidsMode)
+    const safeSeries = filterKidSafeTitles(series, store.isKidsMode)
+    groups.films = store.demoTitles
+      ? safeMovies.filter((m) => has(m.title, m.synopsis, ...m.genres)).map((m) => ({
+          key: m.id, to: `/movies/${m.id}`, thumb: <Art src={m.art} focus={m.focus} />, title: m.title, sub: `Movie · ${m.year} · ${m.genres.join(' / ')}`,
+        }))
+      : xtMovies
+    groups.series = store.demoTitles
+      ? safeSeries.filter((s) => has(s.title, s.synopsis, ...s.genres)).map((s) => ({
+          key: s.id, to: `/series/${s.id}`, thumb: <Art src={s.art} focus={s.focus} />, title: s.title, sub: `Series · ${s.seasons.length} season${s.seasons.length > 1 ? 's' : ''} · ${s.genres.join(' / ')}`,
+        }))
+      : xtSeries
+    groups.episodes = !store.demoTitles ? [] : safeSeries.flatMap((s) =>
       s.seasons.flat().filter((e) => has(e.title, e.synopsis)).map((e) => ({
         key: `${s.id}/${e.id}`, to: `/watch/${encodeURIComponent(episodeRef(s.id, e.id))}`, thumb: <Art src={e.still} focus={e.stillFocus} />,
         title: e.title, sub: `${s.title} · ${episodeCode(e)} · ${e.runtime} min`,
       })),
     )
+    if (scope === 'library') {
+      groups.channels = []
+      groups.tv = []
+      groups.episodes = []
+      groups.films = groups.films.filter((f) => library.watchlist.includes(f.key) || library.favourites.includes(f.key) || library.watched.includes(f.key) || !!library.progress[f.key])
+      groups.series = groups.series.filter((s) => library.watchlist.includes(s.key) || library.favourites.includes(s.key))
+      groups.resources = groups.resources.filter((r) => store.mediaLibrary.isInPersonalLibrary(r.key.replace('res:', '')))
+    } else if (scope === 'guide') {
+      groups.films = []
+      groups.series = []
+      groups.episodes = []
+      groups.resources = []
+    }
   }
-  const order: Group[] = ['channels', 'tv', 'films', 'series', 'episodes']
+  const order: Group[] = ['channels', 'tv', 'films', 'series', 'episodes', 'resources']
+
+  if (sortBy === 'title') {
+    for (const g of order) {
+      groups[g].sort((a, b) => a.title.localeCompare(b.title))
+    }
+  } else if (sortBy === 'newest') {
+    for (const g of order) {
+      groups[g].reverse()
+    }
+  } else if (sortBy === 'relevance' && needle) {
+    for (const g of order) {
+      groups[g].sort((a, b) => {
+        const aExact = a.title.toLowerCase() === needle ? -2 : a.title.toLowerCase().startsWith(needle) ? -1 : 0
+        const bExact = b.title.toLowerCase() === needle ? -2 : b.title.toLowerCase().startsWith(needle) ? -1 : 0
+        return aExact - bExact
+      })
+    }
+  }
+
   const total = order.reduce((n, g) => n + groups[g].length, 0)
   const shown = order.filter((g) => (filter === 'all' || filter === g) && groups[g].length > 0)
 
   const items = () => Array.from(results.current?.querySelectorAll<HTMLElement>('[data-result]') ?? [])
   const onInputKey = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); items()[0]?.focus() }
-    if (e.key === 'Escape' && q) { e.preventDefault(); setQ('') }
-    if (e.key === 'Enter' && needle) store.addRecentSearch(q.trim())
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      if (showSuggestions) setShowSuggestions(false)
+      else if (q) setQ('')
+    }
+    if (e.key === 'Enter') {
+      setShowSuggestions(false)
+      if (needle) store.addRecentSearch(q.trim())
+    }
   }
+
+  // Quick suggestions
+  const suggestions: Array<{ title: string; type: string; to: string }> = []
+  if (needle.length >= 2 && !isSafeSearchBlocked) {
+    for (const c of channels) {
+      if (c.name.toLowerCase().includes(needle)) {
+        suggestions.push({ title: c.name, type: 'Channel', to: `/live?channel=${c.id}` })
+        if (suggestions.length >= 5) break
+      }
+    }
+    if (suggestions.length < 5) {
+      if (store.demoTitles) {
+        for (const m of movies) {
+          if (m.title.toLowerCase().includes(needle)) {
+            suggestions.push({ title: m.title, type: 'Movie', to: `/movies/${m.id}` })
+            if (suggestions.length >= 5) break
+          }
+        }
+      } else {
+        for (const m of store.xtreamCatalogue.movies) {
+          if (m.name.toLowerCase().includes(needle)) {
+            suggestions.push({ title: m.name, type: 'Movie', to: `/movies/${encodeURIComponent(`xt:${m.sourceId}:${m.id}`)}` })
+            if (suggestions.length >= 5) break
+          }
+        }
+      }
+    }
+    if (suggestions.length < 5) {
+      for (const r of store.mediaLibrary.allResources) {
+        if (r.name.toLowerCase().includes(needle)) {
+          suggestions.push({ title: r.name, type: r.category, to: `/sources?tab=my-sources&select=${encodeURIComponent(r.id)}` })
+          if (suggestions.length >= 5) break
+        }
+      }
+    }
+  }
+
   const onResultsKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
     const list = items()
@@ -106,45 +341,190 @@ export function Search() {
     <>
     <PageHeader title="Search" search={false} />
     <div className="page search">
-      <div className="search-field">
-        <Icon name="search" size={26} />
-        <input
-          ref={input}
-          type="search"
-          className="search-input"
-          placeholder="Channels, programmes, films, series, episodes"
-          aria-label="Search the catalogue and guide"
-          aria-describedby="search-help"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={onInputKey}
-          autoComplete="off"
-          spellCheck={false}
-        />
-        {q && (
-          <button type="button" className="icon-btn" onClick={() => { setQ(''); input.current?.focus() }} aria-label="Clear search">
-            <Icon name="close" />
-          </button>
+      <div className="search-field-wrapper">
+        <div className="search-field">
+          <Icon name="search" size={26} />
+          <input
+            ref={input}
+            type="search"
+            className="search-input"
+            placeholder="Channels, programmes, films, series, media resources"
+            aria-label="Search the catalogue and guide"
+            aria-describedby="search-help"
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value)
+              setShowSuggestions(true)
+            }}
+            onFocus={() => setShowSuggestions(true)}
+            onBlur={() => {
+              // Slight delay to allow clicking suggestion buttons
+              window.setTimeout(() => setShowSuggestions(false), 200)
+            }}
+            onKeyDown={onInputKey}
+            autoComplete="off"
+            spellCheck={false}
+          />
+          {q && (
+            <button type="button" className="icon-btn" onClick={() => { setQ(''); input.current?.focus() }} aria-label="Clear search">
+              <Icon name="close" />
+            </button>
+          )}
+        </div>
+
+        {showSuggestions && suggestions.length > 0 && (
+          <div className="search-autocomplete-dropdown" role="listbox" aria-label="Search suggestions">
+            <div className="search-autocomplete-header">Quick Suggestions</div>
+            {suggestions.map((s) => (
+              <button
+                key={s.to + s.title}
+                type="button"
+                className="autocomplete-item"
+                onClick={() => {
+                  setQ(s.title)
+                  setShowSuggestions(false)
+                  store.addRecentSearch(s.title)
+                }}
+              >
+                <Icon name="search" size={16} />
+                <span className="autocomplete-title">{s.title}</span>
+                <span className="autocomplete-type">{s.type}</span>
+              </button>
+            ))}
+          </div>
         )}
       </div>
-      <p id="search-help" className="faint search-help">Searches {store.demoTitles ? 'the sample catalogue' : 'your channels'} and today's guide. Down arrow moves into the results, Escape clears.</p>
+      <p id="search-help" className="faint search-help">Searches your live channels, programme guide, on-demand titles, and media library. Down arrow moves into results, Escape clears.</p>
+
+      <div className="search-scope-bar" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '8px 0 16px', alignItems: 'center' }}>
+        <span className="faint" style={{ fontSize: '0.8125rem', fontWeight: 600 }}>Scope:</span>
+        <button
+          type="button"
+          className={`chip ${scope === 'all' ? 'is-active' : ''}`}
+          aria-pressed={scope === 'all'}
+          onClick={() => setScope('all')}
+        >
+          All Content
+        </button>
+        <button
+          type="button"
+          className={`chip ${scope === 'library' ? 'is-active' : ''}`}
+          aria-pressed={scope === 'library'}
+          onClick={() => setScope('library')}
+        >
+          My Library Only
+        </button>
+        <button
+          type="button"
+          className={`chip ${scope === 'guide' ? 'is-active' : ''}`}
+          aria-pressed={scope === 'guide'}
+          onClick={() => setScope('guide')}
+        >
+          Live Guide Only
+        </button>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <label htmlFor="search-sort" className="faint" style={{ fontSize: '0.8125rem' }}>Sort:</label>
+          <select
+            id="search-sort"
+            className="select select-inline"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as 'relevance' | 'newest' | 'title')}
+            aria-label="Sort results"
+          >
+            <option value="relevance">Best Match</option>
+            <option value="newest">Newest</option>
+            <option value="title">Title A to Z</option>
+          </select>
+        </div>
+      </div>
 
       {needle && (
         <div className="chips search-filters" role="group" aria-label="Result type">
           <button type="button" className="chip" aria-pressed={filter === 'all'} onClick={() => update('type', '')}>All <span className="count tnum">{total}</span></button>
-          {order.map((g) => (
-            <button key={g} type="button" className="chip" aria-pressed={filter === g} onClick={() => update('type', g)} disabled={groups[g].length === 0}>
+          {order.filter((g) => groups[g].length > 0).map((g) => (
+            <button key={g} type="button" className="chip" aria-pressed={filter === g} onClick={() => update('type', g)}>
               {groupLabels[g]} <span className="count tnum">{groups[g].length}</span>
             </button>
           ))}
+          <button
+            type="button"
+            className="chip"
+            aria-pressed={hdOnly}
+            onClick={() => setHdOnly(!hdOnly)}
+          >
+            HD Only
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-small search-save-btn"
+            style={{ marginLeft: 'auto' }}
+            onClick={toggleSaveCurrentSearch}
+          >
+            <Icon name={isCurrentSaved ? 'bookmark' : 'plus'} size={14} />
+            {isCurrentSaved ? 'Saved search' : 'Save search'}
+          </button>
         </div>
       )}
 
       <div ref={results} onKeyDown={onResultsKey} aria-live="polite">
         {!needle && (
           <div className="search-idle">
+            {savedSearches.length > 0 && (
+              <section aria-labelledby="saved-h">
+                <div className="recent-head">
+                  <h2 id="saved-h" className="section-title"><Icon name="bookmark" size={18} />Saved Searches</h2>
+                </div>
+                <div className="chips" style={{ marginBottom: 24, gap: 8, display: 'flex', flexWrap: 'wrap' }}>
+                  {savedSearches.map((s) => (
+                    <span key={s.id} className="chip" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <button
+                        type="button"
+                        style={{ background: 'none', border: 'none', color: 'inherit', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, font: 'inherit' }}
+                        onClick={() => applySavedSearch(s)}
+                      >
+                        <Icon name="bookmark" size={14} />
+                        <strong>{s.query}</strong>
+                        {s.type && <span className="faint">({s.type})</span>}
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        style={{ width: 18, height: 18, minWidth: 18, padding: 0 }}
+                        aria-label={`Remove saved search ${s.query}`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          removeSavedSearch(s.id)
+                        }}
+                      >
+                        <Icon name="close" size={12} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </section>
+            )}
             <section aria-labelledby="recent-h">
-              <h2 id="recent-h" className="section-title"><Icon name="history" size={18} />Recent Searches</h2>
+              <div className="recent-head">
+                <h2 id="recent-h" className="section-title"><Icon name="history" size={18} />Recent Searches</h2>
+                {library.recentSearches.length > 0 && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-small"
+                    onClick={() => {
+                      const prev = [...library.recentSearches]
+                      store.clearRecentSearches()
+                      toast('Cleared recent search history', {
+                        label: 'Undo',
+                        run: () => {
+                          prev.forEach((s) => store.addRecentSearch(s))
+                        },
+                      })
+                    }}
+                  >
+                    Clear all
+                  </button>
+                )}
+              </div>
               {library.recentSearches.length === 0 ? (
                 <p className="faint">Searches you run with Enter are kept here on this device.</p>
               ) : (
@@ -169,7 +549,13 @@ export function Search() {
           </div>
         )}
 
-        {needle && total === 0 && (
+        {needle && isSafeSearchBlocked && (
+          <StateBlock icon="shield" title="Safe Search Active">
+            Adult keywords and search terms are restricted in Kids Mode. Try searching for family-friendly films, cartoons, or educational channels.
+          </StateBlock>
+        )}
+
+        {needle && !isSafeSearchBlocked && total === 0 && (
           <StateBlock icon="search" title={`Nothing found for “${q.trim()}”`}>
             Check the spelling, or try a channel name, a genre such as “Thriller”, or part of a title. Search covers the demonstration catalogue and today's guide only.
           </StateBlock>

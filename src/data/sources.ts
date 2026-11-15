@@ -1,44 +1,36 @@
 // Demonstration sources. URLs use reserved example domains or a private LAN address;
 // nothing is fetched, scanned or validated in this build.
 import { channels } from './channels'
-import type { HealthCheck, Source } from './types'
+import type { Source } from './types'
 
 const HOUR = 3_600_000
-
-function history(seed: number, total: number, failRate: number, now: number): HealthCheck[] {
-  return Array.from({ length: 14 }, (_, i) => {
-    const wobble = ((seed * (i + 3) * 7919) % 100) / 100
-    const failed = Math.round(total * failRate * (0.6 + wobble * 0.8))
-    return { at: now - (13 - i) * 12 * HOUR, working: total - failed, failed }
-  })
-}
 
 export function demoSources(now: number): Source[] {
   return [
     {
       id: 'living-room', name: 'Living room tuner', kind: 'm3u', url: 'http://192.168.1.20/lineup.m3u',
-      addedAt: now - 40 * 24 * HOUR, lastChecked: now - 0.2 * HOUR, status: 'healthy',
-      streams: { total: 64, working: 63, failed: 1 }, scan: null, history: history(3, 64, 0.02, now), refreshInterval: '12h',
+      addedAt: now - 40 * 24 * HOUR, lastChecked: null, status: 'pending',
+      streams: { total: 64, working: 0, failed: 0 }, scan: null, history: [], refreshInterval: 'manual',
     },
     {
       id: 'regional-fta', name: 'Regional free-to-air', kind: 'm3u8', url: 'https://example.com/fta/regional.m3u8',
-      addedAt: now - 22 * 24 * HOUR, lastChecked: now - 1.5 * HOUR, status: 'degraded',
-      streams: { total: 212, working: 171, failed: 41 }, scan: null, history: history(5, 212, 0.18, now), refreshInterval: '24h',
+      addedAt: now - 22 * 24 * HOUR, lastChecked: null, status: 'pending',
+      streams: { total: 212, working: 0, failed: 0 }, scan: null, history: [], refreshInterval: 'manual',
     },
     {
       id: 'weekly-guide', name: 'Weekly programme guide', kind: 'xmltv', url: 'https://example.org/guide/xmltv.xml.gz',
-      addedAt: now - 22 * 24 * HOUR, lastChecked: now - 3 * HOUR, status: 'healthy',
-      streams: null, scan: null, history: [], refreshInterval: '24h',
+      addedAt: now - 22 * 24 * HOUR, lastChecked: null, status: 'pending',
+      streams: null, scan: null, history: [], refreshInterval: 'manual',
     },
     {
       id: 'community-sport', name: 'Community sports list', kind: 'url-list', url: 'https://example.net/lists/sport.txt',
-      addedAt: now - 6 * 24 * HOUR, lastChecked: now - 26 * HOUR, status: 'scanning',
-      streams: { total: 960, working: 388, failed: 24 }, scan: { done: 412, total: 960 }, history: history(7, 960, 0.06, now), refreshInterval: '6h',
+      addedAt: now - 6 * 24 * HOUR, lastChecked: null, status: 'pending',
+      streams: { total: 960, working: 0, failed: 0 }, scan: null, history: [], refreshInterval: 'manual',
     },
     {
       id: 'archive-list', name: 'Archive mirror', kind: 'm3u', url: 'https://example.com/archive/old-mirror.m3u',
-      addedAt: now - 90 * 24 * HOUR, lastChecked: now - 50 * HOUR, status: 'failing',
-      streams: { total: 140, working: 9, failed: 131 }, scan: null, history: history(11, 140, 0.85, now), refreshInterval: 'manual',
+      addedAt: now - 90 * 24 * HOUR, lastChecked: null, status: 'pending',
+      streams: { total: 140, working: 0, failed: 0 }, scan: null, history: [], refreshInterval: 'manual',
     },
   ]
 }

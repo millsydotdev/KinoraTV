@@ -1,7 +1,24 @@
 /* Detail hero uses the same composition as Home: art weighted right, copy on the left fade. */
 .detail-hero { position: relative; min-height: clamp(480px, 60vh, 640px); display: flex; align-items: flex-end; padding: calc(var(--head-h) + 12px) var(--gutter) 40px; isolation: isolate; }
-.detail-backdrop { position: absolute !important; inset: 0; z-index: -1; background: var(--bg); }
+.detail-backdrop { position: absolute !important; inset: 0; z-index: -1; background: var(--bg); overflow: hidden; }
 .detail-backdrop img { object-position: 70% 35% !important; }
+.detail-backdrop.xtream-art.is-portrait {
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+}
+.detail-backdrop.xtream-art.is-portrait > .art {
+  position: relative;
+  inset: auto;
+  width: clamp(340px, 50%, 620px);
+  height: 100%;
+  background: transparent;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.72) 22%, #000 44%, #000 90%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.72) 22%, #000 44%, #000 90%, transparent 100%);
+}
+.detail-backdrop.xtream-art.is-portrait > .art img {
+  object-position: center 22% !important;
+}
 .detail-backdrop::after {
   content: ''; position: absolute; inset: 0;
   background:
@@ -40,6 +57,7 @@
 .episode.is-next { border-color: var(--accent); }
 .episode-still { display: block; border-radius: var(--r-m); overflow: hidden; }
 .episode-still .art { aspect-ratio: 16 / 9; border-radius: var(--r-m); }
+.episode-still .xtream-art { aspect-ratio: 16 / 9; border-radius: var(--r-m); }
 .episode-still .progress { position: absolute; left: 8px; right: 8px; bottom: 8px; }
 .episode-play { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(var(--scrim) / 0.45); opacity: 0; transition: opacity 150ms var(--ease); }
 .episode-play svg { width: 42px; height: 42px; padding: 12px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); }

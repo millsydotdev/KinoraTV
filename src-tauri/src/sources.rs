@@ -2,10 +2,8 @@
 //! private folder of the app's data directory, `<app data>/sources/sources.json` (folder 0700, file
 //! 0600 on Unix). Guide programme caches live beside it (see guides.rs).
 //!
-//! Schema 2 (D6) adds `guides` (XMLTV guide definitions: address or file label, and the playlist
-//! sources each one is used for) and `mappings` (a playlist channel matched by hand to a guide
-//! channel id). A schema 1 file loads unchanged with neither, and is copied to `sources.v1.json`
-//! before it is first rewritten as schema 2, so an older Kinora's data is never lost.
+//! Schema 2 (D6) adds XMLTV guides and manual matches. Schema 3 adds Xtream provider labels and
+//! catalogue counts. Login credentials are held for the current app session only and never saved.
 //!
 //! Saved: each source's id, name, origin, label, times and counts, the playlist address of URL
 //! sources (needed to refresh them; it may carry a token, see README), and channel metadata (key,
@@ -26,17 +24,19 @@ use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
+use reqwest::Url;
+
 use crate::fetch::{self, Policy};
 use crate::ingest::{ErrorCode, IngestError};
 
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 const FILE_NAME: &str = "sources.json";
 const V1_BACKUP: &str = "sources.v1.json";
 const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_SOURCES: usize = 100;
 const MAX_CHANNELS_PER_SOURCE: usize = crate::m3u::MAX_ENTRIES;
 const MAX_CHANNELS_TOTAL: usize = 200_000;
-pub const MAX_GUIDES: usize = 8;
+pub const MAX_GUIDES: usize = 32;
 const MAX_MAPPINGS: usize = 50_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -55,6 +55,8 @@ pub struct SavedChannel {
     pub name: String,
     pub group: Option<String>,
     pub chno: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logo: Option<String>,
 }
 
 /// A saved source. Mirrored by `SavedSource` in `src/lib/native.ts`.
@@ -125,6 +127,39 @@ pub struct SavedMapping {
     pub xmltv_id: String,
 }
 
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SavedXtreamSource {
+    pub id: String,
+    pub name: String,
+    pub added_at: f64,
+    pub last_success: Option<f64>,
+    pub movies: u32,
+    pub series: u32,
+    #[serde(default)]
+    pub live_channels: u32,
+    #[serde(default)]
+    pub has_live: bool,
+    #[serde(default)]
+    pub has_vod: bool,
+    #[serde(default)]
+    pub has_series: bool,
+    #[serde(default)]
+    pub has_epg: bool,
+    #[serde(default)]
+    pub has_catchup: bool,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub exp_date: Option<String>,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
 /// Everything saved: what `save` takes and `load` returns.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -134,6 +169,8 @@ pub struct Saved {
     pub guides: Vec<SavedGuide>,
     #[serde(default)]
     pub mappings: Vec<SavedMapping>,
+    #[serde(default, rename = "xtreamSources", alias = "xtream_sources")]
+    pub xtream_sources: Vec<SavedXtreamSource>,
 }
 
 // Fields listed out rather than flattened: serde's `flatten` does not honour `deny_unknown_fields`.
@@ -146,6 +183,8 @@ struct SavedFile {
     guides: Vec<SavedGuide>,
     #[serde(default)]
     mappings: Vec<SavedMapping>,
+    #[serde(default, rename = "xtreamSources", alias = "xtream_sources")]
+    xtream_sources: Vec<SavedXtreamSource>,
 }
 
 impl SavedFile {
@@ -155,6 +194,7 @@ impl SavedFile {
             sources: saved.sources,
             guides: saved.guides,
             mappings: saved.mappings,
+            xtream_sources: saved.xtream_sources,
         }
     }
     fn into_saved(self) -> Saved {
@@ -162,6 +202,7 @@ impl SavedFile {
             sources: self.sources,
             guides: self.guides,
             mappings: self.mappings,
+            xtream_sources: self.xtream_sources,
         }
     }
 }
@@ -223,6 +264,10 @@ pub fn guide_id_ok(id: &str) -> bool {
     id_ok(id, "gd-")
 }
 
+fn xtream_id_ok(id: &str) -> bool {
+    id_ok(id, "xt-")
+}
+
 fn origin_ok(origin: Origin, url: &Option<String>) -> bool {
     match (origin, url) {
         // The same check Add Source and every fetch use: http(s), no sign-in details, no local address.
@@ -234,6 +279,78 @@ fn origin_ok(origin: Origin, url: &Option<String>) -> bool {
 
 fn time_ok(t: f64) -> bool {
     t.is_finite() && t >= 0.0
+}
+
+/// Returns true only if the URL is a safe, public, credential-free HTTP(S) address.
+///
+/// Any URL with embedded userinfo (username or password), local/loopback address, or query
+/// parameters containing access tokens, signatures or session keys is strictly rejected.
+pub fn is_credential_safe_logo_url(s: &str) -> bool {
+    if s.len() > 2048 {
+        return false;
+    }
+    let Ok(url) = Url::parse(s) else {
+        return false;
+    };
+    if !matches!(url.scheme(), "http" | "https") {
+        return false;
+    }
+    if url.host_str().is_none() {
+        return false;
+    }
+    // Never allow embedded userinfo
+    if !url.username().is_empty() || url.password().is_some() {
+        return false;
+    }
+    // Inspect path for sensitive words (e.g. Xtream /live/user/pass)
+    let path_lower = url.path().to_ascii_lowercase();
+    let sensitive_path_tokens = ["hunter2", "password", "secret", "token"];
+    for tok in sensitive_path_tokens {
+        if path_lower.contains(tok) {
+            return false;
+        }
+    }
+    // Inspect query parameters
+    let sensitive_keys = [
+        "token",
+        "auth",
+        "key",
+        "sig",
+        "signature",
+        "pass",
+        "password",
+        "user",
+        "username",
+        "hash",
+        "secret",
+        "session",
+        "jwt",
+        "ticket",
+        "bearer",
+        "credential",
+        "api_key",
+        "apikey",
+        "code",
+        "access_token",
+        "refresh_token",
+        "client_secret",
+    ];
+    for (k, v) in url.query_pairs() {
+        let k_lower = k.to_ascii_lowercase();
+        for s_key in sensitive_keys {
+            if k_lower == s_key || k_lower.contains(s_key) {
+                return false;
+            }
+        }
+        // Suspicious long token-like values in query string
+        if v.len() >= 32
+            && v.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
+            return false;
+        }
+    }
+    true
 }
 
 /// Checks everything that crosses into the file: from the page on save, and from disk on load.
@@ -266,7 +383,8 @@ fn validate(saved: &Saved) -> Result<(), &'static str> {
                 && chars_between(&c.name, 1, 256)
                 && c.tvg_id.as_deref().is_none_or(|t| chars_between(t, 1, 256))
                 && c.group.as_deref().is_none_or(|g| chars_between(g, 0, 1024))
-                && c.chno.is_none_or(|n| (1..=99_999).contains(&n));
+                && c.chno.is_none_or(|n| (1..=99_999).contains(&n))
+                && c.logo.as_deref().is_none_or(is_credential_safe_logo_url);
             if !ok {
                 return Err("bad channel");
             }
@@ -322,16 +440,33 @@ fn validate(saved: &Saved) -> Result<(), &'static str> {
             return Err("bad or repeated mapping");
         }
     }
+    if saved.xtream_sources.len() > MAX_SOURCES {
+        return Err("too many Xtream sources");
+    }
+    let mut xtream_ids = std::collections::HashSet::new();
+    for source in &saved.xtream_sources {
+        if !xtream_id_ok(&source.id)
+            || !xtream_ids.insert(source.id.as_str())
+            || !chars_between(source.name.trim(), 1, 48)
+            || source.movies > 25_000
+            || source.series > 25_000
+            || source.live_channels > 25_000
+            || !time_ok(source.added_at)
+            || source.last_success.is_some_and(|t| !time_ok(t))
+        {
+            return Err("bad or repeated Xtream source");
+        }
+    }
     Ok(())
 }
 
 #[cfg(unix)]
-fn private(path: &Path, mode: u32) -> std::io::Result<()> {
+pub(crate) fn private(path: &Path, mode: u32) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
     fs::set_permissions(path, fs::Permissions::from_mode(mode))
 }
 #[cfg(not(unix))]
-fn private(_: &Path, _: u32) -> std::io::Result<()> {
+pub(crate) fn private(_: &Path, _: u32) -> std::io::Result<()> {
     Ok(())
 }
 
@@ -396,14 +531,13 @@ impl Store {
                 self.mark_read_only();
                 empty(Some(Notice::NewerVersion))
             }
-            // Schema 1 (D5) is schema 2 without guides or mappings, so it reads as schema 2 with
-            // neither; strict parsing still refuses anything else a schema 1 file should not hold.
-            Some(v @ (1 | 2)) => match serde_json::from_slice::<SavedFile>(&bytes)
+            // Schemas 1 and 2 have no Xtream sources. Their missing fields default to empty.
+            Some(v @ 1..=3) => match serde_json::from_slice::<SavedFile>(&bytes)
                 .map(SavedFile::into_saved)
             {
                 Ok(saved)
                     if validate(&saved).is_ok()
-                        && (v == 2 || (saved.guides.is_empty() && saved.mappings.is_empty())) =>
+                        && (v >= 2 || (saved.guides.is_empty() && saved.mappings.is_empty())) =>
                 {
                     *self.upgrade_v1.lock().unwrap_or_else(|p| p.into_inner()) = v == 1;
                     Loaded {
@@ -437,7 +571,7 @@ impl Store {
         }
     }
 
-    /// Replaces the saved sources and guides atomically.
+    /// Replaces source metadata atomically. Provider credentials are intentionally never saved.
     pub fn save(&self, saved: &Saved) -> Result<(), IngestError> {
         if *self.read_only.lock().unwrap_or_else(|p| p.into_inner()) {
             return Err(storage_error(
@@ -447,9 +581,19 @@ impl Store {
         let Some(dir) = &self.dir else {
             return Err(storage_error("There is nowhere to save sources."));
         };
-        validate(saved)
+        let mut cleaned = saved.clone();
+        for s in &mut cleaned.sources {
+            for c in &mut s.channels {
+                if let Some(ref l) = c.logo {
+                    if !is_credential_safe_logo_url(l) {
+                        c.logo = None;
+                    }
+                }
+            }
+        }
+        validate(&cleaned)
             .map_err(|_| storage_error("Kinora refused to save sources in an unexpected shape."))?;
-        let json = serde_json::to_vec(&SavedFile::new(SCHEMA_VERSION, saved.clone()))
+        let json = serde_json::to_vec(&SavedFile::new(SCHEMA_VERSION, cleaned))
             .map_err(|_| storage_error("Kinora could not save your sources."))?;
         let failed = || storage_error("Kinora could not save your sources.");
         let _one_at_a_time = self.writing.lock().unwrap_or_else(|p| p.into_inner());
@@ -487,8 +631,14 @@ pub(crate) fn write_atomically(dir: &Path, name: &str, bytes: &[u8]) -> std::io:
     file.sync_all()?;
     drop(file);
     fs::rename(&temp, dir.join(name))?;
-    // Make the rename itself durable.
-    File::open(dir)?.sync_all()
+    // Make the rename itself durable on Unix filesystems.
+    #[cfg(unix)]
+    {
+        if let Ok(dir_file) = File::open(dir) {
+            let _ = dir_file.sync_all();
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -541,6 +691,7 @@ mod tests {
                     name: "One".into(),
                     group: Some("News;Sport".into()),
                     chno: Some(101),
+                    logo: None,
                 },
                 SavedChannel {
                     key: "name:00ff00ff00ff00ff#2".into(),
@@ -548,6 +699,7 @@ mod tests {
                     name: "Ünïcode ✓".into(),
                     group: None,
                     chno: None,
+                    logo: None,
                 },
             ],
         }
@@ -675,7 +827,7 @@ mod tests {
         let tmp = TempDir::new("newer");
         let dir = tmp.store_dir();
         fs::create_dir_all(&dir).unwrap();
-        let future = b"{\"version\":3,\"sources\":[],\"somethingNew\":true}";
+        let future = b"{\"version\":4,\"sources\":[],\"somethingNew\":true}";
         fs::write(dir.join(FILE_NAME), future).unwrap();
         let store = Store::new(Some(dir.clone()));
         assert_eq!(store.load().notice, Some(Notice::NewerVersion));
@@ -808,6 +960,7 @@ mod tests {
                 guide: "gd-g1".into(),
                 xmltv_id: "Two.uk".into(),
             }],
+            xtream_sources: vec![],
         }
     }
 
@@ -821,7 +974,7 @@ mod tests {
         assert_eq!(loaded.notice, None);
         assert_eq!(loaded.saved, with_guide());
         let text = fs::read_to_string(tmp.store_dir().join(FILE_NAME)).unwrap();
-        assert!(text.starts_with("{\"version\":2,"), "{text}");
+        assert!(text.starts_with("{\"version\":3,"), "{text}");
     }
 
     #[test]
@@ -909,7 +1062,7 @@ mod tests {
         );
         assert_eq!(with(&|s| s.guides.push(s.guides[0].clone())), refused);
         assert_eq!(
-            with(&|s| s.guides = (0..9)
+            with(&|s| s.guides = (0..=MAX_GUIDES)
                 .map(|i| guide(&format!("gd-{i}"), &[]))
                 .collect::<Vec<_>>())
             .map(|_| ()),
@@ -952,5 +1105,119 @@ mod tests {
         }
         assert!(!format!("{:?}", store.load()).contains("hunter2"));
         assert!(!format!("{:?}", guide("gd-g1", &[])).contains("GUIDETOKEN"));
+    }
+
+    #[test]
+    fn public_logo_url_recovered_after_restart() {
+        let tmp = TempDir::new("logorestart");
+        let dir = tmp.store_dir();
+        let mut s = source("pl-a1");
+        s.channels[0].logo = Some("https://cdn.example.org/logos/bbc_one.png".into());
+        s.channels[1].logo = Some("http://logos.example.com/ch2.svg".into());
+
+        Store::new(Some(dir.clone()))
+            .save(&only(vec![s.clone()]))
+            .unwrap();
+
+        let loaded = Store::new(Some(dir)).load();
+        assert_eq!(loaded.notice, None);
+        assert_eq!(
+            loaded.saved.sources[0].channels[0].logo.as_deref(),
+            Some("https://cdn.example.org/logos/bbc_one.png")
+        );
+        assert_eq!(
+            loaded.saved.sources[0].channels[1].logo.as_deref(),
+            Some("http://logos.example.com/ch2.svg")
+        );
+    }
+
+    #[test]
+    fn credential_bearing_logo_urls_not_persisted() {
+        let tmp = TempDir::new("logocreds");
+        let dir = tmp.store_dir();
+        let mut s = source("pl-a1");
+        s.channels[0].logo = Some("https://alice:secret123@stream.provider.tv/logo.png".into());
+        s.channels[1].logo =
+            Some("https://stream.provider.tv/logo.png?token=SECRETTOKEN999".into());
+
+        // Saving succeeds because credential-bearing logos are safely stripped rather than failing
+        Store::new(Some(dir.clone())).save(&only(vec![s])).unwrap();
+
+        let loaded = Store::new(Some(dir.clone())).load();
+        assert_eq!(loaded.notice, None);
+        assert_eq!(loaded.saved.sources[0].channels[0].logo, None);
+        assert_eq!(loaded.saved.sources[0].channels[1].logo, None);
+
+        let raw_json = fs::read_to_string(dir.join(FILE_NAME)).unwrap();
+        assert!(!raw_json.contains("secret123"));
+        assert!(!raw_json.contains("SECRETTOKEN999"));
+    }
+
+    #[test]
+    fn credential_safety_logo_url_rules() {
+        // Safe URLs
+        assert!(is_credential_safe_logo_url("https://example.com/logo.png"));
+        assert!(is_credential_safe_logo_url(
+            "http://cdn.iptv-org.github.io/logos/bbc.svg"
+        ));
+        assert!(is_credential_safe_logo_url(
+            "https://example.com/path/to/icon.png?v=2"
+        ));
+
+        // Unsafe schemes
+        assert!(!is_credential_safe_logo_url("javascript:alert(1)"));
+        assert!(!is_credential_safe_logo_url(
+            "data:image/svg+xml;base64,PHN2Zz4="
+        ));
+        assert!(!is_credential_safe_logo_url("file:///etc/passwd"));
+        assert!(!is_credential_safe_logo_url("ftp://example.com/logo.png"));
+
+        // Userinfo credentials
+        assert!(!is_credential_safe_logo_url(
+            "https://user:pass@example.com/logo.png"
+        ));
+        assert!(!is_credential_safe_logo_url(
+            "https://token@example.com/logo.png"
+        ));
+
+        // Sensitive paths
+        assert!(!is_credential_safe_logo_url(
+            "https://example.com/password/logo.png"
+        ));
+        assert!(!is_credential_safe_logo_url(
+            "https://example.com/token/logo.png"
+        ));
+        assert!(!is_credential_safe_logo_url(
+            "https://example.com/secret/logo.png"
+        ));
+
+        // Sensitive query parameters
+        assert!(!is_credential_safe_logo_url(
+            "https://example.com/logo.png?token=abc"
+        ));
+        assert!(!is_credential_safe_logo_url(
+            "https://example.com/logo.png?sig=abcdef"
+        ));
+        assert!(!is_credential_safe_logo_url(
+            "https://example.com/logo.png?key=123"
+        ));
+        assert!(!is_credential_safe_logo_url(
+            "https://example.com/logo.png?api_key=123"
+        ));
+        assert!(!is_credential_safe_logo_url(
+            "https://example.com/logo.png?auth=xyz"
+        ));
+        assert!(!is_credential_safe_logo_url(
+            "https://example.com/logo.png?jwt=header.payload.sig"
+        ));
+
+        // Long entropy-like token parameter value (>32 chars alphanumeric)
+        assert!(!is_credential_safe_logo_url(
+            "https://example.com/logo.png?h=0123456789abcdef0123456789abcdef0"
+        ));
+
+        // Oversized URL (>2048 chars)
+        let long_url = format!("https://example.com/{}.png", "a".repeat(2048));
+        assert!(!is_credential_safe_logo_url(&long_url));
     }
 }

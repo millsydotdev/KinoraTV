@@ -1,16 +1,66 @@
-// Demonstration catalogue. Every title, synopsis and image here is fictional and made for this project.
+// Demonstration and verified open catalogue.
 import type { Episode, Movie, Series, Title } from './types'
+import { OPEN_MOVIES, OPEN_SERIES } from './openCatalogue'
 
 const art = (name: string) => `/art/${name}.jpg`
 const SUBS = ['English', 'English (SDH)', 'French', 'Spanish']
 
-export const movies: Movie[] = [
+export const curatedMovies: Movie[] = [
   {
     kind: 'movie', id: 'harbour-lights', title: 'Harbour Lights', year: 2024, runtime: 131,
-    genres: ['Thriller', 'Crime'], certificate: '15', focus: 50, added: '2026-10-18',
+    genres: ['Thriller', 'Crime'], certificate: '18', focus: 50, added: '2026-10-18',
     tagline: 'Every light in the harbour belongs to somebody.',
     synopsis: 'A disgraced customs officer is pulled back to the docks he once policed when a container arrives carrying a name he buried twenty years ago. Over one rain-soaked night he has to decide who in the city he still trusts.',
     art: art('harbour-lights'), audio: ['English 5.1', 'English Audio Description'], subtitles: SUBS,
+  },
+  {
+    kind: 'movie', id: 'northern-trace', title: 'Northern Trace', year: 2024, runtime: 114,
+    genres: ['Thriller', 'Mystery'], certificate: '15', focus: 50, added: '2026-10-22',
+    tagline: 'Some tracks are never meant to be followed.',
+    synopsis: 'A wildlife warden patrolling a remote Scandinavian highway uncovers an abandoned convoy carrying encrypted government telemetry deep into the frozen wilderness.',
+    art: art('northern-trace'), audio: ['English 5.1', 'Swedish'], subtitles: SUBS,
+  },
+  {
+    kind: 'movie', id: 'the-outpost', title: 'The Outpost', year: 2024, runtime: 122,
+    genres: ['Action', 'Thriller'], certificate: '15', focus: 50, added: '2026-10-23',
+    tagline: 'High above the storm, vigilance is the only defense.',
+    synopsis: 'A remote mountain observatory team detects an unauthorized signal crossing international borders just as an unseasonal blizzard cuts all communication lines.',
+    art: art('the-outpost'), audio: ['English 5.1', 'English Atmos'], subtitles: SUBS,
+  },
+  {
+    kind: 'movie', id: 'neon-district', title: 'Neon District', year: 2024, runtime: 118,
+    genres: ['Science fiction', 'Action'], certificate: '15', focus: 50, added: '2026-10-24',
+    tagline: 'Under the neon canopy, memory is the most dangerous contraband.',
+    synopsis: 'In a rain-drenched megacity running on biometric currency, a freelance memory courier races against the dawn to deliver an uncorrupted childhood recording.',
+    art: art('neon-district'), audio: ['English Atmos', 'Japanese'], subtitles: SUBS,
+  },
+  {
+    kind: 'movie', id: 'silent-tide', title: 'Silent Tide', year: 2024, runtime: 108,
+    genres: ['Drama', 'Mystery'], certificate: '12A', focus: 50, added: '2026-10-25',
+    tagline: 'The ocean keeps whatever you leave behind.',
+    synopsis: 'A retired maritime investigator returns to his coastal hometown to settle his brother\'s estate, only to find decades of unexplained coastal disappearances.',
+    art: art('silent-tide'), audio: ['English 5.1'], subtitles: SUBS,
+  },
+  {
+    kind: 'movie', id: 'the-archive', title: 'The Archive', year: 2023, runtime: 134,
+    genres: ['Mystery', 'Drama'], certificate: 'PG', focus: 50, added: '2026-10-26',
+    tagline: 'Every classified history has a keeper.',
+    synopsis: 'An archivist working within a subterranean historical repository uncovers a cataloguing system that appears to predict political crises before they occur.',
+    art: art('the-archive'), audio: ['English 5.1', 'French'], subtitles: SUBS,
+  },
+  {
+    kind: 'movie', id: 'valley-of-ashes', title: 'Valley of Ashes', year: 2024, runtime: 128,
+    genres: ['Science fiction', 'Thriller'], certificate: '15', focus: 50, added: '2026-10-27',
+    tagline: 'Listening to the silence between the stars.',
+    synopsis: 'Stationed in a high-desert radio observatory crater, a radio astronomer captures an anomalous pulse pattern repeating on a cadence identical to ancient earth broadcasts.',
+    art: art('valley-of-ashes'), audio: ['English Atmos'], subtitles: SUBS,
+  },
+  {
+    kind: 'movie', id: 'redline', title: 'Redline', year: 2024, runtime: 110,
+    genres: ['Action', 'Thriller'], certificate: '15', focus: 50, added: '2026-10-28',
+    tagline: 'Velocity is the only way out.',
+    synopsis: 'An underground test driver is coerced into one final cross-border pursuit across illuminated mountain passes in an experimental high-performance machine.',
+    art: art('redline'), audio: ['English 5.1', 'English Atmos'], subtitles: SUBS,
   },
   {
     kind: 'movie', id: 'salt-meridian', title: 'The Salt Meridian', year: 2025, runtime: 148,
@@ -122,7 +172,7 @@ function buildSeasons(seriesId: string, stills: string[], seasons: EpisodeSeed[]
 
 const stills = (id: string) => [art(id), art(`${id}-2`), art(`${id}-3`)]
 
-export const series: Series[] = [
+export const curatedSeries: Series[] = [
   {
     kind: 'series', id: 'ninth-ward', title: 'The Ninth Ward', years: '2023 to present',
     genres: ['Crime', 'Drama'], certificate: '15', focus: 50, added: '2026-10-16',
@@ -263,6 +313,8 @@ export const series: Series[] = [
   },
 ]
 
+export const movies: Movie[] = [...curatedMovies, ...OPEN_MOVIES]
+export const series: Series[] = [...curatedSeries, ...OPEN_SERIES]
 export const titles: Title[] = [...movies, ...series]
 
 export const movieById = (id: string) => movies.find((m) => m.id === id)

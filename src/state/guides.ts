@@ -79,6 +79,15 @@ export function restoreGuide(saved: SavedGuide): GuideSource {
   return { ...saved, playlists: [...saved.playlists], status: 'saved', op: 0, summary: null, error: null }
 }
 
+/** Keep every saved guide available to every imported playlist; id matching determines actual coverage. */
+export function includePlaylistsInGuides(guides: GuideSource[], playlistIds: string[]): GuideSource[] {
+  if (playlistIds.length === 0) return guides
+  return guides.map((guide) => {
+    const playlists = [...new Set([...guide.playlists, ...playlistIds])]
+    return playlists.length === guide.playlists.length ? guide : { ...guide, playlists }
+  })
+}
+
 /** What is written to disk: no programmes (Rust caches those), an address only for URL guides. */
 export function toSavedGuide(g: GuideSource): SavedGuide {
   return {
@@ -185,7 +194,8 @@ export function programmesFor(matches: Map<string, GuideMatch>, answers: GuideAn
     const list = byGuideChannel.get(`${m.guide}\n${m.channel}`) ?? []
     out.set(channelId, list.map((p) => ({
       id: `${channelId}@${p.start}`, channelId, start: p.start, stop: p.stop, title: p.title, desc: p.desc ?? '', category: p.category ?? '',
-      episode: p.episode, art: '', subtitle: p.subtitle, stopEstimated: p.stopEstimated,
+      episode: p.episode, art: undefined, subtitle: p.subtitle, stopEstimated: p.stopEstimated,
+      icon: p.icon ?? null,
     })))
   }
   return out

@@ -1,0 +1,93 @@
+/* Collapsible Section CSS */
+.collapsible-section {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.collapsible-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-radius: var(--r-s, 4px);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 140ms var(--ease), color 140ms var(--ease);
+}
+
+.collapsible-trigger:hover {
+  background: var(--surface-2, rgba(255, 255, 255, 0.04));
+}
+
+.collapsible-trigger:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.collapsible-title-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.collapsible-title-wrap svg {
+  color: var(--text-3);
+  flex: none;
+}
+
+.collapsible-title {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.collapsible-badge {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-3, rgba(255, 255, 255, 0.08));
+  color: var(--text-2);
+  border: 1px solid var(--line);
+}
+
+.collapsible-trailing {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.collapsible-chevron {
+  color: var(--text-3);
+  transition: transform 180ms var(--ease);
+  flex: none;
+}
+
+.collapsible-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+/* Smooth CSS grid expand/collapse with zero leftover blank space */
+.collapsible-body-grid {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 200ms var(--ease);
+}
+
+.collapsible-body-grid.is-open {
+  grid-template-rows: 1fr;
+}
+
+.collapsible-body-content {
+  overflow: hidden;
+  min-height: 0;
+}

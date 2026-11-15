@@ -65,7 +65,7 @@ describe('imported playlist sources in the UI', () => {
   it('disables actions while an import is running', () => {
     const html = render(<PlaylistDetail source={{ ...source, status: 'importing' }} onRemove={() => {}} />)
     expect(text(html)).toContain('Refreshing…')
-    expect(html.match(/disabled=""/g)).toHaveLength(2)
+    expect(html.match(/disabled=""/g)).toHaveLength(3)
   })
 
   it('shows a playlist channel with initials and an Uncategorised group, without guide or live claims', () => {

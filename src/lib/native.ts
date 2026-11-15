@@ -81,6 +81,784 @@ export class IngestError extends Error {
   }
 }
 
+export interface XtreamCategory {
+  id: string
+  name: string
+  parentId: string | null
+}
+
+export interface XtreamLiveStream {
+  id: string
+  num: number | null
+  name: string
+  streamType: string
+  streamIcon: string | null
+  epgChannelId: string | null
+  categoryId: string | null
+  categoryIds: string[]
+  tvArchive: number
+  tvArchiveDuration: number
+  artworkKey: string
+}
+
+export interface XtreamUserInfo {
+  username: string
+  status: string
+  expDate: string | null
+  isTrial: string | null
+  activeCons: string | null
+  maxConnections: string | null
+  createdAt: string | null
+  auth: number
+}
+
+export interface XtreamServerInfo {
+  url: string | null
+  port: string | null
+  httpsPort: string | null
+  serverProtocol: string | null
+  rtmpPort: string | null
+  timezone: string | null
+  timeNow: string | null
+}
+
+export interface XtreamCapabilities {
+  hasLive: boolean
+  hasVod: boolean
+  hasSeries: boolean
+  hasEpg: boolean
+  hasCatchup: boolean
+  liveCount: number
+  vodCount: number
+  seriesCount: number
+  liveCategoriesCount: number
+  vodCategoriesCount: number
+  seriesCategoriesCount: number
+}
+
+export interface XtreamMovieDetails {
+  id: string
+  name: string
+  plot: string | null
+  cast: string | null
+  director: string | null
+  genre: string | null
+  releaseDate: string | null
+  durationSecs: number | null
+  rating: number | null
+  backdrop: string | null
+  streamIcon: string | null
+  containerExtension: string
+  artworkKey: string
+}
+
+export interface XtreamEpgListing {
+  id: string
+  epgId: string | null
+  title: string
+  lang: string | null
+  start: string
+  end: string
+  description: string | null
+  channelId: string | null
+  startTimestamp: number | null
+  stopTimestamp: number | null
+}
+
+export interface XtreamConnectionReport {
+  success: boolean
+  message: string
+  userInfo: XtreamUserInfo | null
+  serverInfo: XtreamServerInfo | null
+  capabilities: XtreamCapabilities | null
+}
+
+export interface XtreamEntry {
+  id: string
+  name: string
+  categoryId: string | null
+  categoryName?: string | null
+  year: number | null
+  rating?: number | null
+  plot: string | null
+  extension: string
+  artworkKey: string
+}
+
+export interface XtreamCatalogue {
+  movies: XtreamEntry[]
+  series: XtreamEntry[]
+  liveStreams?: XtreamLiveStream[]
+  liveCategories?: XtreamCategory[]
+  vodCategories?: XtreamCategory[]
+  seriesCategories?: XtreamCategory[]
+  userInfo?: XtreamUserInfo | null
+  serverInfo?: XtreamServerInfo | null
+  capabilities?: XtreamCapabilities | null
+}
+export interface XtreamEpisode {
+  id: string; number: number; title: string; plot: string | null; runtimeSeconds: number | null; extension: string; artworkKey: string
+}
+export interface XtreamSeason { number: number; episodes: XtreamEpisode[] }
+export interface XtreamSeriesDetails { plot: string | null; seasons: XtreamSeason[] }
+
+const parseXtreamEntry = (raw: unknown): XtreamEntry => {
+  const v = raw as Record<string, unknown> | null
+  if (typeof v !== 'object' || v === null || !isText(v.id, 128) || !isText(v.name, 2048) ||
+      !isOptText(v.categoryId, 128) || !(v.year === null || (typeof v.year === 'number' && Number.isInteger(v.year))) ||
+      !isOptText(v.plot, 8192) || !isText(v.extension, 12) || !isText(v.artworkKey, 256)) {
+    throw new Error('The native shell returned provider catalogue data in an unexpected shape.')
+  }
+  return {
+    id: v.id,
+    name: v.name,
+    categoryId: v.categoryId,
+    categoryName: isOptText(v.categoryName, 2048) ? v.categoryName : null,
+    year: v.year,
+    rating: typeof v.rating === 'number' ? v.rating : null,
+    plot: v.plot,
+    extension: v.extension,
+    artworkKey: v.artworkKey,
+  }
+}
+
+const parseXtreamCategory = (raw: unknown): XtreamCategory => {
+  const v = raw as Record<string, unknown> | null
+  if (typeof v !== 'object' || v === null || !isText(v.id, 128) || !isText(v.name, 2048)) {
+    throw new Error('The native shell returned category data in an unexpected shape.')
+  }
+  return {
+    id: v.id,
+    name: v.name,
+    parentId: typeof v.parentId === 'string' ? v.parentId : null,
+  }
+}
+
+const parseXtreamLiveStream = (raw: unknown): XtreamLiveStream => {
+  const v = raw as Record<string, unknown> | null
+  if (typeof v !== 'object' || v === null || !isText(v.id, 128) || !isText(v.name, 2048) || !isText(v.artworkKey, 256)) {
+    throw new Error('The native shell returned provider live stream data in an unexpected shape.')
+  }
+  return {
+    id: v.id,
+    num: typeof v.num === 'number' ? v.num : null,
+    name: v.name,
+    streamType: typeof v.streamType === 'string' ? v.streamType : 'live',
+    streamIcon: typeof v.streamIcon === 'string' ? v.streamIcon : null,
+    epgChannelId: typeof v.epgChannelId === 'string' ? v.epgChannelId : null,
+    categoryId: typeof v.categoryId === 'string' ? v.categoryId : null,
+    categoryIds: Array.isArray(v.categoryIds) ? v.categoryIds.filter((x): x is string => typeof x === 'string') : [],
+    tvArchive: typeof v.tvArchive === 'number' ? v.tvArchive : 0,
+    tvArchiveDuration: typeof v.tvArchiveDuration === 'number' ? v.tvArchiveDuration : 0,
+    artworkKey: v.artworkKey,
+  }
+}
+
+const parseXtreamUserInfo = (raw: unknown): XtreamUserInfo => {
+  const v = raw as Record<string, unknown>
+  return {
+    username: typeof v.username === 'string' ? v.username : '',
+    status: typeof v.status === 'string' ? v.status : 'Unknown',
+    expDate: typeof v.expDate === 'string' ? v.expDate : null,
+    isTrial: typeof v.isTrial === 'string' ? v.isTrial : null,
+    activeCons: typeof v.activeCons === 'string' ? v.activeCons : null,
+    maxConnections: typeof v.maxConnections === 'string' ? v.maxConnections : null,
+    createdAt: typeof v.createdAt === 'string' ? v.createdAt : null,
+    auth: typeof v.auth === 'number' ? v.auth : 0,
+  }
+}
+
+const parseXtreamServerInfo = (raw: unknown): XtreamServerInfo => {
+  const v = raw as Record<string, unknown>
+  return {
+    url: typeof v.url === 'string' ? v.url : null,
+    port: typeof v.port === 'string' ? v.port : null,
+    httpsPort: typeof v.httpsPort === 'string' ? v.httpsPort : null,
+    serverProtocol: typeof v.serverProtocol === 'string' ? v.serverProtocol : null,
+    rtmpPort: typeof v.rtmpPort === 'string' ? v.rtmpPort : null,
+    timezone: typeof v.timezone === 'string' ? v.timezone : null,
+    timeNow: typeof v.timeNow === 'string' ? v.timeNow : null,
+  }
+}
+
+const parseXtreamCapabilities = (raw: unknown): XtreamCapabilities => {
+  const v = raw as Record<string, unknown>
+  return {
+    hasLive: Boolean(v.hasLive),
+    hasVod: Boolean(v.hasVod),
+    hasSeries: Boolean(v.hasSeries),
+    hasEpg: Boolean(v.hasEpg),
+    hasCatchup: Boolean(v.hasCatchup),
+    liveCount: typeof v.liveCount === 'number' ? v.liveCount : 0,
+    vodCount: typeof v.vodCount === 'number' ? v.vodCount : 0,
+    seriesCount: typeof v.seriesCount === 'number' ? v.seriesCount : 0,
+    liveCategoriesCount: typeof v.liveCategoriesCount === 'number' ? v.liveCategoriesCount : 0,
+    vodCategoriesCount: typeof v.vodCategoriesCount === 'number' ? v.vodCategoriesCount : 0,
+    seriesCategoriesCount: typeof v.seriesCategoriesCount === 'number' ? v.seriesCategoriesCount : 0,
+  }
+}
+
+const parseXtreamMovieDetails = (raw: unknown): XtreamMovieDetails => {
+  const v = raw as Record<string, unknown>
+  return {
+    id: typeof v.id === 'string' ? v.id : '',
+    name: typeof v.name === 'string' ? v.name : '',
+    plot: typeof v.plot === 'string' ? v.plot : null,
+    cast: typeof v.cast === 'string' ? v.cast : null,
+    director: typeof v.director === 'string' ? v.director : null,
+    genre: typeof v.genre === 'string' ? v.genre : null,
+    releaseDate: typeof v.releaseDate === 'string' ? v.releaseDate : null,
+    durationSecs: typeof v.durationSecs === 'number' ? v.durationSecs : null,
+    rating: typeof v.rating === 'number' ? v.rating : null,
+    backdrop: typeof v.backdrop === 'string' ? v.backdrop : null,
+    streamIcon: typeof v.streamIcon === 'string' ? v.streamIcon : null,
+    containerExtension: typeof v.containerExtension === 'string' ? v.containerExtension : 'mp4',
+    artworkKey: typeof v.artworkKey === 'string' ? v.artworkKey : '',
+  }
+}
+
+const parseXtreamEpgListing = (raw: unknown): XtreamEpgListing => {
+  const v = raw as Record<string, unknown>
+  return {
+    id: typeof v.id === 'string' ? v.id : '',
+    epgId: typeof v.epgId === 'string' ? v.epgId : null,
+    title: typeof v.title === 'string' ? v.title : '',
+    lang: typeof v.lang === 'string' ? v.lang : null,
+    start: typeof v.start === 'string' ? v.start : '',
+    end: typeof v.end === 'string' ? v.end : '',
+    description: typeof v.description === 'string' ? v.description : null,
+    channelId: typeof v.channelId === 'string' ? v.channelId : null,
+    startTimestamp: typeof v.startTimestamp === 'number' ? v.startTimestamp : null,
+    stopTimestamp: typeof v.stopTimestamp === 'number' ? v.stopTimestamp : null,
+  }
+}
+
+export const parseXtreamConnectionReport = (raw: unknown): XtreamConnectionReport => {
+  const v = raw as Record<string, unknown>
+  return {
+    success: Boolean(v?.success),
+    message: typeof v?.message === 'string' ? v.message : '',
+    userInfo: v?.userInfo ? parseXtreamUserInfo(v.userInfo) : null,
+    serverInfo: v?.serverInfo ? parseXtreamServerInfo(v.serverInfo) : null,
+    capabilities: v?.capabilities ? parseXtreamCapabilities(v.capabilities) : null,
+  }
+}
+
+const parseXtreamCatalogue = (raw: unknown): XtreamCatalogue => {
+  const v = raw as Record<string, unknown> | null
+  if (typeof v !== 'object' || v === null || !Array.isArray(v.movies) || !Array.isArray(v.series) || v.movies.length > 25_000 || v.series.length > 25_000) {
+    throw new Error('The native shell returned provider catalogue data in an unexpected shape.')
+  }
+  return {
+    movies: v.movies.map(parseXtreamEntry),
+    series: v.series.map(parseXtreamEntry),
+    liveStreams: Array.isArray(v.liveStreams) ? v.liveStreams.map(parseXtreamLiveStream) : [],
+    liveCategories: Array.isArray(v.liveCategories) ? v.liveCategories.map(parseXtreamCategory) : [],
+    vodCategories: Array.isArray(v.vodCategories) ? v.vodCategories.map(parseXtreamCategory) : [],
+    seriesCategories: Array.isArray(v.seriesCategories) ? v.seriesCategories.map(parseXtreamCategory) : [],
+    userInfo: v.userInfo ? parseXtreamUserInfo(v.userInfo) : null,
+    serverInfo: v.serverInfo ? parseXtreamServerInfo(v.serverInfo) : null,
+    capabilities: v.capabilities ? parseXtreamCapabilities(v.capabilities) : null,
+  }
+}
+
+export async function connectXtream(sourceId: string, server: string, username: string, password: string): Promise<XtreamCatalogue | null> {
+  if (!isTauri()) return null
+  try { return parseXtreamCatalogue(await invoke('connect_xtream', { sourceId, server, username, password })) }
+  catch (e) { throw toIngestError(e, 'Kinora could not read this provider catalogue.') }
+}
+
+export async function refreshXtream(sourceId: string): Promise<XtreamCatalogue | null> {
+  if (!isTauri()) return null
+  try { return parseXtreamCatalogue(await invoke('refresh_xtream', { sourceId })) }
+  catch (e) { throw toIngestError(e, 'Kinora could not refresh this provider catalogue.') }
+}
+
+export async function loadXtreamCatalogue(sourceId: string): Promise<XtreamCatalogue | null> {
+  if (!isTauri()) return null
+  try {
+    const raw = await invoke('load_xtream_catalogue', { sourceId })
+    return raw ? parseXtreamCatalogue(raw) : null
+  } catch {
+    return null
+  }
+}
+
+export async function loadXtreamSeries(sourceId: string, seriesId: string): Promise<XtreamSeriesDetails | null> {
+  if (!isTauri()) return null
+  try {
+    const raw = await invoke('xtream_series_details', { sourceId, seriesId }) as Record<string, unknown>
+    if (!isOptText(raw.plot, 8192) || !Array.isArray(raw.seasons) || raw.seasons.length > 200) throw new Error('The native shell returned series data in an unexpected shape.')
+    const seasons = raw.seasons.map((s: unknown): XtreamSeason => {
+      const v = s as Record<string, unknown>
+      if (!isCount(v.number, 1000) || !Array.isArray(v.episodes) || v.episodes.length > 25_000) throw new Error('The native shell returned series data in an unexpected shape.')
+      const episodes = v.episodes.map((e: unknown): XtreamEpisode => {
+        const ep = e as Record<string, unknown>
+        if (!isText(ep.id, 128) || !isCount(ep.number, 100_000) || !isText(ep.title, 2048) || !isOptText(ep.plot, 8192) ||
+            !(ep.runtimeSeconds === null || isCount(ep.runtimeSeconds, 86_400)) || !isText(ep.extension, 12) || !isText(ep.artworkKey, 256)) {
+          throw new Error('The native shell returned episode data in an unexpected shape.')
+        }
+        return { id: ep.id, number: ep.number, title: ep.title, plot: ep.plot, runtimeSeconds: ep.runtimeSeconds, extension: ep.extension, artworkKey: ep.artworkKey }
+      })
+      return { number: v.number, episodes }
+    })
+    return { plot: raw.plot, seasons }
+  } catch (e) { throw toIngestError(e, 'Kinora could not read this provider series.') }
+}
+
+export async function loadXtreamArtwork(artworkKey: string): Promise<string | null> {
+  if (!isTauri()) return null
+  try {
+    const raw = await invoke('xtream_artwork', { artworkKey }) as { mimeType?: unknown; bytes?: unknown } | null
+    if (!raw) return null
+    const parsed = parseArtwork(raw)
+    if (!parsed) return null
+    let binary = ''
+    for (let i = 0; i < parsed.bytes.length; i += 0x8000) binary += String.fromCharCode(...parsed.bytes.subarray(i, i + 0x8000))
+    return `data:${parsed.mimeType};base64,${btoa(binary)}`
+  } catch { return null }
+}
+
+export async function disconnectXtream(sourceId: string): Promise<void> {
+  if (!isTauri()) return
+  await invoke('disconnect_xtream', { sourceId })
+}
+
+export async function isXtreamConnected(sourceId: string): Promise<boolean> {
+  if (!isTauri()) return false
+  try {
+    return Boolean(await invoke('is_xtream_connected', { sourceId }))
+  } catch {
+    return false
+  }
+}
+
+export async function testXtreamConnection(server: string, username: string, password: string): Promise<XtreamConnectionReport | null> {
+  if (!isTauri()) return null
+  try {
+    const raw = await invoke('test_xtream_connection', { server, username, password })
+    return parseXtreamConnectionReport(raw)
+  } catch (e) {
+    throw toIngestError(e, 'Kinora could not test this provider connection.')
+  }
+}
+
+export async function loadXtreamVodDetails(sourceId: string, vodId: string): Promise<XtreamMovieDetails | null> {
+  if (!isTauri()) return null
+  try {
+    const raw = await invoke('xtream_vod_details', { sourceId, vodId })
+    return parseXtreamMovieDetails(raw)
+  } catch (e) {
+    throw toIngestError(e, 'Kinora could not read movie details from provider.')
+  }
+}
+
+export async function loadXtreamEpg(sourceId: string, streamId: string): Promise<XtreamEpgListing[] | null> {
+  if (!isTauri()) return null
+  try {
+    const raw = await invoke('xtream_epg', { sourceId, streamId })
+    if (!Array.isArray(raw)) return []
+    return raw.map(parseXtreamEpgListing)
+  } catch (e) {
+    throw toIngestError(e, 'Kinora could not read guide listings from provider.')
+  }
+}
+
+export async function openXtreamStream(
+  sourceId: string,
+  streamType: string,
+  itemId: string,
+  extension?: string,
+): Promise<OpenedStream | null> {
+  if (!isTauri()) return null
+  return queued(async () => {
+    let raw: unknown
+    try {
+      raw = await invoke('open_xtream_stream', { sourceId, streamType, itemId, extension })
+    } catch (e) {
+      throw toIngestError(e)
+    }
+    return parseOpenedStream(raw)
+  })
+}
+
+export async function openXtreamCatchup(
+  sourceId: string,
+  streamId: string,
+  startTimestamp: number,
+  durationMins: number,
+): Promise<OpenedStream | null> {
+  if (!isTauri()) {
+    return {
+      url: `kstream://localhost/mock-catchup-${streamId}`,
+      session: 1,
+    }
+  }
+  return queued(async () => {
+    let raw: unknown
+    try {
+      raw = await invoke('open_xtream_catchup', { sourceId, streamId, startTimestamp, durationMins })
+    } catch (e) {
+      throw toIngestError(e)
+    }
+    return parseOpenedStream(raw)
+  })
+}
+
+export type RecordingStatus = 'scheduled' | 'recording' | 'completed' | 'failed' | 'cancelled'
+
+export interface Recording {
+  id: string
+  channelId: string
+  channelName: string
+  channelLogo: string | null
+  programmeId: string | null
+  title: string
+  description: string | null
+  startTime: number
+  endTime: number
+  durationSecs: number
+  paddingStartMins: number
+  paddingEndMins: number
+  status: RecordingStatus
+  errorMessage: string | null
+  filePath: string | null
+  fileSizeBytes: number
+  isProtected: boolean
+  seriesRuleId: string | null
+  createdAt: number
+}
+
+export interface SeriesRule {
+  id: string
+  title: string
+  channelId: string | null
+  recordType: 'all_episodes' | 'new_only'
+  paddingStartMins: number
+  paddingEndMins: number
+  retentionDays: number | null
+  keepMaxEpisodes: number | null
+  isActive: boolean
+  createdAt: number
+}
+
+export interface DvrConfig {
+  storagePath: string
+  maxStorageBytes: number
+  minFreeDiskSpaceBytes: number
+  defaultPaddingStartMins: number
+  defaultPaddingEndMins: number
+  retentionDays: number
+  autoDeleteUnprotected: boolean
+  timeshiftBufferMins: number
+}
+
+export interface StorageInfo {
+  storagePath: string
+  totalDiskBytes: number
+  availableDiskBytes: number
+  usedByRecordingsBytes: number
+  recordingCount: number
+  isLowDisk: boolean
+}
+
+let mockRecordings: Recording[] = []
+let mockRules: SeriesRule[] = []
+let mockDvrConfig: DvrConfig = {
+  storagePath: '/mock/kinora/recordings',
+  maxStorageBytes: 100 * 1024 * 1024 * 1024,
+  minFreeDiskSpaceBytes: 5 * 1024 * 1024 * 1024,
+  defaultPaddingStartMins: 2,
+  defaultPaddingEndMins: 5,
+  retentionDays: 30,
+  autoDeleteUnprotected: true,
+  timeshiftBufferMins: 60,
+}
+
+export async function dvrGetRecordings(): Promise<Recording[]> {
+  if (!isTauri()) return [...mockRecordings]
+  try {
+    const raw = await invoke('dvr_get_recordings')
+    return Array.isArray(raw) ? (raw as Recording[]) : []
+  } catch (e) {
+    throw toIngestError(e, 'Kinora could not read recordings.')
+  }
+}
+
+export async function dvrStartRecording(
+  channelId: string,
+  channelName: string,
+  title: string,
+  opts?: {
+    channelLogo?: string | null
+    programmeId?: string | null
+    description?: string | null
+    durationSecs?: number
+  },
+): Promise<Recording> {
+  if (!isTauri()) {
+    const now = Math.floor(Date.now() / 1000)
+    const rec: Recording = {
+      id: `rec_${now}_${Math.random().toString(16).slice(2, 8)}`,
+      channelId,
+      channelName,
+      channelLogo: opts?.channelLogo ?? null,
+      programmeId: opts?.programmeId ?? null,
+      title,
+      description: opts?.description ?? null,
+      startTime: now,
+      endTime: now + (opts?.durationSecs ?? 3600),
+      durationSecs: opts?.durationSecs ?? 3600,
+      paddingStartMins: 0,
+      paddingEndMins: 0,
+      status: 'recording',
+      errorMessage: null,
+      filePath: `/mock/recordings/${channelName}/${title}/playlist.m3u8`,
+      fileSizeBytes: 1024 * 1024 * 25,
+      isProtected: false,
+      seriesRuleId: null,
+      createdAt: now,
+    }
+    mockRecordings.unshift(rec)
+    return rec
+  }
+  try {
+    const raw = await invoke('dvr_start_recording', {
+      channelId,
+      channelName,
+      channelLogo: opts?.channelLogo ?? null,
+      programmeId: opts?.programmeId ?? null,
+      title,
+      description: opts?.description ?? null,
+      durationSecs: opts?.durationSecs ?? null,
+    })
+    return raw as Recording
+  } catch (e) {
+    throw toIngestError(e, 'Kinora could not start recording.')
+  }
+}
+
+export async function dvrStopRecording(recordingId: string): Promise<Recording> {
+  if (!isTauri()) {
+    const rec = mockRecordings.find((r) => r.id === recordingId)
+    if (!rec) throw new IngestError('storage', 'Recording not found.')
+    rec.status = 'completed'
+    rec.endTime = Math.floor(Date.now() / 1000)
+    rec.durationSecs = Math.max(1, rec.endTime - rec.startTime)
+    return { ...rec }
+  }
+  try {
+    const raw = await invoke('dvr_stop_recording', { recordingId })
+    return raw as Recording
+  } catch (e) {
+    throw toIngestError(e, 'Kinora could not stop recording.')
+  }
+}
+
+export async function dvrScheduleRecording(
+  channelId: string,
+  channelName: string,
+  title: string,
+  startTime: number,
+  endTime: number,
+  opts?: {
+    channelLogo?: string | null
+    programmeId?: string | null
+    description?: string | null
+    paddingStart?: number
+    paddingEnd?: number
+    seriesRuleId?: string | null
+  },
+): Promise<Recording> {
+  if (!isTauri()) {
+    const now = Math.floor(Date.now() / 1000)
+    const rec: Recording = {
+      id: `rec_${startTime}_${Math.random().toString(16).slice(2, 8)}`,
+      channelId,
+      channelName,
+      channelLogo: opts?.channelLogo ?? null,
+      programmeId: opts?.programmeId ?? null,
+      title,
+      description: opts?.description ?? null,
+      startTime,
+      endTime,
+      durationSecs: Math.max(60, endTime - startTime),
+      paddingStartMins: opts?.paddingStart ?? 2,
+      paddingEndMins: opts?.paddingEnd ?? 5,
+      status: 'scheduled',
+      errorMessage: null,
+      filePath: null,
+      fileSizeBytes: 0,
+      isProtected: false,
+      seriesRuleId: opts?.seriesRuleId ?? null,
+      createdAt: now,
+    }
+    mockRecordings.unshift(rec)
+    return rec
+  }
+  try {
+    const raw = await invoke('dvr_schedule_recording', {
+      channelId,
+      channelName,
+      channelLogo: opts?.channelLogo ?? null,
+      programmeId: opts?.programmeId ?? null,
+      title,
+      description: opts?.description ?? null,
+      startTime,
+      endTime,
+      paddingStart: opts?.paddingStart ?? null,
+      paddingEnd: opts?.paddingEnd ?? null,
+      seriesRuleId: opts?.seriesRuleId ?? null,
+    })
+    return raw as Recording
+  } catch (e) {
+    throw toIngestError(e, 'Kinora could not schedule recording.')
+  }
+}
+
+export async function dvrCancelRecording(recordingId: string): Promise<Recording> {
+  if (!isTauri()) {
+    const rec = mockRecordings.find((r) => r.id === recordingId)
+    if (!rec) throw new IngestError('storage', 'Recording not found.')
+    rec.status = 'cancelled'
+    return { ...rec }
+  }
+  try {
+    const raw = await invoke('dvr_cancel_recording', { recordingId })
+    return raw as Recording
+  } catch (e) {
+    throw toIngestError(e, 'Kinora could not cancel recording.')
+  }
+}
+
+export async function dvrDeleteRecording(recordingId: string, deleteFiles = true): Promise<void> {
+  if (!isTauri()) {
+    mockRecordings = mockRecordings.filter((r) => r.id !== recordingId)
+    return
+  }
+  try {
+    await invoke('dvr_delete_recording', { recordingId, deleteFiles })
+  } catch (e) {
+    throw toIngestError(e, 'Kinora could not delete recording.')
+  }
+}
+
+export async function dvrProtectRecording(recordingId: string, isProtected: boolean): Promise<Recording> {
+  if (!isTauri()) {
+    const rec = mockRecordings.find((r) => r.id === recordingId)
+    if (!rec) throw new IngestError('storage', 'Recording not found.')
+    rec.isProtected = isProtected
+    return { ...rec }
+  }
+  try {
+    const raw = await invoke('dvr_protect_recording', { recordingId, isProtected })
+    return raw as Recording
+  } catch (e) {
+    throw toIngestError(e, 'Kinora could not update recording protection.')
+  }
+}
+
+export async function dvrOpenRecording(recordingId: string): Promise<OpenedStream> {
+  if (!isTauri()) {
+    return {
+      url: `kstream://localhost/dvr/${recordingId}/playlist.m3u8`,
+      session: 0,
+    }
+  }
+  return queued(async () => {
+    let raw: unknown
+    try {
+      raw = await invoke('dvr_open_recording', { recordingId })
+    } catch (e) {
+      throw toIngestError(e)
+    }
+    return parseOpenedStream(raw)
+  })
+}
+
+export async function dvrGetRules(): Promise<SeriesRule[]> {
+  if (!isTauri()) return [...mockRules]
+  try {
+    const raw = await invoke('dvr_get_rules')
+    return Array.isArray(raw) ? (raw as SeriesRule[]) : []
+  } catch (e) {
+    throw toIngestError(e, 'Kinora could not read series recording rules.')
+  }
+}
+
+export async function dvrSaveRule(rule: SeriesRule): Promise<SeriesRule> {
+  if (!isTauri()) {
+    const idx = mockRules.findIndex((r) => r.id === rule.id)
+    if (idx >= 0) {
+      mockRules[idx] = { ...rule }
+    } else {
+      mockRules.unshift({ ...rule })
+    }
+    return { ...rule }
+  }
+  try {
+    const raw = await invoke('dvr_save_rule', { rule })
+    return raw as SeriesRule
+  } catch (e) {
+    throw toIngestError(e, 'Kinora could not save series rule.')
+  }
+}
+
+export async function dvrDeleteRule(ruleId: string): Promise<void> {
+  if (!isTauri()) {
+    mockRules = mockRules.filter((r) => r.id !== ruleId)
+    return
+  }
+  try {
+    await invoke('dvr_delete_rule', { ruleId })
+  } catch (e) {
+    throw toIngestError(e, 'Kinora could not delete series rule.')
+  }
+}
+
+export async function dvrGetConfig(): Promise<DvrConfig> {
+  if (!isTauri()) return { ...mockDvrConfig }
+  try {
+    const raw = await invoke('dvr_get_config')
+    return raw as DvrConfig
+  } catch (e) {
+    throw toIngestError(e, 'Kinora could not read DVR settings.')
+  }
+}
+
+export async function dvrSaveConfig(config: DvrConfig): Promise<DvrConfig> {
+  if (!isTauri()) {
+    mockDvrConfig = { ...config }
+    return { ...mockDvrConfig }
+  }
+  try {
+    const raw = await invoke('dvr_save_config', { config })
+    return raw as DvrConfig
+  } catch (e) {
+    throw toIngestError(e, 'Kinora could not save DVR settings.')
+  }
+}
+
+export async function dvrGetStorageInfo(): Promise<StorageInfo> {
+  if (!isTauri()) {
+    const usedBytes = mockRecordings.reduce((acc, r) => acc + r.fileSizeBytes, 0)
+    return {
+      storagePath: mockDvrConfig.storagePath,
+      totalDiskBytes: 500 * 1024 * 1024 * 1024,
+      availableDiskBytes: 250 * 1024 * 1024 * 1024,
+      usedByRecordingsBytes: usedBytes,
+      recordingCount: mockRecordings.length,
+      isLowDisk: false,
+    }
+  }
+  try {
+    const raw = await invoke('dvr_get_storage_info')
+    return raw as StorageInfo
+  } catch (e) {
+    throw toIngestError(e, 'Kinora could not check storage space.')
+  }
+}
+
 const isIngestCode = (v: unknown): v is (typeof INGEST_CODES)[number] => INGEST_CODES.some((c) => c === v)
 const isCount = (v: unknown, max: number): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= max
 const isOptText = (v: unknown, max: number): v is string | null => v === null || isText(v, max)
@@ -114,12 +892,12 @@ export function parsePlaylistReport(raw: unknown): PlaylistReport {
 }
 
 /** Turns an `invoke` rejection into a typed error. Unrecognised shapes are not echoed to the UI. */
-export function toIngestError(raw: unknown): IngestError {
+export function toIngestError(raw: unknown, fallback = 'Kinora could not read that playlist.'): IngestError {
   const v = raw as Record<string, unknown> | null
   if (typeof v === 'object' && v !== null && isIngestCode(v.code) && isText(v.message, 500)) {
     return new IngestError(v.code, v.message)
   }
-  return new IngestError('internal', 'Kinora could not read that playlist.')
+  return new IngestError('internal', fallback)
 }
 
 async function ingest(command: string, args: Record<string, string>): Promise<PlaylistReport> {
@@ -138,6 +916,104 @@ export async function fetchPlaylist(url: string): Promise<PlaylistReport | null>
   return ingest('fetch_playlist', { url })
 }
 
+const LOGO_MIMES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] as const
+const MAX_LOGO_BYTES = 256 * 1024
+/** Mirrors Policy::artwork().max_bytes (4 MB) in src-tauri/src/fetch.rs */
+export const MAX_ARTWORK_BYTES = 4 * 1024 * 1024
+type ChannelLogo = { mimeType: (typeof LOGO_MIMES)[number]; bytes: Uint8Array }
+
+export function parseChannelLogo(raw: unknown): ChannelLogo | null {
+  if (raw === null) return null
+  const value = raw as Record<string, unknown> | null
+  if (typeof value !== 'object' || value === null || !LOGO_MIMES.includes(value.mimeType as ChannelLogo['mimeType']) ||
+    !Array.isArray(value.bytes) || value.bytes.length === 0 || value.bytes.length > MAX_LOGO_BYTES ||
+    !value.bytes.every((byte) => isCount(byte, 255))) {
+    throw new Error('The native shell returned an image in an unexpected shape.')
+  }
+  return { mimeType: value.mimeType as ChannelLogo['mimeType'], bytes: Uint8Array.from(value.bytes as number[]) }
+}
+
+export function parseArtwork(raw: unknown): ChannelLogo | null {
+  if (raw === null) return null
+  const value = raw as Record<string, unknown> | null
+  if (typeof value !== 'object' || value === null || !LOGO_MIMES.includes(value.mimeType as ChannelLogo['mimeType']) ||
+    !Array.isArray(value.bytes) || value.bytes.length === 0 || value.bytes.length > MAX_ARTWORK_BYTES ||
+    !value.bytes.every((byte) => isCount(byte, 255))) {
+    throw new Error('The native shell returned an image in an unexpected shape.')
+  }
+  return { mimeType: value.mimeType as ChannelLogo['mimeType'], bytes: Uint8Array.from(value.bytes as number[]) }
+}
+
+const logoCache = new Map<string, Promise<string | null>>()
+
+/** Fetches, caches and validates one small playlist logo in Rust; addresses stay out of the DOM. */
+export async function loadChannelLogo(
+  url: string | null,
+  channelKey?: string | null,
+  tvgId?: string | null,
+): Promise<string | null> {
+  if (!isTauri()) return null
+  const cacheKey = channelKey ?? url ?? tvgId
+  if (!cacheKey) return null
+  let pending = logoCache.get(cacheKey)
+  if (!pending) {
+    pending = invoke('fetch_channel_logo', {
+      url: url || null,
+      channelKey: channelKey || null,
+      tvgId: tvgId || null,
+    }).then((raw) => {
+      const logo = parseChannelLogo(raw)
+      if (!logo) return null
+      let binary = ''
+      for (let i = 0; i < logo.bytes.length; i += 0x8000) {
+        binary += String.fromCharCode(...logo.bytes.subarray(i, i + 0x8000))
+      }
+      return `data:${logo.mimeType};base64,${btoa(binary)}`
+    })
+    logoCache.set(cacheKey, pending)
+    if (logoCache.size > 4096) {
+      const oldest = logoCache.keys().next().value
+      if (oldest) logoCache.delete(oldest)
+    }
+  }
+  try {
+    return await pending
+  } catch {
+    logoCache.delete(cacheKey)
+    return null
+  }
+}
+
+const programmeArtCache = new Map<string, Promise<string | null>>()
+
+/** Fetches, caches and validates programme artwork in Rust; returns base64 data URI or null. */
+export async function loadProgrammeArtwork(url: string | null): Promise<string | null> {
+  if (!isTauri() || !url) return null
+  let pending = programmeArtCache.get(url)
+  if (!pending) {
+    pending = invoke('fetch_programme_artwork', { url }).then((raw) => {
+      const art = parseArtwork(raw)
+      if (!art) return null
+      let binary = ''
+      for (let i = 0; i < art.bytes.length; i += 0x8000) {
+        binary += String.fromCharCode(...art.bytes.subarray(i, i + 0x8000))
+      }
+      return `data:${art.mimeType};base64,${btoa(binary)}`
+    })
+    programmeArtCache.set(url, pending)
+    if (programmeArtCache.size > 4096) {
+      const oldest = programmeArtCache.keys().next().value
+      if (oldest) programmeArtCache.delete(oldest)
+    }
+  }
+  try {
+    return await pending
+  } catch {
+    programmeArtCache.delete(url)
+    return null
+  }
+}
+
 /** Reads a file the user picked with `<input type="file">` and parses it in Rust; no path is shared. */
 export async function readPlaylistFile(file: File): Promise<PlaylistReport | null> {
   if (!isTauri()) return null
@@ -150,6 +1026,7 @@ export interface OpenedStream {
   /** `kstream://localhost/<handle>`: the only address the page ever gets for a stream. */
   url: string
   session: number
+  format?: 'hls' | 'dash'
 }
 
 const STREAM_ADDRESS = /^kstream:\/\/localhost\/[0-9a-f]{32}$/
@@ -159,7 +1036,8 @@ export function parseOpenedStream(raw: unknown): OpenedStream {
   if (typeof v !== 'object' || v === null || typeof v.url !== 'string' || !STREAM_ADDRESS.test(v.url) || !isCount(v.session, Number.MAX_SAFE_INTEGER) || v.session < 1) {
     throw new Error('The native shell returned a stream session in an unexpected shape.')
   }
-  return { url: v.url, session: v.session }
+  const format = v.format === 'dash' ? 'dash' as const : v.format === 'hls' ? 'hls' as const : undefined
+  return format ? { url: v.url, session: v.session, format } : { url: v.url, session: v.session }
 }
 
 /** Runs async commands one at a time, in the order they were asked for, whatever happens to each. */
@@ -187,7 +1065,16 @@ export async function openStream(streamUrl: string): Promise<OpenedStream | null
   return queued(async () => {
     let raw: unknown
     try {
-      raw = await invoke('open_stream', { url: streamUrl })
+      if (streamUrl.startsWith('xtream://')) {
+        const withoutPrefix = streamUrl.slice('xtream://'.length)
+        const [hostAndPath, search] = withoutPrefix.split('?')
+        const [sourceId = '', streamType = 'live', itemId = ''] = (hostAndPath ?? '').split('/')
+        const params = new URLSearchParams(search ?? '')
+        const extension = params.get('ext') ?? undefined
+        raw = await invoke('open_xtream_stream', { sourceId, streamType, itemId, extension })
+      } else {
+        raw = await invoke('open_stream', { url: streamUrl })
+      }
     } catch (e) {
       throw toIngestError(e)
     }
@@ -208,6 +1095,7 @@ export interface SavedChannel {
   name: string
   group: string | null
   chno: number | null
+  logo?: string | null
 }
 
 /** Mirrors `SavedSource` in src-tauri/src/sources.rs. `url` may carry a token: never display it. */
@@ -234,10 +1122,11 @@ const isTime = (v: unknown): v is number => typeof v === 'number' && Number.isFi
 function parseSavedChannel(raw: unknown): SavedChannel {
   const v = raw as Record<string, unknown> | null
   if (typeof v !== 'object' || v === null || !isText(v.key, 600) || !isText(v.name, 1024) || !isOptText(v.tvgId, 1024) ||
-      !(v.group === null || (typeof v.group === 'string' && v.group.length <= 1024)) || !(v.chno === null || (isCount(v.chno, 99_999) && v.chno > 0))) {
+      !(v.group === null || (typeof v.group === 'string' && v.group.length <= 1024)) || !(v.chno === null || (isCount(v.chno, 99_999) && v.chno > 0)) ||
+      !(v.logo === undefined || v.logo === null || isText(v.logo, 2048))) {
     throw new Error('Saved channel data is in an unexpected shape.')
   }
-  return { key: v.key, tvgId: v.tvgId, name: v.name, group: v.group, chno: v.chno }
+  return { key: v.key, tvgId: v.tvgId, name: v.name, group: v.group, chno: v.chno, ...(v.logo ? { logo: v.logo as string } : {}) }
 }
 
 export function parseSavedSource(raw: unknown): SavedSource {
@@ -275,14 +1164,59 @@ export interface SavedMapping {
   xmltvId: string
 }
 
+export interface SavedXtreamSource {
+  id: string
+  name: string
+  addedAt: number
+  lastSuccess: number | null
+  movies: number
+  series: number
+  liveChannels?: number
+  hasLive?: boolean
+  hasVod?: boolean
+  hasSeries?: boolean
+  hasEpg?: boolean
+  hasCatchup?: boolean
+  status?: string | null
+  expDate?: string | null
+  enabled?: boolean
+}
+
+function parseSavedXtreamSource(raw: unknown): SavedXtreamSource {
+  const v = raw as Record<string, unknown> | null
+  if (typeof v !== 'object' || v === null || !isText(v.id, 48) || !/^xt-[a-z0-9-]+$/.test(v.id) || !isText(v.name, 48) ||
+      !isTime(v.addedAt) || !(v.lastSuccess === null || isTime(v.lastSuccess)) ||
+      !isCount(v.movies, 25_000) || !isCount(v.series, 25_000)) {
+    throw new Error('Saved provider data is in an unexpected shape.')
+  }
+  return {
+    id: v.id,
+    name: v.name,
+    addedAt: v.addedAt,
+    lastSuccess: v.lastSuccess,
+    movies: v.movies,
+    series: v.series,
+    liveChannels: typeof v.liveChannels === 'number' && isCount(v.liveChannels, 25_000) ? v.liveChannels : 0,
+    hasLive: Boolean(v.hasLive),
+    hasVod: typeof v.hasVod === 'boolean' ? v.hasVod : v.movies > 0,
+    hasSeries: typeof v.hasSeries === 'boolean' ? v.hasSeries : v.series > 0,
+    hasEpg: Boolean(v.hasEpg),
+    hasCatchup: Boolean(v.hasCatchup),
+    status: typeof v.status === 'string' ? v.status : null,
+    expDate: typeof v.expDate === 'string' ? v.expDate : null,
+    enabled: typeof v.enabled === 'boolean' ? v.enabled : true,
+  }
+}
+
 /** Everything Rust saves (sources.rs `Saved`). */
 export interface SavedState {
   sources: SavedSource[]
   guides: SavedGuide[]
   mappings: SavedMapping[]
+  xtreamSources?: SavedXtreamSource[]
 }
 
-const MAX_GUIDES = 8
+const MAX_GUIDES = 32
 const GUIDE_ID = /^gd-[a-z0-9-]+$/
 
 export function parseSavedGuide(raw: unknown): SavedGuide {
@@ -314,10 +1248,13 @@ export async function loadSources(): Promise<(SavedState & { notice: StorageNoti
   const raw = await invoke('load_sources') as Record<string, unknown> | null
   const notice = raw?.notice ?? null
   if (typeof raw !== 'object' || raw === null || !Array.isArray(raw.sources) || !Array.isArray(raw.guides) || raw.guides.length > MAX_GUIDES ||
-      !Array.isArray(raw.mappings) || raw.mappings.length > 50_000 || !(notice === null || isNotice(notice))) {
+      !Array.isArray(raw.mappings) || raw.mappings.length > 50_000 || !(raw.xtreamSources === undefined || (Array.isArray(raw.xtreamSources) && raw.xtreamSources.length <= 100)) || !(notice === null || isNotice(notice))) {
     throw new Error('Saved sources arrived in an unexpected shape.')
   }
-  return { sources: raw.sources.map(parseSavedSource), guides: raw.guides.map(parseSavedGuide), mappings: raw.mappings.map(parseSavedMapping), notice }
+  return {
+    sources: raw.sources.map(parseSavedSource), guides: raw.guides.map(parseSavedGuide), mappings: raw.mappings.map(parseSavedMapping), notice,
+    ...(Array.isArray(raw.xtreamSources) ? { xtreamSources: raw.xtreamSources.map(parseSavedXtreamSource) } : {}),
+  }
 }
 
 const saves = serial()
@@ -424,6 +1361,7 @@ export interface GuideProgramme {
   desc: string | null
   category: string | null
   episode: string | null
+  icon?: string | null
 }
 
 /** Mirrors `Answer` in guides.rs. */
@@ -441,10 +1379,10 @@ function parseGuideProgramme(raw: unknown): GuideProgramme {
   const v = raw as Record<string, unknown> | null
   if (typeof v !== 'object' || v === null || !isText(v.channel, 1024) || !isTime(v.start) || !isTime(v.stop) || v.stop <= v.start ||
       typeof v.stopEstimated !== 'boolean' || !isText(v.title, 1000) || !isOptText(v.subtitle, 1000) || !isOptText(v.desc, 3000) ||
-      !isOptText(v.category, 300) || !isOptText(v.episode, 200)) {
+      !isOptText(v.category, 300) || !isOptText(v.episode, 200) || (v.icon !== undefined && !isOptText(v.icon, 2048))) {
     throw new Error('The native shell returned a programme in an unexpected shape.')
   }
-  return { channel: v.channel, start: v.start, stop: v.stop, stopEstimated: v.stopEstimated, title: v.title, subtitle: v.subtitle, desc: v.desc, category: v.category, episode: v.episode }
+  return { channel: v.channel, start: v.start, stop: v.stop, stopEstimated: v.stopEstimated, title: v.title, subtitle: v.subtitle, desc: v.desc, category: v.category, episode: v.episode, icon: (v.icon as string | undefined) ?? null }
 }
 
 export function parseGuideAnswers(raw: unknown): GuideAnswer[] {
@@ -555,3 +1493,241 @@ export async function refreshCatalogue(): Promise<Catalogue | null> {
   }
   return parseCatalogue(raw)
 }
+
+export type ConnectionResultCategory =
+  | 'success'
+  | 'auth-required'
+  | 'http-error'
+  | 'dns-failure'
+  | 'connection-refused'
+  | 'timeout'
+  | 'invalid-url'
+  | 'security-blocked'
+  | 'network-unavailable'
+  | 'unknown'
+
+export interface ConnectionTestResult {
+  ok: boolean
+  status: number | null
+  host: string
+  roundTripMs: number
+  message: string
+  category: ConnectionResultCategory
+}
+
+export function parseConnectionTestResult(raw: unknown): ConnectionTestResult {
+  const v = raw as Record<string, unknown> | null
+  if (typeof v !== 'object' || v === null) {
+    throw new Error('The native shell returned a connection test result in an unexpected shape.')
+  }
+  const ok = typeof v.ok === 'boolean' ? v.ok : false
+  const status = typeof v.status === 'number' && Number.isInteger(v.status) ? v.status : null
+  const host = typeof v.host === 'string' ? v.host : 'unknown'
+  const roundTripMs = typeof v.roundTripMs === 'number' && v.roundTripMs >= 0 ? Math.round(v.roundTripMs) : 0
+  const message = typeof v.message === 'string' ? v.message : ''
+  const validCategories: ConnectionResultCategory[] = [
+    'success',
+    'auth-required',
+    'http-error',
+    'dns-failure',
+    'connection-refused',
+    'timeout',
+    'invalid-url',
+    'security-blocked',
+    'network-unavailable',
+    'unknown',
+  ]
+  const category: ConnectionResultCategory = typeof v.category === 'string' && validCategories.includes(v.category as ConnectionResultCategory)
+    ? (v.category as ConnectionResultCategory)
+    : 'unknown'
+
+  return { ok, status, host, roundTripMs, message, category }
+}
+
+/**
+ * Safely tests connectivity to a remote source address in Rust using guarded network checks.
+ * Returns null outside the native shell (mocking browser dev).
+ */
+export async function testSourceConnection(url: string): Promise<ConnectionTestResult | null> {
+  if (!isTauri()) return null
+  try {
+    const raw: unknown = await invoke('test_source_connection', { url })
+    return parseConnectionTestResult(raw)
+  } catch (e) {
+    const err = toIngestError(e)
+    return {
+      ok: false,
+      status: null,
+      host: 'unknown',
+      roundTripMs: 0,
+      message: err.message,
+      category: err.code === 'blocked' ? 'security-blocked' : 'invalid-url',
+    }
+  }
+}
+
+/** Mirrors `StoredPin` in src-tauri/src/pin.rs (serde camelCase). */
+export interface StoredPinV2 {
+  algorithm: string
+  salt: string
+  hash: string
+  iterations: number
+  version: 2
+}
+
+/** Mirrors `VerifyPinResponse` in src-tauri/src/pin.rs. */
+export interface VerifyPinResult {
+  valid: boolean
+  upgradedPin: StoredPinV2 | null
+}
+
+export function parseStoredPin(raw: unknown): StoredPinV2 {
+  const v = raw as Record<string, unknown> | null
+  if (
+    typeof v !== 'object' || v === null ||
+    typeof v.algorithm !== 'string' ||
+    typeof v.salt !== 'string' ||
+    typeof v.hash !== 'string' ||
+    typeof v.iterations !== 'number' ||
+    v.version !== 2
+  ) {
+    throw new Error('The native shell returned a stored PIN in an unexpected shape.')
+  }
+  return {
+    algorithm: v.algorithm,
+    salt: v.salt,
+    hash: v.hash,
+    iterations: v.iterations,
+    version: 2,
+  }
+}
+
+export function parseVerifyPinResult(raw: unknown): VerifyPinResult {
+  const v = raw as Record<string, unknown> | null
+  if (typeof v !== 'object' || v === null || typeof v.valid !== 'boolean') {
+    throw new Error('The native shell returned a PIN verification result in an unexpected shape.')
+  }
+  const upgradedPin = v.upgradedPin ? parseStoredPin(v.upgradedPin) : null
+  return { valid: v.valid, upgradedPin }
+}
+
+/**
+ * Hashes a 4-digit parental PIN using PBKDF2-HMAC-SHA256 (100,000 iterations) in Rust.
+ * Returns null outside the native shell.
+ */
+export async function hashParentalPin(pin: string): Promise<StoredPinV2 | null> {
+  if (!isTauri()) return null
+  const raw = await invoke('hash_parental_pin', { pin })
+  return parseStoredPin(raw)
+}
+
+/**
+ * Verifies a 4-digit parental PIN in Rust with constant-time equality and automatic migration.
+ * Returns null outside the native shell.
+ */
+export async function verifyParentalPin(pin: string, stored: unknown): Promise<VerifyPinResult | null> {
+  if (!isTauri()) return null
+  const raw = await invoke('verify_parental_pin', { pin, stored })
+  return parseVerifyPinResult(raw)
+}
+
+/**
+ * Queries an approved metadata provider (The Movie Database or TVmaze) via Rust IPC.
+ * Strictly bounded by Policy::metadata(), with no URL leaking and direct connections only.
+ * Returns null outside the native shell or when request fails.
+ */
+export async function fetchMetadata(url: string, authHeader?: string | null): Promise<string | null> {
+  if (!isTauri()) {
+    try {
+      const headers: Record<string, string> = { Accept: 'application/json' }
+      if (authHeader) headers['Authorization'] = authHeader
+      const res = await fetch(url, { headers })
+      if (!res.ok) return null
+      return await res.text()
+    } catch {
+      return null
+    }
+  }
+  try {
+    return await invoke('fetch_metadata', { url, authHeader: authHeader ?? null })
+  } catch {
+    return null
+  }
+}
+
+export interface UpdateCheckResult {
+  status: 'upToDate' | 'available' | 'unsupportedPlatform' | 'error'
+  currentVersion: string
+  latestVersion: string | null
+  releaseDate: string | null
+  releaseNotes: string | null
+  downloadUrl: string | null
+  hasSignature: boolean
+  platformKey: string
+  platformSupported: boolean
+  error: string | null
+}
+
+/**
+ * Checks for application updates from the official release manifest via Rust IPC.
+ * Evaluates current platform, architecture and semver numbers.
+ */
+export async function checkForUpdates(endpoint?: string | null): Promise<UpdateCheckResult | null> {
+  if (!inNativeShell()) {
+    return {
+      status: 'upToDate',
+      currentVersion: '0.1.0',
+      latestVersion: '0.1.0',
+      releaseDate: null,
+      releaseNotes: 'Web interface preview mode: native updater unavailable.',
+      downloadUrl: null,
+      hasSignature: false,
+      platformKey: 'web',
+      platformSupported: true,
+      error: null,
+    }
+  }
+  try {
+    const payload: { endpoint?: string } = {}
+    if (endpoint) payload.endpoint = endpoint
+    const raw = await invoke('check_for_updates', payload)
+    if (!raw || typeof raw !== 'object') return null
+    const r = raw as Record<string, unknown>
+    return {
+      status: (r.status as UpdateCheckResult['status']) ?? 'error',
+      currentVersion: typeof r.currentVersion === 'string' ? r.currentVersion : '0.1.0',
+      latestVersion: typeof r.latestVersion === 'string' ? r.latestVersion : null,
+      releaseDate: typeof r.releaseDate === 'string' ? r.releaseDate : null,
+      releaseNotes: typeof r.releaseNotes === 'string' ? r.releaseNotes : null,
+      downloadUrl: typeof r.downloadUrl === 'string' ? r.downloadUrl : null,
+      hasSignature: Boolean(r.hasSignature),
+      platformKey: typeof r.platformKey === 'string' ? r.platformKey : 'unknown',
+      platformSupported: Boolean(r.platformSupported),
+      error: typeof r.error === 'string' ? r.error : null,
+    }
+  } catch (e) {
+    return {
+      status: 'error',
+      currentVersion: '0.1.0',
+      latestVersion: null,
+      releaseDate: null,
+      releaseNotes: null,
+      downloadUrl: null,
+      hasSignature: false,
+      platformKey: 'unknown',
+      platformSupported: false,
+      error: e instanceof Error ? e.message : 'Could not reach update service',
+    }
+  }
+}
+
+if (typeof window !== 'undefined') {
+  ;(window as unknown as { __kinora_native?: Record<string, unknown> }).__kinora_native = {
+    fetchPlaylist,
+    fetchGuide,
+    saveSources,
+  }
+}
+
+
+

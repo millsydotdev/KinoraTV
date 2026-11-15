@@ -1,0 +1,44 @@
+/* Genuine Official Age Rating Badges CSS */
+.age-rating-mark {
+  display: inline-block;
+  height: 20px;
+  width: auto;
+  vertical-align: middle;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.5));
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.age-rating-bbfc {
+  height: 20px;
+  width: 20px;
+}
+
+.age-rating-mpa {
+  height: 18px;
+}
+
+.age-rating-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  text-align: center;
+  user-select: none;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+/* TV Parental Guidelines */
+.age-rating-tv {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f1f5f9;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}

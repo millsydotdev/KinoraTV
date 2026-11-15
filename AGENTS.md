@@ -8,10 +8,10 @@ and playlist channels in Live TV and the other channel screens (D3); honest Sett
 states for playlist channels, and individual categories from `A;B` groups (D3.1); HLS playback for
 playlist channels through Rust (D4); saved sources, refreshed at startup (D5); XMLTV guides by address or
 file, matched to playlist channels, in Live TV (D6); Sources › Discovery browsing the iptv-org public
-playlist catalogue, with explicit import through the ordinary playlist path (D7). Not approved yet:
-stream validation or probing, other playback formats, remote logos or guide artwork, other catalogue
-providers. Each needs the
-owner's explicit approval; that is a hard gate.
+playlist catalogue, with explicit import through the ordinary playlist path (D7). The owner approved
+M3U channel logos on 2026-11-01; they are fetched lazily through the guarded Rust image path and never
+saved. Still not approved: stream validation or probing, other playback formats, XMLTV guide artwork
+or other catalogue providers. Each needs the owner's explicit approval; that's a hard gate.
 
 Live path: `/home/millsy/dev/TVMovie` (symlinked from `/mnt/storage/TVMovie`). Git repo; first
 commit is the pre-Tauri baseline. Backups: `/home/millsy/dev/TVMovie-backup-pre-tauri-2026-10-22`
@@ -57,6 +57,9 @@ Prerequisites and architecture diagram: `README.md`.
 - `PlaylistChannel.streamUrl` may hold credentials: never render, log or persist it in plain text
   without an approved policy. Display `streamDisplay`. No logger is installed; if one is ever added,
   keep `reqwest`/`hyper` at warn level and never log commands' arguments.
+- `PlaylistChannel.logo` may also carry a query token: never put its address in an image element,
+  logs or saved data. `fetch_channel_logo` uses `Policy::logo()` and returns validated raster bytes;
+  the UI uses a data image and initials fallback. Imgur's UK region-block picture counts as no logo (`is_region_block`).
 - Saved sources (D5): `src-tauri/src/sources.rs` owns one file, `<app data>/sources/sources.json`
   (folder `0700`, file `0600`, schema `version` 2 since D6, atomic temp-file-and-rename writes, every save
   validated with `fetch::check_url`). It holds source addresses (they may carry tokens: the
@@ -72,7 +75,8 @@ Prerequisites and architecture diagram: `README.md`.
   parsed guides, the per-guide generation (results of superseded imports are dropped) and the
   `guide-<id>.json` caches; guide ids are `gd-[a-z0-9-]` because they form file names. Matching is
   `xmltv::normalize_id` (trim + ASCII case), then, only if that finds nothing, `xmltv::without_feed`
-  (iptv-org's `channel@feed` ids by their channel part), or a saved hand match; never display names. It lives in
+  (iptv-org's `channel@feed` ids by their channel part), then `xmltv::loose_keys` (same id ignoring punctuation, `[..]` tags and
+  a trailing quality; the country must agree and the guide channel must have listings), or a saved hand match; never display names. It lives in
   Rust: the page sends ids and gets matches back. Never fetch URLs found in a guide (icons, `<url>`).
 - Discovery (D7): `catalogue.rs` fetches one constant address (`catalogue::URL`) with
   `Policy::catalogue()` (`only_hosts` + `https_only` narrow `check_url` on every hop; never use them
@@ -107,6 +111,18 @@ Prerequisites and architecture diagram: `README.md`.
 - Live TV renders a page of channels (`GUIDE_PAGE` rows, `CARD_PAGE` cards) with "Show more". Do not
   render every channel: unbounded, 10,000 channels took 13 s to render and over 1 s per scrolled
   frame. A virtualised guide is the proposed follow-up (see `docs/RELEASE-READINESS.md`).
+- Connection testing: `test_source_connection` in `src-tauri/src/fetch.rs` runs a genuine HEAD request
+  (falling back to GET with 32 KB limit) using `Policy::source_test()`, strictly guarded against
+  private and loopback destinations with a 10-second timeout. Never fake connection success.
+- Profile data isolation: Personal media resources, ratings, preferences, and saved searches are
+  isolated per profile via scoped storage keys (`kinora.personalMediaLibrary.v1.<profileId>`).
+  Profile deletion in `profiles.tsx` cascades to purge all scoped keys for that profile.
+- Parental PIN security: Parental PINs are stored exclusively as salted SHA-256 hashes
+  (`kinora:<salt>:<pin>`) under `kinora.parental_pin_secure.v1`. Input is validated to exactly
+  four digits, legacy plaintext PINs are migrated and purged immediately, and a 30-second lockout
+  triggers after 5 consecutive failed attempts.
+- Typography standard: Em-dashes are strictly prohibited across all code, documentation, comments,
+  and UI text. Hyphens (-), colons (:), or parentheses () must be used instead.
 
 ## Layout
 
@@ -137,7 +153,7 @@ Prerequisites and architecture diagram: `README.md`.
 - `src/state/guides.ts` pure guide logic: transitions with per-operation tokens, status text, the ids
   each guide is asked about, match states (`resolveMatches`) and programmes per channel.
 - `src/state/playlists.ts` pure playlist-source logic: transitions with a per-operation token (stale
-  results are dropped), channel mapping (link-safe ids, `Uncategorised`, initials, no logos),
+  results are dropped), channel mapping (link-safe ids, `Uncategorised`, initials, lazy guarded M3U logos),
   categories (`group` keeps the source text; `categories` splits `A;B`, used for chips, filtering and
   labels), Add Source checks (`checkPlaylistUrl`, `readForPreview`), safe labels (`https://host/…`,
   file name) and user-facing error text.

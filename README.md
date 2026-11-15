@@ -1,7 +1,15 @@
-# Kinora
+# Kinora (KinoraTV)
 
 A TV, movie and series app: a React + TypeScript interface running inside a Rust (Tauri 2)
 desktop shell.
+
+![Kinora Desktop Home Screen](docs/images/kinora-home.png)
+
+## Creator & Attribution
+
+**Created by millsydotdev**
+- GitHub Profile: [https://github.com/millsydotdev](https://github.com/millsydotdev)
+- Canonical Repository: [https://github.com/millsydotdev/KinoraTV](https://github.com/millsydotdev/KinoraTV)
 
 **Status:** Sources can import real M3U playlists, by http(s) address or local file, through the
 Rust shell (Gates D2 and D3), and playlist channels whose streams are HLS over http(s) can be played
@@ -36,12 +44,14 @@ React 19 + TypeScript (src/)          Rust + Tauri 2 (src-tauri/)
 - **IPC boundary**: `src/lib/native.ts` is the only place React calls Rust. It mirrors the Rust
   structs, validates every response before use, and returns `null` outside Tauri.
 - **Security**: each app command is deny-by-default (`build.rs`). `capabilities/default.json` grants
-  the main window only the app's own commands: `app_info`, `fetch_playlist`, `parse_playlist_text`,
+  the main window only the app's own commands: `app_info`, `fetch_channel_logo`, `fetch_playlist`, `parse_playlist_text`,
   `open_stream`, `close_stream`, `load_sources`, `save_sources`, `fetch_guide`, `import_guide_file`,
   `load_guide`, `guide_channels`, `guide_programmes`, `remove_guide`, `load_catalogue` and
-  `refresh_catalogue`. No
-  filesystem, shell, HTTP, dialog or other plugins. A strict Content Security Policy is set in
-  `tauri.conf.json` (remote images stay blocked). Developer tools exist only in debug builds.
+  `refresh_catalogue`. No filesystem, shell, HTTP, dialog or other plugins. A strict Content Security
+  Policy is set in `tauri.conf.json`; remote image origins stay blocked. Visible playlist logos are
+  fetched by Rust through the guarded resolver, with a 256 KiB cap, a 10 s timeout and raster
+  signature checks, then passed to the UI as data images. They are cached only in memory and are not
+  saved with the source. Developer tools exist only in debug builds.
 - **Playlist fetching** (`src-tauri/src/fetch.rs`): http(s) only, no credentials in the address, no
   proxies. Local, private, link-local, CGNAT, multicast and reserved IPv4/IPv6 destinations are
   refused. Host names go through a resolver that checks every answer, which is the address
@@ -186,7 +196,30 @@ npm run build          # frontend production build into dist/
 npm run tauri:build    # native release binary + .rpm bundle
 ```
 
-Release output: `src-tauri/target/release/kinora` and `src-tauri/target/release/bundle/rpm/`.
+Release output: `src-tauri/target/release/kinora` and `src-tauri/target/release/bundle/` (RPM and DEB packages on Linux; NSIS and MSI on Windows; DMG on macOS).
 
 The native app keeps its own local storage, separate from the browser at localhost:5199, so it starts
 with the default demo library and appearance settings.
+
+## Supported Platforms
+
+| Platform | Distribution Formats | Minimum System Requirements | Runtime Engine |
+| :--- | :--- | :--- | :--- |
+| **Linux (x86_64)** | `.rpm`, `.deb`, `.AppImage` | WebKitGTK 4.1, GTK 3, OpenSSL 1.1/3.0 | WebKitGTK 2.44+ |
+| **Windows (x64)** | `.exe` (NSIS), `.msi` (WiX) | Windows 10 (1809+) or Windows 11 | Microsoft Edge WebView2 |
+| **macOS (Apple Silicon / Intel)** | `.dmg`, `.app` bundle | macOS Catalina 10.15 or later | Apple WebKit (WKWebView) |
+
+## Community & Security
+
+- **Contributing Guidelines:** See [CONTRIBUTING.md](file:///mnt/storage/TVMovie/CONTRIBUTING.md) for architectural rules, coding standards, and PR workflows.
+- **Security Policy:** See [SECURITY.md](file:///mnt/storage/TVMovie/SECURITY.md) for vulnerability reporting and security invariants.
+- **Code of Conduct:** See [CODE_OF_CONDUCT.md](file:///mnt/storage/TVMovie/CODE_OF_CONDUCT.md).
+- **Changelog:** See [CHANGELOG.md](file:///mnt/storage/TVMovie/CHANGELOG.md) for milestone release history.
+
+## Licensing & Intellectual Property
+
+Kinora is published under the **Kinora Proprietary Source-Available Licence - All Rights Reserved**. See [LICENSE](file:///mnt/storage/TVMovie/LICENSE) for the full licence text.
+
+This is **not** an OSI-approved open-source licence. Commercial use, public redistribution, unauthorized forks, and ingestion for AI/ML training are prohibited without prior written permission. For details on intellectual property scope and brand protections, see [Kinora Licensing and IP Protection](file:///mnt/storage/TVMovie/docs/legal/kinora-licensing-and-ip-protection.md).
+
+Third-party runtime dependencies and libraries are inventoried with their respective permissive licences in [public/THIRD-PARTY-NOTICES.txt](file:///mnt/storage/TVMovie/public/THIRD-PARTY-NOTICES.txt). Shipped packages are strictly permissive (MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, Unlicense). No GPL-licensed components are statically linked into the application binary. System media decoders and WebKit libraries are dynamically linked from the host operating system.

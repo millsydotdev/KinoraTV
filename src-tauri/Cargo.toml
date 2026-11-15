@@ -1,6 +1,6 @@
 [package]
 name = "kinora"
-version = "0.1.0"
+version = "0.5.0"
 description = "Kinora native shell (Tauri 2) hosting the React UI"
 edition = "2021"
 rust-version = "1.90"
@@ -32,6 +32,9 @@ getrandom = "0.3"
 # external resources or expands declared entities; flate2 decompresses `.xml.gz` guides with a cap.
 quick-xml = "0.42"
 flate2 = "1"
+resvg = { version = "0.49.0", default-features = false }
+openssl = "0.10"
+libc = "0.2"
 
 [features]
 # Lets dev builds (`tauri dev`) fetch from 127.0.0.1 so native smoke tests can play local fixtures.

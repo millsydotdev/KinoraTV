@@ -40,3 +40,83 @@
 .history-thumb { width: 86px; aspect-ratio: 16 / 9; border-radius: 6px; flex: none; }
 .history-row .channel-mark { margin: 0 19px; }
 .history-when { margin-left: auto; font-size: 0.8125rem; white-space: nowrap; padding-left: 12px; }
+
+/* Ratings and Hidden Tabs */
+.lib-ratings-tab, .lib-hidden-tab { display: flex; flex-direction: column; gap: 16px; }
+.lib-ratings-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.lib-rating-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 8px 14px 8px 8px; border-radius: var(--radius-md, 8px);
+  background: var(--surface-card, #0d0f12); border: 1px solid var(--graphite-border, #292d33);
+}
+.lib-rating-link { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; color: inherit; text-decoration: none; }
+.lib-rating-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.lib-rating-info strong { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lib-rating-info .faint { font-size: 12px; }
+.lib-dislike-reason { font-size: 11px; color: #f87171; text-transform: capitalize; }
+.lib-rating-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+
+/* Library Viewing Analytics HUD */
+.library-analytics-card {
+  padding: 20px 24px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-m);
+  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.library-analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
+}
+.lib-metric-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-s);
+}
+.lib-metric-num {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--accent-text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.lib-metric-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.lib-analytics-distribution {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.lib-dist-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.lib-dist-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  gap: 2px;
+}
+.lib-dist-bar > div {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 200ms var(--ease);
+}
+

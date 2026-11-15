@@ -4,8 +4,9 @@
 //! five predefined entities and character references. A `<!DOCTYPE>` with an internal subset (where
 //! entities would be declared) is refused outright, and so is any reference to an undeclared entity,
 //! so entity-expansion attacks have nothing to expand. Input size, nesting depth, channel and
-//! programme counts and every kept text field are capped. URLs, icons and other resources in the
-//! guide are ignored, never stored or fetched.
+//! programme counts and every kept text field are capped. Programme `<icon src="...">` URLs
+//! are validated and kept for guarded client fetching; channels, channel icons and other URLs
+//! are ignored, never stored or fetched.
 //!
 //! Times: `YYYYMMDDhhmmss` (or a leading part of it down to `YYYYMMDD`) with an optional offset
 //! (`+0100`, `-05:30`, `Z`). The XMLTV DTD says a time without an offset is UTC, so it is read as UTC,
@@ -82,6 +83,8 @@ pub struct Programme {
     pub desc: Option<String>,
     pub category: Option<String>,
     pub episode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -100,7 +103,7 @@ pub struct Guide {
 
 /// The channel-id comparison Kinora makes: surrounding whitespace removed and ASCII letters
 /// lower-cased, so `BBC1.uk` matches ` bbc1.UK`. Nothing else is changed (no punctuation stripping),
-/// and display names are never used for matching. The one fallback is `without_feed`.
+/// and display names are never used for matching. The fallbacks are `without_feed`, then `loose_keys`.
 pub fn normalize_id(id: &str) -> String {
     id.trim().to_ascii_lowercase()
 }
@@ -112,6 +115,212 @@ pub fn without_feed(id: &str) -> Option<&str> {
         .split_once('@')
         .map(|(channel, _)| channel)
         .filter(|c| !c.is_empty())
+}
+
+/// Last-resort id comparison for guides that spell ids differently from the playlist: `BBC.Two.HD.uk`,
+/// `BBCTwo.uk@HD`, `[BBC2].BBC.Two.uk2`. Ignores punctuation, `[..]` tags and a trailing quality, but
+/// the country must agree and channels are still compared by id, never by display name. Feed-specific
+/// key first (`BBCOne.uk@London` is `bbconelondon.uk`), then the channel on its own.
+pub fn loose_keys(id: &str) -> Vec<String> {
+    let (channel, feed) = id.trim().split_once('@').unwrap_or((id.trim(), ""));
+    let Some((stem, country)) = channel.rsplit_once('.') else {
+        return Vec::new();
+    };
+    let country = country.trim_end_matches(|c: char| c.is_ascii_digit());
+    if country.len() != 2 || !country.chars().all(|c| c.is_ascii_alphabetic()) {
+        return Vec::new();
+    }
+    let country = country.to_ascii_lowercase();
+    let key = |text: &str| {
+        let mut plain = String::new();
+        let mut depth = 0u32;
+        for c in text.chars() {
+            match c {
+                '[' => depth += 1,
+                ']' => depth = depth.saturating_sub(1),
+                c if depth == 0 && c.is_alphanumeric() => plain.push(c),
+                _ => {}
+            }
+        }
+        // Case-sensitive, so a name merely ending in those letters keeps them.
+        let plain = ["FHD", "UHD", "HD", "SD", "4K"]
+            .iter()
+            .find_map(|q| plain.strip_suffix(q))
+            .filter(|rest| !rest.is_empty())
+            .unwrap_or(&plain);
+        (!plain.is_empty()).then(|| format!("{}.{country}", plain.to_lowercase()))
+    };
+    let mut keys = Vec::new();
+    if !feed.is_empty() {
+        keys.extend(key(&format!("{stem}{feed}")));
+    }
+    keys.extend(key(stem).filter(|k| !keys.contains(k)));
+    keys
+}
+
+/// Additional conservative normalized keys for unambiguous country/service suffixes
+/// (such as `QVCUK.uk` ↔ `QVC.uk`, `France24English.fr` ↔ `France24.fr`, `BBCOne.uk` ↔ `BBCOneLondon.uk`,
+/// or `BBCRadio1.uk` ↔ `BBCR1.uk`). Always requires the 2-letter country code to match.
+pub fn alias_keys(id: &str) -> Vec<String> {
+    let base = loose_keys(id);
+    let mut out = Vec::new();
+    let mut push = |s: String| {
+        if !base.contains(&s) && !out.contains(&s) {
+            out.push(s);
+        }
+    };
+    for k in &base {
+        let Some((stem, country)) = k.rsplit_once('.') else {
+            continue;
+        };
+        if let Some(stripped) = stem.strip_suffix(country) {
+            if stripped.len() >= 2 {
+                push(format!("{stripped}.{country}"));
+            }
+        }
+        for suffix in ["international", "english", "world", "news", "tv", "channel"] {
+            if let Some(stripped) = stem.strip_suffix(suffix) {
+                if stripped.len() >= 2 {
+                    push(format!("{stripped}.{country}"));
+                }
+            }
+        }
+        if country == "uk" {
+            match stem {
+                "bbcone" => {
+                    push("bbconelondon.uk".to_owned());
+                    push("bbconelon.uk".to_owned());
+                }
+                "bbconelondon" | "bbconelon" => {
+                    push("bbcone.uk".to_owned());
+                }
+                "bbctwo" => {
+                    push("bbctwolondon.uk".to_owned());
+                    push("bbctwoengland.uk".to_owned());
+                }
+                "bbctwolondon" | "bbctwoengland" => {
+                    push("bbctwo.uk".to_owned());
+                }
+                "bbcthree" => {
+                    push("bbcthreehd.uk".to_owned());
+                }
+                "bbcthreehd" => {
+                    push("bbcthree.uk".to_owned());
+                }
+                "bbcfour" => {
+                    push("bbcfourhd.uk".to_owned());
+                }
+                "bbcfourhd" => {
+                    push("bbcfour.uk".to_owned());
+                }
+                "channel5" | "five" => {
+                    push("5.uk".to_owned());
+                }
+                "5" => {
+                    push("channel5.uk".to_owned());
+                }
+                "channel4" | "four" => {
+                    push("4.uk".to_owned());
+                }
+                "4" => {
+                    push("channel4.uk".to_owned());
+                }
+                "itv1" | "itv" => {
+                    push("itv1london.uk".to_owned());
+                    push("itvlondon.uk".to_owned());
+                }
+                "itv1london" | "itvlondon" => {
+                    push("itv1.uk".to_owned());
+                }
+                "itv2" => {
+                    push("itv2hd.uk".to_owned());
+                }
+                "itv2hd" => {
+                    push("itv2.uk".to_owned());
+                }
+                "itv3" => {
+                    push("itv3hd.uk".to_owned());
+                }
+                "itv3hd" => {
+                    push("itv3.uk".to_owned());
+                }
+                "itv4" => {
+                    push("itv4hd.uk".to_owned());
+                }
+                "itv4hd" => {
+                    push("itv4.uk".to_owned());
+                }
+                "greatmovies" => {
+                    push("sonymovies.uk".to_owned());
+                }
+                "greatromance" => {
+                    push("sonymoviesromance.uk".to_owned());
+                }
+                "skynews" => {
+                    push("skynewshd.uk".to_owned());
+                }
+                "skynewshd" => {
+                    push("skynews.uk".to_owned());
+                }
+                s if s.starts_with("bbcradio") => {
+                    let rest = &s["bbcradio".len()..];
+                    if !rest.is_empty() {
+                        push(format!("bbcr{rest}.uk"));
+                    }
+                    let rest_no_fms = rest.trim_end_matches("fm").trim_end_matches("extra");
+                    if !rest_no_fms.is_empty() && rest_no_fms != rest {
+                        push(format!("bbcr{rest_no_fms}.uk"));
+                    }
+                    if rest == "1extra" {
+                        push("bbcr1x.uk".to_owned());
+                    } else if rest == "5live" {
+                        push("bbcr5l.uk".to_owned());
+                    } else if rest == "5livesportsextra" {
+                        push("bbcr5lsx.uk".to_owned());
+                    } else if rest == "6music" {
+                        push("bbcr6m.uk".to_owned());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    out
+}
+
+/// Normalizes an XMLTV `<display-name>` paired with the 2-letter country suffix from its `<channel id>`
+/// so unambiguous display names in that country can be matched as Tier 3 when ID matching finds nothing.
+pub fn display_name_key(name: &str, channel_id: &str) -> Option<String> {
+    let (ch, _) = channel_id
+        .trim()
+        .split_once('@')
+        .unwrap_or((channel_id.trim(), ""));
+    let (_, raw_country) = ch.rsplit_once('.')?;
+    let country = raw_country.trim_end_matches(|c: char| c.is_ascii_digit());
+    if country.len() != 2 || !country.chars().all(|c| c.is_ascii_alphabetic()) {
+        return None;
+    }
+    let country = country.to_ascii_lowercase();
+    let mut plain = String::new();
+    let mut depth = 0u32;
+    for c in name.trim().chars() {
+        match c {
+            '[' | '(' => depth += 1,
+            ']' | ')' => depth = depth.saturating_sub(1),
+            c if depth == 0 && c.is_ascii_alphanumeric() => plain.push(c),
+            _ => {}
+        }
+    }
+    let plain = ["FHD", "UHD", "HD", "SD", "4K"]
+        .iter()
+        .find_map(|q| plain.strip_suffix(q))
+        .filter(|rest| !rest.is_empty())
+        .unwrap_or(&plain);
+    let low = plain.to_ascii_lowercase();
+    if low.len() < 2 {
+        return None;
+    }
+    Some(format!("{low}.{country}"))
 }
 
 fn not_guide(message: impl Into<String>) -> IngestError {
@@ -300,6 +509,7 @@ struct Pending {
     category: Option<String>,
     onscreen: Option<String>,
     xmltv_ns: Option<String>,
+    icon: Option<String>,
 }
 
 struct Raw {
@@ -310,6 +520,7 @@ struct Raw {
     desc: Option<String>,
     category: Option<String>,
     episode: Option<String>,
+    icon: Option<String>,
 }
 
 #[derive(Default)]
@@ -427,6 +638,7 @@ impl Builder {
             desc: p.desc,
             category: p.category,
             episode: episode.and_then(|e| clean(&e, MAX_EPISODE_CHARS)),
+            icon: p.icon,
         });
         Ok(())
     }
@@ -495,6 +707,7 @@ impl Builder {
                         desc: p.desc.clone(),
                         category: p.category.clone(),
                         episode: p.episode.clone(),
+                        icon: p.icon.clone(),
                     });
                 }
                 out
@@ -578,6 +791,27 @@ fn valid_id(raw: Option<String>) -> Option<String> {
     raw.map(|s| s.trim().to_owned()).filter(|s| {
         !s.is_empty() && s.chars().count() <= MAX_ID_CHARS && !s.chars().any(char::is_control)
     })
+}
+
+pub const MAX_ICON_URL_CHARS: usize = 2048;
+
+fn clean_icon_url(raw: Option<String>) -> Option<String> {
+    let raw = raw?;
+    if raw.chars().any(char::is_control) {
+        return None;
+    }
+    let s = raw.trim();
+    if s.is_empty() || s.len() > MAX_ICON_URL_CHARS {
+        return None;
+    }
+    let url = reqwest::Url::parse(s).ok()?;
+    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+        return None;
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return None;
+    }
+    Some(s.to_owned())
 }
 
 /// Parses guide text. `now` (UTC ms) sets the window of programmes kept.
@@ -674,6 +908,13 @@ pub fn parse(text: &str, now: i64, limits: Limits) -> Result<Guide, IngestError>
                     };
                     if field.is_none() {
                         field = wanted.map(|f| (f, stack.len() + 1));
+                    }
+                    if n == "icon" {
+                        if let Some(p) = programme.as_mut() {
+                            if p.icon.is_none() {
+                                p.icon = clean_icon_url(attr(e, "src")?);
+                            }
+                        }
                     }
                     Elem::Other
                 }
@@ -873,6 +1114,7 @@ mod tests {
                 desc: Some("The latest headlines.".into()),
                 category: Some("News".into()),
                 episode: Some("S2 E5".into()),
+                icon: Some("https://img.example/p.png".into()),
             }
         );
         assert_eq!(one[1].title, "Film & Art");
@@ -885,9 +1127,54 @@ mod tests {
         assert_eq!((g.skipped, g.duplicates), (0, 0));
         let json = serde_json::to_string(&g).unwrap();
         assert!(
-            !json.contains("img.example") && !json.contains("one.example"),
-            "icons and urls are not kept"
+            !json.contains("one.example") && !json.contains("1.png"),
+            "channel icons and urls are not kept"
         );
+        assert!(json.contains("p.png"), "programme artwork icon is kept");
+    }
+
+    #[test]
+    fn cleans_and_validates_icon_urls() {
+        assert_eq!(clean_icon_url(None), None);
+        assert_eq!(clean_icon_url(Some("".into())), None);
+        assert_eq!(clean_icon_url(Some("   ".into())), None);
+        assert_eq!(clean_icon_url(Some("not-a-url".into())), None);
+        assert_eq!(
+            clean_icon_url(Some("ftp://example.com/pic.jpg".into())),
+            None
+        );
+        assert_eq!(clean_icon_url(Some("javascript:alert(1)".into())), None);
+        assert_eq!(clean_icon_url(Some("file:///etc/passwd".into())), None);
+        assert_eq!(
+            clean_icon_url(Some("https://user:pass@example.com/pic.jpg".into())),
+            None
+        );
+        assert_eq!(
+            clean_icon_url(Some("https://example.com/pic.jpg\n".into())),
+            None
+        );
+        assert_eq!(
+            clean_icon_url(Some("https://example.com/pic.jpg".into())),
+            Some("https://example.com/pic.jpg".into())
+        );
+        assert_eq!(
+            clean_icon_url(Some("  http://example.com/pic.png  ".into())),
+            Some("http://example.com/pic.png".into())
+        );
+
+        let g = guide(
+            r#"<channel id="one.uk"><display-name>One</display-name></channel>
+               <programme start="20260329120000 +0000" stop="20260329130000 +0000" channel="one.uk">
+                 <title>Show 1</title>
+                 <icon src="https://user:pass@bad.example/icon.jpg"/>
+               </programme>
+               <programme start="20260329130000 +0000" stop="20260329140000 +0000" channel="one.uk">
+                 <title>Show 2</title>
+                 <icon src="not-a-url"/>
+               </programme>"#,
+        );
+        assert_eq!(g.schedules[0][0].icon, None);
+        assert_eq!(g.schedules[0][1].icon, None);
     }
 
     #[test]
@@ -1073,6 +1360,24 @@ mod tests {
             normalize_id("bbc1.uk"),
             "no punctuation stripping"
         );
+    }
+
+    #[test]
+    fn loose_keys_ignore_spelling_but_never_the_country() {
+        let first = |id: &str| loose_keys(id).first().cloned();
+        assert_eq!(first("BBC.Two.HD.uk"), first("BBCTwo.uk@HD"));
+        assert_eq!(first("[BBC2].BBC.Two.uk"), first("BBCTwo.uk"));
+        assert_eq!(first("Daystar.HD.[CHARTER].us2"), first("Daystar.us"));
+        assert_eq!(first("BBCOne.uk@London"), first("BBC.One.London.HD.uk"));
+        assert_eq!(loose_keys("BBCOne.uk@Mars"), ["bbconemars.uk", "bbcone.uk"]);
+        assert_ne!(first("Star.uk"), first("Star.us"));
+        assert_ne!(
+            first("Wisd.uk"),
+            first("Wi.uk"),
+            "lower-case endings are part of the name"
+        );
+        assert!(loose_keys("plex.tv.Z.Nation.plex").is_empty());
+        assert!(loose_keys("no-country").is_empty());
     }
 
     #[test]

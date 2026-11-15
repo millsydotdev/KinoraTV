@@ -31,6 +31,43 @@ $S/missing/index.m3u8?token=STREAMTOKEN
 #EXTINF:-1 tvg-id="fx.slow" group-title="Fixtures",Fixture Slow
 $S/slow/hls/index.m3u8?token=STREAMTOKEN
 EOF
+# Formats: fMP4/CMAF, HEVC, separate audio and subtitle renditions, a sliding live window (server.py).
+mkdir -p "$F/fmp4" "$F/hevc" "$F/alt/video" "$F/alt/en" "$F/alt/fr"
+( cd "$F/fmp4" && clip testsrc 500 -hls_segment_type fmp4 -hls_fmp4_init_filename init.mp4 -hls_segment_filename 'seg%02d.m4s' index.m3u8 )
+( cd "$F/hevc" && ffmpeg -loglevel error -y -f lavfi -i testsrc=size=640x360:rate=25 -f lavfi -i sine=frequency=300:sample_rate=48000 -t 12 -c:v libx265 -x265-params log-level=error -preset veryfast -pix_fmt yuv420p -tag:v hvc1 -g 50 -c:a aac -b:a 96k -f hls -hls_time 2 -hls_list_size 0 -hls_segment_type fmp4 -hls_fmp4_init_filename init.mp4 -hls_segment_filename 'seg%02d.m4s' index.m3u8 )
+( cd "$F/alt/video" && ffmpeg -loglevel error -y -f lavfi -i testsrc2=size=640x360:rate=25 -t 12 -c:v libx264 -preset veryfast -pix_fmt yuv420p -g 50 -f hls -hls_time 2 -hls_list_size 0 -hls_segment_filename 'seg%02d.ts' index.m3u8 )
+for l in en:440 fr:880; do ( cd "$F/alt/${l%%:*}" && ffmpeg -loglevel error -y -f lavfi -i "sine=frequency=${l##*:}:sample_rate=48000" -t 12 -c:a aac -b:a 96k -f hls -hls_time 2 -hls_list_size 0 -hls_segment_filename 'seg%02d.ts' index.m3u8 ); done
+mkdir -p "$F/long" "$F/break"
+( cd "$F/long" && ffmpeg -loglevel error -y -f lavfi -i testsrc=size=320x180:rate=25 -f lavfi -i sine=frequency=500:sample_rate=48000 -t 600 -c:v libx264 -preset ultrafast -pix_fmt yuv420p -g 50 -c:a aac -b:a 48k -f hls -hls_time 2 -hls_list_size 0 -hls_segment_filename 'seg%03d.ts' index.m3u8 )
+# Programme, ad break, programme: timestamps restart at the break.
+printf '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:3\n#EXT-X-PLAYLIST-TYPE:VOD\n' > "$F/break/index.m3u8"
+for part in 1 2 3; do [ $part -gt 1 ] && echo '#EXT-X-DISCONTINUITY' >> "$F/break/index.m3u8"; for i in 00 01 02; do printf '#EXTINF:2.0,\n/hls/seg%s.ts\n' $i >> "$F/break/index.m3u8"; done; done
+echo '#EXT-X-ENDLIST' >> "$F/break/index.m3u8"
+printf 'WEBVTT\n\n00:00:00.000 --> 00:00:12.000\nFixture subtitle\n' > "$F/alt/subs.vtt"
+printf '#EXTM3U\n#EXT-X-TARGETDURATION:12\n#EXT-X-PLAYLIST-TYPE:VOD\n#EXTINF:12.0,\nsubs.vtt\n#EXT-X-ENDLIST\n' > "$F/alt/subs.m3u8"
+cat > "$F/alt/index.m3u8" <<'EOF'
+#EXTM3U
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="English",LANGUAGE="en",DEFAULT=YES,AUTOSELECT=YES,URI="en/index.m3u8"
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="Francais",LANGUAGE="fr",AUTOSELECT=YES,URI="fr/index.m3u8"
+#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="English",LANGUAGE="en",AUTOSELECT=YES,URI="subs.m3u8"
+#EXT-X-STREAM-INF:BANDWIDTH=1000000,RESOLUTION=640x360,CODECS="avc1.64001e,mp4a.40.2",AUDIO="aud",SUBTITLES="subs"
+video/index.m3u8
+EOF
+cat > "$F/formats.m3u" <<EOF
+#EXTM3U
+#EXTINF:-1 tvg-id="fm.fmp4" group-title="Formats",Format fMP4
+$S/fmp4/index.m3u8
+#EXTINF:-1 tvg-id="fm.hevc" group-title="Formats",Format HEVC
+$S/hevc/index.m3u8
+#EXTINF:-1 tvg-id="fm.alt" group-title="Formats",Format Alternate
+$S/alt/index.m3u8
+#EXTINF:-1 tvg-id="fm.live" group-title="Formats",Format Live
+$S/live/index.m3u8
+#EXTINF:-1 tvg-id="fm.break" group-title="Formats",Format Break
+$S/break/index.m3u8
+#EXTINF:-1 tvg-id="fm.mp4" group-title="Formats",Format File
+$S/progressive.mp4
+EOF
 printf 'this is not a playlist\n<<<>>>\n' > "$F/bad.m3u"
 printf '<!doctype html><html><body>Sign in</body></html>' > "$F/login.html"
 python3 - "$F" <<'PY'

@@ -23,7 +23,7 @@ const fake = vi.hoisted(() => {
   class FakeHls {
     static instances: FakeHls[] = []
     static isSupported = () => true
-    static Events = { ERROR: 'hlsError', MANIFEST_PARSED: 'hlsManifestParsed' }
+    static Events = { ERROR: 'hlsError', MANIFEST_PARSED: 'hlsManifestParsed', AUDIO_TRACKS_UPDATED: 'a', SUBTITLE_TRACKS_UPDATED: 's', AUDIO_TRACK_SWITCHED: 'as', SUBTITLE_TRACK_SWITCH: 'ss', LEVEL_SWITCHED: 'ls' }
     static ErrorTypes = { MEDIA_ERROR: 'mediaError', NETWORK_ERROR: 'networkError' }
     source: string | null = null
     constructor() { FakeHls.instances.push(this) }
@@ -34,7 +34,7 @@ const fake = vi.hoisted(() => {
   }
   return { FakeHls }
 })
-vi.mock('hls.js/light', () => ({ default: fake.FakeHls }))
+vi.mock('hls.js', () => ({ default: fake.FakeHls }))
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 

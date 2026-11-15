@@ -146,11 +146,17 @@ describe('the active catalogue', () => {
     expect(channelGroups([...toChannels('x', report([entry({ group: 'Sport' }), entry({ group: null }), entry({ group: 'Kids' })]).channels)])).toEqual(['Kids', 'Sport', UNCATEGORISED])
   })
 
+  it('keeps playlist logo addresses in memory for the guarded image loader', () => {
+    const [channel] = toChannels('pl-a', report([entry()]).channels)
+    expect(channel?.logoUrl).toBe('https://img.example/one.png?sig=LOGOSIG')
+    expect(toSaved(urlSource('pl-a', report([entry()]))).channels[0]).not.toHaveProperty('logo')
+  })
+
   it('never puts stream or logo addresses, credentials or tokens into anything a screen shows', () => {
     const [c] = toChannels('pl-a', report([entry({ key: 'name:00ff00ff00ff00ff', tvgId: null })]).channels)
-    const shown = JSON.stringify({ id: c!.id, name: c!.name, group: c!.group, mark: c!.mark, number: c!.number, logo: c!.logoUrl })
+    const shown = JSON.stringify({ id: c!.id, name: c!.name, group: c!.group, mark: c!.mark, number: c!.number, logo: Boolean(c!.logoUrl) })
     for (const s of SECRETS) expect(shown).not.toContain(s)
-    expect(c!.logoUrl).toBeNull() // remote logos stay blocked; initials instead
+    expect(c!.logoUrl).toBe('https://img.example/one.png?sig=LOGOSIG') // passed only to Rust's guarded image loader
     expect(c!.streamUrl).toBe(SECRET_URL) // kept, unshown, for a future player
     expect(addressLabel(SECRET_URL)).toBe('http://provider.example:8080/…')
     expect(addressLabel('not a url')).toBe('Playlist address')
@@ -312,4 +318,24 @@ describe('saving and restoring', () => {
     const file = restoreSource(toSaved(createSource('pl-f', { name: 'F', origin: 'file', url: null, label: 'f.m3u' }, report([entry()]), 1)))
     expect(unavailableReason(file)).toContain('Choose the file again')
   })
+
+  it('preserves clean public logo URLs while stripping credential-bearing ones', () => {
+    const publicLogo = 'https://cdn.example.org/logos/bbc-one.png'
+    const secretLogo = 'https://provider.example/logo.png?token=SECRET999'
+    const s = urlSource('pl-a', report([
+      entry({ key: 'ch1', logo: publicLogo }),
+      entry({ key: 'ch2', logo: secretLogo }),
+      entry({ key: 'ch3', logo: null }),
+    ]))
+    const saved = toSaved(s)
+    expect(saved.channels[0]?.logo).toBe(publicLogo)
+    expect(saved.channels[1]?.logo).toBeUndefined()
+    expect(saved.channels[2]?.logo).toBeUndefined()
+
+    const restored = restoreSource(saved)
+    expect(restored.channels[0]?.logoUrl).toBe(publicLogo)
+    expect(restored.channels[1]?.logoUrl).toBeNull()
+    expect(restored.channels[2]?.logoUrl).toBeNull()
+  })
 })
+

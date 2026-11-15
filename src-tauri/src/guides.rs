@@ -50,8 +50,12 @@ struct CacheRef<'a> {
 struct Held {
     guide: Guide,
     fetched_at: i64,
-    /// `xmltv::normalize_id(channel id)` → index into `guide.channels`.
+    /// Tier 1: `xmltv::normalize_id(channel id)` → index into `guide.channels`.
     index: HashMap<String, usize>,
+    /// Tier 2: `xmltv::loose_keys` & `xmltv::alias_keys` → first channel with programmes.
+    loose: HashMap<String, usize>,
+    /// Tier 3: unambiguous `xmltv::display_name_key` → unique channel with programmes in that country.
+    unique_names: HashMap<String, usize>,
 }
 
 impl Held {
@@ -62,10 +66,48 @@ impl Held {
             .enumerate()
             .map(|(i, c)| (xmltv::normalize_id(&c.id), i))
             .collect();
+        let mut loose = HashMap::new();
+        for (i, c) in guide.channels.iter().enumerate() {
+            if !guide.schedules[i].is_empty() {
+                for key in xmltv::loose_keys(&c.id).into_iter().take(1) {
+                    loose.entry(key).or_insert(i);
+                }
+            }
+        }
+        // Populate secondary alias keys only after primary loose_keys so exact loose_keys always win.
+        for (i, c) in guide.channels.iter().enumerate() {
+            if !guide.schedules[i].is_empty() {
+                for key in xmltv::alias_keys(&c.id) {
+                    loose.entry(key).or_insert(i);
+                }
+            }
+        }
+        // Tier 3: unambiguous normalized display-name within the same 2-letter country suffix.
+        let mut name_candidates: HashMap<String, Option<usize>> = HashMap::new();
+        for (i, c) in guide.channels.iter().enumerate() {
+            if !guide.schedules[i].is_empty() {
+                if let Some(nk) = xmltv::display_name_key(&c.name, &c.id) {
+                    name_candidates
+                        .entry(nk)
+                        .and_modify(|slot| {
+                            if *slot != Some(i) {
+                                *slot = None;
+                            }
+                        })
+                        .or_insert(Some(i));
+                }
+            }
+        }
+        let unique_names = name_candidates
+            .into_iter()
+            .filter_map(|(k, v)| v.map(|i| (k, i)))
+            .collect();
         Self {
             guide,
             fetched_at,
             index,
+            loose,
+            unique_names,
         }
     }
 
@@ -347,13 +389,26 @@ impl GuideStore {
                     q.ids
                         .iter()
                         .map(|id| {
-                            // Exact first; then an iptv-org `channel@feed` id by its channel part.
+                            // Tier 1: exact normalized id; Tier 2: iptv-org `channel@feed` id by its channel part,
+                            // loose_keys, and conservative alias_keys; Tier 3: unambiguous display_name_key in same country.
                             let index = held
                                 .index
                                 .get(&xmltv::normalize_id(id))
                                 .or_else(|| {
                                     xmltv::without_feed(id)
                                         .and_then(|c| held.index.get(&xmltv::normalize_id(c)))
+                                })
+                                .or_else(|| {
+                                    xmltv::loose_keys(id).iter().find_map(|k| held.loose.get(k))
+                                })
+                                .or_else(|| {
+                                    xmltv::alias_keys(id).iter().find_map(|k| held.loose.get(k))
+                                })
+                                .or_else(|| {
+                                    xmltv::loose_keys(id)
+                                        .into_iter()
+                                        .chain(xmltv::alias_keys(id))
+                                        .find_map(|k| held.unique_names.get(&k))
                                 })
                                 .copied();
                             if let Some(i) = index.filter(|i| listed.insert(*i)) {
@@ -500,6 +555,29 @@ mod tests {
             store.query(&[], NOW, NOW + 3 * 24 * HOUR).is_err(),
             "window too long"
         );
+    }
+
+    #[test]
+    fn differently_spelled_ids_match_only_channels_with_listings() {
+        let store = GuideStore::new(None);
+        store
+            .import(
+                "gd-a",
+                br#"<tv><channel id="Two.HD.uk"/><channel id="Empty.uk"/>
+                    <programme start="20260329120000" stop="20260329130000" channel="Two.HD.uk"><title>T</title></programme></tv>"#
+                    .to_vec(),
+                NOW,
+            )
+            .unwrap();
+        let a = ask(
+            &store,
+            &["Two.uk@SD", "Two.us", "Empty.uk@SD", "Em.pty.uk"],
+            NOW - HOUR,
+            NOW + HOUR,
+        );
+        let hit: Vec<_> = a.matches.iter().map(|m| m.channel.as_deref()).collect();
+        assert_eq!(hit, [Some("Two.HD.uk"), None, Some("Empty.uk"), None]);
+        assert_eq!(a.programmes.len(), 1);
     }
 
     #[test]
@@ -702,5 +780,34 @@ mod tests {
             .collect();
         left.sort();
         assert_eq!(left, ["guide-gd-keep.json", "sources.json"]);
+    }
+
+    #[test]
+    fn conservative_alias_and_unambiguous_display_name_matching() {
+        let store = GuideStore::new(None);
+        let guide = br#"<tv>
+            <channel id="QVC.uk"><display-name>QVC</display-name></channel>
+            <channel id="BBCR1.uk"><display-name>BBC Radio 1</display-name></channel>
+            <channel id="BBCOneLon.uk"><display-name>BBC One London</display-name></channel>
+            <channel id="dup1.uk"><display-name>Shared Name</display-name></channel>
+            <channel id="dup2.uk"><display-name>Shared Name</display-name></channel>
+            <programme start="20260329120000" stop="20260329130000" channel="QVC.uk"><title>Shopping</title></programme>
+            <programme start="20260329120000" stop="20260329130000" channel="BBCR1.uk"><title>Radio 1</title></programme>
+            <programme start="20260329120000" stop="20260329130000" channel="BBCOneLon.uk"><title>News</title></programme>
+            <programme start="20260329120000" stop="20260329130000" channel="dup1.uk"><title>D1</title></programme>
+            <programme start="20260329120000" stop="20260329130000" channel="dup2.uk"><title>D2</title></programme>
+        </tv>"#;
+        store.import("gd-a", guide.to_vec(), NOW).unwrap();
+        let a = ask(
+            &store,
+            &["QVCUK.uk", "BBCRadio1.uk", "BBCOne.uk", "SharedName.uk"],
+            NOW,
+            NOW + HOUR,
+        );
+        let chans: Vec<_> = a.matches.iter().map(|m| m.channel.as_deref()).collect();
+        assert_eq!(
+            chans,
+            [Some("QVC.uk"), Some("BBCR1.uk"), Some("BBCOneLon.uk"), None]
+        );
     }
 }

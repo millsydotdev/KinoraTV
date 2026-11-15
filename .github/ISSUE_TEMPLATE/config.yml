@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security Vulnerability Reporting
+    url: https://github.com/millsydotdev/KinoraTV/security/advisories/new
+    about: Please report security vulnerabilities privately. Do not open public issues.
+  - name: Community Discussions
+    url: https://github.com/millsydotdev/KinoraTV/discussions
+    about: Ask questions, discuss ideas, and share feedback with the Kinora community.

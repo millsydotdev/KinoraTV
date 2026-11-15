@@ -2,7 +2,7 @@
 // (sources.rs) without stream addresses: a restored source lists its channels, which play again once
 // the source is refreshed (or, for a file, chosen again). Nothing here has been playback-tested.
 import type { Channel, SourceKind } from '../data/types'
-import { IngestError, type PlaylistReport, type SavedChannel, type SavedSource } from '../lib/native'
+import { IngestError, type PlaylistChannel, type PlaylistReport, type SavedChannel, type SavedSource } from '../lib/native'
 
 export const UNCATEGORISED = 'Uncategorised'
 export const NOT_TESTED = 'Streams not playback-tested'
@@ -137,7 +137,17 @@ const idSafe = (key: string) =>
   [...key].map((ch) => (/[A-Za-z0-9.-]/.test(ch) ? ch : `_${(ch.codePointAt(0) ?? 0).toString(16)}_`)).join('')
 
 /** A channel as parsed (with its stream address) or as restored from disk (without one). */
-type ChannelEntry = SavedChannel & { streamUrl: string | null }
+type ChannelEntry = SavedChannel & Partial<Pick<PlaylistChannel, 'logo' | 'language' | 'country' | 'streamDisplay'>> & { streamUrl: string | null }
+
+/** Strips noisy technical and regional tags from channel titles for display. */
+export function cleanChannelTitle(name: string): string {
+  let s = name.trim()
+  s = s.replace(/\s*\[(?:UK|US|CA|AU|Geo-blocked|FHD|HD|SD|1080p|720p|HEVC)\]/gi, '')
+  s = s.replace(/\s*\((?:1080p|720p|576p|480p|FHD|HD|SD|backup|alt)\)/gi, '')
+  s = s.replace(/\s+-\s+(?:1080p|720p|HD|SD)$/i, '')
+  s = s.replace(/\s+\b(?:1080p|720p|576p|480p|FHD|HD|SD|UHD|4K)\b$/i, '')
+  return s.trim() || name
+}
 
 /**
  * Maps entries to channels. Ids are `<sourceId>~<escaped Rust key>`: unique within a source, stable
@@ -147,16 +157,17 @@ type ChannelEntry = SavedChannel & { streamUrl: string | null }
 export function toChannels(sourceId: string, entries: ChannelEntry[]): Channel[] {
   return entries.map((c, i) => {
     const name = c.name.trim() || 'Unnamed channel'
+    const isHd = /\b(hd|fhd|1080p?|uhd|4k)\b/i.test(name)
     return {
       id: `${sourceId}~${idSafe(c.key)}`,
       number: c.chno ?? i + 1,
       name,
       group: c.group?.trim() || UNCATEGORISED,
       categories: splitCategories(c.group),
-      logoUrl: null, // remote logos stay blocked by the CSP; initials are shown instead
+      logoUrl: c.logo ?? null,
       mark: { text: initials(name), tone: TONES[hash(c.key) % TONES.length] ?? '#3d4650' },
       streamUrl: c.streamUrl,
-      hd: false,
+      hd: isHd,
       sourceId,
       tvgId: c.tvgId,
     }
@@ -176,7 +187,39 @@ export function createSource(
   }
 }
 
-const savedChannel = ({ key, tvgId, name, group, chno }: SavedChannel): SavedChannel => ({ key, tvgId, name, group, chno })
+/** Returns true only if the URL is a safe, public, credential-free HTTP(S) address. */
+export function isCredentialSafeLogoUrl(url: string | null | undefined): boolean {
+  if (!url || typeof url !== 'string' || url.length > 2048) return false
+  try {
+    const u = new URL(url)
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return false
+    if (u.username || u.password) return false
+    const pathLower = u.pathname.toLowerCase()
+    if (['hunter2', 'password', 'secret', 'token'].some((t) => pathLower.includes(t))) return false
+    const sensitive = [
+      'token', 'auth', 'key', 'sig', 'signature', 'pass', 'password', 'user', 'username',
+      'hash', 'secret', 'session', 'jwt', 'ticket', 'bearer', 'credential', 'api_key',
+      'apikey', 'code', 'access_token', 'refresh_token', 'client_secret',
+    ]
+    for (const [k, v] of u.searchParams.entries()) {
+      const kLower = k.toLowerCase()
+      if (sensitive.some((s) => kLower === s || kLower.includes(s))) return false
+      if (v.length >= 32 && /^[A-Za-z0-9_-]+$/.test(v)) return false
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
+const savedChannel = ({ key, tvgId, name, group, chno, logo }: SavedChannel & { logo?: string | null }): SavedChannel => ({
+  key,
+  tvgId,
+  name,
+  group,
+  chno,
+  ...(isCredentialSafeLogoUrl(logo) ? { logo: logo! } : {}),
+})
 
 /** A source restored from disk: its channels are listed, but have no stream address until refreshed. */
 export function restoreSource(saved: SavedSource): PlaylistSource {

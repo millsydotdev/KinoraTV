@@ -1,24 +1,72 @@
-import { useState, type ReactNode } from 'react'
-import type { Channel } from '../data/types'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import type { Channel, Programme } from '../data/types'
 import { Icon, type IconName } from './Icon'
+import { loadChannelLogo, loadProgrammeArtwork } from '../lib/native'
+import { artworkEngine } from '../data/artworkEngine'
+import { clock } from '../lib/time'
 
 /** Artwork with explicit loading and failed states, so a missing image never leaves a blank hole. */
-export function Art({ src, alt = '', focus = 50, className = '', eager = false, children }: {
-  src: string; alt?: string; focus?: number; className?: string; eager?: boolean; children?: ReactNode
+export function Art({
+  src,
+  alt = '',
+  focus = 50,
+  className = '',
+  eager = false,
+  onLoad: onImageLoad,
+  onError: onImageError,
+  children,
+}: {
+  src: string
+  alt?: string
+  focus?: number
+  className?: string
+  eager?: boolean
+  onLoad?: (e: React.SyntheticEvent<HTMLImageElement>) => void
+  onError?: (e: React.SyntheticEvent<HTMLImageElement>) => void
+  children?: ReactNode
 }) {
-  const [state, setState] = useState<'loading' | 'loaded' | 'error'>(src ? 'loading' : 'error')
+  type ImageState = 'loading' | 'loaded' | 'error'
+  const imgRef = useRef<HTMLImageElement>(null)
+  const [image, setImage] = useState<{ src: string; state: ImageState }>({ src, state: src ? 'loading' : 'error' })
+  const state = image.src === src ? image.state : src ? 'loading' : 'error'
+
+  useEffect(() => {
+    if (!src) {
+      setImage({ src: '', state: 'error' })
+      return
+    }
+    const el = imgRef.current
+    if (el && el.complete) {
+      if (el.naturalWidth > 0) {
+        setImage({ src, state: 'loaded' })
+        onImageLoad?.({ currentTarget: el, target: el } as unknown as React.SyntheticEvent<HTMLImageElement>)
+      } else {
+        setImage({ src, state: 'error' })
+      }
+      return
+    }
+    setImage((cur) => (cur.src === src ? cur : { src, state: 'loading' }))
+  }, [src, onImageLoad])
+
   return (
     <div className={`art ${state === 'loading' ? 'is-loading' : ''} ${className}`}>
       {state !== 'error' && (
         <img
+          ref={imgRef}
           src={src}
           alt={alt}
           loading={eager ? 'eager' : 'lazy'}
-          decoding="async"
+          decoding={eager ? 'sync' : 'async'}
           style={{ objectPosition: `${focus}% 50%` }}
           className={state === 'loaded' ? 'is-loaded' : ''}
-          onLoad={() => setState('loaded')}
-          onError={() => setState('error')}
+          onLoad={(e) => {
+            setImage((current) => current.src === src ? { src, state: 'loaded' } : current)
+            onImageLoad?.(e)
+          }}
+          onError={(e) => {
+            setImage((current) => current.src === src ? { src, state: 'error' } : current)
+            onImageError?.(e)
+          }}
         />
       )}
       {state === 'error' && src && <div className="art-fallback">{alt ? `Artwork unavailable: ${alt}` : 'Artwork unavailable'}</div>}
@@ -27,10 +75,248 @@ export function Art({ src, alt = '', focus = 50, className = '', eager = false, 
   )
 }
 
-export function ChannelMark({ channel, size = 40 }: { channel: Channel; size?: number }) {
+/**
+ * Polished, honest branded programme placeholder.
+ * Used when a real-mode broadcast has no XMLTV icon or when artwork retrieval fails.
+ * Uses channel mark, programme title, broadcast times, and subtle channel styling.
+ */
+export function ProgrammeAmbientCard({
+  programme,
+  channel,
+  className = '',
+  compact = false,
+  backdropOnly = false,
+}: {
+  programme?: Programme | null
+  channel?: Channel | null
+  className?: string
+  compact?: boolean
+  backdropOnly?: boolean
+}) {
+  const tone = channel?.mark.tone ?? '#3d4650'
+  const markText = channel?.mark.text ?? (programme?.channelId ? programme.channelId.slice(0, 3).toUpperCase() : '')
+  const title = programme?.title ?? (channel?.sourceId ? 'No guide information' : 'Television Broadcast')
+  const category = programme?.category
+  const time = programme?.start && programme?.stop
+    ? `${clock(programme.start, '24h')} - ${clock(programme.stop, '24h')}`
+    : null
+
   return (
-    <span className="channel-mark" style={{ width: size, background: channel.mark.tone, fontSize: size * (channel.mark.text.length > 2 ? 0.3 : 0.36) }} aria-hidden="true">
-      {channel.logoUrl ? <img src={channel.logoUrl} alt="" /> : channel.mark.text}
+    <div
+      className={`programme-ambient-card ${compact ? 'is-compact' : ''} ${backdropOnly ? 'is-backdrop-only' : ''} ${className}`}
+      style={{ ['--ambient-tone' as string]: tone }}
+      role={backdropOnly ? 'presentation' : 'img'}
+      aria-label={backdropOnly ? undefined : `${title}${channel ? ` on ${channel.name}` : ''}`}
+      aria-hidden={backdropOnly ? true : undefined}
+    >
+      <div className="programme-ambient-mesh" />
+      <div className="programme-ambient-watermark" aria-hidden="true">
+        {markText}
+      </div>
+      {!backdropOnly && (
+        <div className="programme-ambient-content">
+          <div className="programme-ambient-header">
+            {channel && <ChannelMark channel={channel} size={compact ? 24 : 32} />}
+            {category && <span className="programme-ambient-pill">{category}</span>}
+          </div>
+          <div className="programme-ambient-footer">
+            <strong className="programme-ambient-title">{title}</strong>
+            {time && <span className="programme-ambient-time">{time}</span>}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Renders programme artwork with honest fallback hierarchy:
+ * 1. Valid programme artwork (fetched from remote icon URL via guarded Rust backend).
+ * 2. Explicit demo artwork (when explicitly provided or in demo mode: `programme.art`).
+ * 3. Honest branded programme placeholder (`ProgrammeAmbientCard`), NEVER unrelated scenic demo photos.
+ */
+export function ProgrammeArt({
+  programme,
+  channel,
+  icon: directIcon,
+  art: directArt,
+  alt,
+  focus = 50,
+  className = '',
+  eager = false,
+  backdropOnly = false,
+  children,
+}: {
+  programme?: Programme | null
+  channel?: Channel | null
+  icon?: string | null
+  art?: string | null
+  alt?: string
+  focus?: number
+  className?: string
+  eager?: boolean
+  backdropOnly?: boolean
+  children?: ReactNode
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const rawIconUrl = directIcon !== undefined ? directIcon : programme?.icon ?? null
+  // Refuse channel logo URLs masquerading as programme artwork
+  const isChannelLogo = Boolean(
+    (channel?.logoUrl && rawIconUrl && channel.logoUrl === rawIconUrl) ||
+    (rawIconUrl && (/\/tv-logo\/|\/channel-logo\/|channel_icon/i.test(rawIconUrl)))
+  )
+  const iconUrl = isChannelLogo ? null : rawIconUrl
+
+  // Check if central artwork engine has resolved genuine artwork for this programme
+  const enrichedRecord = programme?.title
+    ? artworkEngine.findArtwork(programme.title, 'epg-programme-artwork')
+    : null
+  const effectiveIconUrl = iconUrl || (enrichedRecord?.sourceUrl ? enrichedRecord.sourceUrl : null)
+
+  // Only use explicit art prop or demo programme art (never silent scenic fallback)
+  const explicitArt = directArt !== undefined ? directArt : programme?.art ?? null
+  const label = alt ?? programme?.title ?? ''
+
+  const [remoteArt, setRemoteArt] = useState<string | null>(null)
+  const [remoteFailed, setRemoteFailed] = useState(false)
+  const [aspect, setAspect] = useState<'landscape' | 'portrait'>('landscape')
+
+  useEffect(() => {
+    let active = true
+    setRemoteFailed(false)
+    setRemoteArt(null)
+    if (!effectiveIconUrl) return
+
+    // If it is a data URI or local image path, apply immediately without network roundtrip
+    if (effectiveIconUrl.startsWith('data:') || effectiveIconUrl.startsWith('/')) {
+      setRemoteArt(effectiveIconUrl)
+      return () => {
+        active = false
+      }
+    }
+
+    const load = () => {
+      if (programme) {
+        artworkEngine.registerProgrammeIcon(programme, channel ?? undefined)
+      }
+      void loadProgrammeArtwork(effectiveIconUrl)
+        .then((data) => {
+          if (!active) return
+          if (data) {
+            setRemoteArt(data)
+          } else {
+            setRemoteFailed(true)
+            artworkEngine.registerFailedDownload(programme?.id || effectiveIconUrl, effectiveIconUrl, 'Download returned invalid or non-raster bytes')
+          }
+        })
+        .catch((err) => {
+          if (active) {
+            setRemoteFailed(true)
+            artworkEngine.registerFailedDownload(programme?.id || effectiveIconUrl, effectiveIconUrl, String(err?.message || 'Network fetch failed'))
+          }
+        })
+    }
+
+    if (eager || typeof IntersectionObserver === 'undefined' || !containerRef.current) {
+      load()
+    } else {
+      const observer = new IntersectionObserver(
+        ([entry]) => {
+          if (entry?.isIntersecting) {
+            observer.disconnect()
+            load()
+          }
+        },
+        { rootMargin: '160px' },
+      )
+      observer.observe(containerRef.current)
+      return () => {
+        active = false
+        observer.disconnect()
+      }
+    }
+    return () => {
+      active = false
+    }
+  }, [effectiveIconUrl, eager])
+
+  const effectiveSrc = (remoteArt && !remoteFailed ? remoteArt : explicitArt) || null
+
+  // If no authentic image is available (no icon, or download failed, and no demo art)
+  if (!effectiveSrc) {
+    return (
+      <div ref={containerRef} className={`programme-art is-ambient ${className}`}>
+        <ProgrammeAmbientCard programme={programme} channel={channel} backdropOnly={backdropOnly} />
+        {children}
+      </div>
+    )
+  }
+
+  const isPortrait = aspect === 'portrait'
+
+  return (
+    <div ref={containerRef} className={`programme-art ${isPortrait ? 'is-portrait' : 'is-landscape'} ${className}`}>
+      {isPortrait && (
+        <div
+          className="programme-art-stage-backdrop"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'radial-gradient(ellipse at center, var(--surface-2) 0%, var(--bg) 100%)',
+            zIndex: 0,
+            pointerEvents: 'none',
+          }}
+          aria-hidden="true"
+        />
+      )}
+      <Art
+        src={effectiveSrc}
+        alt={label}
+        focus={focus}
+        eager={eager}
+        onLoad={(e) => {
+          const img = e.currentTarget
+          if (img.naturalHeight > img.naturalWidth * 1.05) {
+            setAspect('portrait')
+          } else {
+            setAspect('landscape')
+          }
+        }}
+        onError={() => setRemoteFailed(true)}
+      >
+        {children}
+      </Art>
+    </div>
+  )
+}
+
+export function ChannelMark({ channel, size = 40 }: { channel: Channel; size?: number }) {
+  const mark = useRef<HTMLSpanElement>(null)
+  const [logo, setLogo] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    let active = true
+    setFailed(false)
+    const load = () => {
+      void loadChannelLogo(channel.logoUrl, channel.id, channel.tvgId).then((data) => {
+        if (active && data) setLogo(data)
+      })
+    }
+    if (typeof IntersectionObserver === 'undefined' || !mark.current) load()
+    else {
+      const observer = new IntersectionObserver(([entry]) => {
+        if (entry?.isIntersecting) { observer.disconnect(); load() }
+      }, { rootMargin: '96px' })
+      observer.observe(mark.current)
+      return () => { active = false; observer.disconnect() }
+    }
+    return () => { active = false }
+  }, [channel.id, channel.logoUrl, channel.tvgId])
+  return (
+    <span ref={mark} className="channel-mark" style={{ width: size, background: channel.mark.tone, fontSize: size * (channel.mark.text.length > 2 ? 0.3 : 0.36) }} aria-hidden="true">
+      {logo && !failed
+        ? <img src={logo} alt="" loading="lazy" onError={() => setFailed(true)} />
+        : channel.mark.text}
     </span>
   )
 }

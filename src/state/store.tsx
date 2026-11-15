@@ -2,32 +2,64 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { addDays, channels as demoChannels, nextProgramme as demoNext, programmeAt as demoAt, scheduleFor as demoSchedule, startOfDay } from '../data/channels'
 import { realLibrary } from '../lib/migrate'
 import { demoSources } from '../data/sources'
-import type { Channel, Programme, Source } from '../data/types'
+import type { Channel, Collection, Library, Programme, Progress, Ref, Source, StreamVariant, XtreamTitle } from '../data/types'
 import {
-  fetchGuide, fetchPlaylist, guideProgrammes, inNativeShell, loadCatalogue, loadGuide, loadSources, readGuideFile, readPlaylistFile, refreshCatalogue,
-  removeGuide as forgetGuide, saveSources,
-  type GuideSummary, type PlaylistReport, type SavedState, type StorageNotice,
+  disconnectXtream, fetchGuide, fetchPlaylist, guideProgrammes, inNativeShell, isXtreamConnected, loadCatalogue, loadGuide, loadSources, loadXtreamCatalogue, loadXtreamSeries, readGuideFile, readPlaylistFile, refreshCatalogue, refreshXtream,
+  removeGuide as forgetGuide, saveSources, loadXtreamVodDetails, loadXtreamEpg,
+  dvrGetRecordings, dvrStartRecording, dvrStopRecording, dvrScheduleRecording, dvrCancelRecording, dvrDeleteRecording, dvrProtectRecording,
+  dvrGetRules, dvrSaveRule, dvrDeleteRule, dvrGetConfig, dvrSaveConfig, dvrGetStorageInfo,
+  type GuideSummary, type PlaylistReport, type SavedState, type SavedXtreamSource, type StorageNotice, type XtreamCatalogue, type XtreamEntry, type XtreamSeriesDetails,
+  type XtreamCategory, type XtreamLiveStream, type XtreamUserInfo, type XtreamServerInfo, type XtreamCapabilities, type XtreamEpisode,
+  type Recording, type SeriesRule, type DvrConfig, type StorageInfo,
 } from '../lib/native'
 import { idleCatalogue, isStale, runCatalogue, type CatalogueState } from './catalogue'
-import { createGuide, guideQueries, programmesFor, resolveMatches, restoreGuide, runGuideImport, toSavedGuide, type GuideMatch, type GuideSource, type Mapping } from './guides'
+import { createGuide, guideQueries, includePlaylistsInGuides, programmesFor, resolveMatches, restoreGuide, runGuideImport, toSavedGuide, type GuideMatch, type GuideSource, type Mapping } from './guides'
 import { ACCENTS, THEME_BG, safeHex, type AccentName, type ThemeName } from '../lib/theme'
 import { activeChannels, createSource, fileLabel, removeSource, restoreSource, runImport, toSaved, type PlaylistSource } from './playlists'
+import { combineChannels } from './channel-matching'
+import { usePersonalMediaLibrary } from './mediaLibrary'
+import { useUserPreferencesStore } from './userPreferences'
+import { useProfiles } from './profiles'
+import { filterKidSafeChannels, filterKidSafeProgrammes, filterKidSafeXtreamTitles, isProgrammeKidSafe } from '../lib/kidsMode'
 
-/** `movie:<id>`, `series:<id>`, `channel:<id>` or `episode:<seriesId>/<episodeId>` */
-export type Ref = string
+export type { Collection, Library, Progress, Ref, XtreamTitle }
 
-export interface Progress { pos: number; dur: number; at: number }
-export interface Collection { id: string; name: string; items: Ref[]; createdAt: number }
+export interface XtreamSource extends SavedXtreamSource {
+  connected: boolean
+  /** Kept only in React memory so the form can reconnect during this app session. */
+  server: string | null
+  capabilities?: XtreamCapabilities | null
+  userInfo?: XtreamUserInfo | null
+  serverInfo?: XtreamServerInfo | null
+}
 
-export interface Library {
-  favourites: Ref[]
-  watchlist: Ref[]
-  progress: Record<Ref, Progress>
-  watched: Ref[]
-  history: { ref: Ref; at: number }[]
-  collections: Collection[]
-  reminders: string[]
-  recentSearches: string[]
+export interface XtreamCatalogueState {
+  movies: XtreamTitle[]
+  series: XtreamTitle[]
+  liveStreams: (XtreamLiveStream & { sourceId: string })[]
+  liveCategories: (XtreamCategory & { sourceId: string })[]
+  vodCategories: (XtreamCategory & { sourceId: string })[]
+  seriesCategories: (XtreamCategory & { sourceId: string })[]
+}
+
+function xtreamStreamToChannel(stream: XtreamLiveStream, sourceId: string, _sourceName: string, categoryName?: string): Channel {
+  const cat = categoryName || 'Uncategorised'
+  return {
+    id: `${sourceId}~${stream.id}`,
+    name: stream.name,
+    number: stream.num ?? 0,
+    streamUrl: `xtream://${sourceId}/live/${stream.id}`,
+    logoUrl: stream.streamIcon ?? null,
+    mark: { text: stream.name.slice(0, 2).toUpperCase(), tone: '#3d4650' },
+    hd: true,
+    tvgId: stream.epgChannelId || stream.name,
+    group: cat,
+    categories: [cat],
+    sourceId,
+    tvArchive: stream.tvArchive,
+    tvArchiveDuration: stream.tvArchiveDuration,
+    xtreamStreamId: stream.id,
+  }
 }
 
 export interface Prefs {
@@ -49,11 +81,12 @@ export interface Prefs {
   subtitleSize: 'small' | 'medium' | 'large'
   subtitleStyle: 'shadow' | 'outline' | 'boxed'
   timeFormat: '24h' | '12h'
-  guideZoom: 2 | 3 | 4
+  guideZoom: 1 | 2 | 3 | 4
   guideArt: boolean
   guideStart: 'now' | 'day'
   /** Fictional sample content, only when the user asks for it and has no real source. */
   demoMode: boolean
+  sidebarCollapsed: boolean
 }
 
 /** Source-checking settings removed in D3.1: nothing used them. Stripped from saved prefs so they stop being stored. */
@@ -66,11 +99,11 @@ type RemovedPrefs = {
 const DAY = 86_400_000
 
 export const defaultPrefs: Prefs = {
-  theme: 'dark', accent: 'red', customAccent: '#d6202e', density: 'comfortable', textSize: 'standard', reduceMotion: false, movieLayout: 'poster', hideWatched: false, keepHistory: true,
+  theme: 'dark', accent: 'red', customAccent: '#f20d24', density: 'comfortable', textSize: 'standard', reduceMotion: false, movieLayout: 'poster', hideWatched: false, keepHistory: true,
   autoplayNext: true, resume: 'resume', quality: 'auto',
   audioLanguage: 'English',
   subtitles: false, subtitleLanguage: 'English', subtitleSize: 'medium', subtitleStyle: 'shadow',
-  timeFormat: '24h', guideZoom: 3, guideArt: true, guideStart: 'now', demoMode: false,
+  timeFormat: '24h', guideZoom: 3, guideArt: true, guideStart: 'now', demoMode: false, sidebarCollapsed: false,
 }
 
 export const emptyLibrary: Library = {
@@ -88,6 +121,7 @@ export function demoLibrary(now: number): Library {
       'movie:glasshouse': p(3900, 6240, 0.2),
       'episode:ninth-ward/s2e3': p(1250, 3120, 0.6),
       'episode:kingsmoor/s1e2': p(2500, 3360, 1.4),
+      'movie:northern-trace': p(3120, 6840, 2.2),
       'movie:northbound': p(1400, 7020, 3),
       'episode:understudies/s1e4': p(400, 1680, 4),
     },
@@ -98,7 +132,8 @@ export function demoLibrary(now: number): Library {
       { ref: 'episode:ninth-ward/s2e3', at: now - 0.6 * DAY },
       { ref: 'episode:ninth-ward/s2e2', at: now - 0.7 * DAY },
       { ref: 'episode:kingsmoor/s1e2', at: now - 1.4 * DAY },
-      { ref: 'channel:pitchside', at: now - 2.1 * DAY },
+      { ref: 'movie:northern-trace', at: now - 2.2 * DAY },
+      { ref: 'channel:pitchside', at: now - 2.5 * DAY },
       { ref: 'movie:northbound', at: now - 3 * DAY },
       { ref: 'episode:understudies/s1e4', at: now - 4 * DAY },
       { ref: 'movie:velvet-hour', at: now - 6 * DAY },
@@ -151,19 +186,38 @@ export function sanitizePrefs(stored: Prefs & RemovedPrefs): Prefs {
     accent: pick('accent', [...(Object.keys(ACCENTS) as AccentName[]), 'custom']),
     customAccent: safeHex(p.customAccent) ?? defaultPrefs.customAccent,
     density: pick('density', ['compact', 'comfortable', 'spacious']),
+    sidebarCollapsed: Boolean(p.sidebarCollapsed),
   }
 }
 
 /** Removes one playlist source's channels from favourites, watchlist, history and collections; nothing else. */
-export function dropSourceRefs(l: Library, sourceId: string): Library {
+export function dropSourceRefs(l: Library, sourceId: string, remap: ReadonlyMap<string, string> = new Map()): Library {
   const prefix = `channel:${sourceId}~`
-  const keep = (r: Ref) => !r.startsWith(prefix)
+  const rewrite = (r: Ref): Ref | null => {
+    if (!r.startsWith('channel:')) return r
+    const id = r.slice('channel:'.length)
+    const replacement = remap.get(id)
+    if (replacement) return `channel:${replacement}`
+    return r.startsWith(prefix) ? null : r
+  }
+  const refs = (values: Ref[]) => [...new Set(values.map(rewrite).filter((r): r is Ref => r !== null))]
+  const progress = Object.fromEntries(Object.entries(l.progress).flatMap(([ref, value]) => {
+    const next = rewrite(ref)
+    return next ? [[next, value]] : []
+  }))
+  const reminders = l.reminders.map((id) => {
+    for (const [from, to] of remap) if (id.startsWith(`${from}@`)) return `${to}${id.slice(from.length)}`
+    return id
+  })
   return {
     ...l,
-    favourites: l.favourites.filter(keep),
-    watchlist: l.watchlist.filter(keep),
-    history: l.history.filter((h) => keep(h.ref)),
-    collections: l.collections.map((c) => ({ ...c, items: c.items.filter(keep) })),
+    favourites: refs(l.favourites),
+    watchlist: refs(l.watchlist),
+    progress,
+    watched: refs(l.watched),
+    history: l.history.flatMap((h) => { const ref = rewrite(h.ref); return ref ? [{ ...h, ref }] : [] }),
+    collections: l.collections.map((c) => ({ ...c, items: refs(c.items) })),
+    reminders: [...new Set(reminders)],
   }
 }
 
@@ -175,21 +229,88 @@ const toggleIn = (list: string[], item: string) => (list.includes(item) ? list.f
 type Epg = { key: string; matches: Map<string, GuideMatch>; days: Map<number, Map<string, Programme[]>> }
 const NO_DAYS = new Map<number, Map<string, Programme[]>>()
 
-/** The real library: new profiles start empty; one from an older build keeps only its real entries. */
-function initialLibrary(): Library {
+/** The real library: loaded and persisted per profile. The default profile uses kinora.library.v2 for backwards compatibility. */
+export function loadProfileLibrary(profileId = 'default'): Library {
   try {
-    const old = localStorage.getItem('kinora.library.v1')
-    if (old) return realLibrary({ ...emptyLibrary, ...(JSON.parse(old) as Library) })
+    const key = profileId === 'default' ? 'kinora.library.v2' : `kinora.library.v2.${profileId}`
+    let raw = localStorage.getItem(key)
+    if (!raw && profileId === 'default') {
+      const old = localStorage.getItem('kinora.library.v1')
+      if (old) return realLibrary({ ...emptyLibrary, ...(JSON.parse(old) as Library) })
+    }
+    if (raw) {
+      return { ...emptyLibrary, ...(JSON.parse(raw) as Library) }
+    }
   } catch {
-    // Unreadable: start empty. The old copy stays where it is.
+    // Unreadable: start empty.
   }
   return emptyLibrary
 }
 
-function useStoreValue(initialPlaylists: PlaylistSource[], initialGuides: GuideSource[], initialMappings: Mapping[], initialDemo: boolean) {
-  const [realLib, setRealLib] = usePersisted<Library>('kinora.library.v2', initialLibrary)
+function loadProfilePrefs(profileId: string, initialDemo: boolean): Prefs {
+  const key = profileId === 'default' ? 'kinora.prefs.v2' : `kinora.prefs.v2.${profileId}`
+  try {
+    const raw = localStorage.getItem(key)
+    if (raw) return sanitizePrefs(JSON.parse(raw))
+    const defaultRaw = localStorage.getItem('kinora.prefs.v2')
+    if (defaultRaw) return sanitizePrefs(JSON.parse(defaultRaw))
+  } catch {}
+  return { ...defaultPrefs, demoMode: initialDemo }
+}
+
+function useStoreValue(
+  initialPlaylists: PlaylistSource[],
+  initialGuides: GuideSource[],
+  initialMappings: Mapping[],
+  initialDemo: boolean,
+  initialXtreamSources: XtreamSource[] = [],
+  initialXtreamCatalogue: Partial<XtreamCatalogueState> = { movies: [], series: [] },
+) {
+  const { activeProfile, isKidsMode } = useProfiles()
+  const profileId = activeProfile?.id ?? 'default'
+
+  const [realLib, setRealLibState] = useState<Library>(() => loadProfileLibrary(profileId))
+
+  useEffect(() => {
+    setRealLibState(loadProfileLibrary(profileId))
+  }, [profileId])
+
+  const setRealLib = useCallback((updater: Library | ((prev: Library) => Library)) => {
+    setRealLibState((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      try {
+        const key = profileId === 'default' ? 'kinora.library.v2' : `kinora.library.v2.${profileId}`
+        localStorage.setItem(key, JSON.stringify(next))
+      } catch {}
+      return next
+    })
+  }, [profileId])
+
+  useEffect(() => {
+    try {
+      const key = profileId === 'default' ? 'kinora.library.v2' : `kinora.library.v2.${profileId}`
+      localStorage.setItem(key, JSON.stringify(realLib))
+    } catch {}
+  }, [profileId, realLib])
+
   const [demoLib, setDemoLib] = usePersisted<Library>('kinora.demoLibrary.v1', () => demoLibrary(Date.now()))
-  const [prefs, setPrefs] = usePersisted<Prefs>('kinora.prefs.v2', () => ({ ...defaultPrefs, demoMode: initialDemo }), sanitizePrefs)
+  const [prefs, setPrefsState] = useState<Prefs>(() => loadProfilePrefs(profileId, initialDemo))
+
+  useEffect(() => {
+    setPrefsState(loadProfilePrefs(profileId, initialDemo))
+  }, [profileId, initialDemo])
+
+  const setPrefs = useCallback((updater: Prefs | ((prev: Prefs) => Prefs)) => {
+    setPrefsState((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      const clean = sanitizePrefs(next)
+      try {
+        const key = profileId === 'default' ? 'kinora.prefs.v2' : `kinora.prefs.v2.${profileId}`
+        localStorage.setItem(key, JSON.stringify(clean))
+      } catch {}
+      return clean
+    })
+  }, [profileId])
   const [setup, setSetup] = usePersisted<{ done: boolean }>('kinora.setup.v1', () => ({ done: false }))
   // `providers` (the demonstration discovery switches before D7) is dropped from older saved copies.
   const [src, setSrc] = usePersisted<SourcesState>('kinora.sources.v1', () => ({ sources: demoSources(Date.now()) }), ({ sources }) => ({ sources }))
@@ -204,6 +325,18 @@ function useStoreValue(initialPlaylists: PlaylistSource[], initialGuides: GuideS
   // XMLTV guides (definitions and hand-picked matches); their programmes are held by Rust.
   const [guides, setGuides] = useState<GuideSource[]>(initialGuides)
   const [mappings, setMappings] = useState<Mapping[]>(initialMappings)
+  const [xtreamSources, setXtreamSources] = useState<XtreamSource[]>(initialXtreamSources)
+  const [xtreamCatalogue, setXtreamCatalogue] = useState<XtreamCatalogueState>(() => ({
+    movies: initialXtreamCatalogue.movies ?? [],
+    series: initialXtreamCatalogue.series ?? [],
+    liveStreams: initialXtreamCatalogue.liveStreams ?? [],
+    liveCategories: initialXtreamCatalogue.liveCategories ?? [],
+    vodCategories: initialXtreamCatalogue.vodCategories ?? [],
+    seriesCategories: initialXtreamCatalogue.seriesCategories ?? [],
+  }))
+  const [xtreamSeriesDetails, setXtreamSeriesDetails] = useState<Record<string, XtreamSeriesDetails>>({})
+  const mediaLibrary = usePersonalMediaLibrary(profileId)
+  const userPreferences = useUserPreferencesStore(profileId)
 
   // Restore saved sources, then refresh URL sources one at a time through the guarded Rust fetcher.
   // Until a refresh succeeds a restored source's channels are listed but have no stream address.
@@ -217,25 +350,86 @@ function useStoreValue(initialPlaylists: PlaylistSource[], initialGuides: GuideS
         if (loaded === 'timeout') return setStorageNotice('unreadable') // never save over what could not be read
         setStorageNotice(loaded.notice)
         const list = loaded.sources.map(restoreSource)
-        const restoredGuides = loaded.guides.map(restoreGuide)
+        const restoredGuides = includePlaylistsInGuides(loaded.guides.map(restoreGuide), list.map((source) => source.id))
+        const restoredXtream: XtreamSource[] = await Promise.all(
+          (loaded.xtreamSources ?? []).map(async (source) => {
+            const connected = await isXtreamConnected(source.id).catch(() => false)
+            return {
+              ...source,
+              connected,
+              server: null,
+              enabled: source.enabled !== false,
+            }
+          }),
+        )
         canSave.current = loaded.notice !== 'newer-version' && loaded.notice !== 'unreadable'
-        lastSaved.current = JSON.stringify({ sources: list.map(toSaved), guides: restoredGuides.map(toSavedGuide), mappings: loaded.mappings })
+        lastSaved.current = JSON.stringify({
+          sources: list.map(toSaved), guides: restoredGuides.map(toSavedGuide), mappings: loaded.mappings,
+          xtreamSources: restoredXtream.map(({ id, name, addedAt, lastSuccess, movies, series, liveChannels, hasLive, hasVod, hasSeries, hasEpg, hasCatchup, status, expDate, enabled }) => ({
+            id, name, addedAt, lastSuccess, movies, series,
+            liveChannels: liveChannels ?? 0,
+            hasLive: Boolean(hasLive),
+            hasVod: Boolean(hasVod),
+            hasSeries: Boolean(hasSeries),
+            hasEpg: Boolean(hasEpg),
+            hasCatchup: Boolean(hasCatchup),
+            status: status ?? null,
+            expDate: expDate ?? null,
+            enabled: enabled !== false,
+          })),
+        })
         setPlaylists((current) => (current.length > 0 ? current : list))
         setGuides((current) => (current.length > 0 ? current : restoredGuides))
         setMappings((current) => (current.length > 0 ? current : loaded.mappings))
+        setXtreamSources((current) => current.length > 0 ? current : restoredXtream)
         setRestored(true)
         // Guides: cached programmes first (local, quick), then address guides refreshed one at a time,
         // alongside the playlist refreshes. Each is bounded by fetch.rs's limits; nothing waits on them.
         void (async () => {
-          for (const g of loaded.guides) {
-            const summary = await loadGuide(g.id).catch(() => null)
-            if (!live) return
-            if (summary) setGuides((l) => l.map((x) => (x.id === g.id && x.status === 'saved' && !x.summary ? { ...x, summary } : x)))
+          const loadedSummaries = new Map(
+            await Promise.all(
+              loaded.guides.map(async (g) => [g.id, await loadGuide(g.id).catch(() => null)] as const),
+            ),
+          )
+          if (!live) return
+          if ([...loadedSummaries.values()].some(Boolean)) {
+            setGuides((l) => l.map((x) => {
+              const summary = loadedSummaries.get(x.id)
+              return summary && x.status === 'saved' && !x.summary ? { ...x, summary } : x
+            }))
           }
           for (const g of loaded.guides) {
             const url = g.url
             if (!live) return
             if (g.origin === 'url' && url) await runGuideImport(setGuides, g.id, ++lastOp.current, () => fetchGuide(g.id, url))
+          }
+        })()
+        // Xtream: restore cached movie, series and live catalogues so channels, titles and artwork appear immediately after restart
+        void (async () => {
+          for (const xs of loaded.xtreamSources ?? []) {
+            const cat = await loadXtreamCatalogue(xs.id).catch(() => null)
+            if (!live || !cat) continue
+            const withSource = (items: XtreamEntry[], kind: XtreamTitle['kind']): XtreamTitle[] => items.map((item) => ({ ...item, sourceId: xs.id, kind }))
+            const liveWithSource = (cat.liveStreams ?? []).map((s) => ({ ...s, sourceId: xs.id }))
+            const liveCatsWithSource = (cat.liveCategories ?? []).map((c) => ({ ...c, sourceId: xs.id }))
+            const vodCatsWithSource = (cat.vodCategories ?? []).map((c) => ({ ...c, sourceId: xs.id }))
+            const seriesCatsWithSource = (cat.seriesCategories ?? []).map((c) => ({ ...c, sourceId: xs.id }))
+            setXtreamCatalogue((current) => ({
+              movies: [...current.movies.filter((item) => item.sourceId !== xs.id), ...withSource(cat.movies, 'movie')],
+              series: [...current.series.filter((item) => item.sourceId !== xs.id), ...withSource(cat.series, 'series')],
+              liveStreams: [...current.liveStreams.filter((item) => item.sourceId !== xs.id), ...liveWithSource],
+              liveCategories: [...current.liveCategories.filter((item) => item.sourceId !== xs.id), ...liveCatsWithSource],
+              vodCategories: [...current.vodCategories.filter((item) => item.sourceId !== xs.id), ...vodCatsWithSource],
+              seriesCategories: [...current.seriesCategories.filter((item) => item.sourceId !== xs.id), ...seriesCatsWithSource],
+            }))
+            if (cat.capabilities || cat.userInfo || cat.serverInfo) {
+              setXtreamSources((current) => current.map((s) => s.id === xs.id ? {
+                ...s,
+                capabilities: cat.capabilities ?? s.capabilities,
+                userInfo: cat.userInfo ?? s.userInfo,
+                serverInfo: cat.serverInfo ?? s.serverInfo,
+              } : s))
+            }
           }
         })()
         for (const s of loaded.sources) {
@@ -254,7 +448,21 @@ function useStoreValue(initialPlaylists: PlaylistSource[], initialGuides: GuideS
   // Save whenever what is saved changes (status changes alone do not). Never while read-only.
   useEffect(() => {
     if (!restored || !canSave.current) return
-    const saved: SavedState = { sources: playlists.map(toSaved), guides: guides.map(toSavedGuide), mappings }
+    const saved: SavedState = {
+      sources: playlists.map(toSaved), guides: guides.map(toSavedGuide), mappings,
+      xtreamSources: xtreamSources.map(({ id, name, addedAt, lastSuccess, movies, series, liveChannels, hasLive, hasVod, hasSeries, hasEpg, hasCatchup, status, expDate, enabled }) => ({
+        id, name, addedAt, lastSuccess, movies, series,
+        liveChannels: liveChannels ?? 0,
+        hasLive: Boolean(hasLive),
+        hasVod: Boolean(hasVod),
+        hasSeries: Boolean(hasSeries),
+        hasEpg: Boolean(hasEpg),
+        hasCatchup: Boolean(hasCatchup),
+        status: status ?? null,
+        expDate: expDate ?? null,
+        enabled: enabled !== false,
+      })),
+    }
     const json = JSON.stringify(saved)
     if (json === lastSaved.current) return
     lastSaved.current = json
@@ -262,13 +470,32 @@ function useStoreValue(initialPlaylists: PlaylistSource[], initialGuides: GuideS
       () => setStorageNotice((n) => (n === 'save-failed' ? null : n)),
       () => setStorageNotice('save-failed'),
     )
-  }, [playlists, guides, mappings, restored])
+  }, [playlists, guides, mappings, xtreamSources, restored])
+
+  const xtreamChannels = useMemo(() => {
+    const list: Channel[] = []
+    for (const source of xtreamSources) {
+      if (source.enabled === false) continue
+      const cats = new Map(
+        xtreamCatalogue.liveCategories
+          .filter((c) => c.sourceId === source.id)
+          .map((c) => [c.id, c.name] as const),
+      )
+      for (const stream of xtreamCatalogue.liveStreams) {
+        if (stream.sourceId !== source.id) continue
+        const catName = stream.categoryId ? cats.get(stream.categoryId) : undefined
+        list.push(xtreamStreamToChannel(stream, source.id, source.name, catName))
+      }
+    }
+    return list
+  }, [xtreamSources, xtreamCatalogue.liveStreams, xtreamCatalogue.liveCategories])
+
   // Sample content needs an explicit opt-in, and goes away as soon as there is a real source.
-  const demoActive = prefs.demoMode && playlists.length === 0
+  const demoActive = prefs.demoMode && playlists.length === 0 && xtreamSources.length === 0
   const library = demoActive ? demoLib : realLib
   const setLibrary = demoActive ? setDemoLib : setRealLib
-  const channels = useMemo(() => activeChannels(playlists, demoActive ? demoChannels : []), [playlists, demoActive])
-  const findChannel = useCallback((id: string): Channel | undefined => channels.find((c) => c.id === id), [channels])
+  const playlistChannels = useMemo(() => activeChannels(playlists, demoActive ? demoChannels : []), [playlists, demoActive])
+  const allChannels = useMemo(() => [...playlistChannels, ...xtreamChannels], [playlistChannels, xtreamChannels])
 
   // Guide programmes, fetched from Rust one local day at a time for the matched channels only. Results
   // are keyed by what was asked, so an answer to an older question (before a refresh, a new match or a
@@ -278,7 +505,7 @@ function useStoreValue(initialPlaylists: PlaylistSource[], initialGuides: GuideS
     const timer = window.setTimeout(() => setToday(startOfDay(Date.now())), addDays(today, 1) - Date.now() + 1000)
     return () => window.clearTimeout(timer)
   }, [today])
-  const queries = useMemo(() => guideQueries(channels, guides, mappings), [channels, guides, mappings])
+  const queries = useMemo(() => guideQueries(allChannels, guides, mappings), [allChannels, guides, mappings])
   const epgKey = useMemo(() => JSON.stringify([queries, guides.map((g) => g.summary?.fetchedAt ?? null)]), [queries, guides])
   const currentKey = useRef(epgKey)
   currentKey.current = epgKey
@@ -290,62 +517,256 @@ function useStoreValue(initialPlaylists: PlaylistSource[], initialGuides: GuideS
     requested.current.add(tag)
     guideProgrammes(queries, day, addDays(day, 1)).then((answers) => {
       if (!answers || currentKey.current !== epgKey) return
-      const matches = resolveMatches(channels, guides, mappings, answers)
+      const matches = resolveMatches(allChannels, guides, mappings, answers)
       setEpg((e) => {
         const days = new Map(e.key === epgKey ? e.days : NO_DAYS)
         days.set(day, programmesFor(matches, answers))
         return { key: epgKey, matches, days }
       })
     }, () => { requested.current.delete(tag) })
-  }, [epgKey, queries, channels, guides, mappings])
+  }, [epgKey, queries, allChannels, guides, mappings])
   useEffect(() => {
     requestGuideDay(today)
     requestGuideDay(addDays(today, 1))
   }, [requestGuideDay, today])
   const current = epg.key === epgKey
-  const days = current ? epg.days : NO_DAYS
-  const unloadedMatches = useMemo(() => resolveMatches(channels, guides, mappings, []), [channels, guides, mappings])
-  const matches = current ? epg.matches : unloadedMatches
+  const unloadedMatches = useMemo(() => resolveMatches(allChannels, guides, mappings, []), [allChannels, guides, mappings])
+  const hasPreviousEpg = queries.length > 0 && epg.days.size > 0
+  const days = current ? epg.days : (hasPreviousEpg ? epg.days : NO_DAYS)
+  const matches = useMemo(() => {
+    if (current) return epg.matches
+    if (!hasPreviousEpg) return unloadedMatches
+    const merged = new Map(unloadedMatches)
+    for (const [id, m] of epg.matches) {
+      if (unloadedMatches.get(id)?.state === 'no-data') merged.set(id, m)
+    }
+    return merged
+  }, [current, hasPreviousEpg, epg.matches, unloadedMatches])
+  const findXtreamMovie = useCallback(
+    (sourceId: string, id: string | number): XtreamTitle | undefined => {
+      return xtreamCatalogue.movies.find((m) => m.sourceId === sourceId && (m.id === id || String(m.id) === String(id)))
+    },
+    [xtreamCatalogue.movies],
+  )
+  const findXtreamSeries = useCallback(
+    (sourceId: string, id: string | number): XtreamTitle | undefined => {
+      return xtreamCatalogue.series.find((s) => s.sourceId === sourceId && (s.id === id || String(s.id) === String(id)))
+    },
+    [xtreamCatalogue.series],
+  )
+  const findXtreamEpisode = useCallback(
+    (sourceId: string, seriesId: string | number, episodeId: string | number): (XtreamEpisode & { seasonNumber: number }) | undefined => {
+      const details = xtreamSeriesDetails[`${sourceId}:${seriesId}`]
+      if (!details?.seasons) return undefined
+      for (const season of details.seasons) {
+        const ep = season.episodes.find((e) => e.id === episodeId || String(e.id) === String(episodeId))
+        if (ep) return { ...ep, seasonNumber: season.number }
+      }
+      return undefined
+    },
+    [xtreamSeriesDetails],
+  )
+
+  const allSources = useMemo(() => [
+    ...playlists.map((p) => ({ id: p.id, name: p.name, origin: p.origin })),
+    ...xtreamSources.map((x) => ({ id: x.id, name: x.name, origin: 'xtream' })),
+  ], [playlists, xtreamSources])
+
+  const rawChannels = useMemo(
+    () => demoActive ? playlistChannels : combineChannels(allChannels, allSources, matches),
+    [demoActive, playlistChannels, allChannels, allSources, matches],
+  )
+  const channels = useMemo(
+    () => isKidsMode ? filterKidSafeChannels(rawChannels, true) : rawChannels,
+    [rawChannels, isKidsMode],
+  )
+  const channelIndex = useMemo(() => new Map(channels.flatMap((c) => [c.id, ...(c.memberIds ?? [])].map((id) => [id, c] as const))), [channels])
+  const findChannel = useCallback((id: string): Channel | undefined => channelIndex.get(id), [channelIndex])
+
+  const getPreferredServer = useCallback(
+    (channel: Channel): StreamVariant | undefined => {
+      const options = channel.streamOptions ?? []
+      if (options.length === 0) return undefined
+      const savedId = userPreferences.preferences.preferredServers?.[channel.id]
+      if (savedId) {
+        const found = options.find((opt) => opt.id === savedId)
+        if (found) return found
+      }
+      return options[0]
+    },
+    [userPreferences.preferences.preferredServers],
+  )
   const guide = useMemo(() => {
-    const listed = (c: Channel, day: number) => days.get(day)?.get(c.id) ?? []
+    const listed = (c: Channel, day: number) => {
+      const programmes = days.get(day)
+      if (!programmes) return []
+      for (const id of c.memberIds ?? [c.id]) {
+        const found = programmes.get(id)
+        if (found?.length) return found.map((p) => ({ ...p, channelId: c.id, id: `${c.id}@${p.start}` }))
+      }
+      return []
+    }
+    const channelMatch = (c: Channel) => (c.memberIds ?? [c.id]).map((id) => matches.get(id)).find((m) => m?.state === 'matched') ?? matches.get(c.id)
     return {
       /** Programmes overlapping the local day starting at `day`: generated for demo channels, from guides otherwise. */
-      schedule: (c: Channel, day: number): Programme[] => (c.sourceId === null ? demoSchedule(c, day) : listed(c, day)),
-      programmeAt: (c: Channel, t: number): Programme | undefined =>
-        c.sourceId === null ? demoAt(c, t) : listed(c, startOfDay(t)).find((p) => p.start <= t && t < p.stop),
+      schedule: (c: Channel, day: number): Programme[] => {
+        const progs = c.sourceId === null ? demoSchedule(c, day) : listed(c, day)
+        return isKidsMode ? filterKidSafeProgrammes(progs, true) : progs
+      },
+      programmeAt: (c: Channel, t: number): Programme | undefined => {
+        const prog = c.sourceId === null ? demoAt(c, t) : listed(c, startOfDay(t)).find((p) => p.start <= t && t < p.stop)
+        if (!prog) return undefined
+        if (isKidsMode && !isProgrammeKidSafe(prog)) return undefined
+        return prog
+      },
       nextProgramme: (c: Channel, t: number): Programme | undefined => {
-        if (c.sourceId === null) return demoNext(c, t)
+        if (c.sourceId === null) {
+          const next = demoNext(c, t)
+          return isKidsMode && next && !isProgrammeKidSafe(next) ? undefined : next
+        }
         const day = startOfDay(t)
-        return [...listed(c, day), ...listed(c, addDays(day, 1))].find((p) => p.start > t)
+        const candidates = [...listed(c, day), ...listed(c, addDays(day, 1))]
+        const found = candidates.find((p) => p.start > t)
+        if (!found) return undefined
+        if (isKidsMode && !isProgrammeKidSafe(found)) return undefined
+        return found
       },
       /** Why a playlist channel has guide data or not; `undefined` for demo channels. */
-      guideMatch: (c: Channel): GuideMatch | undefined => matches.get(c.id),
+      guideMatch: (c: Channel): GuideMatch | undefined => channelMatch(c),
       /** False while a day's programmes are still being fetched. */
       guideDayLoaded: (day: number) => queries.length === 0 || days.has(day),
       requestGuideDay,
     }
-  }, [days, matches, queries, requestGuideDay])
+  }, [days, isKidsMode, matches, queries, requestGuideDay])
   const playlistActions = useMemo(() => {
     const run = (id: string, load: () => Promise<PlaylistReport | null>) => runImport(setPlaylists, id, ++lastOp.current, load)
     return {
       addPlaylist: (input: { name: string; origin: PlaylistSource['origin']; url: string | null; label: string }, report: PlaylistReport) => {
         const id = `pl-${Date.now().toString(36)}-${(++lastOp.current).toString(36)}`
         setPlaylists((l) => [...l, createSource(id, input, report, Date.now())])
+        setGuides((l) => includePlaylistsInGuides(l, [id]))
         return id
       },
       refreshPlaylist: (source: PlaylistSource) => (source.url ? run(source.id, () => fetchPlaylist(source.url ?? '')) : Promise.resolve()),
+      cancelRefreshPlaylist: (id: string) => {
+        const nextOp = ++lastOp.current
+        setPlaylists((l) => l.map((s) => s.id === id ? { ...s, status: s.lastSuccess ? 'parsed' : 'failed', op: nextOp, error: 'Refresh cancelled' } : s))
+      },
       reimportPlaylist: (id: string, file: File) => {
         setPlaylists((l) => l.map((s) => (s.id === id ? { ...s, label: fileLabel(file.name) } : s)))
         return run(id, () => readPlaylistFile(file))
       },
       removePlaylist: (id: string) => {
+        const remaining = playlists.filter((s) => s.id !== id)
+        const remainingRaw = activeChannels(remaining, demoActive ? demoChannels : [])
+        const remainingSources = [
+          ...remaining.map((p) => ({ id: p.id, name: p.name, origin: p.origin })),
+          ...xtreamSources.map((x) => ({ id: x.id, name: x.name, origin: 'xtream' })),
+        ]
+        const remainingCombined = combineChannels(remainingRaw, remainingSources, matches)
+        const remap = new Map<string, string>()
+        for (const channel of channels) {
+          const members = channel.memberIds ?? [channel.id]
+          const survivor = remainingCombined.find((candidate) => (candidate.memberIds ?? [candidate.id]).some((member) => members.includes(member)))
+          if (!survivor) continue
+          for (const member of members) if (member.startsWith(`${id}~`)) remap.set(member, survivor.id)
+          if (channel.id.startsWith(`${id}~`)) remap.set(channel.id, survivor.id)
+        }
         setPlaylists((l) => removeSource(l, id))
-        setRealLib((l) => dropSourceRefs(l, id))
+        setRealLib((l) => dropSourceRefs(l, id, remap))
         setGuides((l) => l.map((g) => (g.playlists.includes(id) ? { ...g, playlists: g.playlists.filter((p) => p !== id) } : g)))
         setMappings((l) => l.filter((m) => !m.channel.startsWith(`${id}~`)))
       },
     }
-  }, [setRealLib])
+  }, [channels, demoActive, matches, playlists, setRealLib])
+  const xtreamActions = useMemo(() => {
+    const replaceCatalogue = (sourceId: string, catalogue: XtreamCatalogue) => {
+      const withSource = (items: XtreamEntry[], kind: XtreamTitle['kind']): XtreamTitle[] => {
+        const seen = new Set<string | number>()
+        const list: XtreamTitle[] = []
+        for (const item of items) {
+          if (!seen.has(item.id)) {
+            seen.add(item.id)
+            list.push({ ...item, sourceId, kind })
+          }
+        }
+        return list
+      }
+      const liveWithSource = (catalogue.liveStreams ?? []).map((s) => ({ ...s, sourceId }))
+      const liveCatsWithSource = (catalogue.liveCategories ?? []).map((c) => ({ ...c, sourceId }))
+      const vodCatsWithSource = (catalogue.vodCategories ?? []).map((c) => ({ ...c, sourceId }))
+      const seriesCatsWithSource = (catalogue.seriesCategories ?? []).map((c) => ({ ...c, sourceId }))
+
+      setXtreamCatalogue((current) => ({
+        movies: [...current.movies.filter((item) => item.sourceId !== sourceId), ...withSource(catalogue.movies, 'movie')],
+        series: [...current.series.filter((item) => item.sourceId !== sourceId), ...withSource(catalogue.series, 'series')],
+        liveStreams: [...current.liveStreams.filter((item) => item.sourceId !== sourceId), ...liveWithSource],
+        liveCategories: [...current.liveCategories.filter((item) => item.sourceId !== sourceId), ...liveCatsWithSource],
+        vodCategories: [...current.vodCategories.filter((item) => item.sourceId !== sourceId), ...vodCatsWithSource],
+        seriesCategories: [...current.seriesCategories.filter((item) => item.sourceId !== sourceId), ...seriesCatsWithSource],
+      }))
+
+      setXtreamSources((current) => current.map((source) => source.id === sourceId
+        ? {
+            ...source,
+            connected: true,
+            lastSuccess: Date.now(),
+            movies: catalogue.movies.length,
+            series: catalogue.series.length,
+            liveChannels: catalogue.liveStreams?.length ?? 0,
+            hasLive: Boolean(catalogue.capabilities?.hasLive ?? (catalogue.liveStreams?.length ?? 0) > 0),
+            hasVod: Boolean(catalogue.capabilities?.hasVod ?? catalogue.movies.length > 0),
+            hasSeries: Boolean(catalogue.capabilities?.hasSeries ?? catalogue.series.length > 0),
+            hasEpg: Boolean(catalogue.capabilities?.hasEpg),
+            hasCatchup: Boolean(catalogue.capabilities?.hasCatchup),
+            status: catalogue.userInfo?.status ?? source.status,
+            expDate: catalogue.userInfo?.expDate ?? source.expDate,
+            capabilities: catalogue.capabilities ?? source.capabilities,
+            userInfo: catalogue.userInfo ?? source.userInfo,
+            serverInfo: catalogue.serverInfo ?? source.serverInfo,
+          }
+        : source))
+    }
+    return {
+      addXtreamSource: (source: XtreamSource, catalogue: XtreamCatalogue) => {
+        setXtreamSources((current) => [...current.filter((saved) => saved.id !== source.id), source])
+        replaceCatalogue(source.id, catalogue)
+      },
+      refreshXtreamSource: async (sourceId: string) => {
+        const catalogue = await refreshXtream(sourceId)
+        if (!catalogue) throw new Error('Connect to a provider in the Kinora desktop app first.')
+        replaceCatalogue(sourceId, catalogue)
+      },
+      toggleXtreamSource: (sourceId: string, enabled?: boolean) => {
+        setXtreamSources((current) => current.map((s) => s.id === sourceId ? { ...s, enabled: enabled ?? !s.enabled } : s))
+      },
+      loadXtreamSeries: async (sourceId: string, seriesId: string) => {
+        const details = await loadXtreamSeries(sourceId, seriesId)
+        if (!details) throw new Error('Connect to this provider in the Kinora desktop app to load episodes.')
+        setXtreamSeriesDetails((current) => ({ ...current, [`${sourceId}:${seriesId}`]: details }))
+        return details
+      },
+      loadXtreamVodDetails: async (sourceId: string, vodId: string) => {
+        return loadXtreamVodDetails(sourceId, vodId)
+      },
+      loadXtreamEpg: async (sourceId: string, streamId: string) => {
+        return loadXtreamEpg(sourceId, streamId)
+      },
+      removeXtreamSource: async (sourceId: string) => {
+        await disconnectXtream(sourceId)
+        setXtreamSources((current) => current.filter((source) => source.id !== sourceId))
+        setXtreamCatalogue((current) => ({
+          movies: current.movies.filter((item) => item.sourceId !== sourceId),
+          series: current.series.filter((item) => item.sourceId !== sourceId),
+          liveStreams: current.liveStreams.filter((item) => item.sourceId !== sourceId),
+          liveCategories: current.liveCategories.filter((item) => item.sourceId !== sourceId),
+          vodCategories: current.vodCategories.filter((item) => item.sourceId !== sourceId),
+          seriesCategories: current.seriesCategories.filter((item) => item.sourceId !== sourceId),
+        }))
+        setXtreamSeriesDetails((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${sourceId}:`))))
+      },
+    }
+  }, [])
   // The public source catalogue (Discovery). Only read when Discovery opens, never at startup, so a
   // missing network never touches anything else.
   const [catalogue, setCatalogue] = useState<CatalogueState>(idleCatalogue)
@@ -399,11 +820,21 @@ function useStoreValue(initialPlaylists: PlaylistSource[], initialGuides: GuideS
         void forgetGuide(id).catch(() => undefined) // its cache is also pruned at the next start
       },
       setGuidePlaylists: (id: string, playlists: string[]) => setGuides((l) => l.map((g) => (g.id === id ? { ...g, playlists } : g))),
-      setMapping: (channel: string, guide: string, xmltvId: string) =>
-        setMappings((l) => [...l.filter((m) => m.channel !== channel), { channel, guide, xmltvId }]),
-      clearMapping: (channel: string) => setMappings((l) => l.filter((m) => m.channel !== channel)),
+      setMapping: (channel: string, guide: string, xmltvId: string) => {
+        const target = findChannel(channel)
+        const members = target?.memberIds ?? [channel]
+        setMappings((l) => [
+          ...l.filter((m) => !members.includes(m.channel)),
+          ...members.map((member) => ({ channel: member, guide, xmltvId })),
+        ])
+      },
+      clearMapping: (channel: string) => {
+        const target = findChannel(channel)
+        const members = target?.memberIds ?? [channel]
+        setMappings((l) => l.filter((m) => !members.includes(m.channel)))
+      },
     }
-  }, [])
+  }, [findChannel])
 
   const keepHistory = prefs.keepHistory
   const setPref = useCallback(<K extends keyof Prefs>(key: K, value: Prefs[K]) => setPrefs((p) => ({ ...p, [key]: value })), [setPrefs])
@@ -420,26 +851,41 @@ function useStoreValue(initialPlaylists: PlaylistSource[], initialGuides: GuideS
       }),
     setProgress: (ref: Ref, pos: number, dur: number) =>
       setLibrary((l) => ({ ...l, progress: { ...l.progress, [ref]: { pos, dur, at: Date.now() } } })),
+    removeProgress: (ref: Ref) =>
+      setLibrary((l) => {
+        const progress = { ...l.progress }
+        delete progress[ref]
+        return { ...l, progress }
+      }),
+    restoreProgress: (ref: Ref, p: Progress) =>
+      setLibrary((l) => ({ ...l, progress: { ...l.progress, [ref]: p } })),
     recordView: (ref: Ref) => {
       if (!keepHistory) return
       setLibrary((l) => (l.history[0]?.ref === ref ? l : { ...l, history: [{ ref, at: Date.now() }, ...l.history.filter((h) => h.ref !== ref)].slice(0, 100) }))
     },
     removeHistory: (ref: Ref) => setLibrary((l) => ({ ...l, history: l.history.filter((h) => h.ref !== ref) })),
     clearHistory: () => setLibrary((l) => ({ ...l, history: [], progress: {} })),
-    createCollection: (name: string, items: Ref[] = []) => {
+    createCollection: (name: string, items: Ref[] = [], description = '') => {
       const id = `c-${Date.now().toString(36)}`
-      setLibrary((l) => ({ ...l, collections: [...l.collections, { id, name, items, createdAt: Date.now() }] }))
+      setLibrary((l) => ({ ...l, collections: [...l.collections, { id, name, description, items, createdAt: Date.now() }] }))
       return id
     },
-    renameCollection: (id: string, name: string) =>
-      setLibrary((l) => ({ ...l, collections: l.collections.map((c) => (c.id === id ? { ...c, name } : c)) })),
+    renameCollection: (id: string, name: string, description?: string) =>
+      setLibrary((l) => ({ ...l, collections: l.collections.map((c) => (c.id === id ? { ...c, name, ...(description !== undefined ? { description } : {}) } : c)) })),
     deleteCollection: (id: string) => setLibrary((l) => ({ ...l, collections: l.collections.filter((c) => c.id !== id) })),
     toggleInCollection: (id: string, ref: Ref) =>
       setLibrary((l) => ({ ...l, collections: l.collections.map((c) => (c.id === id ? { ...c, items: toggleIn(c.items, ref) } : c)) })),
+    addCollectionItem: (id: string, ref: Ref) =>
+      setLibrary((l) => ({ ...l, collections: l.collections.map((c) => (c.id === id && !c.items.includes(ref) ? { ...c, items: [...c.items, ref] } : c)) })),
+    removeCollectionItem: (id: string, ref: Ref) =>
+      setLibrary((l) => ({ ...l, collections: l.collections.map((c) => (c.id === id ? { ...c, items: c.items.filter((item) => item !== ref) } : c)) })),
+    reorderCollectionItems: (id: string, items: Ref[]) =>
+      setLibrary((l) => ({ ...l, collections: l.collections.map((c) => (c.id === id ? { ...c, items } : c)) })),
     toggleReminder: (programmeId: string) => setLibrary((l) => ({ ...l, reminders: toggleIn(l.reminders, programmeId) })),
     addRecentSearch: (q: string) =>
       setLibrary((l) => ({ ...l, recentSearches: [q, ...l.recentSearches.filter((s) => s.toLowerCase() !== q.toLowerCase())].slice(0, 8) })),
     removeRecentSearch: (q: string) => setLibrary((l) => ({ ...l, recentSearches: l.recentSearches.filter((s) => s !== q) })),
+    clearRecentSearches: () => setLibrary((l) => ({ ...l, recentSearches: [] })),
     /** Empties the library in use; in sample mode, puts the sample activity back instead when asked. */
     resetLibrary: (to: 'empty' | 'demo') => setLibrary(to === 'empty' ? emptyLibrary : demoLibrary(Date.now())),
     resetPrefs: () => setPrefs(defaultPrefs),
@@ -449,16 +895,141 @@ function useStoreValue(initialPlaylists: PlaylistSource[], initialGuides: GuideS
     resetSources: () => setSrc({ sources: demoSources(Date.now()) }),
   }), [setLibrary, setPrefs, setSrc, keepHistory])
 
+  // DVR State & Actions
+  const [recordings, setRecordings] = useState<Recording[]>([])
+  const [seriesRules, setSeriesRules] = useState<SeriesRule[]>([])
+  const [dvrConfig, setDvrConfig] = useState<DvrConfig | null>(null)
+  const [dvrStorageInfo, setDvrStorageInfo] = useState<StorageInfo | null>(null)
+
+  const refreshDvrState = useCallback(async () => {
+    try {
+      const [recs, rules, cfg, storage] = await Promise.all([
+        dvrGetRecordings(),
+        dvrGetRules(),
+        dvrGetConfig(),
+        dvrGetStorageInfo(),
+      ])
+      setRecordings(recs)
+      setSeriesRules(rules)
+      setDvrConfig(cfg)
+      setDvrStorageInfo(storage)
+    } catch {
+      // Ignore errors in non-native environments
+    }
+  }, [])
+
+  useEffect(() => {
+    void refreshDvrState()
+  }, [refreshDvrState])
+
+  const dvrActions = useMemo(() => ({
+    refreshDvrState,
+    startRecording: async (
+      channelId: string,
+      channelName: string,
+      title: string,
+      opts?: { channelLogo?: string | null; programmeId?: string | null; description?: string | null; durationSecs?: number },
+    ) => {
+      const rec = await dvrStartRecording(channelId, channelName, title, opts)
+      await refreshDvrState()
+      return rec
+    },
+    stopRecording: async (recordingId: string) => {
+      const rec = await dvrStopRecording(recordingId)
+      await refreshDvrState()
+      return rec
+    },
+    scheduleRecording: async (
+      channelId: string,
+      channelName: string,
+      title: string,
+      startTime: number,
+      endTime: number,
+      opts?: { channelLogo?: string | null; programmeId?: string | null; description?: string | null; paddingStart?: number; paddingEnd?: number; seriesRuleId?: string | null },
+    ) => {
+      const rec = await dvrScheduleRecording(channelId, channelName, title, startTime, endTime, opts)
+      await refreshDvrState()
+      return rec
+    },
+    cancelRecording: async (recordingId: string) => {
+      const rec = await dvrCancelRecording(recordingId)
+      await refreshDvrState()
+      return rec
+    },
+    deleteRecording: async (recordingId: string, deleteFiles = true) => {
+      await dvrDeleteRecording(recordingId, deleteFiles)
+      await refreshDvrState()
+    },
+    protectRecording: async (recordingId: string, isProtected: boolean) => {
+      const rec = await dvrProtectRecording(recordingId, isProtected)
+      await refreshDvrState()
+      return rec
+    },
+    saveSeriesRule: async (rule: SeriesRule) => {
+      const saved = await dvrSaveRule(rule)
+      await refreshDvrState()
+      return saved
+    },
+    deleteSeriesRule: async (ruleId: string) => {
+      await dvrDeleteRule(ruleId)
+      await refreshDvrState()
+    },
+    updateDvrConfig: async (config: DvrConfig) => {
+      const updated = await dvrSaveConfig(config)
+      await refreshDvrState()
+      return updated
+    },
+    getRecordingForProgramme: (programmeId?: string, channelId?: string, startTimeMs?: number) => {
+      const startSecs = startTimeMs ? Math.floor(startTimeMs / 1000) : undefined
+      return recordings.find((r) => {
+        if (r.status === 'cancelled' || r.status === 'failed') return false
+        if (programmeId && r.programmeId === programmeId) return true
+        if (channelId && startSecs !== undefined && r.channelId === channelId && Math.abs(r.startTime - startSecs) < 120) return true
+        return false
+      })
+    },
+  }), [refreshDvrState, recordings])
+
   return {
     library, prefs, setPref, sources: demoActive ? src.sources : [], ...actions, catalogue, ...catalogueActions,
-    setupDone: setup.done || playlists.length > 0 || guides.length > 0,
+    setupDone: setup.done || playlists.length > 0 || guides.length > 0 || xtreamSources.length > 0,
     finishSetup: () => setSetup({ done: true }),
     restartSetup: () => setSetup({ done: false }),
     playlists, ...playlistActions, restored, storageNotice, guides, mappings, ...guideActions, ...guide,
+    activeProfile,
+    isKidsMode,
+    xtreamSources,
+    xtreamCatalogue: isKidsMode
+      ? {
+          ...xtreamCatalogue,
+          movies: filterKidSafeXtreamTitles(xtreamCatalogue.movies, true),
+          series: filterKidSafeXtreamTitles(xtreamCatalogue.series, true),
+        }
+      : xtreamCatalogue,
+    xtreamSeriesDetails, ...xtreamActions,
+    recordings,
+    seriesRules,
+    dvrConfig,
+    dvrStorageInfo,
+    ...dvrActions,
     /** The channel catalogue every screen shows: playlist channels, the sample set in sample mode, or nothing. */
-    channels, findChannel, channelMode: playlists.length > 0 ? 'playlists' as const : demoActive ? 'demo' as const : 'none' as const,
+    channels,
+    /** Total raw channel entries across all imported playlists before cross-playlist deduplication. */
+    totalPlaylistEntries: (playlists.length > 0 ? playlistChannels.length : 0) + xtreamChannels.length,
+    findChannel,
+    getPreferredServer,
+    setPreferredServer: userPreferences.setPreferredServer,
+    resetPreferredServer: userPreferences.resetPreferredServer,
+    autoFallbackEnabled: userPreferences.preferences.autoFallbackEnabled ?? true,
+    setAutoFallbackEnabled: userPreferences.setAutoFallbackEnabled,
+    findXtreamMovie,
+    findXtreamSeries,
+    findXtreamEpisode,
+    channelMode: (playlists.length > 0 || xtreamChannels.length > 0) ? 'playlists' as const : demoActive ? 'demo' as const : 'none' as const,
     /** The fictional films and series exist only in sample mode. */
     demoTitles: demoActive,
+    mediaLibrary,
+    userPreferences,
   }
 }
 
@@ -466,10 +1037,30 @@ type Store = ReturnType<typeof useStoreValue>
 const StoreContext = createContext<Store | null>(null)
 
 /** The `initial…` props seed imported playlists, guides, matches and sample mode for tests; the app always starts with none. */
-export function StoreProvider({ children, initialPlaylists = [], initialGuides = [], initialMappings = [], initialDemo = false }: {
-  children: ReactNode; initialPlaylists?: PlaylistSource[]; initialGuides?: GuideSource[]; initialMappings?: Mapping[]; initialDemo?: boolean
+export function StoreProvider({
+  children,
+  initialPlaylists = [],
+  initialGuides = [],
+  initialMappings = [],
+  initialDemo = false,
+  initialXtreamSources = [],
+  initialXtreamCatalogue = { movies: [], series: [] },
+}: {
+  children: ReactNode
+  initialPlaylists?: PlaylistSource[]
+  initialGuides?: GuideSource[]
+  initialMappings?: Mapping[]
+  initialDemo?: boolean
+  initialXtreamSources?: XtreamSource[]
+  initialXtreamCatalogue?: Partial<XtreamCatalogueState>
 }) {
-  const store = useStoreValue(initialPlaylists, initialGuides, initialMappings, initialDemo)
+  const store = useStoreValue(initialPlaylists, initialGuides, initialMappings, initialDemo, initialXtreamSources, initialXtreamCatalogue)
+  useEffect(() => {
+    ;(window as unknown as { __kinora_store?: Store }).__kinora_store = store
+    return () => {
+      delete (window as unknown as { __kinora_store?: Store }).__kinora_store
+    }
+  }, [store])
   // Wait for the saved sources (a local file) so an empty Home never flashes before real channels.
   return <StoreContext.Provider value={store}>{store.restored ? children : null}</StoreContext.Provider>
 }

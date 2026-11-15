@@ -52,7 +52,7 @@ describe('with a real playlist, no fictional films or series anywhere', () => {
   it('Movies and Series say there is no source yet', () => {
     for (const [path, route, el] of [['/movies', '/movies', <Movies />], ['/series', '/series', <SeriesBrowse />]] as const) {
       const t = text(render(path, route, el))
-      expect(t).toContain('no source for')
+      expect(t).toContain('Add an Xtream compatible provider')
       expect(t).not.toContain(film.title)
       expect(t).not.toContain(show.title)
     }
@@ -77,4 +77,86 @@ describe('with a real playlist, no fictional films or series anywhere', () => {
   it('a channel with no artwork shows no "artwork unavailable" text over its card', () => {
     expect(text(render('/', '/', <Home />))).not.toContain('Artwork unavailable')
   })
+
+  it('Home renders a live channel hero with watch action and guide button in real mode', () => {
+    const t = text(render('/', '/', <Home />))
+    expect(t).toContain('Now on Real Channel 1')
+    expect(t).toContain('Watch Live')
+    expect(t).toContain('TV Guide')
+  })
+
+  it('Home and Search display genuine provider movies and series when Xtream catalogue is present', () => {
+    const providerMovie = {
+      kind: 'movie' as const,
+      sourceId: 'src-1',
+      id: '101',
+      name: 'Real Indie Documentary',
+      categoryId: 'cat-1',
+      year: 2024,
+      plot: 'A true story filmed in the Scottish Highlands.',
+      extension: 'mp4',
+      artworkKey: 'art-doc-1',
+    }
+    const providerSeries = {
+      kind: 'series' as const,
+      sourceId: 'src-1',
+      id: '202',
+      name: 'Caledonian Mystery',
+      categoryId: 'cat-2',
+      year: 2023,
+      plot: 'A detective investigates vanishing ships.',
+      extension: 'mkv',
+      artworkKey: 'art-series-1',
+    }
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter initialEntries={['/']}>
+        <StoreProvider
+          initialPlaylists={[real]}
+          initialDemo={false}
+          initialXtreamSources={[{ id: 'src-1', name: 'Provider One', addedAt: Date.now(), lastSuccess: Date.now(), movies: 1, series: 1, connected: true, server: 'srv.example' }]}
+          initialXtreamCatalogue={{ movies: [providerMovie], series: [providerSeries] }}
+        >
+          <ToastProvider>
+            <Routes>
+              <Route path="/" element={<Home />} />
+            </Routes>
+          </ToastProvider>
+        </StoreProvider>
+      </MemoryRouter>,
+    )
+
+    const t = text(html)
+    // Featured movie hero
+    expect(t).toContain('Featured movie')
+    expect(t).toContain('Real Indie Documentary')
+    expect(t).toContain('A true story filmed in the Scottish Highlands.')
+    expect(t).toContain('View Details')
+    expect(t).toContain('Add to Library')
+    // Real provider sections
+    expect(t).toContain('Movies')
+    expect(t).toContain('Series')
+    expect(t).toContain('Caledonian Mystery')
+
+    // Search matches provider movie and series
+    const searchHtml = renderToStaticMarkup(
+      <MemoryRouter initialEntries={['/search?q=documentary']}>
+        <StoreProvider
+          initialPlaylists={[real]}
+          initialDemo={false}
+          initialXtreamCatalogue={{ movies: [providerMovie], series: [providerSeries] }}
+        >
+          <ToastProvider>
+            <Routes>
+              <Route path="/search" element={<Search />} />
+            </Routes>
+          </ToastProvider>
+        </StoreProvider>
+      </MemoryRouter>,
+    )
+    const searchT = text(searchHtml)
+    expect(searchT).toContain('Real Indie Documentary')
+    expect(searchT).not.toContain(film.title)
+  })
 })
+

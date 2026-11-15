@@ -9,6 +9,17 @@ class H(http.server.SimpleHTTPRequestHandler):
         path = s.path.split('?')[0]
         if path.startswith('/slow/'):
             time.sleep(5); path = path[5:]
+        if path == '/live/index.m3u8':  # a sliding window over 10 minutes of 2 s segments
+            seq = int(time.time() / 2)
+            lines = ['#EXTM3U', '#EXT-X-VERSION:3', '#EXT-X-TARGETDURATION:2', f'#EXT-X-MEDIA-SEQUENCE:{seq - 7}']
+            lines.append(f'#EXT-X-DISCONTINUITY-SEQUENCE:{(seq - 7 + 299) // 300}')
+            for n in range(seq - 7, seq + 1):
+                if n % 300 == 0: lines.append('#EXT-X-DISCONTINUITY')
+                lines += ['#EXTINF:2.0,', f'/long/seg{n % 300:03d}.ts']
+            body = ('\n'.join(lines) + '\n').encode()
+            s.send_response(200); s.send_header('Content-Type', 'application/vnd.apple.mpegurl'); s.send_header('Content-Length', str(len(body))); s.end_headers()
+            s.wfile.write(body)
+            return
         s.path = path
         super().do_GET()
     def log_message(s, *a): pass

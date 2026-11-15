@@ -8,6 +8,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 ignore = [
   { id = "RUSTSEC-2024-0429", reason = "glib 0.18 VariantStrIter unsound; Kinora never calls it; needs a Tauri upgrade" },
   { id = "RUSTSEC-2024-0370", reason = "proc-macro-error unmaintained; build time only, via glib-macros 0.18; needs a Tauri upgrade" },
+  { id = "RUSTSEC-2026-0486", reason = "rustix xattr unwritten bytes; Kinora never uses xattrs; transitive dependency via tauri" },
 ]
 
 [licenses]

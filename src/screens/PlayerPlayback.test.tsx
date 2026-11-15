@@ -6,7 +6,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter, Route, Routes, useNavigate, type NavigateFunction } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../components/Toast'
-import { fromHlsError } from '../lib/playback'
+import { fromHlsError, levelCap, matchLanguage } from '../lib/playback'
 import { IngestError, type OpenedStream, type PlaylistChannel } from '../lib/native'
 import { createSource, type PlaylistSource } from '../state/playlists'
 import { StoreProvider } from '../state/store'
@@ -20,7 +20,16 @@ const fake = vi.hoisted(() => {
   class FakeHls {
     static instances: FakeHls[] = []
     static isSupported = () => true
-    static Events = { ERROR: 'hlsError', MANIFEST_PARSED: 'hlsManifestParsed' }
+    static Events = { ERROR: 'hlsError', MANIFEST_PARSED: 'hlsManifestParsed', AUDIO_TRACKS_UPDATED: 'a', SUBTITLE_TRACKS_UPDATED: 's', AUDIO_TRACK_SWITCHED: 'as', SUBTITLE_TRACK_SWITCH: 'ss', LEVEL_SWITCHED: 'ls' }
+    audioTracks: unknown[] = []
+    subtitleTracks: unknown[] = []
+    levels: { height: number }[] = []
+    audioTrack = -1
+    subtitleTrack = -1
+    autoLevelEnabled = true
+    autoLevelCapping = -1
+    currentLevel = -1
+    nextLevel = -1
     static ErrorTypes = { MEDIA_ERROR: 'mediaError', NETWORK_ERROR: 'networkError' }
     config: unknown
     handlers = new Map<string, (event: string, data: unknown) => void>()
@@ -40,7 +49,7 @@ const fake = vi.hoisted(() => {
   }
   return { FakeHls }
 })
-vi.mock('hls.js/light', () => ({ default: fake.FakeHls }))
+vi.mock('hls.js', () => ({ default: fake.FakeHls }))
 const { FakeHls } = fake
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -308,5 +317,102 @@ describe('demo channels', () => {
     expect(document.querySelector('video')).toBeNull()
     expect(text()).toContain('No stream connected: sample channel.')
     for (const label of ['Mute', 'Volume', 'Subtitles', 'Play, unavailable: no stream connected']) expect(control(label)).not.toBeNull()
+  })
+})
+
+describe('nothing waits forever', () => {
+  const later = (ms: number) => act(async () => { vi.advanceTimersByTime(ms); await Promise.resolve() })
+  const useTimers = () => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
+
+  it('a stream that never starts stops loading, says so, closes its session and can be retried', async () => {
+    useTimers()
+    await mount(watch(one.id))
+    await settle()
+    expect(text()).toContain('Loading stream')
+    await later(29_000)
+    expect(text()).toContain('Loading stream')
+    await later(2_000)
+    expect(text()).not.toContain('Loading stream')
+    expect(text()).toContain('did not start within 30 seconds')
+    expect(latest().destroyed).toBe(true)
+    expect(native.closeStream).toHaveBeenCalledWith(1)
+    expect(live()).toBe(false)
+    await click([...document.querySelectorAll('button')].find((b) => b.textContent === 'Retry')!)
+    await settle()
+    expect(native.openStream).toHaveBeenCalledTimes(2)
+  })
+
+  it('without an H.264 decoder it says what to install, sooner', async () => {
+    useTimers()
+    vi.stubGlobal('MediaSource', { isTypeSupported: (t: string) => !t.includes('avc1') && !t.includes('hvc1') })
+    await mount(watch(one.id))
+    await settle()
+    await later(13_000)
+    expect(text()).toContain('gstreamer1-plugin-openh264')
+    expect(document.querySelector('.player-status button')).toBeNull() // retrying cannot help
+  })
+
+  it('a stream that plays then stalls gives up after 30 seconds, and recovers if media resumes first', async () => {
+    useTimers()
+    await mount(watch(one.id))
+    await settle()
+    await media('playing')
+    await later(120_000)
+    expect(live()).toBe(true) // playing has no time limit
+    await media('waiting')
+    await later(20_000)
+    await media('playing')
+    await later(60_000)
+    expect(live()).toBe(true)
+    await media('waiting')
+    await later(31_000)
+    expect(text()).toContain('stopped sending video')
+    expect(latest().destroyed).toBe(true)
+  })
+
+  it('a paused stream never times out', async () => {
+    useTimers()
+    await mount(watch(one.id))
+    await settle()
+    await media('playing')
+    await media('pause')
+    await later(600_000)
+    expect(text()).toContain('Paused')
+  })
+
+  it('leaving before the timeout cancels it', async () => {
+    useTimers()
+    await mount(watch(one.id))
+    await settle()
+    await act(async () => root.unmount())
+    await later(60_000)
+    await mount(watch(two.id))
+    await settle()
+    expect(text()).toContain('Loading stream')
+  })
+
+  it('an incompatible codec named by hls.js gets the same advice', () => {
+    expect(fromHlsError({ type: 'mediaError', details: 'bufferAddCodecError' }).message).toContain('gstreamer1-plugin-openh264')
+    expect(fromHlsError({ type: 'networkError', details: 'manifestLoadError', response: { code: 422 } }).status).toBe('unsupported')
+  })
+})
+
+describe('language and quality choices', () => {
+  const tracks = [{ id: 0, label: 'Français', lang: 'fr' }, { id: 1, label: 'English', lang: 'en' }, { id: 2, label: 'Deutsch', lang: 'deu' }]
+  it('matches a preferred language by name or code', () => {
+    expect(matchLanguage(tracks, 'English')?.id).toBe(1)
+    expect(matchLanguage(tracks, 'English (SDH)')?.id).toBe(1)
+    expect(matchLanguage(tracks, 'French')?.id).toBe(0)
+    expect(matchLanguage(tracks, 'German')?.id).toBe(2)
+    expect(matchLanguage(tracks, 'Welsh')).toBeUndefined()
+  })
+  it('caps quality at the highest level not over the setting', () => {
+    const levels = [{ height: 360 }, { height: 720 }, { height: 1080 }]
+    expect(levelCap(levels, '720p')).toBe(1)
+    expect(levelCap(levels, '2160p')).toBe(2)
+    expect(levelCap(levels, '480p')).toBe(0)
+    expect(levelCap(levels, 'auto')).toBe(-1)
+    expect(levelCap([{ height: 1080 }], '480p')).toBe(-1)
   })
 })

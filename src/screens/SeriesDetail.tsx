@@ -1,16 +1,21 @@
-import { useRef, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { NoTitles } from './Movies'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { seriesById } from '../data/catalog'
 import { episodeCode, episodeRef } from '../data/refs'
 import { Icon } from '../components/Icon'
 import { PageHeader } from '../components/PageHeader'
+import { XtreamArt } from '../components/Tiles'
 import { TitleActions } from '../components/TitleActions'
 import { useToast } from '../components/Toast'
 import { Art, ProgressBar, StateBlock } from '../components/ui'
 import { seriesNextUp } from '../lib/library'
 import { minutesLeft } from '../lib/time'
-import { progressOf, useStore } from '../state/store'
+import { progressOf, useStore, type XtreamTitle } from '../state/store'
+import { isTitleKidSafe } from '../lib/kidsMode'
+import type { XtreamSeriesDetails as ProviderSeriesDetails } from '../lib/native'
+import { AgeRatingBadge } from '../components/AgeRatingBadge'
+import { Breadcrumbs } from '../components/Breadcrumbs'
 import './Detail.css'
 
 export function SeriesDetail() {
@@ -20,6 +25,24 @@ export function SeriesDetail() {
   const toast = useToast()
   const tabs = useRef<(HTMLButtonElement | null)[]>([])
   const s = seriesById(id)
+
+  if (s && store.isKidsMode && !isTitleKidSafe(s)) {
+    return (
+      <div className="page" style={{ padding: '48px 24px', textAlign: 'center' }}>
+        <StateBlock
+          icon="lock"
+          title="Restricted in Kids Mode"
+          action={<Link to="/series" className="btn btn-primary">Browse Family Shows</Link>}
+        >
+          {s.title} is rated {s.certificate} and is blocked for child profiles.
+        </StateBlock>
+      </div>
+    )
+  }
+
+  const imported = store.xtreamCatalogue.series.find((item) => `xt:${item.sourceId}:${item.id}` === id)
+
+  if (imported) return <XtreamSeriesDetail key={`${imported.sourceId}:${imported.id}`} show={imported} />
 
   if (!store.demoTitles) return <NoTitles kind="series" />
   if (!s) {
@@ -51,12 +74,15 @@ export function SeriesDetail() {
     tabs.current[n - 1]?.focus()
   }
 
+  const seasonBackdrop = episodes[0]?.still || s.art
+
   return (
     <article className="detail">
       <header className="detail-hero">
-        <Art src={s.art} focus={s.focus} eager className="detail-backdrop" />
+        <Art src={seasonBackdrop} focus={s.focus} eager className="detail-backdrop" />
         <PageHeader overlay />
         <div className="detail-hero-content">
+          <Breadcrumbs crumbs={[{ label: 'Home', to: '/' }, { label: 'Series', to: '/series' }, { label: s.title }]} />
           <Link to="/series" className="text-link detail-back"><Icon name="back" size={16} />Series</Link>
           <p className="kicker"><Icon name="series" size={16} />Series · {s.genres.join(' / ')}</p>
           <h1 className="title-xl">{s.title}</h1>
@@ -65,7 +91,7 @@ export function SeriesDetail() {
             <span>{s.years}</span>
             <span>{s.seasons.length} season{s.seasons.length > 1 ? 's' : ''}</span>
             <span>{totalEps} episodes</span>
-            <span><span className="cert">{s.certificate}</span></span>
+            <AgeRatingBadge rating={s.certificate} system="bbfc" />
           </div>
           <p className="detail-synopsis">{s.synopsis}</p>
           {watchedEps > 0 && (
@@ -156,6 +182,259 @@ export function SeriesDetail() {
             )
           })}
         </ol>
+      </section>
+    </article>
+  )
+}
+
+function XtreamSeriesDetail({ show }: { show: XtreamTitle }) {
+  const store = useStore()
+  const toast = useToast()
+  const [params, setParams] = useSearchParams()
+  const tabs = useRef<(HTMLButtonElement | null)[]>([])
+  const [details, setDetails] = useState<ProviderSeriesDetails | null>(store.xtreamSeriesDetails[`${show.sourceId}:${show.id}`] ?? null)
+  const [error, setError] = useState('')
+  const [retry, setRetry] = useState(0)
+
+  useEffect(() => {
+    let active = true
+    if (details) return () => { active = false }
+    void store.loadXtreamSeries(show.sourceId, show.id).then((value) => {
+      if (active) setDetails(value)
+    }).catch((reason: unknown) => {
+      if (active) setError(reason instanceof Error ? reason.message : 'Kinora could not load this series.')
+    })
+    return () => { active = false }
+  }, [show.sourceId, show.id, details, retry, store.loadXtreamSeries])
+
+  const source = store.xtreamSources.find((item) => item.id === show.sourceId)
+  const seasons = details?.seasons ?? []
+  const initialSeasonNo = seasons[0]?.number ?? 1
+  const paramSeason = Number(params.get('season'))
+  const activeSeason = seasons.find((s) => s.number === paramSeason) ?? seasons[0]
+  const seasonNo = activeSeason?.number ?? initialSeasonNo
+
+  const pickSeason = (n: number) => setParams({ season: String(n) }, { replace: true })
+
+  const onTabKey = (e: KeyboardEvent) => {
+    if (seasons.length <= 1) return
+    const dir = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
+    if (!dir) return
+    e.preventDefault()
+    const currentIndex = seasons.findIndex((s) => s.number === seasonNo)
+    const nextIndex = (currentIndex + dir + seasons.length) % seasons.length
+    const nextSeason = seasons[nextIndex]
+    if (nextSeason) {
+      pickSeason(nextSeason.number)
+      tabs.current[nextIndex]?.focus()
+    }
+  }
+
+  const episodes = activeSeason?.episodes ?? []
+  const seasonRefs = episodes.map((e) => `episode:xt:${show.sourceId}:${show.id}/${e.id}`)
+  const seasonWatched = seasonRefs.length > 0 && seasonRefs.every((r) => store.library.watched.includes(r))
+
+  const allEpisodes = seasons.flatMap((s) => s.episodes.map((e) => ({ ...e, seasonNumber: s.number })))
+  const totalEps = allEpisodes.length
+  const watchedEps = allEpisodes.filter((e) => store.library.watched.includes(`episode:xt:${show.sourceId}:${show.id}/${e.id}`)).length
+
+  const ref = `series:xt:${show.sourceId}:${show.id}`
+  const inWatchlist = store.library.watchlist.includes(ref)
+  const inFav = store.library.favourites.includes(ref)
+
+  return (
+    <article className="detail">
+      <header className="detail-hero">
+        <XtreamArt
+          artworkKey={activeSeason?.episodes[0]?.artworkKey || show.artworkKey}
+          alt={show.name}
+          fallbackTitle={show.name}
+          fallbackYear={show.year}
+          eager
+          className="detail-backdrop"
+        />
+        <PageHeader overlay />
+        <div className="detail-hero-content">
+          <Link to="/series" className="text-link detail-back">
+            <Icon name="back" size={16} />Series
+          </Link>
+          <p className="kicker">
+            <Icon name="series" size={16} />Series · {source?.name ?? 'Provider'}
+          </p>
+          <h1 className="title-xl">{show.name}</h1>
+          <div className="meta">
+            {show.year !== null && <span>{show.year}</span>}
+            {seasons.length > 0 && <span>{seasons.length} season{seasons.length > 1 ? 's' : ''}</span>}
+            {totalEps > 0 && <span>{totalEps} episodes</span>}
+            <span>Provider catalogue</span>
+          </div>
+          {(details?.plot || show.plot) && (
+            <p className="detail-synopsis">{details?.plot || show.plot}</p>
+          )}
+          {watchedEps > 0 && totalEps > 0 && (
+            <div className="detail-progress">
+              <ProgressBar value={watchedEps / totalEps} label="Series progress" />
+              <span className="faint tnum">{watchedEps} of {totalEps} episodes watched</span>
+            </div>
+          )}
+          <div className="title-actions">
+            {allEpisodes[0] && (
+              <Link
+                to={`/watch/${encodeURIComponent(`episode:xt:${show.sourceId}:${show.id}/${allEpisodes[0].id}`)}`}
+                className="btn btn-primary"
+              >
+                <Icon name="play" size={18} />
+                Play Series
+              </Link>
+            )}
+            <button
+              type="button"
+              className="btn btn-secondary"
+              aria-pressed={inWatchlist}
+              onClick={() => {
+                store.toggleWatchlist(ref)
+                toast(inWatchlist ? `Removed ${show.name} from your watchlist` : `Added ${show.name} to your watchlist`, {
+                  label: 'Undo',
+                  run: () => store.toggleWatchlist(ref),
+                })
+              }}
+            >
+              <Icon name={inWatchlist ? 'check' : 'plus'} size={18} />
+              {inWatchlist ? 'In watchlist' : 'Add to watchlist'}
+            </button>
+            <button
+              type="button"
+              className="icon-btn ringed fav-toggle"
+              aria-pressed={inFav}
+              aria-label={inFav ? 'Remove from favourites' : 'Add to favourites'}
+              data-tip={inFav ? 'Favourite' : 'Add to favourites'}
+              onClick={() => {
+                store.toggleFavourite(ref)
+                toast(inFav ? `Removed ${show.name} from favourites` : `Added ${show.name} to favourites`)
+              }}
+            >
+              <Icon name="heart" size={20} />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <section className="episodes" aria-label="Episodes">
+        {error && (
+          <StateBlock
+            icon="warning"
+            title="Could not load episodes"
+            action={
+              <button
+                type="button"
+                className="btn btn-ghost btn-small"
+                onClick={() => { setError(''); setRetry((value) => value + 1) }}
+              >
+                Try again
+              </button>
+            }
+          >
+            {error}
+          </StateBlock>
+        )}
+
+        {!details && !error && (
+          <p className="faint" role="status">Loading seasons and episodes...</p>
+        )}
+
+        {seasons.length > 0 && (
+          <div className="episodes-head">
+            <div className="tabs" role="tablist" aria-label="Seasons" onKeyDown={onTabKey}>
+              {seasons.map((season, i) => (
+                <button
+                  key={season.number}
+                  ref={(el) => { tabs.current[i] = el }}
+                  type="button"
+                  role="tab"
+                  id={`xt-season-tab-${season.number}`}
+                  aria-selected={seasonNo === season.number}
+                  aria-controls="xt-season-panel"
+                  tabIndex={seasonNo === season.number ? 0 : -1}
+                  className="tab"
+                  onClick={() => pickSeason(season.number)}
+                >
+                  Season {season.number}
+                </button>
+              ))}
+            </div>
+
+            {seasonRefs.length > 0 && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-small"
+                onClick={() => {
+                  const before = seasonRefs.filter((r) => store.library.watched.includes(r))
+                  store.setWatched(seasonRefs, !seasonWatched)
+                  toast(seasonWatched ? `Season ${seasonNo} marked as not watched` : `Season ${seasonNo} marked as watched`, {
+                    label: 'Undo',
+                    run: () => {
+                      store.setWatched(seasonRefs, false)
+                      store.setWatched(before, true)
+                    },
+                  })
+                }}
+              >
+                <Icon name={seasonWatched ? 'close' : 'check'} size={16} />
+                {seasonWatched ? 'Mark season unwatched' : 'Mark season watched'}
+              </button>
+            )}
+          </div>
+        )}
+
+        {episodes.length > 0 && (
+          <ol id="xt-season-panel" role="tabpanel" aria-labelledby={`xt-season-tab-${seasonNo}`} className="episode-list">
+            {episodes.map((episode) => {
+              const epRef = `episode:xt:${show.sourceId}:${show.id}/${episode.id}`
+              const isWatched = store.library.watched.includes(epRef)
+              const prog = progressOf(store.library, epRef)
+              const runtimeMin = episode.runtimeSeconds != null ? Math.round(episode.runtimeSeconds / 60) : null
+              return (
+                <li key={episode.id} className={`episode${isWatched ? ' is-watched' : ''}`}>
+                  <Link
+                    to={`/watch/${encodeURIComponent(epRef)}`}
+                    className="episode-still"
+                    aria-label={`Play S${seasonNo} E${episode.number}, ${episode.title}`}
+                  >
+                    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+                      <XtreamArt artworkKey={episode.artworkKey} alt="" fallbackTitle={`Episode ${episode.number}`} />
+                      <span className="episode-play"><Icon name="play" size={18} /></span>
+                      {prog !== null && <ProgressBar value={prog} label={`${Math.round(prog * 100)}% watched`} />}
+                    </div>
+                  </Link>
+                  <div className="episode-text">
+                    <p className="episode-meta">
+                      <span className="tnum">Episode {episode.number}</span>
+                      {runtimeMin !== null && <span>{runtimeMin} min</span>}
+                    </p>
+                    <h3>{episode.title}</h3>
+                    {episode.plot && <p className="muted">{episode.plot}</p>}
+                  </div>
+                  <button
+                    type="button"
+                    className="episode-check"
+                    role="checkbox"
+                    aria-checked={isWatched}
+                    aria-label={`Episode ${episode.number} watched`}
+                    onClick={() => store.setWatched([epRef], !isWatched)}
+                  >
+                    <Icon name="check" size={18} />
+                  </button>
+                </li>
+              )
+            })}
+          </ol>
+        )}
+
+        {details && seasons.length === 0 && (
+          <StateBlock icon="series" title="No episodes listed">
+            The provider returned no season or episode entries for this series.
+          </StateBlock>
+        )}
       </section>
     </article>
   )

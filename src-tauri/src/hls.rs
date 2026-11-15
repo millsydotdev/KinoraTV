@@ -13,10 +13,16 @@ use reqwest::Url;
 /// What a handle points at. Playlists carry their depth: the root is 0 and only it may be a master.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Kind {
-    Playlist { depth: u8 },
+    Playlist {
+        depth: u8,
+    },
     Segment,
     Init,
     Key,
+    /// A DASH manifest (`dash.rs`).
+    Manifest,
+    /// A DASH base directory: what follows the handle in the request is resolved under it.
+    Prefix,
 }
 
 /// Why a reference could not be given a handle.

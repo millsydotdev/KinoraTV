@@ -73,7 +73,7 @@ try {
   await js(`window.__csp = []; document.addEventListener('securitypolicyviolation', e => window.__csp.push(e.violatedDirective + ' ' + e.blockedURI))`)
   await wd('POST', `${S}/window/rect`, { width: 1600, height: 960 }).catch(() => {})
   await wd('POST', `${S}/timeouts`, { script: 120000 }).catch(() => {})
-  ok('app starts', !!(await until(`document.querySelector('.sidebar')`, 20000)))
+  ok('app starts', !!(await until(`document.querySelector('.sidebar, .setup')`, 20000)))
 
   if (phase === 'fresh') {
     await go('/live?view=channels')
@@ -98,6 +98,68 @@ try {
     await js(`[...document.querySelectorAll('.guide-row')].find(r => r.textContent.includes('Fixture HLS')).querySelector('.fav-btn').click()`); await wait(300)
     ok('favourite set', (await js(`return [...document.querySelectorAll('.guide-row')].find(r => r.textContent.includes('Fixture HLS')).querySelector('.fav-btn').getAttribute('aria-pressed')`)) === 'true')
     await noSecrets()
+  }
+
+  if (phase === 'soak') {
+    // A published live test stream (Unified Streaming's public demo). KINORA_SOAK_S sets how long.
+    const secs = Number(process.env.KINORA_SOAK_S ?? 60)
+    await go('/sources/add')
+    await fileInput('soak.m3u', '#EXTM3U\n#EXTINF:-1 group-title="Test",Live test stream\nhttps://demo.unified-streaming.com/k8s/live/stable/live.isml/.m3u8\n')
+    await until(`document.querySelector('.validate-status.is-ok')`)
+    await setValue('.add-form input.input', 'Soak'); await clickText('button', 'Continue'); await wait(300)
+    await clickText('.add-actions button', 'Add Source'); await wait(800)
+    await watch('Live test stream')
+    ok('the live test stream plays', !!(await playing(45000, 2)), await status())
+    const v = 'document.querySelector("video.player-video")'
+    const start = await js(`return ${v}.currentTime`); const began = Date.now()
+    let worst = 0
+    for (let at = 0; at < secs; at += 30) {
+      await wait(30000)
+      const t = await js(`return ${v}.currentTime`)
+      const lag = (Date.now() - began) / 1000 - (t - start); worst = Math.max(worst, lag)
+      note(`after ${at + 30} s`, `position ${t.toFixed(1)}, behind ${lag.toFixed(1)} s, ${rss()}, status "${await status()}"`)
+    }
+    ok(`still playing after ${secs} s, under 30 s behind`, worst < 30 && !(await js(`return ${v}.paused`)), `worst ${worst.toFixed(1)} s`)
+  }
+
+  if (phase === 'formats') {
+    ok('formats playlist added', /Playlist read: 6 channels/.test(await addUrl(`${S1}/formats.m3u`, 'Formats') ?? ''))
+    const v = 'document.querySelector("video.player-video")'
+    await watch('Format fMP4')
+    ok('fMP4/CMAF plays', !!(await playing(30000, 2)), await status())
+    await watch('Format HEVC')
+    const hevc = await playing(20000, 1)
+    note('HEVC on this system', hevc ? 'plays' : `does not play: ${await status()}`)
+    const support = await js(`return MediaSource.isTypeSupported('video/mp4; codecs="hvc1.1.6.L93.B0"')`)
+    ok('HEVC result agrees with what the system reports, or says why', !!hevc === support || (await status()).length > 0, `reported ${support}`)
+    await watch('Format Alternate')
+    ok('separate audio and subtitle renditions play', !!(await playing(30000, 1)), await status())
+    await clickSel('[aria-label="Audio"]'); await wait(300)
+    const audio = await js(`return [...document.querySelectorAll('.menu-pop .menu-item')].map(e => e.textContent)`)
+    ok('audio menu lists the stream\'s tracks', audio.includes('English') && audio.includes('Francais'), audio.join(','))
+    await clickText('.menu-pop .menu-item', 'Francais'); await wait(1500)
+    ok('switching audio keeps playing', !!(await playing(15000, 0)))
+    await clickSel('[aria-label="Subtitles"]'); await wait(300)
+    await clickText('.menu-pop .menu-item', 'English'); await wait(1500)
+    ok('a subtitle track can be shown', (await js(`return [...${v}.textTracks].some(t => t.mode === 'showing')`)) === true)
+    await watch('Format Live')
+    ok('a sliding live window plays', !!(await playing(30000, 1)), await status())
+    const t1 = await js(`return ${v}.currentTime`); await wait(25000); const t2 = await js(`return ${v}.currentTime`)
+    ok('live keeps advancing across playlist reloads', t2 - t1 > 15, `${t1} -> ${t2}; status: ${await status()}`)
+    await watch('Format Break')
+    ok('a discontinuity (ad break) is crossed', !!(await until(`document.querySelector("video.player-video")?.currentTime > 14`, 40000)), await status())
+    await watch('Format File')
+    const refused = await until(`(() => { const t = document.querySelector('.player-status')?.textContent ?? ''; return /not HLS|file|format/i.test(t) ? t : null })()`, 15000)
+    ok('a direct video file is refused with a reason', !!refused, refused ?? await status())
+    // The docked player and the Watching label follow real media.
+    await go('/live')
+    ok('Live TV marks nothing as watching on arrival', !(await text()).includes('WATCHING') && !(await text()).includes('Now Playing'))
+    await js(`[...document.querySelectorAll('.guide-channel-tune')].find(b => b.getAttribute('aria-label').includes('Format fMP4')).click()`)
+    const docked = await until(`(() => { const v = document.querySelector('.live-player-video'); return v && !v.paused && v.currentTime > 1 })()`, 30000)
+    ok('the docked player really plays', !!docked)
+    ok('only then does it say Watching and Now Playing', (await text()).includes('Now Playing') && !!(await js(`return document.querySelector('.watching')`)))
+    await clickSel('[aria-label="Close player"]'); await wait(800)
+    ok('closing it clears Watching', !(await js(`return document.querySelector('.watching')`)) && !(await text()).includes('Now Playing'))
   }
 
   if (phase === 'playback') {

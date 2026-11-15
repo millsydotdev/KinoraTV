@@ -1,7 +1,7 @@
 {
   "name": "kinora",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.5.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,11 +13,13 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "test:gate": "bash scripts/quality-gate.sh",
     "ci": "bash scripts/ci-local.sh"
   },
   "dependencies": {
     "@fontsource-variable/hanken-grotesk": "^5.3.0",
     "@tauri-apps/api": "2.12.4",
+    "dashjs": "5.2.1",
     "hls.js": "1.7.3",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

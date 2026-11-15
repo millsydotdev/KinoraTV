@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   IngestError, MAX_GUIDE_BYTES, loadCatalogue, parseCatalogue, refreshCatalogue, MAX_PLAYLIST_BYTES, closeStream, fetchGuide, fetchPlaylist, getAppInfo, guideChannels, guideProgrammes, loadGuide, loadSources, openStream,
-  parseAppInfo, parseGuideAnswers, parseGuideSummary, parseOpenedStream, parsePlaylistReport, parseSavedGuide, parseSavedMapping, parseSavedSource, readGuideFile,
-  readPlaylistFile, removeGuide, saveSources, toIngestError, type SavedGuide, type SavedMapping, type SavedSource, type SavedState,
+  loadChannelLogo, loadProgrammeArtwork, loadXtreamArtwork, parseAppInfo, parseArtwork, parseChannelLogo, parseGuideAnswers, parseGuideSummary, parseOpenedStream, parsePlaylistReport, parseSavedGuide, parseSavedMapping, parseSavedSource, readGuideFile,
+  readPlaylistFile, removeGuide, saveSources, toIngestError, parseConnectionTestResult, testSourceConnection, parseStoredPin, parseVerifyPinResult, hashParentalPin, verifyParentalPin, checkForUpdates, type ConnectionTestResult, type SavedGuide, type SavedMapping, type SavedSource, type SavedState, type StoredPinV2, type VerifyPinResult, type UpdateCheckResult,
 } from './native'
 
 // `inside` undefined keeps the real isTauri() (false under Vitest); tests set it to drive the shell path.
@@ -36,8 +36,61 @@ describe('native boundary', () => {
     expect(parseAppInfo({ ...valid, injected: '<script>' })).toEqual(valid)
   })
 
+  it('accepts only bounded, recognised raster image bytes from the logo command', () => {
+    const png = [137, 80, 78, 71, 13, 10, 26, 10]
+    expect(parseChannelLogo({ mimeType: 'image/png', bytes: png })).toEqual({ mimeType: 'image/png', bytes: new Uint8Array(png) })
+    expect(parseChannelLogo(null)).toBeNull()
+    expect(() => parseChannelLogo({ mimeType: 'image/svg+xml', bytes: [60, 115, 118, 103] })).toThrow()
+    expect(() => parseChannelLogo({ mimeType: 'image/png', bytes: [256] })).toThrow()
+    expect(() => parseChannelLogo({ mimeType: 'image/png', bytes: Array(256 * 1024 + 1).fill(0) })).toThrow()
+  })
+
+  it('accepts larger artwork images up to 4MB for programmes and posters', () => {
+    const jpeg = [255, 216, 255, 224]
+    expect(parseArtwork({ mimeType: 'image/jpeg', bytes: jpeg })).toEqual({ mimeType: 'image/jpeg', bytes: new Uint8Array(jpeg) })
+    expect(parseArtwork(null)).toBeNull()
+    // 500 KB image exceeds logo limit (256 KB) but is valid for artwork (up to 4 MB)
+    const largeArt = Array(500 * 1024).fill(128)
+    expect(parseArtwork({ mimeType: 'image/jpeg', bytes: largeArt })?.bytes.length).toBe(500 * 1024)
+    expect(() => parseArtwork({ mimeType: 'image/jpeg', bytes: Array(4 * 1024 * 1024 + 1).fill(0) })).toThrow()
+  })
+
   it('resolves to null outside the native shell instead of throwing', async () => {
     await expect(getAppInfo()).resolves.toBeNull()
+    await expect(loadChannelLogo('https://img.example/logo.png', 'tvg:bbcone.uk', 'bbcone.uk')).resolves.toBeNull()
+    await expect(loadXtreamArtwork('art-key-1')).resolves.toBeNull()
+    await expect(loadProgrammeArtwork('https://img.example/prog.jpg')).resolves.toBeNull()
+  })
+
+  it('fetches and converts channel logo, xtream artwork and programme artwork to data URLs inside native shell', async () => {
+    shell.inside = true
+    const pngBytes = [137, 80, 78, 71, 13, 10, 26, 10]
+    shell.invoke.mockResolvedValueOnce({ mimeType: 'image/png', bytes: pngBytes })
+    const dataUrl = await loadChannelLogo('https://img.example/bbc.png', 'tvg:bbcone.uk', 'bbcone.uk')
+    expect(shell.invoke).toHaveBeenCalledWith('fetch_channel_logo', {
+      url: 'https://img.example/bbc.png',
+      channelKey: 'tvg:bbcone.uk',
+      tvgId: 'bbcone.uk',
+    })
+    expect(dataUrl).toContain('data:image/png;base64,')
+
+    // Second call with same key should be served from memory cache without invoking again
+    const cached = await loadChannelLogo('https://img.example/bbc.png', 'tvg:bbcone.uk', 'bbcone.uk')
+    expect(cached).toBe(dataUrl)
+    expect(shell.invoke).toHaveBeenCalledTimes(1)
+
+    shell.invoke.mockResolvedValueOnce({ mimeType: 'image/png', bytes: pngBytes })
+    const artUrl = await loadXtreamArtwork('art-key-1')
+    expect(shell.invoke).toHaveBeenCalledWith('xtream_artwork', { artworkKey: 'art-key-1' })
+    expect(artUrl).toContain('data:image/png;base64,')
+
+    shell.invoke.mockResolvedValueOnce({ mimeType: 'image/jpeg', bytes: [255, 216, 255, 224] })
+    const progUrl = await loadProgrammeArtwork('https://img.example/prog.jpg')
+    expect(shell.invoke).toHaveBeenCalledWith('fetch_programme_artwork', { url: 'https://img.example/prog.jpg' })
+    expect(progUrl).toContain('data:image/jpeg;base64,')
+
+    const cachedProg = await loadProgrammeArtwork('https://img.example/prog.jpg')
+    expect(cachedProg).toBe(progUrl)
   })
 })
 
@@ -235,7 +288,7 @@ describe('saved sources boundary', () => {
 
 describe('guide boundary', () => {
   const summary = { channels: 2, programmes: 3, first: 1000, last: 9000, fetchedAt: 500, skipped: 1, duplicates: 0, warnings: ['1 programme had no title and was skipped.'] }
-  const programme = { channel: 'One.uk', start: 1000, stop: 2000, stopEstimated: false, title: 'News', subtitle: null, desc: 'Text', category: 'News', episode: null }
+  const programme = { channel: 'One.uk', start: 1000, stop: 2000, stopEstimated: false, title: 'News', subtitle: null, desc: 'Text', category: 'News', episode: null, icon: null }
 
   it('validates guide summaries', () => {
     expect(parseGuideSummary(summary)).toEqual(summary)
@@ -325,5 +378,152 @@ describe('catalogue boundary', () => {
     await expect(loadCatalogue()).resolves.toBeNull()
     await expect(refreshCatalogue()).resolves.toBeNull()
     expect(shell.invoke).not.toHaveBeenCalled()
+  })
+
+  it('parses valid connection test results and validates categories', () => {
+    const rawSuccess = {
+      ok: true,
+      status: 200,
+      host: 'iptv.example.com',
+      roundTripMs: 42,
+      message: 'Host reachable (HTTP 200 OK, 42ms)',
+      category: 'success',
+    }
+    expect(parseConnectionTestResult(rawSuccess)).toEqual(rawSuccess)
+
+    const rawBlocked = {
+      ok: false,
+      status: null,
+      host: '127.0.0.1',
+      roundTripMs: 1,
+      message: '127.0.0.1 is a prohibited local address.',
+      category: 'security-blocked',
+    }
+    expect(parseConnectionTestResult(rawBlocked)).toEqual(rawBlocked)
+
+    // Unrecognised category falls back to 'unknown'
+    const unknownCat = { ...rawSuccess, category: 'nonexistent-category' }
+    expect(parseConnectionTestResult(unknownCat).category).toBe('unknown')
+
+    // Malformed input throws
+    expect(() => parseConnectionTestResult(null)).toThrow()
+    expect(() => parseConnectionTestResult('not-an-object')).toThrow()
+  })
+
+  it('runs testSourceConnection via invoke when inside Tauri', async () => {
+    shell.inside = true
+    const expected: ConnectionTestResult = {
+      ok: true,
+      status: 200,
+      host: 'iptv.example.com',
+      roundTripMs: 55,
+      message: 'Host reachable (HTTP 200 OK, 55ms)',
+      category: 'success',
+    }
+    shell.invoke.mockResolvedValueOnce(expected)
+
+    const res = await testSourceConnection('https://iptv.example.com/playlist.m3u')
+    expect(res).toEqual(expected)
+    expect(shell.invoke).toHaveBeenCalledWith('test_source_connection', { url: 'https://iptv.example.com/playlist.m3u' })
+  })
+
+  it('testSourceConnection returns null outside Tauri', async () => {
+    const res = await testSourceConnection('https://iptv.example.com/playlist.m3u')
+    expect(res).toBeNull()
+    expect(shell.invoke).not.toHaveBeenCalled()
+  })
+
+  it('parses stored PBKDF2 PIN objects and validates structure', () => {
+    const valid: StoredPinV2 = {
+      algorithm: 'pbkdf2-sha256',
+      salt: '0123456789abcdef0123456789abcdef',
+      hash: 'a'.repeat(64),
+      iterations: 100000,
+      version: 2,
+    }
+    expect(parseStoredPin(valid)).toEqual(valid)
+    expect(() => parseStoredPin(null)).toThrow()
+    expect(() => parseStoredPin({ ...valid, version: 1 })).toThrow()
+    expect(() => parseStoredPin({ ...valid, iterations: '100000' })).toThrow()
+  })
+
+  it('parses PIN verification results with optional upgraded PIN', () => {
+    const resWithoutUpgrade: VerifyPinResult = { valid: true, upgradedPin: null }
+    expect(parseVerifyPinResult(resWithoutUpgrade)).toEqual(resWithoutUpgrade)
+
+    const upgraded: StoredPinV2 = {
+      algorithm: 'pbkdf2-sha256',
+      salt: '0123456789abcdef0123456789abcdef',
+      hash: 'b'.repeat(64),
+      iterations: 100000,
+      version: 2,
+    }
+    const resWithUpgrade = { valid: true, upgradedPin: upgraded }
+    expect(parseVerifyPinResult(resWithUpgrade)).toEqual(resWithUpgrade)
+    expect(() => parseVerifyPinResult(null)).toThrow()
+    expect(() => parseVerifyPinResult({ valid: 'true' })).toThrow()
+  })
+
+  it('interacts with hashParentalPin and verifyParentalPin over IPC', async () => {
+    shell.inside = true
+    const storedPin: StoredPinV2 = {
+      algorithm: 'pbkdf2-sha256',
+      salt: '0123456789abcdef0123456789abcdef',
+      hash: 'c'.repeat(64),
+      iterations: 100000,
+      version: 2,
+    }
+    shell.invoke.mockResolvedValueOnce(storedPin)
+    const hashed = await hashParentalPin('5678')
+    expect(hashed).toEqual(storedPin)
+    expect(shell.invoke).toHaveBeenCalledWith('hash_parental_pin', { pin: '5678' })
+
+    const verifyRes: VerifyPinResult = { valid: true, upgradedPin: null }
+    shell.invoke.mockResolvedValueOnce(verifyRes)
+    const verified = await verifyParentalPin('5678', storedPin)
+    expect(verified).toEqual(verifyRes)
+    expect(shell.invoke).toHaveBeenCalledWith('verify_parental_pin', { pin: '5678', stored: storedPin })
+
+    shell.inside = false
+    expect(await hashParentalPin('5678')).toBeNull()
+    expect(await verifyParentalPin('5678', storedPin)).toBeNull()
+  })
+})
+
+describe('updater boundary', () => {
+  it('reports up to date outside the native shell', async () => {
+    shell.inside = false
+    const res = await checkForUpdates()
+    expect(res).not.toBeNull()
+    expect(res?.status).toBe('upToDate')
+    expect(res?.platformKey).toBe('web')
+  })
+
+  it('invokes check_for_updates over IPC inside the native shell', async () => {
+    shell.inside = true
+    const mockResult: UpdateCheckResult = {
+      status: 'available',
+      currentVersion: '0.1.0',
+      latestVersion: '0.2.0',
+      releaseDate: '2026-11-15T19:00:00Z',
+      releaseNotes: 'Cross-platform release candidate',
+      downloadUrl: 'https://example.com/update.tar.gz',
+      hasSignature: true,
+      platformKey: 'linux-x86_64',
+      platformSupported: true,
+      error: null,
+    }
+    shell.invoke.mockResolvedValueOnce(mockResult)
+    const res = await checkForUpdates()
+    expect(res).toEqual(mockResult)
+    expect(shell.invoke).toHaveBeenCalledWith('check_for_updates', {})
+  })
+
+  it('handles IPC errors gracefully with safe fallback', async () => {
+    shell.inside = true
+    shell.invoke.mockRejectedValueOnce(new Error('Network unreachable'))
+    const res = await checkForUpdates()
+    expect(res?.status).toBe('error')
+    expect(res?.error).toBe('Network unreachable')
   })
 })

@@ -8,6 +8,7 @@ import { useStore } from '../state/store'
 import { CollectionDialog } from './CollectionDialog'
 import { Icon } from './Icon'
 import { useToast } from './Toast'
+import { RatingControls } from './RatingControls'
 
 /** Primary watch action plus library toggles, shared by the hero and both detail pages. */
 export function TitleActions({ title, compact = false, infoHref }: { title: Title; compact?: boolean; infoHref?: string }) {
@@ -58,6 +59,7 @@ export function TitleActions({ title, compact = false, infoHref }: { title: Titl
         <Icon name={inList ? 'check' : 'plus'} size={18} />
         {!compact && (inList ? 'In watchlist' : 'Watchlist')}
       </button>
+      <RatingControls itemRef={ref} title={title.title} compact={compact} />
       {!compact && (
         <>
           <button

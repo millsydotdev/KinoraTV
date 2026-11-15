@@ -22,6 +22,7 @@ use reqwest::Url;
 use serde::Serialize;
 use tokio::sync::{watch, Semaphore};
 
+use crate::dash;
 use crate::fetch::{self, Fetched, Policy};
 use crate::hls::{self, Kind, MintError, RewriteError, HANDLE_BASE};
 use crate::ingest::{ErrorCode, IngestError};
@@ -73,6 +74,8 @@ pub struct Opened {
     pub url: String,
     /// Pass to `close_stream`; closing an older session never touches a newer one.
     pub session: u64,
+    /// `hls` or `dash`: which player the page needs.
+    pub format: &'static str,
 }
 
 struct Entry {
@@ -230,9 +233,14 @@ impl Streams {
         let path = url.path().to_ascii_lowercase();
         if NOT_HLS.iter().any(|ext| path.ends_with(ext)) {
             return Err(unsupported(
-                "This stream is not HLS. Kinora can play HLS streams only so far.",
+                "This is a direct video file. Kinora plays HLS and DASH streams, not video files.",
             ));
         }
+        let root_kind = if path.ends_with(".mpd") {
+            Kind::Manifest
+        } else {
+            Kind::Playlist { depth: 0 }
+        };
         let stream_policy = Policy {
             connect_timeout: self.limits.connect,
             read_timeout: Some(self.limits.idle),
@@ -260,18 +268,23 @@ impl Streams {
         };
         session
             .by_url
-            .insert((url.to_string(), Kind::Playlist { depth: 0 }), root.clone());
+            .insert((url.to_string(), root_kind), root.clone());
         session.handles.insert(
             root.clone(),
             Entry {
                 url,
-                kind: Kind::Playlist { depth: 0 },
+                kind: root_kind,
             },
         );
         *self.lock() = Some(session); // drops the previous session, cancelling its work
         Ok(Opened {
             url: format!("{HANDLE_BASE}{root}"),
             session: id,
+            format: if root_kind == Kind::Manifest {
+                "dash"
+            } else {
+                "hls"
+            },
         })
     }
 
@@ -358,7 +371,8 @@ impl Streams {
         if method != "GET" {
             return self.fail(405, "Only GET is supported.");
         }
-        let handle = path.trim_start_matches('/');
+        let path = path.trim_start_matches('/');
+        let (handle, rest) = path.split_once('/').unwrap_or((path, ""));
         if handle.len() != 32
             || !handle
                 .bytes()
@@ -385,12 +399,37 @@ impl Streams {
         let Some((url, kind, session, mut cancelled, client, requests, budget)) = found else {
             return self.fail(404, "Unknown or expired stream resource.");
         };
-        let (total, cap) = match kind {
-            Kind::Playlist { .. } => (self.limits.playlist_total, self.limits.playlist_bytes),
-            Kind::Key => (self.limits.playlist_total, self.limits.key_bytes),
-            Kind::Segment | Kind::Init => (self.limits.segment_total, self.limits.segment_bytes),
+        // Only a prefix handle has anything after it, and nothing can leave its host.
+        let url = match (kind, rest.is_empty()) {
+            (Kind::Prefix, false) => {
+                let Some(target) = dash::under_prefix(&url, rest) else {
+                    return self.fail(
+                        403,
+                        "The stream refers to an address Kinora does not fetch from.",
+                    );
+                };
+                let Ok(target) = fetch::check_url(target.as_str(), &self.policy) else {
+                    return self.fail(
+                        403,
+                        "The stream refers to an address Kinora does not fetch from.",
+                    );
+                };
+                target
+            }
+            (Kind::Prefix, true) => return self.fail(404, "Unknown stream resource."),
+            (_, false) => return self.fail(404, "Unknown stream resource."),
+            (_, true) => url,
         };
-        if range.is_some() && !matches!(kind, Kind::Segment | Kind::Init) {
+        let (total, cap) = match kind {
+            Kind::Playlist { .. } | Kind::Manifest => {
+                (self.limits.playlist_total, self.limits.playlist_bytes)
+            }
+            Kind::Key => (self.limits.playlist_total, self.limits.key_bytes),
+            Kind::Segment | Kind::Init | Kind::Prefix => {
+                (self.limits.segment_total, self.limits.segment_bytes)
+            }
+        };
+        if range.is_some() && !matches!(kind, Kind::Segment | Kind::Init | Kind::Prefix) {
             return self.fail(416, "Byte ranges apply to media segments only.");
         }
         let range_header = range.map(|(s, e)| match e {
@@ -434,7 +473,26 @@ impl Streams {
                 r._budget = Some(budget);
                 r
             }
-            Kind::Segment | Kind::Init => self.media(range, fetched),
+            Kind::Manifest => self.manifest(session, fetched),
+            Kind::Segment | Kind::Init | Kind::Prefix => self.media(range, fetched),
+        }
+    }
+
+    fn manifest(&self, session: u64, fetched: Fetched) -> Reply {
+        let text = String::from_utf8_lossy(&fetched.body);
+        let mut mint = |url: Url, kind: Kind| self.mint(session, url, kind);
+        match dash::rewrite(
+            &text,
+            &fetched.final_url,
+            self.limits.uris_per_playlist,
+            &mut mint,
+        ) {
+            Ok(out) => self.reply(
+                200,
+                vec![("Content-Type", "application/dash+xml".into())],
+                out.into_bytes(),
+            ),
+            Err(e) => self.rewrite_failure(e, "This stream's manifest could not be read."),
         }
     }
 
@@ -469,26 +527,32 @@ impl Streams {
                 vec![("Content-Type", PLAYLIST_TYPE.into())],
                 out.into_bytes(),
             ),
-            Err(RewriteError::NotHls) => self.fail(
-                415,
-                "This stream is not HLS. Kinora can play HLS streams only so far.",
+            Err(e) => self.rewrite_failure(
+                e,
+                "This stream is not in a format Kinora can play: HLS or DASH.",
             ),
-            Err(RewriteError::Drm) => self.fail(
+        }
+    }
+
+    fn rewrite_failure(&self, e: RewriteError, not_stream: &str) -> Reply {
+        match e {
+            RewriteError::NotHls => self.fail(415, not_stream),
+            RewriteError::Drm => self.fail(
                 422,
                 "This stream is DRM-protected, which Kinora does not support.",
             ),
-            Err(RewriteError::Unsupported(what)) => self.fail(
+            RewriteError::Unsupported(what) => self.fail(
                 422,
                 &format!("This stream uses {what}, which Kinora does not support."),
             ),
-            Err(RewriteError::TooMany(what)) => {
+            RewriteError::TooMany(what) => {
                 self.fail(422, &format!("This stream lists too many {what}."))
             }
-            Err(RewriteError::Mint(MintError::Blocked)) => self.fail(
+            RewriteError::Mint(MintError::Blocked) => self.fail(
                 403,
                 "The stream refers to an address Kinora does not fetch from.",
             ),
-            Err(RewriteError::Mint(MintError::Gone)) => self.fail(410, "The stream was closed."),
+            RewriteError::Mint(MintError::Gone) => self.fail(410, "The stream was closed."),
         }
     }
 

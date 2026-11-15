@@ -106,7 +106,7 @@ describe('player for a playlist channel', () => {
     expect(t).toContain('Laugh Line')
     expect(t).toContain('Loading stream…')
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*aria-label="Play, unavailable until the stream loads"/)
-    expect(html).toContain('<video class="player-video"')
+    expect(html).toContain('<video class="player-video')
     for (const control of ['aria-label="Mute"', 'aria-label="Volume"', 'aria-label="Subtitles"', 'aria-label="Audio"', 'aria-label="Quality"', 'aria-label="Pause"']) expect(html).not.toContain(control)
     expect(t).not.toMatch(/\bLive\b/)
     for (const s of SECRETS) expect(html).not.toContain(s)

@@ -1,0 +1,136 @@
+/* Background Task Center Styles */
+
+.ds-task-center {
+  position: relative;
+}
+
+.ds-task-btn.is-active {
+  color: var(--accent, #e50914);
+}
+
+.ds-task-spin {
+  animation: ds-task-rot 2s linear infinite;
+}
+
+@keyframes ds-task-rot {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.ds-task-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: var(--accent, #e50914);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--surface-2, #12151a);
+}
+
+.ds-task-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 320px;
+  max-height: 400px;
+  background: var(--surface-3, #181b20);
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.6);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: ds-fade-in 0.15s ease-out;
+}
+
+.ds-task-pop-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+  font-size: 13px;
+}
+
+.ds-task-clear-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted, #94a3b8);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.ds-task-clear-btn:hover {
+  color: var(--text, #f0f2f5);
+}
+
+.ds-task-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ds-task-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm, 6px);
+  background: rgb(255 255 255 / 0.03);
+  border: 1px solid rgb(255 255 255 / 0.05);
+}
+
+.ds-task-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ds-task-item-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text, #f0f2f5);
+}
+
+.ds-task-status-pill {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.ds-task-pill-running {
+  background: rgb(59 130 246 / 0.15);
+  color: #60a5fa;
+}
+.ds-task-pill-completed {
+  background: rgb(16 185 129 / 0.15);
+  color: #34d399;
+}
+.ds-task-pill-failed {
+  background: rgb(239 68 68 / 0.15);
+  color: #f87171;
+}
+
+.ds-task-item-stage {
+  font-size: 11px;
+  color: var(--text-muted, #94a3b8);
+}
+
+.ds-task-progress {
+  margin-top: 4px;
+  height: 3px;
+}

@@ -1,0 +1,65 @@
+Kinora Proprietary Source-Available Licence - All Rights Reserved
+
+Version: 1.0 (2026)
+Product: Kinora (KinoraTV)
+Original Creator and Developer: millsydotdev (https://github.com/millsydotdev)
+Copyright (c) 2026 millsydotdev and rightful copyright owners. All Rights Reserved.
+
+IMPORTANT LEGAL NOTICE - NOT AN OPEN-SOURCE LICENCE:
+This software and associated documentation ("Software") are made available under this
+proprietary, source-available licence. This is NOT an Open Source Initiative (OSI) approved
+licence. Inspecting, building, or running this source code does not grant you public copyright
+licences, open-source rights, or commercial privileges.
+
+1. GRANT OF PERMITTED USE
+Subject to the restrictions in Section 2, the copyright holder grants individuals permission
+to clone, view, and compile this source code exclusively for:
+  (a) Personal, non-commercial evaluation and testing;
+  (b) Submitting issue reports and pull requests directly to the canonical KinoraTV repository;
+  (c) Verifying security, privacy, and architectural guarantees for personal use.
+
+2. STRICT PROHIBITIONS
+Without prior express written permission from the copyright holder, you may not:
+  (a) Copy, reproduce, redistribute, republish, or sublicense the Software, in whole or in part;
+  (b) Create, distribute, or maintain public forks, clones, mirrors, or derivative products;
+  (c) Rebrand, rename, or redistribute the Software under a different name or identity;
+  (d) Remove, alter, obscure, or fail to display copyright notices, creator attribution,
+      or licence terms;
+  (e) Exploit the Software commercially, including through sale, rental, subscription,
+      paid distribution, commercial hosting, streaming proxies, or software-as-a-service (SaaS);
+  (f) Ingest, process, scrape, or utilize any part of the source code, design assets,
+      documentation, or artwork for artificial intelligence (AI) or machine learning (ML)
+      training, fine-tuning, evaluation, benchmarking, dataset compilation, or model development,
+      subject to applicable mandatory legal exceptions;
+  (g) Deploy automated tools, bulk harvesters, or scrapers against the repository;
+  (h) Misrepresent authorship, creator identity, or copyright ownership.
+
+3. INTELLECTUAL PROPERTY AND TRADEMARK RESERVATION
+The names "Kinora", "Kinora TV", "KinoraTV", associated logos, graphic designs, artwork, and
+visual presentation are proprietary marks and trade dress of their rightful owner. No trademark
+licence is granted hereunder. All original creative works, visual interfaces, UI designs, and
+proprietary algorithms remain the exclusive intellectual property of millsydotdev and rightful
+owners. Formal trademark registration and entity structuring remain subject to UK intellectual-property
+solicitor review.
+
+4. THIRD-PARTY COMPONENTS
+Third-party open-source libraries, fonts, and dependencies incorporated into or linked by this
+project are governed by their respective permissive licences as documented in
+`public/THIRD-PARTY-NOTICES.txt`. Nothing in this licence diminishes or expands rights granted
+under those third-party licences.
+
+5. TERMINATION
+Any breach of this licence immediately and automatically terminates all rights granted herein.
+Upon termination, you must cease all use of the Software and destroy all copies in your possession.
+
+6. DISCLAIMER OF WARRANTY
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND
+NON-INFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM,
+OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+7. LIMITATION OF LIABILITY
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING LOSS OF USE,
+DATA, OR PROFITS) ARISING OUT OF THE USE OR INABILITY TO USE THIS SOFTWARE.

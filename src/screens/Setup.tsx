@@ -6,7 +6,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Icon } from '../components/Icon'
 import { Logo } from '../components/Sidebar'
 import { StateBlock } from '../components/ui'
-import { fetchPlaylist, inNativeShell, type CatalogueEntry } from '../lib/native'
+import { fetchPlaylist, getAppInfo, inNativeShell, type AppInfo, type CatalogueEntry } from '../lib/native'
 import { filterEntries, importedAs, suggestedEntries, uniqueName, PROVIDER } from '../state/catalogue'
 import { addressLabel, readForPreview } from '../state/playlists'
 import { useStore } from '../state/store'
@@ -24,7 +24,12 @@ export function Setup() {
   const store = useStore()
   const navigate = useNavigate()
   const [step, setStep] = useState<Step>('welcome')
+  const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
   const leave = (to: string) => { store.finishSetup(); navigate(to, { replace: true }) }
+
+  useEffect(() => {
+    void getAppInfo().then(setAppInfo)
+  }, [])
 
   return (
     <div className="setup">
@@ -38,9 +43,16 @@ export function Setup() {
       <div className="setup-body">
         {step === 'welcome' && (
           <section className="setup-card" aria-labelledby="setup-title">
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '4px 10px', background: 'var(--surface)', borderRadius: 'var(--r-s)', border: '1px solid var(--line)', width: 'fit-content', fontSize: '0.8125rem' }}>
+              <span style={{ color: 'var(--accent)', fontWeight: 700 }}>Kinora</span>
+              <span className="muted">{appInfo ? `v${appInfo.version} (${appInfo.os} ${appInfo.arch})` : 'v0.1.0'}</span>
+            </div>
             <h1 id="setup-title" className="title-xl">Your TV, from sources you choose</h1>
             <p className="muted">Kinora has no channels or films of its own. It plays TV playlists you add, shows their schedule, and keeps your favourites on this device.</p>
             <p className="muted">Kinora collects nothing about you and has no account. The hosts you add do see your IP address when Kinora contacts them.</p>
+            <p className="muted" style={{ fontSize: '0.8125rem', borderLeft: '2px solid var(--line-strong)', paddingLeft: '10px' }}>
+              Playback requirement: Kinora uses direct HTTP Live Streaming (HLS). DRM is refused. Stream tokens remain in memory and are never persisted in logs or analytics.
+            </p>
             <div className="setup-actions">
               <button type="button" className="btn btn-primary" onClick={() => setStep('channels')}>Find channels<Icon name="right" size={18} /></button>
               <button type="button" className="btn btn-secondary" onClick={() => leave('/sources/add')}>I have my own playlist</button>

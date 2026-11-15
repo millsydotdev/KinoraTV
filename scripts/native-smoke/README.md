@@ -31,7 +31,7 @@ npm run dev &                                                  # dev phases load
 
 S=scripts/native-smoke/run.sh
 # Environment A: one profile used start to finish (each phase builds on the previous ones).
-for p in fresh playback recovery fullscreen guide associate perf discovery discovery-more restart perms external-link; do bash $S A dev $p; done
+for p in fresh playback formats recovery fullscreen guide associate perf discovery discovery-more restart perms external-link; do bash $S A dev $p; done
 for p in offline offline-all discovery-stale-offline; do bash $S A dev $p ns; done   # no internet; offline-all: no fixtures either
 bash $S A dev removeguide; bash $S A dev removal
 # Clock changes: a zone with a change within the guide's 7 days (KINORA_DST_DAY / KINORA_DST_TICKS for others).

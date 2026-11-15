@@ -1,0 +1,325 @@
+.content-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+  position: relative;
+  max-width: 100%;
+}
+
+.content-rail-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 0 var(--gutter);
+  gap: 16px;
+}
+
+.content-rail-titles {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.content-rail-title {
+  font-size: 1.1875rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--text);
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.content-rail-icon {
+  color: var(--accent-text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.content-rail-icon.is-play {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #e50914;
+  color: #ffffff;
+  display: inline-grid;
+  place-items: center;
+  box-shadow: 0 0 10px rgba(229, 9, 20, 0.55);
+  margin-right: 2px;
+  flex: none;
+}
+
+.content-rail-icon.is-clapperboard {
+  color: #e50914;
+  filter: drop-shadow(0 0 6px rgba(229, 9, 20, 0.6));
+  flex: none;
+}
+
+.content-rail-sub {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-3);
+}
+
+.content-rail-view-all {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-2);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: var(--r-s, 4px);
+  white-space: nowrap;
+  transition: color 140ms var(--ease), background 140ms var(--ease);
+}
+
+.content-rail-view-all:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+.content-rail-viewport {
+  position: relative;
+  width: 100%;
+  overflow: clip;
+}
+
+.content-rail-track {
+  display: flex;
+  gap: var(--gap, 14px);
+  padding: 4px var(--gutter) 14px var(--gutter);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.content-rail-track::-webkit-scrollbar {
+  display: none;
+}
+
+/* Card sizing inside poster track (2:3 aspect ratio) */
+.content-rail-track.is-poster > .card,
+.content-rail-track.is-poster .card-poster {
+  flex: 0 0 clamp(140px, calc((100% - 5 * var(--gap, 16px)) / 6), 250px);
+  width: clamp(140px, calc((100% - 5 * var(--gap, 16px)) / 6), 250px);
+  scroll-snap-align: start;
+}
+
+/* Card sizing inside tile / square track (master mockup parity: 220px by 185px) */
+.content-rail-track.is-tile > .card,
+.content-rail-track.is-tile .card-poster,
+.content-rail-track.is-tile .card-tile {
+  flex: 0 0 clamp(180px, calc((100% - 5 * var(--gap, 16px)) / 6), 240px);
+  width: clamp(180px, calc((100% - 5 * var(--gap, 16px)) / 6), 240px);
+  scroll-snap-align: start;
+}
+
+.content-rail-track.is-tile .card-poster .card-media,
+.content-rail-track.is-tile .card-media {
+  aspect-ratio: 220 / 185;
+}
+
+/* Card sizing inside wide track (16:9 / landscape) */
+.content-rail-track.is-wide > .card,
+.content-rail-track.is-wide .card-wide,
+.content-rail-track.is-wide .channel-card,
+.content-rail-track.is-wide .res-card,
+.content-rail-track.is-wide .resource-card {
+  flex: 0 0 clamp(250px, calc((100% - 3 * var(--gap, 16px)) / 4), 380px);
+  width: clamp(250px, calc((100% - 3 * var(--gap, 16px)) / 4), 380px);
+  scroll-snap-align: start;
+}
+
+/* Continue watching wide cards show the circular play button distinctly like the master reference */
+.content-rail-track.is-wide .card-play {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  background: rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  color: #ffffff;
+  opacity: 0.95;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+  transition: transform 140ms var(--ease), opacity 140ms var(--ease);
+}
+
+.content-rail-track.is-wide .card:hover .card-play,
+.content-rail-track.is-wide .card:focus-visible .card-play {
+  opacity: 1;
+  transform: scale(1.08);
+  border-color: #ffffff;
+}
+
+/* Three-dots menu button on wide media cards */
+.card-more-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 3;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-s, 4px);
+  background: rgb(var(--scrim) / 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--text-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: background 140ms var(--ease), color 140ms var(--ease), border-color 140ms var(--ease);
+}
+
+.card-more-btn:hover {
+  background: rgb(var(--scrim) / 0.85);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+/* Card dismiss button on continue watching cards */
+.card-dismiss-btn {
+  position: absolute;
+  top: 8px;
+  right: 40px;
+  z-index: 3;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-s, 4px);
+  background: rgb(var(--scrim) / 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--text-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: background 140ms var(--ease), color 140ms var(--ease), border-color 140ms var(--ease);
+}
+
+.card-dismiss-btn:hover {
+  background: rgb(var(--scrim) / 0.85);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+/* Single clean visible focus state for cards within rails (no double border) */
+.content-rail .card:focus-visible,
+.content-rail .res-card:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -1px;
+  border-color: transparent;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.58);
+  transform: translateY(-2px);
+  z-index: 4;
+}
+
+/* Mouse navigation controls */
+.content-rail-control {
+  position: absolute;
+  top: 8px;
+  bottom: 22px;
+  width: 52px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #ffffff;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms var(--ease), transform 140ms var(--ease);
+}
+
+.content-rail-viewport:hover .content-rail-control.is-active,
+.content-rail-control.is-active:focus-visible {
+  opacity: 0.95;
+  pointer-events: auto;
+}
+
+.content-rail-control:hover {
+  opacity: 1 !important;
+  transform: scale(1.06);
+}
+
+.content-rail-control-prev {
+  left: 0;
+  background: linear-gradient(to right, rgb(var(--bg-rgb) / 0.95) 0%, rgb(var(--bg-rgb) / 0.5) 50%, transparent 100%);
+  border-top-right-radius: var(--r-s, 4px);
+  border-bottom-right-radius: var(--r-s, 4px);
+}
+
+.content-rail-control-next {
+  right: 0;
+  background: linear-gradient(to left, rgb(var(--bg-rgb) / 0.95) 0%, rgb(var(--bg-rgb) / 0.5) 50%, transparent 100%);
+  border-top-left-radius: var(--r-s, 4px);
+  border-bottom-left-radius: var(--r-s, 4px);
+}
+
+.content-rail-control-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgb(var(--scrim) / 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  transition: background-color 140ms var(--ease), border-color 140ms var(--ease);
+}
+
+.content-rail-control:hover .content-rail-control-icon {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Subtle edge hint when more items exist to the right */
+.content-rail-viewport.has-more-right::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 8px;
+  bottom: 22px;
+  width: 40px;
+  background: linear-gradient(to left, rgb(var(--bg-rgb) / 0.85) 0%, transparent 100%);
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 180ms var(--ease);
+}
+
+.content-rail-viewport:hover.has-more-right::after {
+  opacity: 0.35;
+}
+
+@media (max-width: 760px) {
+  .content-rail {
+    margin-bottom: 24px;
+  }
+  .content-rail-header {
+    gap: 8px;
+  }
+  .content-rail-title {
+    font-size: 1.0625rem;
+  }
+  .content-rail-control {
+    display: none;
+  }
+}

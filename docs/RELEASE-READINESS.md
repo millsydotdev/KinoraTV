@@ -179,7 +179,7 @@ both directions at 20,000 channels, and bounded memory.
 
 Inspected in D8, with evidence:
 
-- **Commands and capabilities**: 15 commands; the sets declared in `build.rs`, registered in
+- **Commands and capabilities**: D8 verified 15 commands; the sets declared in `build.rs`, registered in
   `lib.rs` and granted in `capabilities/default.json` are identical. Granted to the `main` window
   only; no other permission sets.
 - **Plugins**: none (no `tauri-plugin-*` in Cargo or npm; `@vitejs/plugin-react` is a build tool).
@@ -187,8 +187,11 @@ Inspected in D8, with evidence:
   `font-src 'self'`, `connect-src ipc: http://ipc.localhost kstream://localhost`, `media-src blob:`,
   `object-src 'none'`, `base-uri 'self'`, `form-action 'none'`. No remote hosts.
 - **Network call sites**: the page has no `fetch`, XHR, WebSocket, EventSource or beacon calls of its
-  own; all Rust HTTP goes through `fetch::guarded_client` (playlists, guides, catalogue, streams).
-  Channel logos are always `null`; guide icons are dropped by the parser and never stored.
+  own; all Rust HTTP goes through `fetch::guarded_client` (playlists, guides, catalogue, streams and
+  channel logos). After D8, the owner approved M3U channel logos: the added `fetch_channel_logo`
+  command caps each image at 256 KiB and 10 seconds, limits concurrent reads to four, and accepts
+  only PNG, JPEG, GIF and WebP signatures. Logos load near the viewport and remain memory-only.
+  XMLTV guide icons and artwork are still dropped by the parser and never fetched.
 - **Regression tests re-run** (all pass): fetch 15 (+1 ignored), stream 13, hls 10, m3u 14, xmltv 13,
   guides 9, catalogue 10, sources 16; they cover private, loopback, reserved and metadata addresses,
   DNS answers, redirect re-checks, the catalogue host allowlist and https-only rule, size and time
