@@ -65,16 +65,38 @@ jobs:
           npm run typecheck
           npm test
 
-      - name: Build Tauri application
+      - name: Configure signing environment
+        run: |
+          node -e '
+            const secrets = {
+              APPLE_CERTIFICATE: process.env.SEC_APPLE_CERT,
+              APPLE_CERTIFICATE_PASSWORD: process.env.SEC_APPLE_CERT_PASS,
+              APPLE_SIGNING_IDENTITY: process.env.SEC_APPLE_IDENTITY,
+              APPLE_ID: process.env.SEC_APPLE_ID,
+              APPLE_PASSWORD: process.env.SEC_APPLE_PASS,
+              APPLE_TEAM_ID: process.env.SEC_APPLE_TEAM,
+              TAURI_SIGNING_PRIVATE_KEY: process.env.SEC_TAURI_KEY,
+              TAURI_SIGNING_KEY_PASSWORD: process.env.SEC_TAURI_KEY_PASS
+            };
+            const fs = require("fs");
+            const envFile = process.env.GITHUB_ENV;
+            for (const [k, v] of Object.entries(secrets)) {
+              if (v && v.trim().length > 0) {
+                fs.appendFileSync(envFile, `${k}<<EOF\n${v}\nEOF\n`);
+              }
+            }
+          '
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_KEY_PASSWORD }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          SEC_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE }}
+          SEC_APPLE_CERT_PASS: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          SEC_APPLE_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          SEC_APPLE_ID: ${{ secrets.APPLE_ID }}
+          SEC_APPLE_PASS: ${{ secrets.APPLE_PASSWORD }}
+          SEC_APPLE_TEAM: ${{ secrets.APPLE_TEAM_ID }}
+          SEC_TAURI_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          SEC_TAURI_KEY_PASS: ${{ secrets.TAURI_SIGNING_KEY_PASSWORD }}
+
+      - name: Build Tauri application
         run: npm run tauri:build -- --target ${{ matrix.target }}
 
       - name: Generate SHA-256 checksums (Linux / macOS)
