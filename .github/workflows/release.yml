@@ -160,7 +160,7 @@ jobs:
         run: |
           mkdir -p release-dist
           find release-artifacts -type f -name "SHA256SUMS-*.txt" -exec cat {} + > release-dist/SHA256SUMS.txt
-          find release-artifacts -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" -o -name "*.dmg" -o -name "*.exe" -o -name "*.msi" -o -name "*.tar.gz" -o -name "*.zip" -o -name "*.sig" \) -exec cp {} release-dist/ \;
+          find release-artifacts -type f \( -name "Kinora*" -a \( -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage*" -o -name "*.dmg" -o -name "*.exe*" -o -name "*.msi*" -o -name "*.tar.gz*" -o -name "*.zip*" \) \) -exec cp {} release-dist/ \;
           echo "=== Release distribution contents ==="
           ls -la release-dist
           cat release-dist/SHA256SUMS.txt
