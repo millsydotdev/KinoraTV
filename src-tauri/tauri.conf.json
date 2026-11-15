@@ -98,7 +98,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ1MjNDMDZERDNERDAwQ0UKUldUT0FOM1RiY0FqMVZsWXZYUTFYODhmbzZUcjJoZDNnM3BNeGc3Y285dnl3aUcrd1hTRFR6SHYK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM3NzgxQjJBN0RCQTE5NDUKUldSRkdicDlLaHQ0TjJGOVQ0WFJrZ1ozdU9CcktibXV1NHNWemJhRGpPeDhoNUJOakVzTXN2VFMK",
       "endpoints": [
         "https://github.com/millsydotdev/KinoraTV/releases/latest/download/latest.json"
       ]

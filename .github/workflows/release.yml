@@ -76,7 +76,8 @@ jobs:
               APPLE_PASSWORD: process.env.SEC_APPLE_PASS,
               APPLE_TEAM_ID: process.env.SEC_APPLE_TEAM,
               TAURI_SIGNING_PRIVATE_KEY: process.env.SEC_TAURI_KEY,
-              TAURI_SIGNING_KEY_PASSWORD: process.env.SEC_TAURI_KEY_PASS
+              TAURI_SIGNING_KEY_PASSWORD: process.env.SEC_TAURI_KEY_PASS,
+              TAURI_SIGNING_PRIVATE_KEY_PASSWORD: process.env.SEC_TAURI_KEY_PASS
             };
             const fs = require("fs");
             const envFile = process.env.GITHUB_ENV;
@@ -94,7 +95,7 @@ jobs:
           SEC_APPLE_PASS: ${{ secrets.APPLE_PASSWORD }}
           SEC_APPLE_TEAM: ${{ secrets.APPLE_TEAM_ID }}
           SEC_TAURI_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          SEC_TAURI_KEY_PASS: ${{ secrets.TAURI_SIGNING_KEY_PASSWORD }}
+          SEC_TAURI_KEY_PASS: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || secrets.TAURI_SIGNING_KEY_PASSWORD }}
 
       - name: Build Tauri application
         run: npm run tauri:build -- --target ${{ matrix.target }}
