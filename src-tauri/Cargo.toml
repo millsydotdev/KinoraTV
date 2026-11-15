@@ -33,6 +33,10 @@ getrandom = "0.3"
 quick-xml = "0.42"
 flate2 = "1"
 resvg = { version = "0.49.0", default-features = false }
+[target.'cfg(windows)'.dependencies]
+openssl = { version = "0.10", features = ["vendored"] }
+
+[target.'cfg(not(windows))'.dependencies]
 openssl = "0.10"
 libc = "0.2"
 
