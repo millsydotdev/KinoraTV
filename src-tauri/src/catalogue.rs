@@ -103,7 +103,11 @@ pub fn playlist_address(url: &str) -> Option<(Kind, &str)> {
         && code
             .bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
-    Some((Kind::from_folder(folder)?, code)).filter(|_| code_ok)
+    if code_ok {
+        Some((Kind::from_folder(folder)?, code))
+    } else {
+        None
+    }
 }
 
 fn decode_entities(s: &str) -> String {

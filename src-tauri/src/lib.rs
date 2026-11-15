@@ -709,6 +709,7 @@ pub fn run() {
                 responder.respond(stream::into_response(reply));
             });
         })
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             app_info,
             fetch_channel_logo,

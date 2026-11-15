@@ -39,10 +39,11 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "category": "Video",
     "shortDescription": "Live TV, movies and series",
     "longDescription": "Kinora is a desktop media platform for playing personal IPTV sources, M3U playlists, Xtream codes providers, and XMLTV guides with a privacy-focused local architecture.",
-    "copyright": "Copyright 2026 Kinora Contributors",
+    "copyright": "Copyright (c) 2026 millsydotdev. All rights reserved.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -97,6 +98,7 @@
   },
   "plugins": {
     "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ1MjNDMDZERDNERDAwQ0UKUldUT0FOM1RiY0FqMVZsWXZYUTFYODhmbzZUcjJoZDNnM3BNeGc3Y285dnl3aUcrd1hTRFR6SHYK",
       "endpoints": [
         "https://github.com/millsydotdev/KinoraTV/releases/latest/download/latest.json"
       ]

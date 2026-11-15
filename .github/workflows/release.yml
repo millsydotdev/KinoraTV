@@ -99,6 +99,20 @@ jobs:
       - name: Build Tauri application
         run: npm run tauri:build -- --target ${{ matrix.target }}
 
+      - name: Normalise updater artifacts
+        shell: bash
+        run: |
+          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle"
+          echo "Scanning bundle directory: $BUNDLE_DIR"
+          find "$BUNDLE_DIR" -maxdepth 3 -ls
+          if [ "${{ matrix.platform }}" = "macos-arm64" ]; then
+            find "$BUNDLE_DIR" -type f -name "Kinora.app.tar.gz" -exec cp {} "$BUNDLE_DIR/Kinora_0.5.0_aarch64.app.tar.gz" \;
+            find "$BUNDLE_DIR" -type f -name "Kinora.app.tar.gz.sig" -exec cp {} "$BUNDLE_DIR/Kinora_0.5.0_aarch64.app.tar.gz.sig" \;
+          elif [ "${{ matrix.platform }}" = "macos-x64" ]; then
+            find "$BUNDLE_DIR" -type f -name "Kinora.app.tar.gz" -exec cp {} "$BUNDLE_DIR/Kinora_0.5.0_x64.app.tar.gz" \;
+            find "$BUNDLE_DIR" -type f -name "Kinora.app.tar.gz.sig" -exec cp {} "$BUNDLE_DIR/Kinora_0.5.0_x64.app.tar.gz.sig" \;
+          fi
+
       - name: Generate SHA-256 checksums (Linux / macOS)
         if: runner.os != 'Windows'
         run: |
@@ -130,7 +144,7 @@ jobs:
 
   publish:
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v') && github.event.inputs.dry_run != 'true'
+    if: (startsWith(github.ref, 'refs/tags/v') || github.event.inputs.dry_run == false) && !cancelled()
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
@@ -145,16 +159,21 @@ jobs:
         run: |
           mkdir -p release-dist
           find release-artifacts -type f -name "SHA256SUMS-*.txt" -exec cat {} + > release-dist/SHA256SUMS.txt
-          find release-artifacts -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" -o -name "*.dmg" -o -name "*.exe" -o -name "*.msi" -o -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} release-dist/ \;
+          find release-artifacts -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" -o -name "*.dmg" -o -name "*.exe" -o -name "*.msi" -o -name "*.tar.gz" -o -name "*.zip" -o -name "*.sig" \) -exec cp {} release-dist/ \;
           echo "=== Release distribution contents ==="
           ls -la release-dist
           cat release-dist/SHA256SUMS.txt
 
-      - name: Publish GitHub Release (Draft)
+      - name: Generate latest.json updater manifest
+        run: |
+          node scripts/generate-updater-manifest.cjs
+
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             release-dist/*
+          name: Kinora v0.5.0
           generate_release_notes: true
-          draft: true
+          draft: false
           prerelease: false
