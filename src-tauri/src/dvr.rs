@@ -175,9 +175,9 @@ fn query_disk_metrics(path: &Path) -> (u64, u64) {
             let mut stat: MaybeUninit<libc::statvfs> = MaybeUninit::uninit();
             if libc::statvfs(c_path.as_ptr(), stat.as_mut_ptr()) == 0 {
                 let s = stat.assume_init();
-                let block_size = s.f_frsize;
-                let total = s.f_blocks * block_size;
-                let avail = s.f_bavail * block_size;
+                let block_size = s.f_frsize as u64;
+                let total = (s.f_blocks as u64) * block_size;
+                let avail = (s.f_bavail as u64) * block_size;
                 return (total, avail);
             }
         }
