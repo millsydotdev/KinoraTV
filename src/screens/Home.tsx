@@ -119,7 +119,7 @@ function Hero() {
           </Link>
           <button
             type="button"
-            className="btn btn-hero-secondary btn-secondary"
+            className="btn btn-hero-secondary"
             aria-pressed={inLibrary}
             onClick={() => {
               store.toggleWatchlist(ref)
@@ -298,17 +298,17 @@ function RealHero() {
           </div>
           {m.plot && <p className="hero-synopsis">{m.plot}</p>}
           <div className="hero-actions">
-            <Link to={play} className="btn btn-primary"><Icon name="info" size={16} />View Details</Link>
+            <Link to={play} className="btn btn-hero-watch btn-primary"><Icon name="info" size={16} />View Details</Link>
             <button
               type="button"
-              className="btn btn-secondary"
+              className="btn btn-hero-secondary"
               aria-pressed={inLibrary}
               onClick={() => {
                 store.toggleWatchlist(ref)
                 toast(inLibrary ? `Removed ${m.name} from your library` : `Added ${m.name} to your library`, { label: 'Undo', run: () => store.toggleWatchlist(ref) })
               }}
             >
-              <Icon name={inLibrary ? 'check' : 'plus'} size={18} />{inLibrary ? 'In Library' : 'Add to Library'}
+              <Icon name={inLibrary ? 'check' : 'plus'} size={18} /><span>{inLibrary ? 'In Library' : 'Add to Library'}</span>
             </button>
           </div>
         </div>
