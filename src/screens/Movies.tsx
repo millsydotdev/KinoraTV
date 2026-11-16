@@ -13,6 +13,8 @@ import {
   StreamingRail,
   StreamingCard,
   StreamingEmptyState,
+  StreamingProviderPrompt,
+  getTechnicalBadges,
   type NavTabItem,
   type HeroSlideData,
   type GenreItem,
@@ -179,7 +181,7 @@ export function Movies() {
         genre: m.categoryName || 'Movie',
         runtime: '2h 15m',
         ageRating: 'PG-13',
-        badges: ['4K', 'HDR'],
+        badges: getTechnicalBadges(m),
         playUrl: `/watch/${encodeURIComponent(`movie:xt:${m.sourceId}:${m.id}`)}`,
         detailUrl: `/movies/${encodeURIComponent(`xt:${m.sourceId}:${m.id}`)}`,
         itemRef: `movie:xt:${m.sourceId}:${m.id}`,
@@ -208,7 +210,7 @@ export function Movies() {
           genre: m.genres[0] || 'Drama',
           runtime: `${hours}h ${mins}m`,
           ageRating: m.certificate,
-          badges: ['4K', 'HDR'],
+          badges: getTechnicalBadges(m),
           playUrl: `/watch/${encodeURIComponent(movieRef(m.id))}`,
           detailUrl: `/movies/${m.id}`,
           itemRef: movieRef(m.id),
@@ -379,11 +381,12 @@ export function Movies() {
           <button
             type="button"
             className="pill pill-pending"
-            style={{ cursor: 'pointer', border: '1px solid var(--accent)' }}
+            style={{ cursor: 'pointer', border: '1px solid var(--accent)', display: 'inline-flex', alignItems: 'center', gap: 6 }}
             onClick={() => setSelectedGenre(null)}
             title="Clear genre filter"
           >
-            Genre: {selectedGenre} ✕
+            <span>Genre: {selectedGenre}</span>
+            <Icon name="close" size={14} />
           </button>
         )}
       </div>
@@ -401,6 +404,8 @@ export function Movies() {
           />
 
           <div className="streaming-body">
+            {!hasXtream && <StreamingProviderPrompt kind="movies" />}
+
             {/* Browse by Genre Row */}
             <StreamingGenreRow
               genres={MOVIE_GENRES}
@@ -415,7 +420,8 @@ export function Movies() {
             {/* Trending Movies Rail */}
             <StreamingRail
               title="Trending Movies"
-              icon="🔥"
+              iconName="flame"
+              iconColor="#ff253b"
               onSeeAll={() => setActiveTab('a-z')}
             >
               {hasXtream
@@ -429,7 +435,7 @@ export function Movies() {
                         title={m.name}
                         sub={[m.year, sourceName(m.sourceId)].filter(Boolean).join(' · ')}
                         artworkKey={m.artworkKey}
-                        badges={['4K', 'HDR']}
+                        badges={getTechnicalBadges(m)}
                         itemRef={`movie:${routeId}`}
                         watched={isWatched}
                       />
@@ -446,7 +452,7 @@ export function Movies() {
                         title={movie.title}
                         sub={`${movie.year} · ${movie.genres[0] || 'Film'} · ${runtimeLabel(movie.runtime)}`}
                         art={movie.art}
-                        badges={['4K', 'HDR']}
+                        badges={getTechnicalBadges(movie)}
                         itemRef={ref}
                         watched={isWatched}
                         progress={progress?.dur ? progress.pos / progress.dur : undefined}
@@ -458,7 +464,8 @@ export function Movies() {
             {/* New Releases Rail */}
             <StreamingRail
               title="New Releases"
-              icon="📅"
+              iconName="calendar"
+              iconColor="#ff253b"
               onSeeAll={() => setActiveTab('new-releases')}
             >
               {hasXtream
@@ -471,7 +478,7 @@ export function Movies() {
                         title={m.name}
                         sub={[m.year, sourceName(m.sourceId)].filter(Boolean).join(' · ')}
                         artworkKey={m.artworkKey}
-                        badges={['4K', 'HDR']}
+                        badges={getTechnicalBadges(m)}
                         itemRef={`movie:${routeId}`}
                       />
                     )
@@ -484,7 +491,7 @@ export function Movies() {
                         title={movie.title}
                         sub={`${movie.year} · ${movie.genres[0] || 'Film'}`}
                         art={movie.art}
-                        badges={['4K', 'HDR']}
+                        badges={getTechnicalBadges(movie)}
                         itemRef={movieRef(movie.id)}
                       />
                     )
@@ -494,7 +501,8 @@ export function Movies() {
             {/* Popular Movies Rail */}
             <StreamingRail
               title="Popular Movies"
-              icon="⭐"
+              iconName="star"
+              iconColor="#fbbf24"
               onSeeAll={() => setActiveTab('top-rated')}
             >
               {hasXtream
@@ -505,7 +513,7 @@ export function Movies() {
                       title={m.name}
                       sub={[m.year, sourceName(m.sourceId)].filter(Boolean).join(' · ')}
                       artworkKey={m.artworkKey}
-                      badges={['4K']}
+                      badges={getTechnicalBadges(m)}
                       itemRef={`movie:xt:${m.sourceId}:${m.id}`}
                     />
                   ))
@@ -517,7 +525,7 @@ export function Movies() {
                         title={movie.title}
                         sub={`${movie.year} · ${movie.genres[0] || 'Film'}`}
                         art={movie.art}
-                        badges={['4K']}
+                        badges={getTechnicalBadges(movie)}
                         itemRef={movieRef(movie.id)}
                       />
                     )
@@ -528,7 +536,8 @@ export function Movies() {
             {continueWatchingMovies.length > 0 && (
               <StreamingRail
                 title="Continue Watching"
-                icon="⏱️"
+                iconName="clock"
+                iconColor="#e6edf3"
                 onSeeAll={() => setActiveTab('browse')}
               >
                 {continueWatchingMovies.map((movie) => {
@@ -541,7 +550,7 @@ export function Movies() {
                       title={movie.title}
                       sub={`${movie.year} · Resume`}
                       art={movie.art}
-                      badges={['4K']}
+                      badges={getTechnicalBadges(movie)}
                       itemRef={ref}
                       progress={prog?.dur ? prog.pos / prog.dur : undefined}
                     />
@@ -554,7 +563,8 @@ export function Movies() {
             {(myListXtream.length > 0 || myListDemo.length > 0) && (
               <StreamingRail
                 title="My List"
-                icon="🔖"
+                iconName="bookmark"
+                iconColor="#e6edf3"
                 onSeeAll={() => setActiveTab('browse')}
               >
                 {hasXtream
@@ -565,7 +575,7 @@ export function Movies() {
                         title={m.name}
                         sub={[m.year, sourceName(m.sourceId)].filter(Boolean).join(' · ')}
                         artworkKey={m.artworkKey}
-                        badges={['4K']}
+                        badges={getTechnicalBadges(m)}
                         itemRef={`movie:xt:${m.sourceId}:${m.id}`}
                       />
                     ))
@@ -577,7 +587,7 @@ export function Movies() {
                           title={movie.title}
                           sub={`${movie.year} · In My List`}
                           art={movie.art}
-                          badges={['4K']}
+                          badges={getTechnicalBadges(movie)}
                           itemRef={movieRef(movie.id)}
                         />
                       )

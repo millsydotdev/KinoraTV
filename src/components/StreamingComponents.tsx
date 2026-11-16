@@ -294,12 +294,14 @@ export function StreamingGenreRow({
 
 export function StreamingRail({
   title,
-  icon,
+  iconName,
+  iconColor = '#ff253b',
   onSeeAll,
   children,
 }: {
   title: string
-  icon?: string
+  iconName?: IconName
+  iconColor?: string
   onSeeAll?: () => void
   children: ReactNode
 }) {
@@ -325,7 +327,11 @@ export function StreamingRail({
     <section className="streaming-rail-wrap" aria-label={title}>
       <div className="streaming-rail-header">
         <h2 className="streaming-rail-title">
-          {icon && <span className="streaming-rail-icon" aria-hidden="true">{icon}</span>}
+          {iconName && (
+            <span className="streaming-rail-icon" style={{ color: iconColor }} aria-hidden="true">
+              <Icon name={iconName} size={18} />
+            </span>
+          )}
           <span>{title}</span>
         </h2>
         {onSeeAll && (
@@ -370,6 +376,41 @@ export function StreamingRail({
         </button>
       </div>
     </section>
+  )
+}
+
+export function StreamingProviderPrompt({
+  kind,
+}: {
+  kind: 'movies' | 'tv'
+}) {
+  const isMovies = kind === 'movies'
+  return (
+    <aside className="streaming-provider-prompt" aria-label="On-demand provider connection">
+      <div className="streaming-provider-prompt-icon" aria-hidden="true">
+        <Icon name={isMovies ? 'film' : 'tv'} size={22} />
+      </div>
+      <div className="streaming-provider-prompt-content">
+        <strong className="streaming-provider-prompt-title">
+          Connect an On-Demand Provider
+        </strong>
+        <p className="streaming-provider-prompt-desc">
+          {isMovies
+            ? 'Add an Xtream compatible provider in Sources to stream films on demand, or explore the digital preservation works below.'
+            : 'Add an Xtream compatible provider in Sources to stream television series on demand, or explore the open broadcast archive below.'}
+        </p>
+      </div>
+      <div className="streaming-provider-prompt-actions">
+        <Link to="/sources/add?kind=xtream" className="btn btn-primary btn-small">
+          <Icon name="plus" size={15} />
+          <span>Add Provider</span>
+        </Link>
+        <Link to="/sources" className="btn btn-ghost btn-small">
+          <Icon name="sources" size={15} />
+          <span>Sources</span>
+        </Link>
+      </div>
+    </aside>
   )
 }
 
@@ -515,3 +556,37 @@ export function StreamingEmptyState({
     </div>
   )
 }
+
+/**
+ * Genuine technical badge derivation from real title/metadata fields.
+ * Never hardcodes fake 4K/HDR badges.
+ */
+export function getTechnicalBadges(item: {
+  name?: string
+  title?: string
+  audio?: string[]
+  extension?: string
+  year?: number | string | null
+}): string[] {
+  const text = `${item.title ?? ''} ${item.name ?? ''}`
+  const badges: string[] = []
+
+  if (/\b(4k|2160p|uhd)\b/i.test(text)) {
+    badges.push('4K')
+  } else if (/\b(1080p|fhd|hd)\b/i.test(text)) {
+    badges.push('HD')
+  }
+
+  if (/\b(hdr|hdr10|dv|dolby\s*vision)\b/i.test(text)) {
+    badges.push('HDR')
+  }
+
+  if (item.audio?.some((a) => /atmos/i.test(a)) || /\batmos\b/i.test(text)) {
+    badges.push('Dolby Atmos')
+  } else if (item.audio?.some((a) => /5\.1/i.test(a)) || /\b5\.1\b/i.test(text)) {
+    badges.push('5.1')
+  }
+
+  return badges
+}
+

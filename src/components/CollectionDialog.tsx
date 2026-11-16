@@ -5,6 +5,7 @@ import { Icon } from './Icon'
 import { useToast } from './Toast'
 
 export function CollectionDialog({ open, onClose, itemRef, itemTitle }: { open: boolean; onClose: () => void; itemRef: string; itemTitle: string }) {
+  if (!open) return null
   const store = useStore()
   const toast = useToast()
   const [name, setName] = useState('')

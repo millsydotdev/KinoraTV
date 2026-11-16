@@ -816,3 +816,63 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* Compact provider connection prompt */
+.streaming-provider-prompt {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 8px 40px 24px;
+  padding: 14px 20px;
+  background: linear-gradient(90deg, rgba(229, 9, 20, 0.12) 0%, rgba(26, 30, 36, 0.95) 30%, rgba(18, 21, 26, 0.95) 100%);
+  border: 1px solid rgba(229, 9, 20, 0.3);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.streaming-provider-prompt-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: rgba(229, 9, 20, 0.2);
+  border: 1px solid rgba(229, 9, 20, 0.4);
+  color: #ff253b;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.streaming-provider-prompt-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.streaming-provider-prompt-title {
+  display: block;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 2px;
+}
+
+.streaming-provider-prompt-desc {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+.streaming-provider-prompt-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 840px) {
+  .streaming-provider-prompt {
+    flex-direction: column;
+    align-items: flex-start;
+    margin: 8px 20px 20px;
+  }
+}

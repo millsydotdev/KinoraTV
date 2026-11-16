@@ -87,12 +87,28 @@ const paths = {
   layers: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5',
   sortAsc: 'M3 6h7M3 12h5M3 18h3M14 7l3-3 3 3M17 4v16',
   flame: 'M8.5 14.5A3.5 3.5 0 0 0 12 18a3.5 3.5 0 0 0 3.5-3.5c0-2-1.5-3.5-2.5-5 0 0-.5 1.5-1 1.5s-.5-1-1-2c-.5 2-2.5 3.5-2.5 5.5zM12 2c-4 5-7 8.5-7 12.5a7 7 0 0 0 14 0c0-4-3-7.5-7-12.5z',
+  trending: 'M23 6l-9.5 9.5-5-5L1 18M17 6h6v6',
+  chevronRight: 'M9 18l6-6-6-6',
+  chevronLeft: 'M15 18l-6-6 6-6',
+  rotateCw: 'M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8M21 3v5h-5',
 } as const
 
 export type IconName = keyof typeof paths
 
-export function Icon({ name, size = 20, className, style }: { name: IconName; size?: number; className?: string; style?: React.CSSProperties }) {
-  const filled = name === 'play'
+export function Icon({
+  name,
+  size = 20,
+  className,
+  style,
+  fill,
+}: {
+  name: IconName
+  size?: number
+  className?: string
+  style?: React.CSSProperties
+  fill?: string
+}) {
+  const isFilled = fill ?? (name === 'play' ? 'currentColor' : 'none')
   return (
     <svg
       className={className}
@@ -100,7 +116,7 @@ export function Icon({ name, size = 20, className, style }: { name: IconName; si
       width={size}
       height={size}
       viewBox="0 0 24 24"
-      fill={filled ? 'currentColor' : 'none'}
+      fill={isFilled}
       stroke="currentColor"
       strokeWidth={1.8}
       strokeLinecap="round"

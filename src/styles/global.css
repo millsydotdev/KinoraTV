@@ -484,16 +484,15 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .progress > i { display: block; height: 100%; background: var(--accent); }
 
 /* ---------- Dialogs, sheets, toasts (raised surface) ---------- */
-dialog.dialog { display: flex; flex-direction: column; width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; background: var(--raised); color: var(--text); border: 1px solid var(--line-strong); border-radius: var(--r-l); box-shadow: var(--shadow); overflow: hidden; }
+dialog.dialog:not([open]), dialog.sheet:not([open]) { display: none !important; }
+dialog.dialog[open] { display: flex; flex-direction: column; width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; background: var(--raised); color: var(--text); border: 1px solid var(--line-strong); border-radius: var(--r-l); box-shadow: var(--shadow); overflow: hidden; animation: dialog-in 200ms var(--ease); }
 dialog.dialog::backdrop, dialog.sheet::backdrop { background: rgb(var(--scrim) / 0.6); }
-dialog.dialog[open] { animation: dialog-in 200ms var(--ease); }
 @keyframes dialog-in { from { opacity: 0; transform: translateY(8px); } }
 .dialog-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 18px 0 24px; }
 .dialog-head h2 { font-size: 1.25rem; font-weight: 700; }
 .dialog-body { flex: 1; min-height: 0; padding: 16px 24px 8px; overflow-y: auto; scrollbar-width: thin; max-height: calc(100vh - 160px); }
 .dialog-foot { flex: none; display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; padding: 16px 24px 22px; }
-dialog.sheet { margin: 0 0 0 auto; height: 100vh; max-height: 100vh; width: min(540px, 100vw); padding: 0; background: var(--raised); color: var(--text); border: 0; border-left: 1px solid var(--line-strong); box-shadow: var(--shadow); }
-dialog.sheet[open] { animation: sheet-in 240ms var(--ease); }
+dialog.sheet[open] { display: block; margin: 0 0 0 auto; height: 100vh; max-height: 100vh; width: min(540px, 100vw); padding: 0; background: var(--raised); color: var(--text); border: 0; border-left: 1px solid var(--line-strong); box-shadow: var(--shadow); animation: sheet-in 240ms var(--ease); }
 @keyframes sheet-in { from { transform: translateX(32px); opacity: 0; } }
 
 .toasts { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 90; display: grid; gap: 8px; justify-items: center; pointer-events: none; }

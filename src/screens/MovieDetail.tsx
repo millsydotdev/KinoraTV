@@ -13,7 +13,6 @@ import { progressOf, useStore, type XtreamTitle } from '../state/store'
 import type { XtreamMovieDetails } from '../lib/native'
 import { isTitleKidSafe } from '../lib/kidsMode'
 import { AgeRatingBadge } from '../components/AgeRatingBadge'
-import { CollapsibleSection } from '../components/CollapsibleSection'
 import { Breadcrumbs } from '../components/Breadcrumbs'
 import { ArtworkLightboxModal } from '../components/ArtworkLightboxModal'
 import { RatingControls } from '../components/RatingControls'
@@ -78,16 +77,18 @@ export function MovieDetail() {
             <span>{runtimeLabel(movie.runtime)}</span>
             <AgeRatingBadge rating={movie.certificate} system="bbfc" />
             {watched && <span className="watched-mark"><Icon name="check" size={14} />Watched</span>}
-            <button
-              type="button"
-              className="btn btn-ghost btn-small"
-              onClick={() => setTrailerOpen(true)}
-              title="Watch trailer preview"
-              style={{ marginLeft: 8 }}
-            >
-              <Icon name="play" size={14} />
-              <span>Trailer</span>
-            </button>
+            {(movie as unknown as { trailerUrl?: string }).trailerUrl && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-small"
+                onClick={() => setTrailerOpen(true)}
+                title="Watch trailer preview"
+                style={{ marginLeft: 8 }}
+              >
+                <Icon name="play" size={14} />
+                <span>Trailer</span>
+              </button>
+            )}
             <button
               type="button"
               className="btn btn-ghost btn-small"
@@ -98,9 +99,6 @@ export function MovieDetail() {
               <Icon name="fullscreen" size={14} />
               <span>Artwork</span>
             </button>
-          </div>
-          <div style={{ marginTop: 10 }}>
-            <RatingControls itemRef={ref} title={movie.title} showStars />
           </div>
           {progress !== null && (
             <div className="detail-progress">
@@ -113,35 +111,38 @@ export function MovieDetail() {
       </header>
 
       <div className="detail-body">
-        <section className="detail-story" aria-labelledby="story">
-          <CollapsibleSection id={`story-${movie.id}`} title="Story & Synopsis" icon="info" defaultOpen={true}>
-            <p>{movie.synopsis}</p>
-            <button
-              type="button"
-              className="btn btn-ghost btn-small"
-              style={{ marginTop: '10px' }}
-              onClick={() => {
-                store.setWatched([ref], !watched)
-                toast(watched ? 'Marked as not watched' : 'Marked as watched')
-              }}
-            >
-              <Icon name={watched ? 'close' : 'check'} size={16} />
-              {watched ? 'Mark as not watched' : 'Mark as watched'}
-            </button>
-          </CollapsibleSection>
+        <section className="detail-story" aria-labelledby="story-heading">
+          <h2 id="story-heading" className="section-title">
+            <Icon name="info" size={18} />
+            Story & Synopsis
+          </h2>
+          <p>{movie.synopsis}</p>
+          <button
+            type="button"
+            className="btn btn-ghost btn-small"
+            style={{ marginTop: '4px' }}
+            onClick={() => {
+              store.setWatched([ref], !watched)
+              toast(watched ? 'Marked as not watched' : 'Marked as watched')
+            }}
+          >
+            <Icon name={watched ? 'close' : 'check'} size={16} />
+            {watched ? 'Mark as not watched' : 'Mark as watched'}
+          </button>
         </section>
-        <div className="detail-facts-wrap">
-          <CollapsibleSection id={`facts-${movie.id}`} title="Technical Specifications" icon="settings" defaultOpen={true}>
-            <dl className="detail-facts">
-              <div><dt>Genres</dt><dd>{movie.genres.join(', ')}</dd></div>
-              <div><dt>Running time</dt><dd>{runtimeLabel(movie.runtime)}</dd></div>
-              <div><dt>Certificate</dt><dd><AgeRatingBadge rating={movie.certificate} system="bbfc" /></dd></div>
-              <div><dt>Audio</dt><dd>{movie.audio.join(', ')}</dd></div>
-              <div><dt>Subtitles</dt><dd>{movie.subtitles.join(', ')}</dd></div>
-              <div><dt>Catalogue</dt><dd>Fictional demonstration title</dd></div>
-            </dl>
-          </CollapsibleSection>
-        </div>
+        <aside className="detail-facts-wrap" aria-labelledby="specs-heading">
+          <h2 id="specs-heading" className="section-title" style={{ marginBottom: 12 }}>
+            <Icon name="settings" size={18} />
+            Technical Specifications
+          </h2>
+          <dl className="detail-facts">
+            <div><dt>Genres</dt><dd>{movie.genres.join(', ')}</dd></div>
+            <div><dt>Running time</dt><dd>{runtimeLabel(movie.runtime)}</dd></div>
+            <div><dt>Certificate</dt><dd><AgeRatingBadge rating={movie.certificate} system="bbfc" /></dd></div>
+            <div><dt>Audio</dt><dd>{movie.audio.join(', ')}</dd></div>
+            <div><dt>Subtitles</dt><dd>{movie.subtitles.join(', ')}</dd></div>
+          </dl>
+        </aside>
       </div>
 
       {similar.length > 0 && (
@@ -180,7 +181,6 @@ function XtreamMovieDetail({ movie }: { movie: XtreamTitle }) {
   const store = useStore()
   const toast = useToast()
   const [details, setDetails] = useState<XtreamMovieDetails | null>(null)
-  const [trailerOpen, setTrailerOpen] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -238,7 +238,12 @@ function XtreamMovieDetail({ movie }: { movie: XtreamTitle }) {
           <div className="meta">
             {movie.year !== null && <span>{movie.year}</span>}
             {durationText && <span>{durationText}</span>}
-            {rating != null && rating > 0 && <span>★ {typeof rating === 'number' ? rating.toFixed(1) : rating}</span>}
+            {rating != null && rating > 0 && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <Icon name="star" size={13} fill="#fbbf24" style={{ color: '#fbbf24' }} />
+                {typeof rating === 'number' ? rating.toFixed(1) : rating}
+              </span>
+            )}
             <span>{container}</span>
             <span>Provider catalogue</span>
             {watched && <span className="watched-mark"><Icon name="check" size={14} />Watched</span>}
@@ -271,14 +276,6 @@ function XtreamMovieDetail({ movie }: { movie: XtreamTitle }) {
             </button>
             <button
               type="button"
-              className="btn btn-secondary"
-              onClick={() => setTrailerOpen(true)}
-            >
-              <Icon name="play" size={18} />
-              Trailer
-            </button>
-            <button
-              type="button"
               className="icon-btn ringed fav-toggle"
               aria-pressed={inFav}
               aria-label={inFav ? 'Remove from favourites' : 'Add to favourites'}
@@ -299,8 +296,8 @@ function XtreamMovieDetail({ movie }: { movie: XtreamTitle }) {
 
       <div className="detail-body">
         {plot && (
-          <section className="detail-story">
-            <h2 className="section-title"><Icon name="info" size={18} />Story</h2>
+          <section className="detail-story" aria-labelledby="xt-story-heading">
+            <h2 id="xt-story-heading" className="section-title"><Icon name="info" size={18} />Story</h2>
             <p>{plot}</p>
             <button
               type="button"
@@ -315,41 +312,47 @@ function XtreamMovieDetail({ movie }: { movie: XtreamTitle }) {
             </button>
           </section>
         )}
-        <dl className="detail-facts">
-          <div><dt>Source</dt><dd>{source?.name ?? 'Provider'}</dd></div>
-          {genres && <div><dt>Genre</dt><dd>{genres}</dd></div>}
-          {details?.director && (
-            <div>
-              <dt>Director</dt>
-              <dd>
-                <Link to={`/search?q=${encodeURIComponent(details.director.trim())}&type=films`} className="text-link">
-                  {details.director}
-                </Link>
-              </dd>
-            </div>
-          )}
-          {details?.cast && (
-            <div>
-              <dt>Cast</dt>
-              <dd>
-                {details.cast.split(',').map((actor, idx, arr) => {
-                  const name = actor.trim()
-                  return (
-                    <span key={name}>
-                      <Link to={`/search?q=${encodeURIComponent(name)}&type=films`} className="text-link">
-                        {name}
-                      </Link>
-                      {idx < arr.length - 1 ? ', ' : ''}
-                    </span>
-                  )
-                })}
-              </dd>
-            </div>
-          )}
-          {details?.releaseDate && <div><dt>Release Date</dt><dd>{details.releaseDate}</dd></div>}
-          <div><dt>Container</dt><dd>{container}</dd></div>
-          <div><dt>Playback</dt><dd>Guarded HLS stream via Kinora engine</dd></div>
-        </dl>
+        <aside className="detail-facts-wrap" aria-labelledby="xt-specs-heading">
+          <h2 id="xt-specs-heading" className="section-title" style={{ marginBottom: 12 }}>
+            <Icon name="settings" size={18} />
+            Technical Specifications
+          </h2>
+          <dl className="detail-facts">
+            <div><dt>Source</dt><dd>{source?.name ?? 'Provider'}</dd></div>
+            {genres && <div><dt>Genre</dt><dd>{genres}</dd></div>}
+            {details?.director && (
+              <div>
+                <dt>Director</dt>
+                <dd>
+                  <Link to={`/search?q=${encodeURIComponent(details.director.trim())}&type=films`} className="text-link">
+                    {details.director}
+                  </Link>
+                </dd>
+              </div>
+            )}
+            {details?.cast && (
+              <div>
+                <dt>Cast</dt>
+                <dd>
+                  {details.cast.split(',').map((actor, idx, arr) => {
+                    const name = actor.trim()
+                    return (
+                      <span key={name}>
+                        <Link to={`/search?q=${encodeURIComponent(name)}&type=films`} className="text-link">
+                          {name}
+                        </Link>
+                        {idx < arr.length - 1 ? ', ' : ''}
+                      </span>
+                    )
+                  })}
+                </dd>
+              </div>
+            )}
+            {details?.releaseDate && <div><dt>Release Date</dt><dd>{details.releaseDate}</dd></div>}
+            <div><dt>Container</dt><dd>{container}</dd></div>
+            <div><dt>Playback</dt><dd>Guarded HLS stream via Kinora engine</dd></div>
+          </dl>
+        </aside>
       </div>
 
       {similar.length > 0 && (
@@ -366,15 +369,6 @@ function XtreamMovieDetail({ movie }: { movie: XtreamTitle }) {
             ))}
           </Section>
         </section>
-      )}
-
-      {trailerOpen && (
-        <TrailerModal
-          open={trailerOpen}
-          onClose={() => setTrailerOpen(false)}
-          title={details?.name || movie.name}
-          trailerUrl={null}
-        />
       )}
     </article>
   )

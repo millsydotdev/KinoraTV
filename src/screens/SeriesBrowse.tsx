@@ -12,6 +12,8 @@ import {
   StreamingGenreRow,
   StreamingRail,
   StreamingCard,
+  StreamingProviderPrompt,
+  getTechnicalBadges,
   type NavTabItem,
   type HeroSlideData,
   type GenreItem,
@@ -150,7 +152,7 @@ export function SeriesBrowse() {
         genre: s.categoryName || 'TV Series',
         runtime: 'Series',
         ageRating: 'TV-MA',
-        badges: ['4K', 'HDR'],
+        badges: getTechnicalBadges(s),
         playUrl: `/series/${encodeURIComponent(`xt:${s.sourceId}:${s.id}`)}`,
         detailUrl: `/series/${encodeURIComponent(`xt:${s.sourceId}:${s.id}`)}`,
         itemRef: `series:xt:${s.sourceId}:${s.id}`,
@@ -175,7 +177,7 @@ export function SeriesBrowse() {
         genre: s.genres[0] || 'Drama',
         runtime: `${s.seasons.length} Season${s.seasons.length > 1 ? 's' : ''}`,
         ageRating: s.certificate,
-        badges: ['4K', 'HDR'],
+        badges: getTechnicalBadges(s),
         playUrl: `/series/${s.id}`,
         detailUrl: `/series/${s.id}`,
         itemRef: seriesRef(s.id),
@@ -388,11 +390,12 @@ export function SeriesBrowse() {
           <button
             type="button"
             className="pill pill-pending"
-            style={{ cursor: 'pointer', border: '1px solid var(--accent)' }}
+            style={{ cursor: 'pointer', border: '1px solid var(--accent)', display: 'inline-flex', alignItems: 'center', gap: 6 }}
             onClick={() => setSelectedGenre(null)}
             title="Clear genre filter"
           >
-            Genre: {selectedGenre} ✕
+            <span>Genre: {selectedGenre}</span>
+            <Icon name="close" size={14} />
           </button>
         )}
       </div>
@@ -411,6 +414,8 @@ export function SeriesBrowse() {
           />
 
           <div className="streaming-body">
+            {!hasXtream && <StreamingProviderPrompt kind="tv" />}
+
             {/* Browse by Genre Row */}
             <StreamingGenreRow
               genres={TV_GENRES}
@@ -425,7 +430,8 @@ export function SeriesBrowse() {
             {/* Trending TV Shows Rail */}
             <StreamingRail
               title="Trending TV Shows"
-              icon="🔥"
+              iconName="flame"
+              iconColor="#ff253b"
               onSeeAll={() => setActiveTab('a-z')}
             >
               {hasXtream
@@ -438,7 +444,7 @@ export function SeriesBrowse() {
                         title={s.name}
                         sub={[s.year, sourceName(s.sourceId)].filter(Boolean).join(' · ')}
                         artworkKey={s.artworkKey}
-                        badges={['4K', 'HDR']}
+                        badges={getTechnicalBadges(s)}
                         itemRef={`series:${routeId}`}
                       />
                     )
@@ -452,7 +458,7 @@ export function SeriesBrowse() {
                         title={show.title}
                         sub={`${show.seasons.length} Season${show.seasons.length > 1 ? 's' : ''} · ${show.genres[0] || 'Drama'}`}
                         art={show.art}
-                        badges={['4K', 'HDR']}
+                        badges={getTechnicalBadges(show)}
                         itemRef={ref}
                       />
                     )
@@ -463,7 +469,8 @@ export function SeriesBrowse() {
             {newEpisodes.length > 0 && (
               <StreamingRail
                 title="New Episodes"
-                icon="📅"
+                iconName="calendar"
+                iconColor="#ff253b"
                 onSeeAll={() => setActiveTab('new-episodes')}
               >
                 {newEpisodes.map((ep) => (
@@ -474,7 +481,7 @@ export function SeriesBrowse() {
                     sub={`S${ep.season} E${ep.number} · ${ep.episodeTitle}`}
                     art={ep.art}
                     episodeBadge={`S${ep.season} E${ep.number}`}
-                    badges={['4K']}
+                    badges={getTechnicalBadges({ title: ep.episodeTitle })}
                     itemRef={episodeRef(ep.showId, `s${ep.season}e${ep.number}`)}
                   />
                 ))}
@@ -484,7 +491,8 @@ export function SeriesBrowse() {
             {/* Popular Shows Rail */}
             <StreamingRail
               title="Popular Shows"
-              icon="⭐"
+              iconName="star"
+              iconColor="#fbbf24"
               onSeeAll={() => setActiveTab('popular')}
             >
               {hasXtream
@@ -495,7 +503,7 @@ export function SeriesBrowse() {
                       title={s.name}
                       sub={[s.year, sourceName(s.sourceId)].filter(Boolean).join(' · ')}
                       artworkKey={s.artworkKey}
-                      badges={['4K']}
+                      badges={getTechnicalBadges(s)}
                       itemRef={`series:xt:${s.sourceId}:${s.id}`}
                     />
                   ))
@@ -507,7 +515,7 @@ export function SeriesBrowse() {
                         title={show.title}
                         sub={`${show.seasons.length} Season${show.seasons.length > 1 ? 's' : ''} · ${show.certificate}`}
                         art={show.art}
-                        badges={['4K']}
+                        badges={getTechnicalBadges(show)}
                         itemRef={seriesRef(show.id)}
                       />
                     )
@@ -518,7 +526,8 @@ export function SeriesBrowse() {
             {returningShows.length > 0 && (
               <StreamingRail
                 title="Returning Shows"
-                icon="🔄"
+                iconName="refresh"
+                iconColor="#60a5fa"
                 onSeeAll={() => setActiveTab('returning')}
               >
                 {returningShows.map((show) => (
@@ -528,7 +537,7 @@ export function SeriesBrowse() {
                     title={show.title}
                     sub={`${show.years} · On Air`}
                     art={show.art}
-                    badges={['4K']}
+                    badges={getTechnicalBadges(show)}
                     itemRef={seriesRef(show.id)}
                   />
                 ))}
@@ -539,7 +548,8 @@ export function SeriesBrowse() {
             {continueWatchingShows.length > 0 && (
               <StreamingRail
                 title="Continue Watching"
-                icon="⏱️"
+                iconName="clock"
+                iconColor="#e6edf3"
                 onSeeAll={() => setActiveTab('browse')}
               >
                 {continueWatchingShows.map(({ show, up }) => (
@@ -550,7 +560,7 @@ export function SeriesBrowse() {
                     sub={`${up.state === 'resume' ? 'Resume' : 'Next'} ${episodeCode(up.episode)} · ${up.episode.title}`}
                     art={up.episode.still || show.art}
                     episodeBadge={episodeCode(up.episode)}
-                    badges={['4K']}
+                    badges={getTechnicalBadges(show)}
                     itemRef={episodeRef(show.id, up.episode.id)}
                   />
                 ))}
@@ -561,7 +571,8 @@ export function SeriesBrowse() {
             {(myShowsXtream.length > 0 || myShowsDemo.length > 0) && (
               <StreamingRail
                 title="My Shows"
-                icon="🔖"
+                iconName="bookmark"
+                iconColor="#e6edf3"
                 onSeeAll={() => setActiveTab('my-shows')}
               >
                 {hasXtream
@@ -572,7 +583,7 @@ export function SeriesBrowse() {
                         title={s.name}
                         sub={[s.year, sourceName(s.sourceId)].filter(Boolean).join(' · ')}
                         artworkKey={s.artworkKey}
-                        badges={['4K']}
+                        badges={getTechnicalBadges(s)}
                         itemRef={`series:xt:${s.sourceId}:${s.id}`}
                       />
                     ))
@@ -584,7 +595,7 @@ export function SeriesBrowse() {
                           title={show.title}
                           sub={`${show.seasons.length} Season${show.seasons.length > 1 ? 's' : ''}`}
                           art={show.art}
-                          badges={['4K']}
+                          badges={getTechnicalBadges(show)}
                           itemRef={seriesRef(show.id)}
                         />
                       )
