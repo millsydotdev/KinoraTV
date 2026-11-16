@@ -77,9 +77,14 @@ This report documents the resolution of visual defects, UI inconsistencies, icon
 
 ## 5. Verification and Test Results
 
+- Master Quality Gate (`npm run test:gate`): All Gates 0 through 5 passed successfully.
+- Version Consistency (`npm run version:check`): Synchronized (0.5.1).
 - TypeScript check (`npm run typecheck`): Passed with 0 errors.
-- Vitest unit test suite (`npm test`): 44 test files passed, 425 of 425 tests passed.
+- Vitest unit test suite (`npm test`): 45 test files passed, 434 of 434 tests passed.
+  - Dedicated regression suite: `src/screens/StreamingCorrectionRegression.test.tsx` (9 of 9 tests passing).
+- Multi-Timezone validation: Guide schedules invariant across London, New York, and Auckland.
 - Rust test suite (`npm run test:rust`): 169 of 169 tests passed, 0 failures.
+- Production build (`npm run build`): Completed in 386ms.
 - Captured high-resolution verification screenshots (1920x1080):
   - Movies Top: `docs/ui/screenshots/movies-top.png`
   - Movies Rails: `docs/ui/screenshots/movies-rails.png`
@@ -90,3 +95,7 @@ This report documents the resolution of visual defects, UI inconsistencies, icon
   - TV Show Details: `docs/ui/screenshots/tv-show-details.png`
   - TV Shows Empty State: `docs/ui/screenshots/tv-shows-empty.png`
 - Typography audit: 0 em-dashes across all modified files.
+
+## 6. Unresolved Items
+
+- None. All visual defects, emoji usages, layout inconsistencies, duplicate controls, and empty-state bugs have been resolved, covered by regression tests, and verified against design references.
