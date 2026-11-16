@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 import { ToastProvider } from '../components/Toast'
 import { Icon } from '../components/Icon'
-import { getTechnicalBadges, StreamingProviderPrompt } from '../components/StreamingComponents'
+import { getTechnicalBadges, StreamingCard, StreamingEmptyState, StreamingProviderPrompt } from '../components/StreamingComponents'
 import { movies } from '../data/catalog'
 import { StoreProvider } from '../state/store'
 import { MovieDetail } from './MovieDetail'
@@ -117,6 +117,55 @@ describe('Streaming UI Correction Regression Suite', () => {
       expect(html).toContain('Story &amp; Synopsis')
       expect(html).toContain('Technical Specifications')
       expect(html).not.toContain('Fictional demonstration title')
+      expect(html).toContain('title-actions-primary')
+      expect(html).toContain('title-actions-utility')
+    })
+  })
+
+  describe('Streaming UI Polishing & Icon Standards', () => {
+    it('StreamingRail uses muted icon color by default and var(--accent) for Trending', () => {
+      const html = renderToStaticMarkup(
+        <MemoryRouter>
+          <StoreProvider initialDemo={true}>
+            <ToastProvider>
+              <Movies />
+            </ToastProvider>
+          </StoreProvider>
+        </MemoryRouter>
+      )
+      expect(html).toContain('Trending Movies')
+      expect(html).toContain('color:var(--accent)')
+      // Verify no rainbow icon colors
+      expect(html).not.toContain('color:#fbbf24')
+      expect(html).not.toContain('color:#60a5fa')
+    })
+
+    it('StreamingCard fallback artwork contains no duplicate title text', () => {
+      const cardHtml = renderToStaticMarkup(
+        <MemoryRouter>
+          <StoreProvider initialDemo={true}>
+            <ToastProvider>
+              <StreamingCard
+                to="/movies/test"
+                title="Clean Title"
+                sub="2024 · Test"
+              />
+            </ToastProvider>
+          </StoreProvider>
+        </MemoryRouter>
+      )
+      expect(cardHtml).toContain('Clean Title')
+      expect(cardHtml).not.toContain('streaming-card-fallback-title')
+    })
+
+    it('StreamingEmptyState renders tailored heading when sources are disabled', () => {
+      const html = renderToStaticMarkup(
+        <MemoryRouter>
+          <StreamingEmptyState kind="movies" disabledSources onAddProvider={() => {}} onOpenSources={() => {}} />
+        </MemoryRouter>
+      )
+      expect(html).toContain('Movie Provider Disabled')
+      expect(html).toContain('Your connected on-demand provider is currently disabled in Sources')
     })
   })
 })

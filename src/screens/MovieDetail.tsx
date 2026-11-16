@@ -255,41 +255,43 @@ function XtreamMovieDetail({ movie }: { movie: XtreamTitle }) {
             </div>
           )}
           <div className="title-actions">
-            <Link to={`/watch/${encodeURIComponent(ref)}`} className="btn btn-primary">
-              <Icon name="play" size={18} />
-              Play Movie
-            </Link>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              aria-pressed={inWatchlist}
-              onClick={() => {
-                store.toggleWatchlist(ref)
-                toast(inWatchlist ? `Removed ${movie.name} from your watchlist` : `Added ${movie.name} to your watchlist`, {
-                  label: 'Undo',
-                  run: () => store.toggleWatchlist(ref),
-                })
-              }}
-            >
-              <Icon name={inWatchlist ? 'check' : 'plus'} size={18} />
-              {inWatchlist ? 'In watchlist' : 'Add to watchlist'}
-            </button>
-            <button
-              type="button"
-              className="icon-btn ringed fav-toggle"
-              aria-pressed={inFav}
-              aria-label={inFav ? 'Remove from favourites' : 'Add to favourites'}
-              data-tip={inFav ? 'Favourite' : 'Add to favourites'}
-              onClick={() => {
-                store.toggleFavourite(ref)
-                toast(inFav ? `Removed ${movie.name} from favourites` : `Added ${movie.name} to favourites`)
-              }}
-            >
-              <Icon name="heart" size={20} />
-            </button>
-          </div>
-          <div style={{ marginTop: 12 }}>
-            <RatingControls itemRef={ref} title={details?.name || movie.name} showStars />
+            <div className="title-actions-primary">
+              <Link to={`/watch/${encodeURIComponent(ref)}`} className="btn btn-primary">
+                <Icon name="play" size={18} />
+                <span>Play Movie</span>
+              </Link>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                aria-pressed={inWatchlist}
+                onClick={() => {
+                  store.toggleWatchlist(ref)
+                  toast(inWatchlist ? `Removed ${movie.name} from your watchlist` : `Added ${movie.name} to your watchlist`, {
+                    label: 'Undo',
+                    run: () => store.toggleWatchlist(ref),
+                  })
+                }}
+              >
+                <Icon name={inWatchlist ? 'check' : 'plus'} size={18} />
+                <span>{inWatchlist ? 'In watchlist' : 'Add to watchlist'}</span>
+              </button>
+            </div>
+            <div className="title-actions-utility">
+              <RatingControls itemRef={ref} title={details?.name || movie.name} />
+              <button
+                type="button"
+                className="icon-btn ringed fav-toggle"
+                aria-pressed={inFav}
+                aria-label={inFav ? 'Remove from favourites' : 'Add to favourites'}
+                title={inFav ? 'Favourite' : 'Add to favourites'}
+                onClick={() => {
+                  store.toggleFavourite(ref)
+                  toast(inFav ? `Removed ${movie.name} from favourites` : `Added ${movie.name} to favourites`)
+                }}
+              >
+                <Icon name="heart" size={18} />
+              </button>
+            </div>
           </div>
         </div>
       </header>

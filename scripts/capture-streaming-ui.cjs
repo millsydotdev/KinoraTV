@@ -8,22 +8,18 @@ const ARTIFACT_DIR = '/home/millsy/.gemini/antigravity/brain/1c521f47-1460-4a82-
 fs.mkdirSync(OUT_DIR, { recursive: true });
 fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
 
-async function run() {
-  const browser = await chromium.launch({
-    executablePath: '/usr/bin/google-chrome',
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
-  });
+async function captureViewport(browser, width, height, suffix = '') {
+  console.log(`\n=== Capturing UI suite at ${width}x${height}${suffix ? ` (${suffix})` : ''} ===`);
 
   const context = await browser.newContext({
-    viewport: { width: 1920, height: 1080 },
+    viewport: { width, height },
     deviceScaleFactor: 1,
   });
 
   const page = await context.newPage();
 
-  // Helper to save screenshot to both locations
-  async function saveScreenshot(filename) {
+  async function saveScreenshot(basename) {
+    const filename = suffix ? basename.replace('.png', `-${suffix}.png`) : basename;
     const p1 = path.join(OUT_DIR, filename);
     const p2 = path.join(ARTIFACT_DIR, filename);
     await page.screenshot({ path: p1, fullPage: false });
@@ -31,7 +27,7 @@ async function run() {
     console.log(`Saved screenshot: ${filename}`);
   }
 
-  // 1. Setup local storage for demo mode
+  // 1. Setup local storage with demoMode = true (Public discovery catalogue active, no Xtream provider)
   await page.goto('http://localhost:5199/');
   await page.evaluate(() => {
     localStorage.setItem('kinora.setup.v1', JSON.stringify({ done: true }));
@@ -53,26 +49,33 @@ async function run() {
     }));
   });
 
-  // 2. Movies top of page
-  console.log('Capturing Movies top...');
+  // 1. Movies browse, top
+  console.log('Capturing Movies browse, top...');
   await page.goto('http://localhost:5199/movies', { waitUntil: 'networkidle' });
   await page.waitForTimeout(1000);
   await saveScreenshot('movies-top.png');
 
-  // 3. Movies rails
-  console.log('Capturing Movies rails...');
-  await page.evaluate(() => window.scrollTo({ top: 580, behavior: 'instant' }));
-  await page.waitForTimeout(500);
+  // 2. Movies browse, content rails
+  console.log('Capturing Movies browse, content rails...');
+  await page.evaluate(() => window.scrollTo({ top: 560, behavior: 'instant' }));
+  await page.waitForTimeout(600);
   await saveScreenshot('movies-rails.png');
 
-  // 4. Movie Details
-  console.log('Capturing Movie Details...');
+  // 3. Movie details
+  console.log('Capturing Movie details...');
   await page.goto('http://localhost:5199/movies/the-outpost', { waitUntil: 'networkidle' });
   await page.waitForTimeout(1000);
   await saveScreenshot('movie-details.png');
 
-  // 5. Movies empty state (no on-demand provider)
-  console.log('Capturing Movies empty state...');
+  // 4. Movies with no provider and public discovery content (showing the prompt banner and discovery catalogue)
+  console.log('Capturing Movies with no provider and public discovery content...');
+  await page.goto('http://localhost:5199/movies', { waitUntil: 'networkidle' });
+  await page.evaluate(() => window.scrollTo({ top: 380, behavior: 'instant' }));
+  await page.waitForTimeout(600);
+  await saveScreenshot('movies-no-provider-discovery.png');
+
+  // 5. Movies with a genuinely empty catalogue (demoMode = false, no providers)
+  console.log('Capturing Movies with a genuinely empty catalogue...');
   await page.evaluate(() => {
     const prefs = JSON.parse(localStorage.getItem('kinora.prefs.v2') || '{}');
     prefs.demoMode = false;
@@ -82,33 +85,40 @@ async function run() {
   await page.waitForTimeout(1000);
   await saveScreenshot('movies-empty.png');
 
-  // 6. Reset demoMode to true for TV Shows
+  // Reset demoMode to true for TV Shows
   await page.evaluate(() => {
     const prefs = JSON.parse(localStorage.getItem('kinora.prefs.v2') || '{}');
     prefs.demoMode = true;
     localStorage.setItem('kinora.prefs.v2', JSON.stringify(prefs));
   });
 
-  // 7. TV Shows top of page
-  console.log('Capturing TV Shows top...');
+  // 6. TV Shows browse, top
+  console.log('Capturing TV Shows browse, top...');
   await page.goto('http://localhost:5199/tv-shows', { waitUntil: 'networkidle' });
   await page.waitForTimeout(1000);
   await saveScreenshot('tv-shows-top.png');
 
-  // 8. TV Shows rails
-  console.log('Capturing TV Shows rails...');
-  await page.evaluate(() => window.scrollTo({ top: 580, behavior: 'instant' }));
-  await page.waitForTimeout(500);
+  // 7. TV Shows browse, content rails
+  console.log('Capturing TV Shows browse, content rails...');
+  await page.evaluate(() => window.scrollTo({ top: 560, behavior: 'instant' }));
+  await page.waitForTimeout(600);
   await saveScreenshot('tv-shows-rails.png');
 
-  // 9. TV Show details
-  console.log('Capturing TV Show Details...');
+  // 8. TV show details
+  console.log('Capturing TV show details...');
   await page.goto('http://localhost:5199/series/ninth-ward', { waitUntil: 'networkidle' });
   await page.waitForTimeout(1000);
   await saveScreenshot('tv-show-details.png');
 
-  // 10. TV Shows empty state (no on-demand provider)
-  console.log('Capturing TV Shows empty state...');
+  // 9. TV Shows with no provider and public discovery content (showing the prompt banner and discovery catalogue)
+  console.log('Capturing TV Shows with no provider and public discovery content...');
+  await page.goto('http://localhost:5199/tv-shows', { waitUntil: 'networkidle' });
+  await page.evaluate(() => window.scrollTo({ top: 380, behavior: 'instant' }));
+  await page.waitForTimeout(600);
+  await saveScreenshot('tv-shows-no-provider-discovery.png');
+
+  // 10. TV Shows with a genuinely empty catalogue (demoMode = false, no providers)
+  console.log('Capturing TV Shows with a genuinely empty catalogue...');
   await page.evaluate(() => {
     const prefs = JSON.parse(localStorage.getItem('kinora.prefs.v2') || '{}');
     prefs.demoMode = false;
@@ -118,8 +128,24 @@ async function run() {
   await page.waitForTimeout(1000);
   await saveScreenshot('tv-shows-empty.png');
 
+  await context.close();
+}
+
+async function run() {
+  const browser = await chromium.launch({
+    executablePath: '/usr/bin/google-chrome',
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
+  });
+
+  // Viewport 1: 1920x1080 (Primary standard full-HD desktop)
+  await captureViewport(browser, 1920, 1080, '');
+
+  // Viewport 2: 1280x800 (Compact desktop / laptop)
+  await captureViewport(browser, 1280, 800, '1280');
+
   await browser.close();
-  console.log('All screenshots captured successfully!');
+  console.log('\nAll 10 required visual states captured at both 1920x1080 and 1280x800 successfully!');
 }
 
 run().catch((err) => {

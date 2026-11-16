@@ -16,6 +16,7 @@ import { isTitleKidSafe } from '../lib/kidsMode'
 import type { XtreamSeriesDetails as ProviderSeriesDetails } from '../lib/native'
 import { AgeRatingBadge } from '../components/AgeRatingBadge'
 import { Breadcrumbs } from '../components/Breadcrumbs'
+import { RatingControls } from '../components/RatingControls'
 import './Detail.css'
 
 export function SeriesDetail() {
@@ -278,43 +279,48 @@ function XtreamSeriesDetail({ show }: { show: XtreamTitle }) {
             </div>
           )}
           <div className="title-actions">
-            {allEpisodes[0] && (
-              <Link
-                to={`/watch/${encodeURIComponent(`episode:xt:${show.sourceId}:${show.id}/${allEpisodes[0].id}`)}`}
-                className="btn btn-primary"
+            <div className="title-actions-primary">
+              {allEpisodes[0] && (
+                <Link
+                  to={`/watch/${encodeURIComponent(`episode:xt:${show.sourceId}:${show.id}/${allEpisodes[0].id}`)}`}
+                  className="btn btn-primary"
+                >
+                  <Icon name="play" size={18} />
+                  <span>Play Series</span>
+                </Link>
+              )}
+              <button
+                type="button"
+                className="btn btn-secondary"
+                aria-pressed={inWatchlist}
+                onClick={() => {
+                  store.toggleWatchlist(ref)
+                  toast(inWatchlist ? `Removed ${show.name} from your watchlist` : `Added ${show.name} to your watchlist`, {
+                    label: 'Undo',
+                    run: () => store.toggleWatchlist(ref),
+                  })
+                }}
               >
-                <Icon name="play" size={18} />
-                Play Series
-              </Link>
-            )}
-            <button
-              type="button"
-              className="btn btn-secondary"
-              aria-pressed={inWatchlist}
-              onClick={() => {
-                store.toggleWatchlist(ref)
-                toast(inWatchlist ? `Removed ${show.name} from your watchlist` : `Added ${show.name} to your watchlist`, {
-                  label: 'Undo',
-                  run: () => store.toggleWatchlist(ref),
-                })
-              }}
-            >
-              <Icon name={inWatchlist ? 'check' : 'plus'} size={18} />
-              {inWatchlist ? 'In watchlist' : 'Add to watchlist'}
-            </button>
-            <button
-              type="button"
-              className="icon-btn ringed fav-toggle"
-              aria-pressed={inFav}
-              aria-label={inFav ? 'Remove from favourites' : 'Add to favourites'}
-              data-tip={inFav ? 'Favourite' : 'Add to favourites'}
-              onClick={() => {
-                store.toggleFavourite(ref)
-                toast(inFav ? `Removed ${show.name} from favourites` : `Added ${show.name} to favourites`)
-              }}
-            >
-              <Icon name="heart" size={20} />
-            </button>
+                <Icon name={inWatchlist ? 'check' : 'plus'} size={18} />
+                <span>{inWatchlist ? 'In watchlist' : 'Add to watchlist'}</span>
+              </button>
+            </div>
+            <div className="title-actions-utility">
+              <RatingControls itemRef={ref} title={show.name} />
+              <button
+                type="button"
+                className="icon-btn ringed fav-toggle"
+                aria-pressed={inFav}
+                aria-label={inFav ? 'Remove from favourites' : 'Add to favourites'}
+                title={inFav ? 'Favourite' : 'Add to favourites'}
+                onClick={() => {
+                  store.toggleFavourite(ref)
+                  toast(inFav ? `Removed ${show.name} from favourites` : `Added ${show.name} to favourites`)
+                }}
+              >
+                <Icon name="heart" size={18} />
+              </button>
+            </div>
           </div>
         </div>
       </header>

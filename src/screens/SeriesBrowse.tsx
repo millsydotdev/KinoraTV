@@ -115,14 +115,16 @@ export function SeriesBrowse() {
       .filter((s) => category === 'All' || s.categoryId === category || s.categoryName === category)
       .filter((s) => provider === 'All' || s.sourceId === provider)
       .filter((s) => !selectedGenre || s.categoryName?.toLowerCase().includes(selectedGenre.toLowerCase()))
+      .filter((s) => activeTab !== 'my-shows' || library.watchlist.includes(`series:xt:${s.sourceId}:${s.id}`))
       .filter((s) => !normalizedQuery || s.name.toLowerCase().includes(normalizedQuery))
       .sort((a, b) => {
-        if (sort === 'newest') return (b.year ?? 0) - (a.year ?? 0)
+        if (activeTab === 'popular') return (b.rating ?? 0) - (a.rating ?? 0) || (b.year ?? 0) - (a.year ?? 0)
+        if (activeTab === 'new-episodes' || sort === 'newest') return (b.year ?? 0) - (a.year ?? 0)
         if (sort === 'oldest') return (a.year ?? 0) - (b.year ?? 0)
         if (sort === 'rating') return (b.rating ?? 0) - (a.rating ?? 0)
         return a.name.localeCompare(b.name)
       })
-  }, [hasXtream, safeXtreamSeries, category, provider, selectedGenre, normalizedQuery, sort])
+  }, [hasXtream, safeXtreamSeries, category, provider, selectedGenre, normalizedQuery, sort, activeTab, library.watchlist])
 
   // Filtered demo series
   const filteredDemo = useMemo(() => {
@@ -130,13 +132,15 @@ export function SeriesBrowse() {
     return safeSeries
       .filter((s) => category === 'All' || s.genres.some((g) => g.toLowerCase() === category.toLowerCase()))
       .filter((s) => !selectedGenre || s.genres.some((g) => g.toLowerCase() === selectedGenre.toLowerCase()))
+      .filter((s) => activeTab !== 'my-shows' || library.watchlist.includes(seriesRef(s.id)))
+      .filter((s) => activeTab !== 'returning' || s.years.toLowerCase().includes('present'))
       .filter((s) => !normalizedQuery || s.title.toLowerCase().includes(normalizedQuery))
       .sort((a, b) => {
-        if (sort === 'episodes') return b.seasons.flat().length - a.seasons.flat().length
+        if (activeTab === 'popular' || sort === 'episodes') return b.seasons.flat().length - a.seasons.flat().length
         if (sort === 'added') return b.added.localeCompare(a.added)
         return a.title.localeCompare(b.title)
       })
-  }, [hasDemo, safeSeries, category, selectedGenre, normalizedQuery, sort])
+  }, [hasDemo, safeSeries, category, selectedGenre, normalizedQuery, sort, activeTab, library.watchlist])
 
   // Hero slides
   const heroSlides = useMemo<HeroSlideData[]>(() => {
@@ -268,8 +272,10 @@ export function SeriesBrowse() {
     return []
   }, [hasDemo, safeSeries, library])
 
+  const hasDisabledSources = store.xtreamSources.length > 0 && !store.xtreamSources.some((s) => s.enabled)
+
   if (!hasAnyContent) {
-    return <NoTitles kind="series" />
+    return <NoTitles kind="series" disabledSources={hasDisabledSources} />
   }
 
   const isFiltering = category !== 'All' || provider !== 'All' || Boolean(normalizedQuery) || Boolean(selectedGenre) || activeTab === 'a-z'
@@ -431,7 +437,7 @@ export function SeriesBrowse() {
             <StreamingRail
               title="Trending TV Shows"
               iconName="flame"
-              iconColor="#ff253b"
+              iconColor="var(--accent)"
               onSeeAll={() => setActiveTab('a-z')}
             >
               {hasXtream
@@ -470,7 +476,6 @@ export function SeriesBrowse() {
               <StreamingRail
                 title="New Episodes"
                 iconName="calendar"
-                iconColor="#ff253b"
                 onSeeAll={() => setActiveTab('new-episodes')}
               >
                 {newEpisodes.map((ep) => (
@@ -492,7 +497,6 @@ export function SeriesBrowse() {
             <StreamingRail
               title="Popular Shows"
               iconName="star"
-              iconColor="#fbbf24"
               onSeeAll={() => setActiveTab('popular')}
             >
               {hasXtream
@@ -527,7 +531,6 @@ export function SeriesBrowse() {
               <StreamingRail
                 title="Returning Shows"
                 iconName="refresh"
-                iconColor="#60a5fa"
                 onSeeAll={() => setActiveTab('returning')}
               >
                 {returningShows.map((show) => (
@@ -549,7 +552,6 @@ export function SeriesBrowse() {
               <StreamingRail
                 title="Continue Watching"
                 iconName="clock"
-                iconColor="#e6edf3"
                 onSeeAll={() => setActiveTab('browse')}
               >
                 {continueWatchingShows.map(({ show, up }) => (
@@ -572,7 +574,6 @@ export function SeriesBrowse() {
               <StreamingRail
                 title="My Shows"
                 iconName="bookmark"
-                iconColor="#e6edf3"
                 onSeeAll={() => setActiveTab('my-shows')}
               >
                 {hasXtream
@@ -606,8 +607,54 @@ export function SeriesBrowse() {
         </>
       )}
 
+      {/* My Shows Tab View (Empty State) */}
+      {activeTab === 'my-shows' && myShowsXtream.length === 0 && myShowsDemo.length === 0 && (
+        <div className="streaming-body" style={{ paddingTop: 24 }}>
+          <StateBlock
+            icon="bookmark"
+            title="No saved shows in your list"
+            action={
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => setActiveTab('browse')}
+              >
+                Browse TV shows
+              </button>
+            }
+          >
+            Add shows to My Shows from any series details page to keep track of what to binge.
+          </StateBlock>
+        </div>
+      )}
+
+      {/* Genres Tab View (Full Grid when no specific genre selected) */}
+      {activeTab === 'genres' && !selectedGenre && (
+        <div className="streaming-body" style={{ paddingTop: 24 }}>
+          <div style={{ marginBottom: 20 }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Browse by Genre</h2>
+            <p className="faint" style={{ margin: '4px 0 0 0', fontSize: '0.875rem' }}>
+              Explore television series categorized by format, storyline and storytelling styles.
+            </p>
+          </div>
+          <div className="streaming-genre-grid">
+            {TV_GENRES.map((g) => (
+              <button
+                key={g.id}
+                type="button"
+                className="streaming-genre-tile"
+                onClick={() => setSelectedGenre(g.name)}
+              >
+                <img src={g.art} alt="" className="streaming-genre-art" />
+                <span className="streaming-genre-label">{g.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Filtered Grid or Non-Browse Tab View */}
-      {(isFiltering || activeTab !== 'browse') && (
+      {(activeTab !== 'my-shows' || myShowsXtream.length > 0 || myShowsDemo.length > 0) && (activeTab !== 'genres' || Boolean(selectedGenre)) && (isFiltering || activeTab !== 'browse') && (
         <div className="streaming-body" style={{ paddingTop: 20 }}>
           {hasXtream ? (
             <div>

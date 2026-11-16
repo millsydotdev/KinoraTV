@@ -466,8 +466,7 @@ export function StreamingCard({
         ) : (
           <div className="streaming-card-fallback-art" aria-hidden="true">
             <div className="streaming-card-fallback-glow" />
-            <Icon name={episodeBadge ? 'series' : 'film'} size={26} />
-            <span className="streaming-card-fallback-title">{title}</span>
+            <Icon name={episodeBadge ? 'series' : 'film'} size={28} />
           </div>
         )}
 
@@ -511,10 +510,12 @@ export function StreamingCard({
 
 export function StreamingEmptyState({
   kind,
+  disabledSources = false,
   onAddProvider,
   onOpenSources,
 }: {
   kind: 'movies' | 'tv'
+  disabledSources?: boolean
   onAddProvider: () => void
   onOpenSources: () => void
 }) {
@@ -525,12 +526,16 @@ export function StreamingEmptyState({
         <Icon name={isMovies ? 'film' : 'tv'} size={32} />
       </div>
       <h2 className="streaming-empty-title">
-        {isMovies ? 'No Movie Provider Connected' : 'No TV Show Provider Connected'}
+        {disabledSources
+          ? (isMovies ? 'Movie Provider Disabled' : 'TV Show Provider Disabled')
+          : (isMovies ? 'No Movie Provider Connected' : 'No TV Show Provider Connected')}
       </h2>
       <p className="streaming-empty-desc">
-        {isMovies
-          ? 'Your live TV playlists provide broadcast television, not on-demand movies. Add an Xtream compatible provider in Sources to stream films, or explore indexed media archives.'
-          : 'Your live TV playlists provide broadcast television, not on-demand television series. Add an Xtream compatible provider in Sources to stream series and episodes.'}
+        {disabledSources
+          ? `Your connected on-demand provider is currently disabled in Sources. Enable it in Sources to stream ${isMovies ? 'films' : 'series and episodes'}, or add an Xtream compatible provider in Sources.`
+          : isMovies
+            ? 'Your live TV playlists provide broadcast television, not on-demand movies. Add an Xtream compatible provider in Sources to stream films, or explore indexed media archives.'
+            : 'Your live TV playlists provide broadcast television, not on-demand television series. Add an Xtream compatible provider in Sources to stream series and episodes.'}
       </p>
       <div className="streaming-empty-actions">
         <button

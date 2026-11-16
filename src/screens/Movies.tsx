@@ -34,8 +34,13 @@ export function BrowseTabs() {
   )
 }
 
-export function NoTitles({ kind }: { kind: 'films' | 'series' }) {
+export function NoTitles({ kind, disabledSources }: { kind: 'films' | 'series'; disabledSources?: boolean }) {
   const isMovies = kind === 'films'
+  const store = useStore()
+  const hasSources = store.xtreamSources.length > 0
+  const hasEnabled = store.xtreamSources.some((s) => s.enabled)
+  const isAllDisabled = disabledSources ?? (hasSources && !hasEnabled)
+
   return (
     <div className="streaming-page">
       <PageHeader
@@ -44,6 +49,7 @@ export function NoTitles({ kind }: { kind: 'films' | 'series' }) {
       />
       <StreamingEmptyState
         kind={isMovies ? 'movies' : 'tv'}
+        disabledSources={isAllDisabled}
         onAddProvider={() => {
           window.location.href = '/sources/add?kind=xtream'
         }}
@@ -149,23 +155,34 @@ export function Movies() {
       .filter((m) => !prefs.hideWatched || !library.watched.includes(`movie:xt:${m.sourceId}:${m.id}`))
       .filter((m) => !normalizedQuery || m.name.toLowerCase().includes(normalizedQuery))
       .sort((a, b) => {
-        if (sort === 'newest') return (b.year ?? 0) - (a.year ?? 0)
+        if (activeTab === 'new-releases' || sort === 'newest') return (b.year ?? 0) - (a.year ?? 0)
         if (sort === 'oldest') return (a.year ?? 0) - (b.year ?? 0)
+        if (activeTab === 'top-rated') return (b.rating ?? 0) - (a.rating ?? 0) || (b.year ?? 0) - (a.year ?? 0)
         return a.name.localeCompare(b.name)
       })
-  }, [hasXtream, safeXtreamMovies, category, provider, year, selectedGenre, prefs.hideWatched, library.watched, normalizedQuery, sort])
+  }, [hasXtream, safeXtreamMovies, category, provider, year, selectedGenre, prefs.hideWatched, library.watched, normalizedQuery, sort, activeTab])
 
   // Filtered demo movies
   const filteredDemo = useMemo(() => {
     if (!hasDemo) return []
+    const topDemoIds = new Set(['low-orbit', 'the-salt-meridian', 'harbour-lights', 'neon-district', 'valley-of-ashes'])
     return safeMovies
       .filter((m) => category === 'All' || m.genres.some((g) => g.toLowerCase() === category.toLowerCase()))
       .filter((m) => year === 'All' || String(m.year) === year)
       .filter((m) => !selectedGenre || m.genres.some((g) => g.toLowerCase() === selectedGenre.toLowerCase()))
       .filter((m) => !prefs.hideWatched || !library.watched.includes(movieRef(m.id)))
       .filter((m) => !normalizedQuery || m.title.toLowerCase().includes(normalizedQuery))
-      .sort(sorts[sort]?.fn ?? sorts.title.fn)
-  }, [hasDemo, safeMovies, category, year, selectedGenre, prefs.hideWatched, library.watched, normalizedQuery, sort])
+      .sort((a, b) => {
+        if (activeTab === 'new-releases') return b.year - a.year
+        if (activeTab === 'top-rated') {
+          const aTop = topDemoIds.has(a.id) ? 1 : 0
+          const bTop = topDemoIds.has(b.id) ? 1 : 0
+          if (aTop !== bTop) return bTop - aTop
+          return b.year - a.year
+        }
+        return sorts[sort]?.fn(a, b) ?? a.title.localeCompare(b.title)
+      })
+  }, [hasDemo, safeMovies, category, year, selectedGenre, prefs.hideWatched, library.watched, normalizedQuery, sort, activeTab])
 
   // Top featured hero slides
   const heroSlides = useMemo<HeroSlideData[]>(() => {
@@ -421,7 +438,7 @@ export function Movies() {
             <StreamingRail
               title="Trending Movies"
               iconName="flame"
-              iconColor="#ff253b"
+              iconColor="var(--accent)"
               onSeeAll={() => setActiveTab('a-z')}
             >
               {hasXtream
@@ -465,7 +482,6 @@ export function Movies() {
             <StreamingRail
               title="New Releases"
               iconName="calendar"
-              iconColor="#ff253b"
               onSeeAll={() => setActiveTab('new-releases')}
             >
               {hasXtream
@@ -502,7 +518,6 @@ export function Movies() {
             <StreamingRail
               title="Popular Movies"
               iconName="star"
-              iconColor="#fbbf24"
               onSeeAll={() => setActiveTab('top-rated')}
             >
               {hasXtream
@@ -537,7 +552,6 @@ export function Movies() {
               <StreamingRail
                 title="Continue Watching"
                 iconName="clock"
-                iconColor="#e6edf3"
                 onSeeAll={() => setActiveTab('browse')}
               >
                 {continueWatchingMovies.map((movie) => {
@@ -564,7 +578,6 @@ export function Movies() {
               <StreamingRail
                 title="My List"
                 iconName="bookmark"
-                iconColor="#e6edf3"
                 onSeeAll={() => setActiveTab('browse')}
               >
                 {hasXtream
@@ -598,8 +611,96 @@ export function Movies() {
         </>
       )}
 
+      {/* Collections Tab View */}
+      {activeTab === 'collections' && (
+        <div className="streaming-body" style={{ paddingTop: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <div>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Custom Collections</h2>
+              <p className="faint" style={{ margin: '4px 0 0 0', fontSize: '0.875rem' }}>
+                Curate and organize your favorite films into custom playlists.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-ghost btn-small"
+              onClick={() => {
+                window.location.href = '/library?tab=collections'
+              }}
+            >
+              <Icon name="folder" size={15} />
+              <span>Manage in Library</span>
+            </button>
+          </div>
+
+          {library.collections.length === 0 ? (
+            <StateBlock
+              icon="folder"
+              title="No collections yet"
+              action={
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => setActiveTab('browse')}
+                >
+                  Browse movies
+                </button>
+              }
+            >
+              Create custom collections in your Library or add films from any details page.
+            </StateBlock>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+              {library.collections.map((col) => (
+                <div
+                  key={col.id}
+                  className="panel"
+                  style={{ padding: 18, borderRadius: 8, cursor: 'pointer', background: 'var(--surface-1)', border: '1px solid var(--line)' }}
+                  onClick={() => {
+                    window.location.href = `/library?tab=collections&c=${encodeURIComponent(col.id)}`
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                    <Icon name="folder" size={20} />
+                    <span style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--text-1)' }}>{col.name}</span>
+                  </div>
+                  <p className="faint" style={{ margin: 0, fontSize: '0.85rem' }}>
+                    {col.items.length} item{col.items.length === 1 ? '' : 's'}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Genres Tab View (Full Grid when no specific genre selected) */}
+      {activeTab === 'genres' && !selectedGenre && (
+        <div className="streaming-body" style={{ paddingTop: 24 }}>
+          <div style={{ marginBottom: 20 }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Browse by Genre</h2>
+            <p className="faint" style={{ margin: '4px 0 0 0', fontSize: '0.875rem' }}>
+              Explore feature films categorized by themes, moods and storytelling styles.
+            </p>
+          </div>
+          <div className="streaming-genre-grid">
+            {MOVIE_GENRES.map((g) => (
+              <button
+                key={g.id}
+                type="button"
+                className="streaming-genre-tile"
+                onClick={() => setSelectedGenre(g.name)}
+              >
+                <img src={g.art} alt="" className="streaming-genre-art" />
+                <span className="streaming-genre-label">{g.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Filtered Grid or Non-Browse Tab View */}
-      {(isFiltering || activeTab !== 'browse') && (
+      {activeTab !== 'collections' && (activeTab !== 'genres' || Boolean(selectedGenre)) && (isFiltering || activeTab !== 'browse') && (
         <div className="streaming-body" style={{ paddingTop: 20 }}>
           {hasXtream ? (
             <div>

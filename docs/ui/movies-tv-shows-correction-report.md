@@ -1,101 +1,90 @@
-# KinoraTV Movies and TV Shows UI Correction and Visual Polish Report
+# KinoraTV Movies and TV Shows UI Correction, Quality Repair and Polish Report
 
 ## Overview
 
-This report documents the resolution of visual defects, UI inconsistencies, icon system hygiene, detail page layout repairs, and streaming provider integration across KinoraTV's Movies and TV Shows sections.
+This report documents the comprehensive visual finishing pass, UI consistency repairs, icon hygiene, detail page layout refinements, and streaming navigation enhancements across KinoraTV's Movies and TV Shows sections.
 
-## 1. Icon System Architecture: Absolute Eradication of Emojis and Pseudo-Glyphs
-
-### Identified Defects
-- Emojis were previously used in section headers, rails, and metadata (`🔥` for Trending, `📅` for New Releases / Episodes, `⭐` for Popular, `🔄` for Returning Shows, `⏱️` for Continue Watching, `🔖` for My List, `✕` for close filters, `★` for star ratings).
-
-### Implemented Fixes
-- Enhanced the centralized vector icon library in `src/components/Icon.tsx`:
-  - Added new scalable vector SVG definitions (`trending`, `rotateCw`, `chevronLeft`, `chevronRight`).
-  - Added SVG `fill` property support alongside standard `stroke` styling.
-  - All icons render as clean, geometric SVGs on a 24x24 viewBox with consistent 1.8 stroke weights.
-- Updated `StreamingRail` in `src/components/StreamingComponents.tsx` to accept typed `iconName?: IconName` and `iconColor?: string` instead of arbitrary text/emoji strings.
-- Updated `Movies.tsx` and `SeriesBrowse.tsx`:
-  - Trending Movies / TV Shows: `<Icon name="flame" />` with Kinora red accent (`#ff253b`).
-  - New Releases / Episodes: `<Icon name="calendar" />` with Kinora red accent (`#ff253b`).
-  - Popular Titles: `<Icon name="star" />` with gold accent (`#fbbf24`).
-  - Returning TV Shows: `<Icon name="refresh" />` with sky blue accent (`#60a5fa`).
-  - Continue Watching: `<Icon name="clock" />` with high-contrast text tone (`#e6edf3`).
-  - My List / My Shows: `<Icon name="bookmark" />` with high-contrast text tone (`#e6edf3`).
-  - Filter Dismiss Buttons: replaced `✕` with `<Icon name="close" size={14} />`.
-  - Rating Indicators: replaced `★` with `<Icon name="star" size={13} fill="#fbbf24" style={{ color: "#fbbf24" }} />`.
-
-## 2. Detail Pages Repair: Phantom Lines and Accordion Overhaul
+## 1. Icon System Architecture: Pure Vector SVGs and Color Hygiene
 
 ### Identified Defects
-- Detail pages (`MovieDetail` and `SeriesDetail`) exhibited a phantom box with horizontal lines extending across the hero backdrop.
-- Root cause: `dialog.dialog` in `src/styles/global.css` had `display: flex;` defined unconditionally without checking `:not([open])`. Because `<TitleActions>` mounts `<CollectionDialog open={collecting} />`, the closed HTML5 `<dialog>` element was forced to render as an empty 560px bordered container in normal document flow.
-- Collapsible accordion boxes on `MovieDetail` resulted in a disjointed settings-like appearance.
-- A duplicate `<RatingControls>` component was rendered in `MovieDetail`.
-- Trailer buttons opened empty modal states when no trailer stream was present.
-- Demo titles rendered a placeholder `<dd>Fictional demonstration title</dd>` in the technical specifications.
+- Earlier revisions introduced rainbow accent colors in section headers and rails (gold for popular, blue for returning shows).
+- Inconsistent optical weights and alignment across header icons and action buttons.
 
 ### Implemented Fixes
-- Fixed `src/styles/global.css`:
-  - Added `dialog.dialog:not([open]), dialog.sheet:not([open]) { display: none !important; }`.
-  - Scoped `display: flex;` strictly to open dialogs (`dialog.dialog[open]`).
-- Hardened `src/components/CollectionDialog.tsx`:
-  - Added short-circuit check `if (!open) return null;` so unmounted modal dialogs never inject markup into the layout tree.
-- Overhauled `src/screens/MovieDetail.tsx`:
-  - Replaced nested collapsible accordion boxes with a clean, modern two-column layout: Story and Synopsis on the left, and a structured Technical Specifications definition card on the right.
-  - Removed duplicate `<RatingControls>` mount (rating controls are already integrated into `<TitleActions>`).
-  - Conditioned trailer actions so the Trailer button only appears when an actual trailer URL is present in the title metadata.
-  - Removed placeholder text from the specification tables.
-- Polished `src/screens/SeriesDetail.tsx`:
-  - Confirmed phantom line elimination on series detail pages.
-  - Verified season selector pills and "Mark season watched" actions align cleanly with episode lists.
+- Standardized ordinary icons to use muted white/grey (`currentColor` / `var(--text-2)`).
+- Strictly reserved Kinora red (`var(--accent)`) for active/selected controls and important emphasis (e.g. Trending flame).
+- Removed arbitrary gold, blue, and rainbow colors from `StreamingRail` headers and navigation tabs.
+- Maintained centralized pure vector SVG geometry in `src/components/Icon.tsx` across 100% of Movies and TV Shows screens with zero emojis or pseudo-glyphs.
 
-## 3. Streaming Provider Architecture and Honest Empty-State Behavior
+## 2. Details Page Refinement: Cohesive Action Capsules and Layout Balance
 
 ### Identified Defects
-- Previously, when an Xtream provider was not configured, the entire Movies or TV Shows page was replaced by a dead empty state card, hiding all browsing navigation.
+- On movie and TV show detail pages, utility action buttons (ratings, favourite, collections) were loose in a wrapping flex container, which caused the collection folder icon to be orphaned on a solitary second line.
+- Synopsis and technical specifications lacked balanced vertical rhythm and contrast.
 
 ### Implemented Fixes
-- Added `<StreamingProviderPrompt>` in `src/components/StreamingComponents.tsx`:
-  - Provides a sleek, unobtrusive banner informing users: "Connect an On-Demand Provider - Add an Xtream compatible provider in Sources to stream on demand, or explore the digital preservation works below."
-  - Includes prominent "+ Add Provider" and "Sources" quick actions.
-- Preserves full streaming discovery UI (Hero stage, Browse by Genre carousel, content rails) during first-run and demonstration modes.
-- Integrated `StreamingEmptyState` with vector SVG icons for real-only configurations where no provider is attached, satisfying all requirements of `RealOnly.test.tsx`.
+- Re-architected `TitleActions.tsx`, `MovieDetail.tsx`, and `SeriesDetail.tsx` into two deliberate groups:
+  - `.title-actions-primary`: Primary playback button (`Watch now` / `Resume`) and `+ Watchlist` action.
+  - `.title-actions-utility`: Dedicated pill/capsule housing rating controls (thumbs down, thumbs up, star rating, dismiss), favourite heart toggle, and collection folder action.
+- Styled utility buttons as 36px circular controls with subtle borders, transparent dark surfaces, and backdrop blur.
+- Expanded `.detail-hero-content` max-width to `min(840px, 100%)` in `Detail.css` so all actions comfortably fit on a single desktop row across both standard (1920x1080) and compact (1280x800) viewports.
+- Enhanced `.detail-facts` table with a subtle 1px border, dark translucent surface, and 130px column layout for crisp metadata alignment.
+- Refined `.detail-story` paragraph leading and spacing to balance against the technical specifications card.
 
-## 4. Honest Technical Badge Derivation
+## 3. Sub-Navigation Tabs Connected to Real Views and Data
+
+Every sub-navigation tab in Movies and TV Shows performs a deliberate action and updates the view meaningfully:
+
+### Movies Tabs
+- **Browse**: The primary cinematic discovery stage with hero banner, browse by genre row, and curated content rails.
+- **Collections**: Displays custom collections from `library.collections`. If no collections exist, renders a clean `StateBlock` with quick navigation to browse movies or manage collections in Library.
+- **Genres**: When no genre filter is active, displays the full responsive `streaming-genre-grid` containing all 11 movie genres. Selecting any tile filters the catalogue to that genre with a dismissible filter chip.
+- **New Releases**: Sorts movies by release year descending.
+- **Top Rated**: Sorts movies by rating and featured prestige order.
+- **A-Z**: Sorts movies alphabetically by title.
+
+### TV Shows Tabs
+- **Browse**: The primary television discovery stage with hero banner, browse by genre row, and content rails.
+- **My Shows**: Displays user's saved watchlist series. If empty, renders a clean `StateBlock` prompting the user to save shows.
+- **Genres**: Displays the full responsive `streaming-genre-grid` with all 9 television genre tiles.
+- **New Episodes**: Displays latest season episodes with badges.
+- **Returning**: Displays active on-air series with continuing seasons.
+- **Popular**: Sorts series by season count and episode volume.
+- **A-Z**: Sorts series alphabetically by title.
+
+## 4. Card Fallback Presentation Refinement
 
 ### Identified Defects
-- Cards and heroes previously displayed hardcoded `['4K', 'HDR']` badges regardless of actual format or resolution.
+- In `StreamingCard`, cards without backdrop or poster artwork previously rendered the title text both inside the artwork placeholder and again in the bottom metadata line, producing an untidy double-title read.
 
 ### Implemented Fixes
-- Implemented `getTechnicalBadges()` in `src/components/StreamingComponents.tsx`:
-  - Inspects stream name, title, audio tracks, and container extensions.
-  - Detects genuine 4K / UHD resolution tokens.
-  - Detects genuine HDR / Dolby Vision tokens.
-  - Detects Dolby Atmos and 5.1 surround sound from audio stream declarations.
-  - Omits technical badges entirely when format information is not present or verified.
+- Removed duplicate title text from `.streaming-card-fallback-art`.
+- Cards without artwork now present a sleek, centered vector icon with a subtle radial glow, followed by clear metadata below.
 
-## 5. Verification and Test Results
+## 5. Streaming Provider Empty-State Architecture
 
-- Master Quality Gate (`npm run test:gate`): All Gates 0 through 5 passed successfully.
-- Version Consistency (`npm run version:check`): Synchronized (0.5.1).
-- TypeScript check (`npm run typecheck`): Passed with 0 errors.
-- Vitest unit test suite (`npm test`): 45 test files passed, 434 of 434 tests passed.
-  - Dedicated regression suite: `src/screens/StreamingCorrectionRegression.test.tsx` (9 of 9 tests passing).
-- Multi-Timezone validation: Guide schedules invariant across London, New York, and Auckland.
-- Rust test suite (`npm run test:rust`): 169 of 169 tests passed, 0 failures.
-- Production build (`npm run build`): Completed in 386ms.
-- Captured high-resolution verification screenshots (1920x1080):
-  - Movies Top: `docs/ui/screenshots/movies-top.png`
-  - Movies Rails: `docs/ui/screenshots/movies-rails.png`
-  - Movie Details: `docs/ui/screenshots/movie-details.png`
-  - Movies Empty State: `docs/ui/screenshots/movies-empty.png`
-  - TV Shows Top: `docs/ui/screenshots/tv-shows-top.png`
-  - TV Shows Rails: `docs/ui/screenshots/tv-shows-rails.png`
-  - TV Show Details: `docs/ui/screenshots/tv-show-details.png`
-  - TV Shows Empty State: `docs/ui/screenshots/tv-shows-empty.png`
-- Typography audit: 0 em-dashes across all modified files.
+- Maintained clean separation between:
+  - **First-run with public discovery content**: Displays `StreamingHero`, `StreamingProviderPrompt` banner, and curated rails.
+  - **Disabled provider sources**: Renders tailored messaging ("Movie Provider Disabled" / "TV Show Provider Disabled") prompting the user to re-enable sources in Sources.
+  - **Genuinely empty catalogue**: Renders centered `StreamingEmptyState` with "+ Add On-Demand Provider", "Manage Sources", and "Public Media Archives" actions.
 
-## 6. Unresolved Items
+## 6. Verification and Test Results
 
-- None. All visual defects, emoji usages, layout inconsistencies, duplicate controls, and empty-state bugs have been resolved, covered by regression tests, and verified against design references.
+- **Master Quality Gate (`npm run test:gate`)**: All Gates 0 through 5 passed successfully.
+- **TypeScript Static Typecheck (`npm run typecheck`)**: Passed with 0 errors.
+- **Vitest Unit Test Suite (`npm test`)**: All 45 test files passed, all 437 tests passed.
+  - Dedicated regression suite: `src/screens/StreamingCorrectionRegression.test.tsx` (12 of 12 tests passing).
+- **Cargo / Rust Engine Suite (`npm run test:rust`)**: 169 of 169 unit tests passed, 0 failures.
+- **Production Build (`npm run build`)**: Vite production bundle compiled cleanly in under 400ms.
+- **Typography Standard Compliance**: Verified 0 em-dashes across all modified code, comments, documentation, and UI text.
+- **Complete Visual Verification Suite**: Captured all 10 required visual states at both 1920x1080 and 1280x800 resolutions:
+  1. `movies-top.png` & `movies-top-1280.png`: Movies browse, top.
+  2. `movies-rails.png` & `movies-rails-1280.png`: Movies browse, content rails.
+  3. `movie-details.png` & `movie-details-1280.png`: Movie details (`The Outpost`).
+  4. `movies-no-provider-discovery.png` & `movies-no-provider-discovery-1280.png`: Movies with no provider and public discovery content.
+  5. `movies-empty.png` & `movies-empty-1280.png`: Movies with genuinely empty catalogue.
+  6. `tv-shows-top.png` & `tv-shows-top-1280.png`: TV Shows browse, top.
+  7. `tv-shows-rails.png` & `tv-shows-rails-1280.png`: TV Shows browse, content rails.
+  8. `tv-show-details.png` & `tv-show-details-1280.png`: TV show details (`The Ninth Ward`).
+  9. `tv-shows-no-provider-discovery.png` & `tv-shows-no-provider-discovery-1280.png`: TV Shows with no provider and public discovery content.
+  10. `tv-shows-empty.png` & `tv-shows-empty-1280.png`: TV Shows with genuinely empty catalogue.
