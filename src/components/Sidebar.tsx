@@ -16,7 +16,9 @@ const watchItems: NavItem[] = [
   { to: '/', label: 'Home', icon: 'home', end: true },
   { to: '/live', label: 'Live TV', icon: 'live' },
   { to: '/movies', label: 'Movies', icon: 'film' },
-  { to: '/series', label: 'Series', icon: 'series' },
+  { to: '/series', label: 'TV Shows', icon: 'series' },
+  { to: '/library?tab=watchlist', label: 'My List', icon: 'bookmark' },
+  { to: '/library?tab=history', label: 'Continue Watching', icon: 'history' },
 ]
 
 const listenItems: NavItem[] = [
@@ -98,8 +100,21 @@ if (typeof document !== 'undefined') {
 }
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { sources, playlists, channels, totalPlaylistEntries, channelMode, mediaLibrary, prefs, setPref, recordings = [], xtreamSources = [], guides = [] } = useStore()
-  const { pathname } = useLocation()
+  const { playlists, channels, totalPlaylistEntries, channelMode, prefs, setPref, recordings = [], xtreamSources = [], guides = [] } = useStore()
+  const location = useLocation()
+  const { pathname } = location
+
+  const isItemActive = (to: string) => {
+    if (to.includes('?')) {
+      const [itemPath, itemQuery] = to.split('?')
+      return pathname === itemPath && location.search === `?${itemQuery}`
+    }
+    if (to === '/') return pathname === '/'
+    if (to === '/library') {
+      return pathname === '/library' && (!location.search || location.search === '?tab=overview')
+    }
+    return pathname === to || pathname.startsWith(to + '/')
+  }
 
   const [groupState, setGroupState] = useState<GroupState>(loadSavedGroupState)
   const [initialCollapsed] = useState(getSynchronousSidebarCollapsed)
@@ -135,7 +150,10 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
 
   // Ensure group containing active item is open
   useEffect(() => {
-    if (watchItems.some((i) => pathname === i.to || (i.to !== '/' && pathname.startsWith(i.to)))) {
+    if (watchItems.some((i) => {
+      const base = i.to.split('?')[0]!
+      return pathname === base || (base !== '/' && pathname.startsWith(base))
+    })) {
       setGroupState((s) => (s.watch ? s : { ...s, watch: true }))
     } else if (listenItems.some((i) => pathname.startsWith(i.to))) {
       setGroupState((s) => (s.listen ? s : { ...s, listen: true }))
@@ -220,7 +238,14 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             >
               <nav className="sidebar-nav" aria-label="Watch">
                 {watchItems.map((i) => (
-                  <NavLink key={i.to} to={i.to} end={i.end} className="side-link" title={i.label} data-tip={i.label}>
+                  <NavLink
+                    key={i.to}
+                    to={i.to}
+                    end={i.end}
+                    className={() => `side-link${isItemActive(i.to) ? ' active' : ''}`}
+                    title={i.label}
+                    data-tip={i.label}
+                  >
                     <Icon name={i.icon} size={18} />
                     <span>{i.label}</span>
                     {getNavBadge(i.to)}
@@ -258,7 +283,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             </div>
           </div>
 
-          {/* EXPLORE GROUP */}
+          {/* DISCOVER GROUP */}
           <div className="sidebar-section sidebar-section-explore">
             <button
               type="button"
@@ -268,16 +293,23 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
               aria-controls="sidebar-nav-explore-wrapper"
               title={exploreMoreOpen ? 'Collapse additional categories' : 'Expand additional categories'}
             >
-              <span className="sidebar-section-title">Explore</span>
+              <span className="sidebar-section-title">Discover</span>
               <Icon name="down" size={13} className={`sidebar-chevron sidebar-expand-icon ${exploreMoreOpen ? 'is-open' : ''}`} />
             </button>
             <div
               id="sidebar-nav-explore-wrapper"
               className="sidebar-collapsible-grid is-open"
             >
-              <nav className="sidebar-nav" aria-label="Explore">
+              <nav className="sidebar-nav" aria-label="Discover">
                 {exploreCoreItems.map((i) => (
-                  <NavLink key={i.to} to={i.to} end={i.end} className="side-link" title={i.label} data-tip={i.label}>
+                  <NavLink
+                    key={i.to}
+                    to={i.to}
+                    end={i.end}
+                    className={() => `side-link${isItemActive(i.to) ? ' active' : ''}`}
+                    title={i.label}
+                    data-tip={i.label}
+                  >
                     <Icon name={i.icon} size={18} />
                     <span>{i.label}</span>
                     {getNavBadge(i.to)}
@@ -334,38 +366,17 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                   : 'Personal media library'
             }
           >
-            {channelMode === 'playlists' ? (
-              <>
-                <p>
-                  <span className="status-dot is-live" aria-hidden="true" />
-                  <span>Playlist mode</span>
-                </p>
-                <p className="faint">
-                  {playlists.length} {playlists.length === 1 ? 'playlist' : 'playlists'} · {channels.length} channels
-                </p>
-              </>
-            ) : channelMode === 'demo' ? (
-              <>
-                <p>
-                  <span className="status-dot is-live" aria-hidden="true" />
-                  <span>Sample mode</span>
-                </p>
-                <p className="faint">
-                  {sources.length} sample sources · {channels.length} channels
-                </p>
-              </>
-            ) : (
-              <>
-                <p>
-                  <span className="status-dot is-live" aria-hidden="true" />
-                  <span>Media library</span>
-                </p>
-                <p className="faint">{mediaLibrary.mySources.length} saved personal sources</p>
-              </>
-            )}
+            <p>
+              <span className="status-dot is-live" aria-hidden="true" />
+              <span>Sync</span>
+              <Icon name="check" size={13} style={{ marginLeft: 'auto', color: '#3ecf8e' }} />
+            </p>
+            <p className="faint">
+              {channelMode === 'demo' ? 'Sample mode' : 'Up to date'}
+            </p>
           </div>
           <div className="sidebar-version-tag" title={`KinoraTV v${appVersion}`}>
-            v{appVersion}
+            KinoraTV v{appVersion}
           </div>
         </div>
       </aside>

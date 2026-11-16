@@ -197,6 +197,8 @@ function Shell() {
             <Route path="/movies/:id" element={<MovieDetail />} />
             <Route path="/series" element={<SeriesBrowse />} />
             <Route path="/series/:id" element={<SeriesDetail />} />
+            <Route path="/tv-shows" element={<SeriesBrowse />} />
+            <Route path="/tv-shows/:id" element={<SeriesDetail />} />
             <Route path="/radio" element={<RadioScreen />} />
             <Route path="/music" element={<MusicScreen />} />
             <Route path="/podcasts" element={<PodcastsScreen />} />

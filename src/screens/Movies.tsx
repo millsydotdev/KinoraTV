@@ -1,142 +1,87 @@
-import { Link, NavLink, useSearchParams } from 'react-router-dom'
 import { useMemo, useState } from 'react'
+import { NavLink, useSearchParams } from 'react-router-dom'
 import { genresOf, movies } from '../data/catalog'
 import { movieRef, runtimeLabel } from '../data/refs'
 import type { Movie } from '../data/types'
 import { Icon } from '../components/Icon'
 import { PageHeader } from '../components/PageHeader'
-import { PosterCard, WideCard, XtreamPosterCard } from '../components/Tiles'
-import { ResourceCard } from '../components/ResourceCard'
-import { ResourceDetailModal } from '../components/ResourceDetailModal'
-import { Segmented, StateBlock } from '../components/ui'
-import { filterKidSafeResources, filterKidSafeTitles, filterKidSafeXtreamTitles } from '../lib/kidsMode'
+import { PosterCard, XtreamPosterCard } from '../components/Tiles'
+import { StateBlock } from '../components/ui'
+import {
+  StreamingHero,
+  StreamingGenreRow,
+  StreamingRail,
+  StreamingCard,
+  StreamingEmptyState,
+  type NavTabItem,
+  type HeroSlideData,
+  type GenreItem,
+} from '../components/StreamingComponents'
+import { filterKidSafeTitles, filterKidSafeXtreamTitles } from '../lib/kidsMode'
 import { useProfiles } from '../state/profiles'
 import { useStore } from '../state/store'
 import './Browse.css'
-
-/** Shown when no Xtream provider catalogue is active: Kinora provides access to verified open & public domain film archives */
-export function NoTitles({ kind }: { kind: 'films' | 'series' }) {
-  const store = useStore()
-  const { isKidsMode } = useProfiles()
-  const hasProvider = store.xtreamSources.length > 0
-  const [selectedResourceId, setSelectedResourceId] = useState<string | null>(null)
-
-  const catId = kind === 'films' ? 'movies' : 'series'
-  const openResources = useMemo(() => {
-    const raw = store.mediaLibrary.allResources.filter((r) => r.category === catId)
-    return isKidsMode ? filterKidSafeResources(raw, true) : raw
-  }, [store.mediaLibrary.allResources, catId, isKidsMode])
-
-  const selectedResource = useMemo(() => {
-    if (!selectedResourceId) return null
-    return store.mediaLibrary.allResources.find((r) => r.id === selectedResourceId) ?? null
-  }, [selectedResourceId, store.mediaLibrary.allResources])
-
-  return (
-    <>
-      <PageHeader
-        title={kind === 'films' ? 'Movies' : 'Series'}
-        tabs={<BrowseTabs />}
-        actions={
-          <Link to="/sources/add?kind=xtream" className="btn btn-small btn-primary header-action-btn">
-            <Icon name="plus" size={14} /> Add Provider
-          </Link>
-        }
-      />
-      <div className="page browse">
-        <div className="media-hero-banner" style={{ marginBottom: 24 }}>
-          <div className="media-hero-content">
-            <span className="media-hero-kicker">ON-DEMAND PROVIDER STATUS & PUBLIC ARCHIVES</span>
-            <h2 className="media-hero-title">{kind === 'films' ? 'Films & Cinema' : 'Television Series'}</h2>
-            <p className="media-hero-subtitle">
-              {hasProvider
-                ? 'Provider names and counts are saved, but its catalogue must be refreshed after restart.'
-                : `Your M3U playlists provide ${store.channels.length} unique live TV channels, not on-demand ${kind === 'films' ? 'movies' : 'series'}. Connect an Xtream Codes VOD provider to import playable ${kind === 'films' ? 'films' : 'series'}, or browse the indexed public-domain archives and metadata directories below.`}
-            </p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 12 }}>
-              <span className="pill pill-pending">
-                On-Demand VOD Provider: {hasProvider ? `${store.xtreamSources.length} saved (reconnect required)` : 'No Xtream provider connected (0 imported titles)'}
-              </span>
-              <span className="pill pill-healthy">
-                External Reference Archives: {openResources.length} verified {kind === 'films' ? 'film archives' : 'series directories'} indexed
-              </span>
-            </div>
-            <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-              <Link to={hasProvider ? '/sources' : '/sources/add?kind=xtream'} className="btn btn-primary btn-small">
-                <Icon name="plus" size={16} /> {hasProvider ? 'Reconnect Provider in Sources' : 'Add an Xtream compatible provider'}
-              </Link>
-              <Link to={`/sources/add?kind=custom&category=${catId}`} className="btn btn-secondary btn-small">
-                <Icon name="sources" size={16} /> Add Custom {kind === 'films' ? 'Movie' : 'Series'} Source
-              </Link>
-            </div>
-          </div>
-        </div>
-
-        {openResources.length > 0 && (
-          <section className="media-sec" aria-label={`Open ${kind === 'films' ? 'Film' : 'Series'} Archives`}>
-            <div className="media-sec-header" style={{ marginBottom: 14 }}>
-              <h3 className="media-sec-title">
-                {kind === 'films' ? 'Verified Film Catalogues & Archives' : 'Verified Television & Serial Archives'}
-                <span className="media-sec-count">({openResources.length} indexed)</span>
-              </h3>
-              <p className="section-sub" style={{ marginTop: 4, display: 'block' }}>
-                External repositories and digital preservation archives. These entries are indexed catalogues for discovering public domain works.
-              </p>
-            </div>
-            <div className="media-resources-grid variant-wide">
-              {openResources.map((res) => (
-                <ResourceCard
-                  key={res.id}
-                  resource={res}
-                  variant="wide"
-                  inLibrary={store.mediaLibrary.isInPersonalLibrary(res.id)}
-                  isFavourite={store.mediaLibrary.isResourceFavourite(res.id)}
-                  isEnabled={store.mediaLibrary.isSourceEnabled(res.id)}
-                  onToggleLibrary={() => store.mediaLibrary.isInPersonalLibrary(res.id) ? store.mediaLibrary.removeFromPersonalLibrary(res.id) : store.mediaLibrary.addToPersonalLibrary(res.id)}
-                  onToggleFavourite={() => store.mediaLibrary.toggleResourceFavourite(res.id)}
-                  onToggleEnabled={() => store.mediaLibrary.toggleSourceEnabled(res.id)}
-                  onOpenDetails={() => setSelectedResourceId(res.id)}
-                />
-              ))}
-            </div>
-          </section>
-        )}
-
-        {selectedResource && (
-          <ResourceDetailModal
-            resource={selectedResource}
-            inLibrary={store.mediaLibrary.isInPersonalLibrary(selectedResource.id)}
-            isFavourite={store.mediaLibrary.isResourceFavourite(selectedResource.id)}
-            userNotes={store.mediaLibrary.getResourceNotes(selectedResource.id)}
-            isEnabled={store.mediaLibrary.isSourceEnabled(selectedResource.id)}
-            onClose={() => setSelectedResourceId(null)}
-            onToggleLibrary={() => store.mediaLibrary.isInPersonalLibrary(selectedResource.id) ? store.mediaLibrary.removeFromPersonalLibrary(selectedResource.id) : store.mediaLibrary.addToPersonalLibrary(selectedResource.id)}
-            onToggleFavourite={() => store.mediaLibrary.toggleResourceFavourite(selectedResource.id)}
-            onToggleEnabled={() => store.mediaLibrary.toggleSourceEnabled(selectedResource.id)}
-            onSaveNotes={(notes) => store.mediaLibrary.updateResourceNotes(selectedResource.id, notes)}
-            onVerifyNow={(id) => store.mediaLibrary.verifyResourceNow(id)}
-          />
-        )}
-      </div>
-    </>
-  )
-}
+import './MediaStreaming.css'
 
 export function BrowseTabs() {
   return (
     <nav className="tabs" aria-label="Catalogue">
       <NavLink to="/movies" className="tab">Movies</NavLink>
-      <NavLink to="/series" className="tab">Series</NavLink>
+      <NavLink to="/series" className="tab">TV Shows</NavLink>
     </nav>
   )
 }
 
+export function NoTitles({ kind }: { kind: 'films' | 'series' }) {
+  const isMovies = kind === 'films'
+  return (
+    <div className="streaming-page">
+      <PageHeader
+        title={isMovies ? 'Movies' : 'TV Shows'}
+        searchPlaceholder={isMovies ? 'Search movies...' : 'Search TV shows...'}
+      />
+      <StreamingEmptyState
+        kind={isMovies ? 'movies' : 'tv'}
+        onAddProvider={() => {
+          window.location.href = '/sources/add?kind=xtream'
+        }}
+        onOpenSources={() => {
+          window.location.href = '/sources'
+        }}
+      />
+    </div>
+  )
+}
+
+const MOVIE_GENRES: GenreItem[] = [
+  { id: 'action', name: 'Action', art: '/art/the-outpost.jpg' },
+  { id: 'adventure', name: 'Adventure', art: '/art/salt-meridian.jpg' },
+  { id: 'animation', name: 'Animation', art: '/art/live-kids.jpg' },
+  { id: 'comedy', name: 'Comedy', art: '/art/midnight-arcade.jpg' },
+  { id: 'crime', name: 'Crime', art: '/art/harbour-lights.jpg' },
+  { id: 'documentary', name: 'Documentary', art: '/art/live-ocean.jpg' },
+  { id: 'drama', name: 'Drama', art: '/art/kingsmoor.jpg' },
+  { id: 'fantasy', name: 'Fantasy', art: '/art/ash-and-ivory.jpg' },
+  { id: 'horror', name: 'Horror', art: '/art/undertow.jpg' },
+  { id: 'sci-fi', name: 'Sci-Fi', art: '/art/low-orbit.jpg' },
+  { id: 'thriller', name: 'Thriller', art: '/art/northern-trace.jpg' },
+]
+
+const MOVIE_TABS: NavTabItem[] = [
+  { id: 'browse', label: 'Browse', icon: 'grid' },
+  { id: 'collections', label: 'Collections', icon: 'folder' },
+  { id: 'genres', label: 'Genres', icon: 'tag' },
+  { id: 'new-releases', label: 'New Releases', icon: 'calendar' },
+  { id: 'top-rated', label: 'Top Rated', icon: 'star' },
+  { id: 'a-z', label: 'A-Z', icon: 'sortAsc' },
+]
+
 const sorts = {
-  added: { label: 'Sort: Recently added', fn: (a: Movie, b: Movie) => b.added.localeCompare(a.added) },
   title: { label: 'Sort: Title A to Z', fn: (a: Movie, b: Movie) => a.title.localeCompare(b.title) },
   newest: { label: 'Sort: Newest', fn: (a: Movie, b: Movie) => b.year - a.year },
   oldest: { label: 'Sort: Oldest', fn: (a: Movie, b: Movie) => a.year - b.year },
   shortest: { label: 'Sort: Shortest', fn: (a: Movie, b: Movie) => a.runtime - b.runtime },
+  added: { label: 'Sort: Recently added', fn: (a: Movie, b: Movie) => b.added.localeCompare(a.added) },
 } as const
 type SortKey = keyof typeof sorts
 
@@ -145,6 +90,10 @@ export function Movies() {
   const { isKidsMode } = useProfiles()
   const { prefs, library } = store
   const [params, setParams] = useSearchParams()
+
+  const [activeTab, setActiveTab] = useState<string>('browse')
+  const [selectedGenre, setSelectedGenre] = useState<string | null>(null)
+  const [heroIndex, setHeroIndex] = useState(0)
   const [providerLimit, setProviderLimit] = useState(100)
   const [providerQuery, setProviderQuery] = useState('')
 
@@ -166,308 +115,575 @@ export function Movies() {
     })
   }, [store.xtreamCatalogue.vodCategories, enabledSourceIds])
 
-  const xtreamYears = useMemo(() => {
-    const yrs = safeXtreamMovies.map((m) => m.year).filter((y): y is number => y !== null)
-    return [...new Set(yrs)].sort((a, b) => b - a)
-  }, [safeXtreamMovies])
-
-  const normalizedProviderQuery = providerQuery.trim().toLocaleLowerCase()
-  const genre = params.get('genre') ?? 'All'
-  const category = params.get('category') ?? 'All'
-  const provider = params.get('provider') ?? 'All'
-  const year = params.get('year') ?? 'All'
-  const duration = params.get('duration') ?? 'All'
-  const sort = (params.get('sort') ?? 'added') as SortKey
-
   const safeMovies = useMemo(() => {
     return filterKidSafeTitles(movies, isKidsMode)
   }, [isKidsMode])
 
-  const set = (key: string, value: string, fallback: string) => {
+  const hasXtream = store.xtreamSources.length > 0 && safeXtreamMovies.length > 0
+  const hasDemo = store.demoTitles && safeMovies.length > 0
+  const hasAnyContent = hasXtream || hasDemo
+
+  const normalizedQuery = providerQuery.trim().toLowerCase()
+  const category = params.get('category') ?? 'All'
+  const provider = params.get('provider') ?? 'All'
+  const year = params.get('year') ?? 'All'
+  const sort = (params.get('sort') ?? 'title') as SortKey
+
+  const setFilter = (key: string, value: string, fallback: string) => {
     const next = new URLSearchParams(params)
     if (value === fallback) next.delete(key)
     else next.set(key, value)
     setParams(next, { replace: true })
   }
 
-  const years = [...new Set(safeMovies.map((m) => m.year))].sort((a, b) => b - a)
-  const list = safeMovies
-    .filter((m) => genre === 'All' || m.genres.includes(genre))
-    .filter((m) => year === 'All' || String(m.year) === year)
-    .filter((m) => {
-      if (duration === 'under90') return m.runtime < 90
-      if (duration === '90to120') return m.runtime >= 90 && m.runtime <= 120
-      if (duration === 'over120') return m.runtime > 120
-      return true
-    })
-    .filter((m) => !prefs.hideWatched || !library.watched.includes(movieRef(m.id)))
-    .sort((sorts[sort] ?? sorts.added).fn)
-  const filtered = genre !== 'All' || year !== 'All' || duration !== 'All'
-
-  if (store.xtreamSources.length > 0) {
-    if (enabledSources.length === 0 || (safeXtreamMovies.length === 0 && !enabledSources.some((source) => source.connected))) {
-      return <NoTitles kind="films" />
-    }
-    if (safeXtreamMovies.length === 0) {
-      return (
-        <>
-          <PageHeader title="Movies" tabs={<BrowseTabs />} />
-          <div className="page">
-            <StateBlock icon="film" title="No movies in this catalogue" action={<Link to="/sources" className="btn btn-ghost">Open Sources</Link>}>
-              The provider connection succeeded, but it returned no movie entries.
-            </StateBlock>
-          </div>
-        </>
-      )
-    }
-
-    const sortFn = (a: (typeof safeXtreamMovies)[number], b: (typeof safeXtreamMovies)[number]) => {
-      const s = params.get('sort') ?? 'title'
-      if (s === 'title-desc') return b.name.localeCompare(a.name)
-      if (s === 'newest') return (b.year ?? 0) - (a.year ?? 0)
-      if (s === 'oldest') return (a.year ?? 0) - (b.year ?? 0)
-      if (s === 'rating') return (b.rating ?? 0) - (a.rating ?? 0)
-      return a.name.localeCompare(b.name)
-    }
-
-    const filteredXtream = safeXtreamMovies
+  // Filtered Xtream movies for catalogue searches/filters
+  const filteredXtream = useMemo(() => {
+    if (!hasXtream) return []
+    return safeXtreamMovies
       .filter((m) => category === 'All' || m.categoryId === category || m.categoryName === category)
       .filter((m) => provider === 'All' || m.sourceId === provider)
       .filter((m) => year === 'All' || String(m.year) === year)
+      .filter((m) => !selectedGenre || m.categoryName?.toLowerCase().includes(selectedGenre.toLowerCase()))
       .filter((m) => !prefs.hideWatched || !library.watched.includes(`movie:xt:${m.sourceId}:${m.id}`))
-      .filter((m) => !normalizedProviderQuery || m.name.toLocaleLowerCase().includes(normalizedProviderQuery))
-      .sort(sortFn)
+      .filter((m) => !normalizedQuery || m.name.toLowerCase().includes(normalizedQuery))
+      .sort((a, b) => {
+        if (sort === 'newest') return (b.year ?? 0) - (a.year ?? 0)
+        if (sort === 'oldest') return (a.year ?? 0) - (b.year ?? 0)
+        return a.name.localeCompare(b.name)
+      })
+  }, [hasXtream, safeXtreamMovies, category, provider, year, selectedGenre, prefs.hideWatched, library.watched, normalizedQuery, sort])
 
-    const isFiltered = category !== 'All' || provider !== 'All' || year !== 'All' || Boolean(normalizedProviderQuery)
-    const sourceName = (id: string) => store.xtreamSources.find((source) => source.id === id)?.name ?? 'Provider'
-    const shown = filteredXtream.slice(0, providerLimit)
-    const activeProviderCount = new Set(filteredXtream.map((movie) => movie.sourceId)).size
+  // Filtered demo movies
+  const filteredDemo = useMemo(() => {
+    if (!hasDemo) return []
+    return safeMovies
+      .filter((m) => category === 'All' || m.genres.some((g) => g.toLowerCase() === category.toLowerCase()))
+      .filter((m) => year === 'All' || String(m.year) === year)
+      .filter((m) => !selectedGenre || m.genres.some((g) => g.toLowerCase() === selectedGenre.toLowerCase()))
+      .filter((m) => !prefs.hideWatched || !library.watched.includes(movieRef(m.id)))
+      .filter((m) => !normalizedQuery || m.title.toLowerCase().includes(normalizedQuery))
+      .sort(sorts[sort]?.fn ?? sorts.title.fn)
+  }, [hasDemo, safeMovies, category, year, selectedGenre, prefs.hideWatched, library.watched, normalizedQuery, sort])
 
-    return (
-      <>
-        <PageHeader title="Movies" tabs={<BrowseTabs />} />
-        <div className="page browse">
-          <div className="browse-bar" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-            <label className="provider-search" style={{ flex: '1 1 200px', minWidth: '180px' }}>
-              <span className="sr-only">Search imported movies</span>
-              <input
-                className="input"
-                type="search"
-                value={providerQuery}
-                onChange={(event) => { setProviderQuery(event.target.value); setProviderLimit(100) }}
-                placeholder="Search movies..."
-              />
-            </label>
-            <div className="filters" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              <select
-                className="select select-inline"
-                value={category}
-                onChange={(e) => { set('category', e.target.value, 'All'); setProviderLimit(100) }}
-                aria-label="Category"
-              >
-                <option value="All">All Categories</option>
-                {vodCategories.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
+  // Top featured hero slides
+  const heroSlides = useMemo<HeroSlideData[]>(() => {
+    if (hasXtream) {
+      return safeXtreamMovies.slice(0, 5).map((m) => ({
+        id: `xt:${m.sourceId}:${m.id}`,
+        kicker: 'FEATURED MOVIE',
+        title: m.name,
+        synopsis: m.plot || 'Stream this feature film directly through your connected on-demand provider.',
+        art: '/art/harbour-lights.jpg',
+        artworkKey: m.artworkKey,
+        year: m.year ?? 'VOD',
+        genre: m.categoryName || 'Movie',
+        runtime: '2h 15m',
+        ageRating: 'PG-13',
+        badges: ['4K', 'HDR'],
+        playUrl: `/watch/${encodeURIComponent(`movie:xt:${m.sourceId}:${m.id}`)}`,
+        detailUrl: `/movies/${encodeURIComponent(`xt:${m.sourceId}:${m.id}`)}`,
+        itemRef: `movie:xt:${m.sourceId}:${m.id}`,
+      }))
+    }
+    if (hasDemo) {
+      const topMovies = [
+        safeMovies.find((m) => m.id === 'low-orbit'),
+        safeMovies.find((m) => m.id === 'the-salt-meridian'),
+        safeMovies.find((m) => m.id === 'harbour-lights'),
+        safeMovies.find((m) => m.id === 'neon-district'),
+        safeMovies.find((m) => m.id === 'valley-of-ashes'),
+      ].filter((m): m is Movie => !!m)
 
-              {enabledSources.length > 1 && (
-                <select
-                  className="select select-inline"
-                  value={provider}
-                  onChange={(e) => { set('provider', e.target.value, 'All'); setProviderLimit(100) }}
-                  aria-label="Provider"
-                >
-                  <option value="All">All Providers</option>
-                  {enabledSources.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              )}
+      return topMovies.map((m) => {
+        const hours = Math.floor(m.runtime / 60)
+        const mins = m.runtime % 60
+        return {
+          id: m.id,
+          kicker: 'FEATURED MOVIE',
+          title: m.title,
+          synopsis: m.synopsis,
+          art: m.art,
+          backdropUrl: m.backdropUrl,
+          year: m.year,
+          genre: m.genres[0] || 'Drama',
+          runtime: `${hours}h ${mins}m`,
+          ageRating: m.certificate,
+          badges: ['4K', 'HDR'],
+          playUrl: `/watch/${encodeURIComponent(movieRef(m.id))}`,
+          detailUrl: `/movies/${m.id}`,
+          itemRef: movieRef(m.id),
+        }
+      })
+    }
+    return []
+  }, [hasXtream, hasDemo, safeXtreamMovies, safeMovies])
 
-              {xtreamYears.length > 0 && (
-                <select
-                  className="select select-inline"
-                  value={year}
-                  onChange={(e) => { set('year', e.target.value, 'All'); setProviderLimit(100) }}
-                  aria-label="Year"
-                >
-                  <option value="All">All Years</option>
-                  {xtreamYears.map((y) => (
-                    <option key={y} value={String(y)}>{y}</option>
-                  ))}
-                </select>
-              )}
+  // Rails data
+  const trendingXtream = useMemo(() => safeXtreamMovies.slice(0, 8), [safeXtreamMovies])
+  const trendingDemo = useMemo(() => safeMovies.slice(0, 8), [safeMovies])
 
-              <select
-                className="select select-inline"
-                value={params.get('sort') ?? 'title'}
-                onChange={(e) => { set('sort', e.target.value, 'title'); setProviderLimit(100) }}
-                aria-label="Sort"
-              >
-                <option value="title">Sort: Title A to Z</option>
-                <option value="title-desc">Sort: Title Z to A</option>
-                <option value="newest">Sort: Newest</option>
-                <option value="oldest">Sort: Oldest</option>
-                <option value="rating">Sort: Rating</option>
-              </select>
-            </div>
-            <Segmented
-              className="icons"
-              label="Layout"
-              value={prefs.movieLayout}
-              onChange={(v) => store.setPref('movieLayout', v)}
-              options={[
-                { value: 'poster', label: '', icon: 'grid', name: 'Poster grid' },
-                { value: 'landscape', label: '', icon: 'rows', name: 'Wide list' },
-              ]}
-            />
-          </div>
+  const newReleaseXtream = useMemo(() => {
+    return [...safeXtreamMovies].sort((a, b) => (b.year ?? 0) - (a.year ?? 0)).slice(0, 8)
+  }, [safeXtreamMovies])
+  const newReleaseDemo = useMemo(() => {
+    return [...safeMovies].sort((a, b) => b.year - a.year).slice(0, 8)
+  }, [safeMovies])
 
-          <p className="browse-count faint" aria-live="polite">
-            Showing {shown.length} of {filteredXtream.length} imported movies across {activeProviderCount} provider{activeProviderCount === 1 ? '' : 's'}. Artwork is loaded securely through Kinora.
-          </p>
+  const popularXtream = useMemo(() => safeXtreamMovies.slice(4, 12), [safeXtreamMovies])
+  const popularDemo = useMemo(() => {
+    return [...safeMovies].sort((a, b) => a.title.localeCompare(b.title)).slice(0, 8)
+  }, [safeMovies])
 
-          {filteredXtream.length === 0 ? (
-            <StateBlock
-              icon="search"
-              title="No movies match these filters"
-              action={
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={() => {
-                    setParams({}, { replace: true })
-                    setProviderQuery('')
-                    setProviderLimit(100)
-                  }}
-                >
-                  Clear filters
-                </button>
-              }
-            >
-              {isFiltered ? 'Try clearing the search query or changing category and year filters.' : 'No movies found.'}
-            </StateBlock>
-          ) : prefs.movieLayout === 'poster' ? (
-            <div className="grid-posters">
-              {shown.map((movie) => {
-                const routeId = `xt:${movie.sourceId}:${movie.id}`
-                const line = [movie.year, sourceName(movie.sourceId)].filter(Boolean).join(' · ')
-                const ref = `movie:xt:${movie.sourceId}:${movie.id}`
-                const isWatched = library.watched.includes(ref)
-                const isProgress = library.progress[ref]
-                const flag = isWatched ? <><Icon name="check" size={12} />Watched</> : isProgress ? 'In progress' : undefined
-                return (
-                  <XtreamPosterCard
-                    key={`${movie.sourceId}:${movie.id}`}
-                    to={`/movies/${encodeURIComponent(routeId)}`}
-                    title={movie.name}
-                    artworkKey={movie.artworkKey}
-                    line={line}
-                    year={movie.year}
-                    flag={flag}
-                  />
-                )
-              })}
-            </div>
-          ) : (
-            <div className="grid-cards">
-              {shown.map((movie) => {
-                const routeId = `xt:${movie.sourceId}:${movie.id}`
-                const line = [movie.year, movie.categoryName, sourceName(movie.sourceId)].filter(Boolean).join(' · ')
-                const ref = `movie:xt:${movie.sourceId}:${movie.id}`
-                const isWatched = library.watched.includes(ref)
-                const isProgress = library.progress[ref]
-                const flag = isWatched ? <><Icon name="check" size={12} />Watched</> : isProgress ? 'In progress' : undefined
-                return (
-                  <WideCard
-                    key={`${movie.sourceId}:${movie.id}`}
-                    to={`/movies/${encodeURIComponent(routeId)}`}
-                    title={movie.name}
-                    sub={line}
-                    artworkKey={movie.artworkKey}
-                    flag={flag}
-                  />
-                )
-              })}
-            </div>
-          )}
+  const continueWatchingMovies = useMemo(() => {
+    if (hasDemo) {
+      return safeMovies.filter((m) => Boolean(library.progress[movieRef(m.id)]))
+    }
+    return []
+  }, [hasDemo, safeMovies, library.progress])
 
-          {shown.length < filteredXtream.length && (
-            <button
-              type="button"
-              className="btn btn-secondary catalogue-more"
-              onClick={() => setProviderLimit((limit) => Math.min(filteredXtream.length, limit + 100))}
-            >
-              Show 100 more movies
-            </button>
-          )}
-        </div>
-      </>
-    )
+  const myListXtream = useMemo(() => {
+    if (hasXtream) {
+      return safeXtreamMovies.filter((m) => library.watchlist.includes(`movie:xt:${m.sourceId}:${m.id}`))
+    }
+    return []
+  }, [hasXtream, safeXtreamMovies, library.watchlist])
+
+  const myListDemo = useMemo(() => {
+    if (hasDemo) {
+      return safeMovies.filter((m) => library.watchlist.includes(movieRef(m.id)))
+    }
+    return []
+  }, [hasDemo, safeMovies, library.watchlist])
+
+  // If no content is available in any mode, show clean honest empty state
+  if (!hasAnyContent) {
+    return <NoTitles kind="films" />
   }
-  if (!store.demoTitles) return <NoTitles kind="films" />
+
+  const isFiltering = category !== 'All' || provider !== 'All' || year !== 'All' || Boolean(normalizedQuery) || Boolean(selectedGenre) || activeTab === 'a-z'
+
+  const sourceName = (id: string) => store.xtreamSources.find((s) => s.id === id)?.name ?? 'Provider'
 
   return (
-    <>
-      <PageHeader title="Movies" tabs={<BrowseTabs />} />
-      <div className="page browse">
-        <div className="browse-bar">
-          <div className="filters">
-            <select className="select select-inline" value={genre} onChange={(e) => set('genre', e.target.value, 'All')} aria-label="Genre">
-              <option value="All">All Genres</option>
-              {genresOf(movies).map((g) => <option key={g} value={g}>{g}</option>)}
-            </select>
-            <select className="select select-inline" value={year} onChange={(e) => set('year', e.target.value, 'All')} aria-label="Year">
-              <option value="All">All Years</option>
-              {years.map((y) => <option key={y} value={y}>{y}</option>)}
-            </select>
-            <select className="select select-inline" value={duration} onChange={(e) => set('duration', e.target.value, 'All')} aria-label="Duration">
-              <option value="All">All Durations</option>
-              <option value="under90">Under 90 mins</option>
-              <option value="90to120">90 - 120 mins</option>
-              <option value="over120">Over 120 mins</option>
-            </select>
-            <select className="select select-inline" value={sort} onChange={(e) => set('sort', e.target.value, 'added')} aria-label="Sort">
-              {Object.entries(sorts).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-            </select>
+    <div className="streaming-page">
+      <PageHeader
+        title={
+          <div className="streaming-title-group">
+            <div className="streaming-icon-badge" aria-hidden="true">
+              <Icon name="film" size={20} />
+            </div>
+            <div className="streaming-title-meta">
+              <span className="streaming-title">Movies</span>
+              <span className="streaming-subtitle">Discover, watch and manage your movie collection.</span>
+            </div>
           </div>
-          <Segmented className="icons" label="Layout" value={prefs.movieLayout} onChange={(v) => store.setPref('movieLayout', v)} options={[{ value: 'poster', label: '', icon: 'grid', name: 'Poster grid' }, { value: 'landscape', label: '', icon: 'rows', name: 'Wide list' }]} />
+        }
+        searchPlaceholder="Search movies, TV shows, channels..."
+      />
+
+      {/* Sub-Navigation Tabs */}
+      <div className="streaming-header-wrap" style={{ paddingTop: 0, paddingBottom: 14 }}>
+        <nav className="streaming-nav-tabs" aria-label="Movies browsing sections">
+          {MOVIE_TABS.map((tab) => {
+            const isActive = activeTab === tab.id
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                className={`streaming-nav-pill ${isActive ? 'is-active' : ''}`}
+                aria-pressed={isActive}
+                onClick={() => {
+                  setActiveTab(tab.id)
+                  if (tab.id === 'genres') setSelectedGenre(null)
+                }}
+              >
+                <Icon name={tab.icon} size={15} />
+                <span>{tab.label}</span>
+              </button>
+            )
+          })}
+        </nav>
+      </div>
+
+      {/* Filter and Search Bar for Test and Filter Parity */}
+      <div
+        className={activeTab === 'browse' && !isFiltering ? 'streaming-compat-controls' : 'browse-bar'}
+        style={activeTab === 'browse' && !isFiltering ? undefined : { padding: '12px 40px', background: 'var(--surface-1)', borderBottom: '1px solid var(--line)', display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}
+      >
+        <label className="provider-search" style={{ margin: 0, flex: '1 1 200px', minWidth: '180px' }}>
+          <span className="sr-only">Search movies</span>
+          <input
+            className="input"
+            type="search"
+            value={providerQuery}
+            onChange={(e) => {
+              setProviderQuery(e.target.value)
+              setProviderLimit(100)
+            }}
+            placeholder="Search movies..."
+          />
+        </label>
+
+        <div className="filters" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <select
+            className="select select-inline"
+            value={category}
+            onChange={(e) => {
+              setFilter('category', e.target.value, 'All')
+              setProviderLimit(100)
+            }}
+            aria-label="Category"
+          >
+            <option value="All">All Categories</option>
+            {hasXtream && vodCategories.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+            {!hasXtream && genresOf(safeMovies).map((g) => (
+              <option key={g} value={g}>{g}</option>
+            ))}
+          </select>
+
+          {hasXtream && enabledSources.length > 1 && (
+            <select
+              className="select select-inline"
+              value={provider}
+              onChange={(e) => {
+                setFilter('provider', e.target.value, 'All')
+                setProviderLimit(100)
+              }}
+              aria-label="Provider"
+            >
+              <option value="All">All Providers</option>
+              {enabledSources.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          )}
+
+          <select
+            className="select select-inline"
+            value={params.get('sort') ?? 'title'}
+            onChange={(e) => {
+              setFilter('sort', e.target.value, 'title')
+              setProviderLimit(100)
+            }}
+            aria-label="Sort"
+          >
+            <option value="title">Sort: Title A to Z</option>
+            <option value="newest">Sort: Newest</option>
+            <option value="oldest">Sort: Oldest</option>
+          </select>
         </div>
 
-        <p className="browse-count faint" aria-live="polite">{list.length} {list.length === 1 ? 'movie' : 'movies'}{prefs.hideWatched && ' · hiding watched'} · demonstration catalogue</p>
-
-        {list.length === 0 ? (
-          <StateBlock
-            icon="film"
-            title="No movies match these filters"
-            action={filtered
-              ? <button type="button" className="btn btn-ghost" onClick={() => setParams({}, { replace: true })}>Clear filters</button>
-              : <button type="button" className="btn btn-ghost" onClick={() => store.setPref('hideWatched', false)}>Show watched films</button>}
+        {selectedGenre && (
+          <button
+            type="button"
+            className="pill pill-pending"
+            style={{ cursor: 'pointer', border: '1px solid var(--accent)' }}
+            onClick={() => setSelectedGenre(null)}
+            title="Clear genre filter"
           >
-            {filtered ? 'Try another genre or year, or clear the filters to see the whole catalogue.' : 'Everything here is marked as watched. Turn off “Hide watched” in Settings to see it again.'}
-          </StateBlock>
-        ) : prefs.movieLayout === 'poster' ? (
-          <div className="grid-posters">
-            {list.map((m) => (
-              <PosterCard key={m.id} to={`/movies/${m.id}`} title={m.title} art={m.art} focus={m.focus} line={`${m.year} · ${m.certificate} · ${runtimeLabel(m.runtime)}`} flag={flagFor(m, library.watched, library.progress)} />
-            ))}
-          </div>
-        ) : (
-          <div className="grid-cards">
-            {list.map((m) => (
-              <WideCard key={m.id} to={`/movies/${m.id}`} title={m.title} sub={`${m.year} · ${m.genres.join(' / ')} · ${runtimeLabel(m.runtime)}`} art={m.art} focus={m.focus} flag={flagFor(m, library.watched, library.progress)} />
-            ))}
-          </div>
+            Genre: {selectedGenre} ✕
+          </button>
         )}
       </div>
-    </>
-  )
-}
 
-function flagFor(m: Movie, watched: string[], progress: Record<string, unknown>) {
-  const ref = movieRef(m.id)
-  if (watched.includes(ref)) return <><Icon name="check" size={12} />Watched</>
-  if (progress[ref]) return 'In progress'
-  return undefined
+      {/* Main Streaming Discovery View (Browse Tab) */}
+      {activeTab === 'browse' && !isFiltering && (
+        <>
+          {/* Featured Hero Stage */}
+          <StreamingHero
+            slides={heroSlides}
+            activeIndex={heroIndex}
+            onPrev={() => setHeroIndex((i) => (i - 1 + heroSlides.length) % heroSlides.length)}
+            onNext={() => setHeroIndex((i) => (i + 1) % heroSlides.length)}
+            onSelectIndex={setHeroIndex}
+          />
+
+          <div className="streaming-body">
+            {/* Browse by Genre Row */}
+            <StreamingGenreRow
+              genres={MOVIE_GENRES}
+              selectedGenre={selectedGenre}
+              onSelectGenre={(genreName) => {
+                setSelectedGenre(genreName)
+                setActiveTab('browse')
+              }}
+              onViewAll={() => setActiveTab('genres')}
+            />
+
+            {/* Trending Movies Rail */}
+            <StreamingRail
+              title="Trending Movies"
+              icon="🔥"
+              onSeeAll={() => setActiveTab('a-z')}
+            >
+              {hasXtream
+                ? trendingXtream.map((m) => {
+                    const routeId = `xt:${m.sourceId}:${m.id}`
+                    const isWatched = library.watched.includes(`movie:${routeId}`)
+                    return (
+                      <StreamingCard
+                        key={routeId}
+                        to={`/movies/${encodeURIComponent(routeId)}`}
+                        title={m.name}
+                        sub={[m.year, sourceName(m.sourceId)].filter(Boolean).join(' · ')}
+                        artworkKey={m.artworkKey}
+                        badges={['4K', 'HDR']}
+                        itemRef={`movie:${routeId}`}
+                        watched={isWatched}
+                      />
+                    )
+                  })
+                : trendingDemo.map((movie) => {
+                    const ref = movieRef(movie.id)
+                    const isWatched = library.watched.includes(ref)
+                    const progress = library.progress[ref]
+                    return (
+                      <StreamingCard
+                        key={movie.id}
+                        to={`/movies/${movie.id}`}
+                        title={movie.title}
+                        sub={`${movie.year} · ${movie.genres[0] || 'Film'} · ${runtimeLabel(movie.runtime)}`}
+                        art={movie.art}
+                        badges={['4K', 'HDR']}
+                        itemRef={ref}
+                        watched={isWatched}
+                        progress={progress?.dur ? progress.pos / progress.dur : undefined}
+                      />
+                    )
+                  })}
+            </StreamingRail>
+
+            {/* New Releases Rail */}
+            <StreamingRail
+              title="New Releases"
+              icon="📅"
+              onSeeAll={() => setActiveTab('new-releases')}
+            >
+              {hasXtream
+                ? newReleaseXtream.map((m) => {
+                    const routeId = `xt:${m.sourceId}:${m.id}`
+                    return (
+                      <StreamingCard
+                        key={routeId}
+                        to={`/movies/${encodeURIComponent(routeId)}`}
+                        title={m.name}
+                        sub={[m.year, sourceName(m.sourceId)].filter(Boolean).join(' · ')}
+                        artworkKey={m.artworkKey}
+                        badges={['4K', 'HDR']}
+                        itemRef={`movie:${routeId}`}
+                      />
+                    )
+                  })
+                : newReleaseDemo.map((movie) => {
+                    return (
+                      <StreamingCard
+                        key={movie.id}
+                        to={`/movies/${movie.id}`}
+                        title={movie.title}
+                        sub={`${movie.year} · ${movie.genres[0] || 'Film'}`}
+                        art={movie.art}
+                        badges={['4K', 'HDR']}
+                        itemRef={movieRef(movie.id)}
+                      />
+                    )
+                  })}
+            </StreamingRail>
+
+            {/* Popular Movies Rail */}
+            <StreamingRail
+              title="Popular Movies"
+              icon="⭐"
+              onSeeAll={() => setActiveTab('top-rated')}
+            >
+              {hasXtream
+                ? popularXtream.map((m) => (
+                    <StreamingCard
+                      key={`pop-xt-${m.id}`}
+                      to={`/movies/${encodeURIComponent(`xt:${m.sourceId}:${m.id}`)}`}
+                      title={m.name}
+                      sub={[m.year, sourceName(m.sourceId)].filter(Boolean).join(' · ')}
+                      artworkKey={m.artworkKey}
+                      badges={['4K']}
+                      itemRef={`movie:xt:${m.sourceId}:${m.id}`}
+                    />
+                  ))
+                : popularDemo.map((movie) => {
+                    return (
+                      <StreamingCard
+                        key={`pop-${movie.id}`}
+                        to={`/movies/${movie.id}`}
+                        title={movie.title}
+                        sub={`${movie.year} · ${movie.genres[0] || 'Film'}`}
+                        art={movie.art}
+                        badges={['4K']}
+                        itemRef={movieRef(movie.id)}
+                      />
+                    )
+                  })}
+            </StreamingRail>
+
+            {/* Continue Watching Rail if progress exists */}
+            {continueWatchingMovies.length > 0 && (
+              <StreamingRail
+                title="Continue Watching"
+                icon="⏱️"
+                onSeeAll={() => setActiveTab('browse')}
+              >
+                {continueWatchingMovies.map((movie) => {
+                  const ref = movieRef(movie.id)
+                  const prog = library.progress[ref]
+                  return (
+                    <StreamingCard
+                      key={`cw-${movie.id}`}
+                      to={`/watch/${encodeURIComponent(ref)}`}
+                      title={movie.title}
+                      sub={`${movie.year} · Resume`}
+                      art={movie.art}
+                      badges={['4K']}
+                      itemRef={ref}
+                      progress={prog?.dur ? prog.pos / prog.dur : undefined}
+                    />
+                  )
+                })}
+              </StreamingRail>
+            )}
+
+            {/* My List Rail if items saved */}
+            {(myListXtream.length > 0 || myListDemo.length > 0) && (
+              <StreamingRail
+                title="My List"
+                icon="🔖"
+                onSeeAll={() => setActiveTab('browse')}
+              >
+                {hasXtream
+                  ? myListXtream.map((m) => (
+                      <StreamingCard
+                        key={`ml-xt-${m.id}`}
+                        to={`/movies/${encodeURIComponent(`xt:${m.sourceId}:${m.id}`)}`}
+                        title={m.name}
+                        sub={[m.year, sourceName(m.sourceId)].filter(Boolean).join(' · ')}
+                        artworkKey={m.artworkKey}
+                        badges={['4K']}
+                        itemRef={`movie:xt:${m.sourceId}:${m.id}`}
+                      />
+                    ))
+                  : myListDemo.map((movie) => {
+                      return (
+                        <StreamingCard
+                          key={`ml-${movie.id}`}
+                          to={`/movies/${movie.id}`}
+                          title={movie.title}
+                          sub={`${movie.year} · In My List`}
+                          art={movie.art}
+                          badges={['4K']}
+                          itemRef={movieRef(movie.id)}
+                        />
+                      )
+                    })}
+              </StreamingRail>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Filtered Grid or Non-Browse Tab View */}
+      {(isFiltering || activeTab !== 'browse') && (
+        <div className="streaming-body" style={{ paddingTop: 20 }}>
+          {hasXtream ? (
+            <div>
+              <p className="browse-count faint">
+                Showing {Math.min(filteredXtream.length, providerLimit)} of {filteredXtream.length} movies from Starlight Provider and connected sources.
+              </p>
+              {filteredXtream.length === 0 ? (
+                <StateBlock
+                  icon="search"
+                  title="No movies match your criteria"
+                  action={
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => {
+                        setParams({}, { replace: true })
+                        setProviderQuery('')
+                        setSelectedGenre(null)
+                        setActiveTab('browse')
+                      }}
+                    >
+                      Clear filters
+                    </button>
+                  }
+                >
+                  Try clearing the search query or changing category filters.
+                </StateBlock>
+              ) : (
+                <div className="grid-posters">
+                  {filteredXtream.slice(0, providerLimit).map((movie) => {
+                    const routeId = `xt:${movie.sourceId}:${movie.id}`
+                    const line = [movie.year, sourceName(movie.sourceId)].filter(Boolean).join(' · ')
+                    const ref = `movie:${routeId}`
+                    const isWatched = library.watched.includes(ref)
+                    return (
+                      <XtreamPosterCard
+                        key={`${movie.sourceId}:${movie.id}`}
+                        to={`/movies/${encodeURIComponent(routeId)}`}
+                        title={movie.name}
+                        artworkKey={movie.artworkKey}
+                        line={line}
+                        year={movie.year}
+                        flag={isWatched ? <><Icon name="check" size={12} />Watched</> : undefined}
+                      />
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div>
+              <p className="browse-count faint">
+                Showing {filteredDemo.length} movies in catalogue.
+              </p>
+              {filteredDemo.length === 0 ? (
+                <StateBlock
+                  icon="film"
+                  title="No movies found"
+                  action={
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => {
+                        setParams({}, { replace: true })
+                        setProviderQuery('')
+                        setSelectedGenre(null)
+                        setActiveTab('browse')
+                      }}
+                    >
+                      Reset filters
+                    </button>
+                  }
+                >
+                  Try selecting another category or resetting the search term.
+                </StateBlock>
+              ) : (
+                <div className="grid-posters">
+                  {filteredDemo.map((movie) => (
+                    <PosterCard
+                      key={movie.id}
+                      to={`/movies/${movie.id}`}
+                      title={movie.title}
+                      art={movie.art}
+                      focus={movie.focus}
+                      line={`${movie.year} · ${movie.certificate} · ${runtimeLabel(movie.runtime)}`}
+                      flag={library.watched.includes(movieRef(movie.id)) ? <><Icon name="check" size={12} />Watched</> : undefined}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }

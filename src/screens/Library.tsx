@@ -425,7 +425,7 @@ function SavedList({ list }: { list: 'watchlist' | 'favourites' }) {
   const all = resolveAll(targetRefs, now, store.findChannel, store.programmeAt, store.demoTitles, findMovie, findSeries)
   const items = all.filter((r) => kind === 'all' || r.kind === kind).sort((a, b) => (sort === 'title' ? a.title.localeCompare(b.title) : 0))
   const kinds: Kind[] = list === 'favourites' ? ['all', 'channel', 'movie', 'series'] : ['all', 'movie', 'series']
-  const kindLabel: Record<Kind, string> = { all: 'All', channel: 'Channels', movie: 'Films', series: 'Series' }
+  const kindLabel: Record<Kind, string> = { all: 'All', channel: 'Channels', movie: 'Movies', series: 'TV Shows' }
   const remove = (r: Resolved) => {
     const toggle = list === 'watchlist' ? store.toggleWatchlist : store.toggleFavourite
     toggle(r.ref)

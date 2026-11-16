@@ -14,7 +14,7 @@ import { CollectionDialog } from './CollectionDialog'
 import { artworkEngine } from '../data/artworkEngine'
 import { TechnicalBadge, type TechnicalFormat } from './TechnicalBadges'
 
-function useCardContextMenu(to: string, title: string, itemRef?: string) {
+export function useCardContextMenu(to: string, title: string, itemRef?: string) {
   const store = useStore()
   const toast = useToast()
   const navigate = useNavigate()

@@ -345,12 +345,14 @@ export function PageHeader({
   title,
   tabs,
   search = true,
+  searchPlaceholder = 'Search movies, TV shows, channels, podcasts...',
   overlay = false,
   actions,
 }: {
   title?: ReactNode
   tabs?: ReactNode
   search?: boolean
+  searchPlaceholder?: string
   overlay?: boolean
   actions?: ReactNode
 }) {
@@ -384,7 +386,7 @@ export function PageHeader({
             onClick={openPalette}
           >
             <Icon name="search" size={18} />
-            <span>Search movies, series, channels, podcasts...</span>
+            <span>{searchPlaceholder}</span>
             <kbd className="search-pill-kbd">Ctrl + K</kbd>
           </button>
         )}

@@ -48,9 +48,9 @@ export function SeriesDetail() {
   if (!s) {
     return (
       <div className="page">
-        <PageHeader title="Series" />
-        <StateBlock icon="series" title="Series not found" action={<Link to="/series" className="btn btn-primary">Browse series</Link>}>
-          There is no series at this address in the demonstration catalogue.
+        <PageHeader title="TV Shows" />
+        <StateBlock icon="series" title="TV show not found" action={<Link to="/series" className="btn btn-primary">Browse TV shows</Link>}>
+          There is no TV show at this address in the demonstration catalogue.
         </StateBlock>
       </div>
     )
@@ -82,9 +82,9 @@ export function SeriesDetail() {
         <Art src={seasonBackdrop} focus={s.focus} eager className="detail-backdrop" />
         <PageHeader overlay />
         <div className="detail-hero-content">
-          <Breadcrumbs crumbs={[{ label: 'Home', to: '/' }, { label: 'Series', to: '/series' }, { label: s.title }]} />
-          <Link to="/series" className="text-link detail-back"><Icon name="back" size={16} />Series</Link>
-          <p className="kicker"><Icon name="series" size={16} />Series · {s.genres.join(' / ')}</p>
+          <Breadcrumbs crumbs={[{ label: 'Home', to: '/' }, { label: 'TV Shows', to: '/series' }, { label: s.title }]} />
+          <Link to="/series" className="text-link detail-back"><Icon name="back" size={16} />TV Shows</Link>
+          <p className="kicker"><Icon name="series" size={16} />TV Show · {s.genres.join(' / ')}</p>
           <h1 className="title-xl">{s.title}</h1>
           <p className="detail-tagline">{s.tagline}</p>
           <div className="meta">
@@ -256,10 +256,10 @@ function XtreamSeriesDetail({ show }: { show: XtreamTitle }) {
         <PageHeader overlay />
         <div className="detail-hero-content">
           <Link to="/series" className="text-link detail-back">
-            <Icon name="back" size={16} />Series
+            <Icon name="back" size={16} />TV Shows
           </Link>
           <p className="kicker">
-            <Icon name="series" size={16} />Series · {source?.name ?? 'Provider'}
+            <Icon name="series" size={16} />TV Show · {source?.name ?? 'Provider'}
           </p>
           <h1 className="title-xl">{show.name}</h1>
           <div className="meta">

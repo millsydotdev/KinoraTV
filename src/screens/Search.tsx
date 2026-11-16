@@ -31,7 +31,7 @@ interface SavedSearch {
 }
 
 type Group = 'channels' | 'tv' | 'films' | 'series' | 'episodes' | 'resources'
-const groupLabels: Record<Group, string> = { channels: 'Channels', tv: 'On TV Today', films: 'Movies', series: 'Series', episodes: 'Episodes', resources: 'Media Resources' }
+const groupLabels: Record<Group, string> = { channels: 'Channels', tv: 'On TV Today', films: 'Movies', series: 'TV Shows', episodes: 'Episodes', resources: 'Media Resources' }
 const groupIcons: Record<Group, IconName> = { channels: 'tv', tv: 'guide', films: 'film', series: 'series', episodes: 'play', resources: 'sources' }
 const PER_GROUP = 8
 

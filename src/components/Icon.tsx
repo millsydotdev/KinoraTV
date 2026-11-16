@@ -82,15 +82,21 @@ const paths = {
   hardDrive: 'M3 14h18v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6zm0-8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4H3V6zm14 11h.01M14 17h.01',
   more: 'M12 12h.01M19 12h.01M5 12h.01',
   clock: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 6v6l4 2',
+  calendar: 'M19 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM16 2v4M8 2v4M3 10h18',
+  tag: 'M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82zM7 7h.01',
+  layers: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5',
+  sortAsc: 'M3 6h7M3 12h5M3 18h3M14 7l3-3 3 3M17 4v16',
+  flame: 'M8.5 14.5A3.5 3.5 0 0 0 12 18a3.5 3.5 0 0 0 3.5-3.5c0-2-1.5-3.5-2.5-5 0 0-.5 1.5-1 1.5s-.5-1-1-2c-.5 2-2.5 3.5-2.5 5.5zM12 2c-4 5-7 8.5-7 12.5a7 7 0 0 0 14 0c0-4-3-7.5-7-12.5z',
 } as const
 
 export type IconName = keyof typeof paths
 
-export function Icon({ name, size = 20, className }: { name: IconName; size?: number; className?: string }) {
+export function Icon({ name, size = 20, className, style }: { name: IconName; size?: number; className?: string; style?: React.CSSProperties }) {
   const filled = name === 'play'
   return (
     <svg
       className={className}
+      style={style}
       width={size}
       height={size}
       viewBox="0 0 24 24"
