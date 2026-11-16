@@ -1,6 +1,6 @@
 [package]
 name = "kinora"
-version = "0.5.0"
+version = "0.5.1"
 description = "Kinora native shell (Tauri 2) hosting the React UI"
 edition = "2021"
 rust-version = "1.90"
