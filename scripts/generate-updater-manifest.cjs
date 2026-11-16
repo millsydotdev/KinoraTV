@@ -1,14 +1,21 @@
 #!/usr/bin/env node
 const fs = require('fs');
 const path = require('path');
+const pkg = require('../package.json');
 
+const authVersion = pkg.version;
+if (!authVersion) {
+  throw new Error('Authoritative version not found in package.json');
+}
+
+const tag = `v${authVersion}`;
 const distDir = path.resolve(__dirname, '..', 'release-dist');
 if (!fs.existsSync(distDir)) {
   fs.mkdirSync(distDir, { recursive: true });
 }
 
 const files = fs.readdirSync(distDir);
-console.log('Generating latest.json updater manifest from release-dist files:', files);
+console.log(`Generating latest.json updater manifest for ${tag} from release-dist files:`, files);
 
 function findAssetAndSig(patterns) {
   for (const pattern of patterns) {
@@ -19,7 +26,7 @@ function findAssetAndSig(patterns) {
         const sig = fs.readFileSync(path.join(distDir, sigFile), 'utf8').trim();
         if (sig && sig.length >= 10) {
           return {
-            url: `https://github.com/millsydotdev/KinoraTV/releases/download/v0.5.0/${asset}`,
+            url: `https://github.com/millsydotdev/KinoraTV/releases/download/${tag}/${asset}`,
             signature: sig
           };
         }
@@ -54,9 +61,14 @@ platforms['darwin-x86_64'] = findAssetAndSig([
   /x64.*\.app\.tar\.gz$/i
 ]);
 
+const defaultNotes = `Kinora v${authVersion} Desktop Release\n\n` +
+  '- Centralised version synchronization across React frontend, Rust backend, installers, and updater\n' +
+  '- Multi-Platform matrix builds: Linux (DEB, RPM, AppImage), macOS (Apple Silicon ARM64, Intel x64 DMG), and Windows (NSIS, MSI)\n' +
+  '- Zero em-dashes and strict privacy-first local architecture';
+
 const manifest = {
-  version: '0.5.0',
-  notes: 'Kinora v0.5.0 Public Desktop Release Candidate\n\n- Proprietary Source-Available Licence - All Rights Reserved\n- Creator Attribution for millsydotdev in Settings and README\n- Signed Tauri Updater with in-app notifications and What\'s New modal\n- Multi-Platform matrix builds: Linux (DEB, RPM, AppImage), macOS (Apple Silicon ARM64, Intel x64 DMG), and Windows (NSIS, MSI)\n- Zero em-dashes and strict privacy-first local architecture',
+  version: authVersion,
+  notes: process.env.RELEASE_NOTES || defaultNotes,
   pub_date: new Date().toISOString(),
   platforms
 };

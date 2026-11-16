@@ -14,6 +14,8 @@
     "tauri:build": "tauri build",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "test:gate": "bash scripts/quality-gate.sh",
+    "version:check": "node scripts/validate-version.cjs",
+    "version:sync": "node scripts/sync-version.cjs",
     "ci": "bash scripts/ci-local.sh"
   },
   "dependencies": {

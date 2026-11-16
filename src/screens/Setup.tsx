@@ -6,7 +6,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Icon } from '../components/Icon'
 import { Logo } from '../components/Sidebar'
 import { StateBlock } from '../components/ui'
-import { fetchPlaylist, getAppInfo, inNativeShell, type AppInfo, type CatalogueEntry } from '../lib/native'
+import { fetchPlaylist, getAppInfo, inNativeShell, type AppInfo, type CatalogueEntry, APP_VERSION } from '../lib/native'
 import { filterEntries, importedAs, suggestedEntries, uniqueName, PROVIDER } from '../state/catalogue'
 import { addressLabel, readForPreview } from '../state/playlists'
 import { useStore } from '../state/store'
@@ -45,7 +45,7 @@ export function Setup() {
           <section className="setup-card" aria-labelledby="setup-title">
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '4px 10px', background: 'var(--surface)', borderRadius: 'var(--r-s)', border: '1px solid var(--line)', width: 'fit-content', fontSize: '0.8125rem' }}>
               <span style={{ color: 'var(--accent)', fontWeight: 700 }}>Kinora</span>
-              <span className="muted">{appInfo ? `v${appInfo.version} (${appInfo.os} ${appInfo.arch})` : 'v0.1.0'}</span>
+              <span className="muted">{appInfo ? `v${appInfo.version} (${appInfo.os} ${appInfo.arch})` : `v${APP_VERSION}`}</span>
             </div>
             <h1 id="setup-title" className="title-xl">Your TV, from sources you choose</h1>
             <p className="muted">Kinora has no channels or films of its own. It plays TV playlists you add, shows their schedule, and keeps your favourites on this device.</p>

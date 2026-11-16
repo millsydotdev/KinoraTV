@@ -1,6 +1,33 @@
 // The typed boundary between React and the Rust shell (src-tauri/src/lib.rs). In a plain browser
 // (Vite dev server, Vitest) there is no shell, so calls resolve to null instead of failing.
 import { invoke, isTauri } from '@tauri-apps/api/core'
+import packageInfo from '../../package.json'
+
+/** Single authoritative application version read directly from root package.json. */
+export const AUTHORITATIVE_VERSION: string = packageInfo.version
+export const APP_VERSION: string = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : AUTHORITATIVE_VERSION
+
+export type VersionChannel = 'stable' | 'rc' | 'beta' | 'alpha' | 'development'
+
+export function getVersionChannel(version: string, profile?: string): VersionChannel {
+  if (profile === 'debug') return 'development'
+  const lower = version.toLowerCase()
+  if (lower.includes('-dev')) return 'development'
+  if (lower.includes('-alpha')) return 'alpha'
+  if (lower.includes('-beta')) return 'beta'
+  if (lower.includes('-rc')) return 'rc'
+  return 'stable'
+}
+
+export function formatChannelName(channel: VersionChannel): string {
+  switch (channel) {
+    case 'stable': return 'Stable'
+    case 'rc': return 'Release Candidate'
+    case 'beta': return 'Beta'
+    case 'alpha': return 'Alpha'
+    case 'development': return 'Development'
+  }
+}
 
 /** Mirrors `AppInfo` in src-tauri/src/lib.rs (serde camelCase). */
 export interface AppInfo {

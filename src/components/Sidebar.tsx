@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useLayoutEffect, type ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useStore } from '../state/store'
+import { getAppInfo, APP_VERSION } from '../lib/native'
 import { Icon, type IconName } from './Icon'
 import './Sidebar.css'
 
@@ -109,7 +110,14 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
   }
   const isExploreMoreActive = exploreMoreItems.some((i) => pathname.startsWith(i.to))
   const [exploreMoreOpen, setExploreMoreOpen] = useState(isExploreMoreActive)
+  const [appVersion, setAppVersion] = useState<string>(APP_VERSION)
   const exploreNavRef = useRef<HTMLElement>(null)
+
+  useEffect(() => {
+    void getAppInfo().then((info) => {
+      if (info) setAppVersion(info.version)
+    })
+  }, [])
 
   useEffect(() => onClose(), [pathname, onClose])
 
@@ -355,6 +363,9 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                 <p className="faint">{mediaLibrary.mySources.length} saved personal sources</p>
               </>
             )}
+          </div>
+          <div className="sidebar-version-tag" title={`KinoraTV v${appVersion}`}>
+            v{appVersion}
           </div>
         </div>
       </aside>

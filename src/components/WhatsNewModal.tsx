@@ -1,8 +1,9 @@
 import { useEffect } from 'react'
 import { Icon } from './Icon'
+import { APP_VERSION } from '../lib/native'
 import './WhatsNewModal.css'
 
-export const CURRENT_RELEASE_VERSION = '0.5.0'
+export const CURRENT_RELEASE_VERSION = APP_VERSION
 const STORAGE_KEY = 'kinora.whats_new_seen.v1'
 
 export interface ReleaseHighlight {

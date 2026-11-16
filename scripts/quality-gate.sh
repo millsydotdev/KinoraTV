@@ -16,6 +16,12 @@ echo "HEAD Hash:  $(git rev-parse HEAD)"
 echo "Timestamp:  $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 echo "=========================================================="
 
+# Gate 0: Version Consistency and SemVer Integrity
+echo ""
+echo "=== GATE 0: VERSION CONSISTENCY & SEMVER INTEGRITY ==="
+npm run version:check
+echo "PASS: Authoritative version is synchronized across all components."
+
 # Gate 1: TypeScript Static Typecheck
 echo ""
 echo "=== GATE 1: TYPESCRIPT STATIC TYPECHECK (tsc -b) ==="
@@ -48,11 +54,11 @@ echo "PASS: Rust engine, formatting, clippy lints, network policies, and XMLTV/M
 # Gate 5: Isolated Native Smoke Verification
 echo ""
 echo "=== GATE 5: ISOLATED NATIVE SMOKE VERIFICATION ==="
-if [ -f "$REPO/src-tauri/target/debug/kinora" ]; then
+if [ -f "$REPO/src-tauri/target/debug/kinora" ] && curl -s -m 1 http://127.0.0.1:18765/channels.m3u >/dev/null 2>&1; then
   bash "$REPO/scripts/native-smoke/run.sh" smoke dev m3u
   echo "PASS: Native Tauri runtime smoke verification passed."
 else
-  echo "NOTE: Debug binary not built; skipping native runtime smoke. Run 'npm run tauri:dev' to generate debug binary."
+  echo "NOTE: Native smoke environment not active (debug binary or fixture server on 18765 offline); skipping native runtime smoke. See scripts/native-smoke/README.md."
 fi
 
 echo ""

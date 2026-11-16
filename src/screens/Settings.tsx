@@ -6,7 +6,7 @@ import { Icon, type IconName } from '../components/Icon'
 import { useToast } from '../components/Toast'
 import { PageHeader } from '../components/PageHeader'
 import { Segmented, StateBlock, Switch } from '../components/ui'
-import { getAppInfo, checkForUpdates, type AppInfo, type UpdateCheckResult } from '../lib/native'
+import { getAppInfo, checkForUpdates, type AppInfo, type UpdateCheckResult, APP_VERSION, getVersionChannel, formatChannelName } from '../lib/native'
 import { CODEC_HELP, codecSupport } from '../lib/playback'
 import { ACCENTS, THEME_BG, THEME_PRESETS, contrast, safeHex, type AccentName } from '../lib/theme'
 import { defaultPrefs, useStore, type Prefs } from '../state/store'
@@ -1512,7 +1512,7 @@ function DataSection() {
       generatedAt: new Date().toISOString(),
       app: {
         name: 'Kinora',
-        version: appInfo?.version ?? '0.1.0',
+        version: appInfo?.version ?? APP_VERSION,
         buildProfile: appInfo?.profile ?? 'unknown',
         targetOs: appInfo?.os ?? 'unknown',
         targetArch: appInfo?.arch ?? 'unknown',
@@ -1775,11 +1775,19 @@ function BuildRow() {
 
   if (state === 'loading') return <Row title="Kinora"><span className="muted">Reading build details…</span></Row>
   if ('error' in state) return <Row title="Kinora" hint={state.error}><span className="pending-tag">Unavailable</span></Row>
-  if (!state.info) return <Row title="Kinora" hint="Running in a web browser, without the native shell."><span className="muted tnum">0.5.0, interface preview</span></Row>
+  if (!state.info) {
+    const channelName = formatChannelName(getVersionChannel(APP_VERSION, 'preview'))
+    return (
+      <Row title="Kinora" hint={`Running in web browser. Channel: ${channelName}.`}>
+        <span className="muted tnum">v{APP_VERSION} (Web Preview)</span>
+      </Row>
+    )
+  }
   const { version, profile, os, arch, tauriVersion } = state.info
+  const channelName = formatChannelName(getVersionChannel(version, profile))
   return (
-    <Row title="Kinora" hint={`Native shell: Tauri ${tauriVersion} on ${os} ${arch}.`}>
-      <span className="muted tnum">{version}, {profile} build</span>
+    <Row title="Kinora" hint={`Native shell: Tauri ${tauriVersion} on ${os} (${arch}). Channel: ${channelName}.`}>
+      <span className="muted tnum">v{version} ({profile})</span>
     </Row>
   )
 }
@@ -1802,7 +1810,7 @@ function UpdatesRow({ onOpenWhatsNew }: { onOpenWhatsNew?: () => void }) {
           },
         })
       } else if (res?.status === 'upToDate') {
-        toast('Kinora is up to date (v0.5.0)')
+        toast(`Kinora is up to date (v${res.currentVersion})`)
       } else if (res?.status === 'unsupportedPlatform') {
         toast(`Update found for other platforms: ${res.error ?? 'Platform unsupported'}`)
       } else if (res?.error) {
@@ -1859,6 +1867,13 @@ function UpdatesRow({ onOpenWhatsNew }: { onOpenWhatsNew?: () => void }) {
 function About() {
   const store = useStore()
   const [whatsNewOpen, setWhatsNewOpen] = useState(false)
+  const [appVersion, setAppVersion] = useState<string>(APP_VERSION)
+
+  useEffect(() => {
+    void getAppInfo().then((info) => {
+      if (info) setAppVersion(info.version)
+    })
+  }, [])
   const shortcuts: [string, string][] = [
     ['/', 'Search from anywhere'],
     ['Page Up / Page Down', 'Change channel in Live TV'],
@@ -1909,7 +1924,7 @@ function About() {
             className="btn btn-secondary btn-small"
             onClick={() => setWhatsNewOpen(true)}
           >
-            <Icon name="sparkles" size={14} /> What's New in v0.5.0
+            <Icon name="sparkles" size={14} /> What's New in v{appVersion}
           </button>
         </div>
       </div>

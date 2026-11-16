@@ -830,4 +830,21 @@ mod tests {
         assert_eq!(logo_mime(b"RIFF0000WEBPrest"), Some("image/webp"));
         assert_eq!(logo_mime(b"<svg xmlns='http://www.w3.org/2000/svg'>"), None);
     }
+
+    #[test]
+    fn cargo_version_matches_package_json() {
+        let pkg_json: serde_json::Value = serde_json::from_str(include_str!("../../package.json"))
+            .expect("package.json must exist and be valid JSON");
+        let pkg_version = pkg_json
+            .get("version")
+            .and_then(|v| v.as_str())
+            .expect("package.json must contain a version field");
+        assert_eq!(
+            env!("CARGO_PKG_VERSION"),
+            pkg_version,
+            "Authoritative version mismatch: src-tauri/Cargo.toml ({}) != package.json ({})",
+            env!("CARGO_PKG_VERSION"),
+            pkg_version
+        );
+    }
 }

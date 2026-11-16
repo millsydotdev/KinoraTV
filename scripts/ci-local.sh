@@ -2,6 +2,7 @@
 # The same checks as .github/workflows/ci.yml, for a machine with the prerequisites in README.md.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+npm run version:check
 npm run typecheck
 npm test
 for tz in Europe/London Pacific/Auckland America/New_York; do TZ=$tz npm test -- --reporter=dot; done
