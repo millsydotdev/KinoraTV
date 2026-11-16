@@ -24,6 +24,7 @@ import { artworkEngine } from '../data/artworkEngine'
 import { CollapsibleSection } from '../components/CollapsibleSection'
 import { useCasting } from '../lib/casting/manager'
 import { WhatsNewModal } from '../components/WhatsNewModal'
+import { KPlayMark } from '../components/KPlayMark'
 import './Settings.css'
 
 // Categories follow the mockup's Settings list (Playback, Interface, EPG, Sources, Library, Advanced),
@@ -493,8 +494,8 @@ function AppearanceSection({
         <div className="live-theme-preview-canvas" aria-label="Interactive live theme preview">
           <div className="ltp-sidebar">
             <div className="ltp-logo">
-              <span className="ltp-logo-mark" />
-              <span className="ltp-logo-text">KINORA TV</span>
+              <KPlayMark size={16} className="ltp-logo-mark" idPrefix="ltp" />
+              <span className="ltp-logo-text">KINORA <span style={{ color: 'var(--accent)' }}>TV</span></span>
             </div>
             <div className="ltp-nav-group">
               <span className="ltp-nav-label">WATCH</span>
@@ -1874,7 +1875,7 @@ function About() {
       <div className="about-creator-card">
         <div className="about-creator-brand">
           <div className="about-creator-logo" aria-hidden="true">
-            <Icon name="tv" size={24} />
+            <KPlayMark size={28} idPrefix="about" />
           </div>
           <div>
             <h3 className="about-creator-product">Kinora (KinoraTV)</h3>

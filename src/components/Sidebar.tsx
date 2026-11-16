@@ -46,13 +46,12 @@ const exploreMoreItems: NavItem[] = [
   { to: '/archives', label: 'Media Archives', icon: 'archive' },
 ]
 
+import { KPlayMark } from './KPlayMark'
+
 export function Logo() {
   return (
     <span className="logo">
-      <svg className="logo-mark" viewBox="0 0 32 32" aria-hidden="true">
-        <path d="M7 4.5 L26 16 L7 27.5 Z" fill="#e50914" />
-        <path d="M13 12 L19 16 L13 20 Z" fill="#ffffff" />
-      </svg>
+      <KPlayMark size={28} className="logo-mark" idPrefix="sb-logo" />
       <span className="logo-word">KINORA<span className="logo-tv"> TV</span></span>
     </span>
   )

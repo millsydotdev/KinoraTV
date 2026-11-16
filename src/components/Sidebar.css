@@ -85,8 +85,8 @@
 }
 
 .logo-tv {
-  font-weight: 400;
-  color: var(--text-2);
+  font-weight: 800;
+  color: var(--accent);
 }
 
 .sidebar-scrollable {
