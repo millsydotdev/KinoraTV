@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { NavLink, useSearchParams } from 'react-router-dom'
+import { NavLink, useNavigate, useSearchParams } from 'react-router-dom'
 import { genresOf, movies } from '../data/catalog'
 import { movieRef, runtimeLabel } from '../data/refs'
 import type { Movie } from '../data/types'
@@ -34,12 +34,14 @@ export function BrowseTabs() {
   )
 }
 
-export function NoTitles({ kind, disabledSources }: { kind: 'films' | 'series'; disabledSources?: boolean }) {
+export function NoTitles({ kind, disabledSources, emptyCatalogue }: { kind: 'films' | 'series'; disabledSources?: boolean; emptyCatalogue?: boolean }) {
   const isMovies = kind === 'films'
   const store = useStore()
+  const navigate = useNavigate()
   const hasSources = store.xtreamSources.length > 0
   const hasEnabled = store.xtreamSources.some((s) => s.enabled)
   const isAllDisabled = disabledSources ?? (hasSources && !hasEnabled)
+  const isEmptyCat = emptyCatalogue ?? (hasEnabled && (isMovies ? store.xtreamCatalogue.movies.length === 0 : store.xtreamCatalogue.series.length === 0))
 
   return (
     <div className="streaming-page">
@@ -50,12 +52,9 @@ export function NoTitles({ kind, disabledSources }: { kind: 'films' | 'series'; 
       <StreamingEmptyState
         kind={isMovies ? 'movies' : 'tv'}
         disabledSources={isAllDisabled}
-        onAddProvider={() => {
-          window.location.href = '/sources/add?kind=xtream'
-        }}
-        onOpenSources={() => {
-          window.location.href = '/sources'
-        }}
+        emptyCatalogue={isEmptyCat}
+        onAddProvider={() => navigate('/sources')}
+        onOpenSources={() => navigate('/sources')}
       />
     </div>
   )
@@ -192,12 +191,12 @@ export function Movies() {
         kicker: 'FEATURED MOVIE',
         title: m.name,
         synopsis: m.plot || 'Stream this feature film directly through your connected on-demand provider.',
-        art: '/art/harbour-lights.jpg',
+        art: undefined,
         artworkKey: m.artworkKey,
         year: m.year ?? 'VOD',
         genre: m.categoryName || 'Movie',
-        runtime: '2h 15m',
-        ageRating: 'PG-13',
+        runtime: undefined,
+        ageRating: undefined,
         badges: getTechnicalBadges(m),
         playUrl: `/watch/${encodeURIComponent(`movie:xt:${m.sourceId}:${m.id}`)}`,
         detailUrl: `/movies/${encodeURIComponent(`xt:${m.sourceId}:${m.id}`)}`,
@@ -276,7 +275,9 @@ export function Movies() {
 
   // If no content is available in any mode, show clean honest empty state
   if (!hasAnyContent) {
-    return <NoTitles kind="films" />
+    const hasDisabledSources = store.xtreamSources.length > 0 && !store.xtreamSources.some((s) => s.enabled)
+    const hasEmptyCat = store.xtreamSources.some((s) => s.enabled) && store.xtreamCatalogue.movies.length === 0
+    return <NoTitles kind="films" disabledSources={hasDisabledSources} emptyCatalogue={hasEmptyCat} />
   }
 
   const isFiltering = category !== 'All' || provider !== 'All' || year !== 'All' || Boolean(normalizedQuery) || Boolean(selectedGenre) || activeTab === 'a-z'

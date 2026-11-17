@@ -16,6 +16,7 @@ import { isTitleKidSafe } from '../lib/kidsMode'
 import type { XtreamSeriesDetails as ProviderSeriesDetails } from '../lib/native'
 import { AgeRatingBadge } from '../components/AgeRatingBadge'
 import { Breadcrumbs } from '../components/Breadcrumbs'
+import { CollectionDialog } from '../components/CollectionDialog'
 import { RatingControls } from '../components/RatingControls'
 import './Detail.css'
 
@@ -177,7 +178,7 @@ export function SeriesDetail() {
                   aria-label={`${episodeCode(e)} watched`}
                   onClick={() => store.setWatched([ref], !watched)}
                 >
-                  <Icon name="check" size={18} />
+                  <Icon name="check" size={14} />
                 </button>
               </li>
             )
@@ -238,10 +239,16 @@ function XtreamSeriesDetail({ show }: { show: XtreamTitle }) {
   const allEpisodes = seasons.flatMap((s) => s.episodes.map((e) => ({ ...e, seasonNumber: s.number })))
   const totalEps = allEpisodes.length
   const watchedEps = allEpisodes.filter((e) => store.library.watched.includes(`episode:xt:${show.sourceId}:${show.id}/${e.id}`)).length
+  const nextUnwatchedEpisode = allEpisodes.find((e) => !store.library.watched.includes(`episode:xt:${show.sourceId}:${show.id}/${e.id}`)) ?? allEpisodes[0]
+  const isStarted = watchedEps > 0
+  const playLabel = isStarted ? (nextUnwatchedEpisode && watchedEps < totalEps ? 'Resume' : 'Watch again') : 'Play Series'
+  const playSub = nextUnwatchedEpisode && isStarted && watchedEps < totalEps ? `S${nextUnwatchedEpisode.seasonNumber}·E${nextUnwatchedEpisode.number}` : null
+  const targetEpisode = nextUnwatchedEpisode || allEpisodes[0]
 
   const ref = `series:xt:${show.sourceId}:${show.id}`
   const inWatchlist = store.library.watchlist.includes(ref)
   const inFav = store.library.favourites.includes(ref)
+  const [collecting, setCollecting] = useState(false)
 
   return (
     <article className="detail">
@@ -280,13 +287,14 @@ function XtreamSeriesDetail({ show }: { show: XtreamTitle }) {
           )}
           <div className="title-actions">
             <div className="title-actions-primary">
-              {allEpisodes[0] && (
+              {targetEpisode && (
                 <Link
-                  to={`/watch/${encodeURIComponent(`episode:xt:${show.sourceId}:${show.id}/${allEpisodes[0].id}`)}`}
+                  to={`/watch/${encodeURIComponent(`episode:xt:${show.sourceId}:${show.id}/${targetEpisode.id}`)}`}
                   className="btn btn-primary"
                 >
                   <Icon name="play" size={18} />
-                  <span>Play Series</span>
+                  <span>{playLabel}</span>
+                  {playSub && <span className="btn-sub">{playSub}</span>}
                 </Link>
               )}
               <button
@@ -305,8 +313,10 @@ function XtreamSeriesDetail({ show }: { show: XtreamTitle }) {
                 <span>{inWatchlist ? 'In watchlist' : 'Add to watchlist'}</span>
               </button>
             </div>
-            <div className="title-actions-utility">
+            <div className="title-actions-feedback">
               <RatingControls itemRef={ref} title={show.name} />
+            </div>
+            <div className="title-actions-library">
               <button
                 type="button"
                 className="icon-btn ringed fav-toggle"
@@ -320,6 +330,16 @@ function XtreamSeriesDetail({ show }: { show: XtreamTitle }) {
               >
                 <Icon name="heart" size={18} />
               </button>
+              <button
+                type="button"
+                className="icon-btn ringed collection-toggle"
+                aria-label="Add to a collection"
+                title="Add to a collection"
+                onClick={() => setCollecting(true)}
+              >
+                <Icon name="folder" size={18} />
+              </button>
+              <CollectionDialog open={collecting} onClose={() => setCollecting(false)} itemRef={ref} itemTitle={show.name} />
             </div>
           </div>
         </div>
@@ -428,7 +448,7 @@ function XtreamSeriesDetail({ show }: { show: XtreamTitle }) {
                     aria-label={`Episode ${episode.number} watched`}
                     onClick={() => store.setWatched([epRef], !isWatched)}
                   >
-                    <Icon name="check" size={18} />
+                    <Icon name="check" size={14} />
                   </button>
                 </li>
               )

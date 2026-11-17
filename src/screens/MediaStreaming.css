@@ -555,24 +555,26 @@
   position: absolute;
   top: 50%;
   transform: translateY(-60%);
-  width: 36px;
-  height: 54px;
-  border-radius: 6px;
-  background: rgba(8, 9, 11, 0.88);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  width: 38px;
+  height: 60px;
+  border-radius: 8px;
+  background: rgba(8, 9, 11, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   color: #ffffff;
   display: grid;
   place-items: center;
   cursor: pointer;
   z-index: 5;
   transition: all 140ms ease;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
 }
 
 .streaming-rail-btn:hover:not(:disabled) {
-  background: rgba(229, 9, 20, 0.85);
+  background: rgba(229, 9, 20, 0.9);
   border-color: #e50914;
+  transform: translateY(-60%) scale(1.04);
 }
 
 .streaming-rail-btn:disabled {
@@ -581,11 +583,11 @@
 }
 
 .streaming-rail-btn.is-left {
-  left: -18px;
+  left: 0;
 }
 
 .streaming-rail-btn.is-right {
-  right: -18px;
+  right: 0;
 }
 
 /* 16:9 Landscape Cinematic Cards */

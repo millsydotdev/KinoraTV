@@ -71,7 +71,7 @@ export interface HeroSlideData {
   kicker: string
   title: string
   synopsis: string
-  art: string
+  art?: string
   backdropUrl?: string
   artworkKey?: string | null
   year: number | string
@@ -119,12 +119,16 @@ export function StreamingHero({
             className="hero-art"
             fallbackTitle={current.title}
           />
-        ) : (
+        ) : (current.backdropUrl || current.art) ? (
           <img
             src={current.backdropUrl || current.art}
             alt=""
             loading="eager"
           />
+        ) : (
+          <div className="streaming-card-fallback-art" style={{ position: 'absolute', inset: 0 }}>
+            <div className="streaming-card-fallback-glow" />
+          </div>
         )}
       </div>
       <div className="streaming-hero-scrim" aria-hidden="true" />
@@ -145,14 +149,20 @@ export function StreamingHero({
           {current.ageRating && (
             <span className="streaming-badge-gold">{current.ageRating}</span>
           )}
-          {current.badges?.map((b) => (
+          {current.badges?.filter((b) => b !== 'Dolby Atmos').map((b) => (
             <span key={b} className="streaming-badge-gold">{b}</span>
           ))}
-          <span className="streaming-badge-atmos">
-            <Icon name="volume" size={14} /> Dolby Atmos
-          </span>
-          <span className="streaming-meta-sep">•</span>
-          <span>{current.year}</span>
+          {current.badges?.includes('Dolby Atmos') && (
+            <span className="streaming-badge-atmos">
+              <Icon name="volume" size={14} /> Dolby Atmos
+            </span>
+          )}
+          {current.year && (
+            <>
+              <span className="streaming-meta-sep">•</span>
+              <span>{current.year}</span>
+            </>
+          )}
           {current.genre && (
             <>
               <span className="streaming-meta-sep">•</span>
@@ -453,7 +463,6 @@ export function StreamingCard({
             artworkKey={artworkKey}
             alt={title}
             className="streaming-card-art"
-            fallbackTitle={title}
           />
         ) : !artFailed && art ? (
           <img
@@ -511,32 +520,38 @@ export function StreamingCard({
 export function StreamingEmptyState({
   kind,
   disabledSources = false,
+  emptyCatalogue = false,
   onAddProvider,
   onOpenSources,
 }: {
   kind: 'movies' | 'tv'
   disabledSources?: boolean
+  emptyCatalogue?: boolean
   onAddProvider: () => void
   onOpenSources: () => void
 }) {
   const isMovies = kind === 'movies'
+  const title = disabledSources
+    ? (isMovies ? 'Movie Provider Disabled' : 'TV Show Provider Disabled')
+    : emptyCatalogue
+      ? (isMovies ? 'No Movies in Connected Catalogue' : 'No TV Shows in Connected Catalogue')
+      : (isMovies ? 'No Movie Provider Connected' : 'No TV Show Provider Connected')
+
+  const desc = disabledSources
+    ? `Your connected on-demand provider is currently disabled in Sources. Enable it in Sources to stream ${isMovies ? 'films' : 'series and episodes'}, or add an Xtream compatible provider in Sources.`
+    : emptyCatalogue
+      ? `Your connected provider is online, but no ${isMovies ? 'movies were found in its on-demand library' : 'TV shows were found in its on-demand library'}. Try refreshing the source or adding another provider in Sources.`
+      : isMovies
+        ? 'Your live TV playlists provide broadcast television, not on-demand movies. Add an Xtream compatible provider in Sources to stream films, or explore indexed media archives.'
+        : 'Your live TV playlists provide broadcast television, not on-demand television series. Add an Xtream compatible provider in Sources to stream series and episodes.'
+
   return (
-    <div className="streaming-empty-card" role="region" aria-label={`No ${isMovies ? 'movies' : 'TV shows'} connected`}>
+    <div className="streaming-empty-card" role="region" aria-label={title}>
       <div className="streaming-empty-icon-wrap" aria-hidden="true">
         <Icon name={isMovies ? 'film' : 'tv'} size={32} />
       </div>
-      <h2 className="streaming-empty-title">
-        {disabledSources
-          ? (isMovies ? 'Movie Provider Disabled' : 'TV Show Provider Disabled')
-          : (isMovies ? 'No Movie Provider Connected' : 'No TV Show Provider Connected')}
-      </h2>
-      <p className="streaming-empty-desc">
-        {disabledSources
-          ? `Your connected on-demand provider is currently disabled in Sources. Enable it in Sources to stream ${isMovies ? 'films' : 'series and episodes'}, or add an Xtream compatible provider in Sources.`
-          : isMovies
-            ? 'Your live TV playlists provide broadcast television, not on-demand movies. Add an Xtream compatible provider in Sources to stream films, or explore indexed media archives.'
-            : 'Your live TV playlists provide broadcast television, not on-demand television series. Add an Xtream compatible provider in Sources to stream series and episodes.'}
-      </p>
+      <h2 className="streaming-empty-title">{title}</h2>
+      <p className="streaming-empty-desc">{desc}</p>
       <div className="streaming-empty-actions">
         <button
           type="button"

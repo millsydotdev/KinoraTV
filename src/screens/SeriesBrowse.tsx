@@ -150,12 +150,12 @@ export function SeriesBrowse() {
         kicker: 'FEATURED SERIES',
         title: s.name,
         synopsis: s.plot || 'Stream television series and binge all seasons through your connected on-demand provider.',
-        art: '/art/ninth-ward.jpg',
+        art: undefined,
         artworkKey: s.artworkKey,
         year: s.year ?? 'VOD',
         genre: s.categoryName || 'TV Series',
-        runtime: 'Series',
-        ageRating: 'TV-MA',
+        runtime: undefined,
+        ageRating: undefined,
         badges: getTechnicalBadges(s),
         playUrl: `/series/${encodeURIComponent(`xt:${s.sourceId}:${s.id}`)}`,
         detailUrl: `/series/${encodeURIComponent(`xt:${s.sourceId}:${s.id}`)}`,
@@ -273,9 +273,10 @@ export function SeriesBrowse() {
   }, [hasDemo, safeSeries, library])
 
   const hasDisabledSources = store.xtreamSources.length > 0 && !store.xtreamSources.some((s) => s.enabled)
+  const hasEmptyCat = store.xtreamSources.some((s) => s.enabled) && store.xtreamCatalogue.series.length === 0
 
   if (!hasAnyContent) {
-    return <NoTitles kind="series" disabledSources={hasDisabledSources} />
+    return <NoTitles kind="series" disabledSources={hasDisabledSources} emptyCatalogue={hasEmptyCat} />
   }
 
   const isFiltering = category !== 'All' || provider !== 'All' || Boolean(normalizedQuery) || Boolean(selectedGenre) || activeTab === 'a-z'

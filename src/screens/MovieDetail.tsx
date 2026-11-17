@@ -15,6 +15,7 @@ import { isTitleKidSafe } from '../lib/kidsMode'
 import { AgeRatingBadge } from '../components/AgeRatingBadge'
 import { Breadcrumbs } from '../components/Breadcrumbs'
 import { ArtworkLightboxModal } from '../components/ArtworkLightboxModal'
+import { CollectionDialog } from '../components/CollectionDialog'
 import { RatingControls } from '../components/RatingControls'
 import './Detail.css'
 
@@ -83,7 +84,6 @@ export function MovieDetail() {
                 className="btn btn-ghost btn-small"
                 onClick={() => setTrailerOpen(true)}
                 title="Watch trailer preview"
-                style={{ marginLeft: 8 }}
               >
                 <Icon name="play" size={14} />
                 <span>Trailer</span>
@@ -94,7 +94,6 @@ export function MovieDetail() {
               className="btn btn-ghost btn-small"
               onClick={() => setLightboxOpen(true)}
               title="Inspect high resolution artwork"
-              style={{ marginLeft: 8 }}
             >
               <Icon name="fullscreen" size={14} />
               <span>Artwork</span>
@@ -181,6 +180,7 @@ function XtreamMovieDetail({ movie }: { movie: XtreamTitle }) {
   const store = useStore()
   const toast = useToast()
   const [details, setDetails] = useState<XtreamMovieDetails | null>(null)
+  const [collecting, setCollecting] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -276,8 +276,10 @@ function XtreamMovieDetail({ movie }: { movie: XtreamTitle }) {
                 <span>{inWatchlist ? 'In watchlist' : 'Add to watchlist'}</span>
               </button>
             </div>
-            <div className="title-actions-utility">
+            <div className="title-actions-feedback">
               <RatingControls itemRef={ref} title={details?.name || movie.name} />
+            </div>
+            <div className="title-actions-library">
               <button
                 type="button"
                 className="icon-btn ringed fav-toggle"
@@ -291,6 +293,16 @@ function XtreamMovieDetail({ movie }: { movie: XtreamTitle }) {
               >
                 <Icon name="heart" size={18} />
               </button>
+              <button
+                type="button"
+                className="icon-btn ringed collection-toggle"
+                aria-label="Add to a collection"
+                title="Add to a collection"
+                onClick={() => setCollecting(true)}
+              >
+                <Icon name="folder" size={18} />
+              </button>
+              <CollectionDialog open={collecting} onClose={() => setCollecting(false)} itemRef={ref} itemTitle={details?.name || movie.name} />
             </div>
           </div>
         </div>

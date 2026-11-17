@@ -62,36 +62,37 @@ export function TitleActions({ title, compact = false, infoHref }: { title: Titl
         </button>
       </div>
 
-      <div className="title-actions-utility">
+      <div className="title-actions-feedback">
         <RatingControls itemRef={ref} title={title.title} compact={compact} />
-        {!compact && (
-          <>
-            <button
-              type="button"
-              className="icon-btn ringed fav-toggle"
-              aria-pressed={fav}
-              aria-label={fav ? 'Remove from favourites' : 'Add to favourites'}
-              title={fav ? 'Favourite' : 'Add to favourites'}
-              onClick={() => {
-                store.toggleFavourite(ref)
-                toast(fav ? `Removed ${title.title} from favourites` : `Added ${title.title} to favourites`)
-              }}
-            >
-              <Icon name="heart" size={18} />
-            </button>
-            <button
-              type="button"
-              className="icon-btn ringed collection-toggle"
-              aria-label="Add to a collection"
-              title="Add to a collection"
-              onClick={() => setCollecting(true)}
-            >
-              <Icon name="folder" size={18} />
-            </button>
-            <CollectionDialog open={collecting} onClose={() => setCollecting(false)} itemRef={ref} itemTitle={title.title} />
-          </>
-        )}
       </div>
+
+      {!compact && (
+        <div className="title-actions-library">
+          <button
+            type="button"
+            className="icon-btn ringed fav-toggle"
+            aria-pressed={fav}
+            aria-label={fav ? 'Remove from favourites' : 'Add to favourites'}
+            title={fav ? 'Favourite' : 'Add to favourites'}
+            onClick={() => {
+              store.toggleFavourite(ref)
+              toast(fav ? `Removed ${title.title} from favourites` : `Added ${title.title} to favourites`)
+            }}
+          >
+            <Icon name="heart" size={18} />
+          </button>
+          <button
+            type="button"
+            className="icon-btn ringed collection-toggle"
+            aria-label="Add to a collection"
+            title="Add to a collection"
+            onClick={() => setCollecting(true)}
+          >
+            <Icon name="folder" size={18} />
+          </button>
+          <CollectionDialog open={collecting} onClose={() => setCollecting(false)} itemRef={ref} itemTitle={title.title} />
+        </div>
+      )}
     </div>
   )
 }

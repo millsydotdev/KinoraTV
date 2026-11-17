@@ -118,7 +118,8 @@ describe('Streaming UI Correction Regression Suite', () => {
       expect(html).toContain('Technical Specifications')
       expect(html).not.toContain('Fictional demonstration title')
       expect(html).toContain('title-actions-primary')
-      expect(html).toContain('title-actions-utility')
+      expect(html).toContain('title-actions-feedback')
+      expect(html).toContain('title-actions-library')
     })
   })
 
@@ -166,6 +167,16 @@ describe('Streaming UI Correction Regression Suite', () => {
       )
       expect(html).toContain('Movie Provider Disabled')
       expect(html).toContain('Your connected on-demand provider is currently disabled in Sources')
+    })
+
+    it('StreamingEmptyState renders tailored heading when connected catalogue is empty', () => {
+      const html = renderToStaticMarkup(
+        <MemoryRouter>
+          <StreamingEmptyState kind="movies" emptyCatalogue onAddProvider={() => {}} onOpenSources={() => {}} />
+        </MemoryRouter>
+      )
+      expect(html).toContain('No Movies in Connected Catalogue')
+      expect(html).toContain('no movies were found in its on-demand library')
     })
   })
 })
