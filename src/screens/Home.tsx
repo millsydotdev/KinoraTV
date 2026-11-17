@@ -376,6 +376,27 @@ export function Home() {
   const safeXtreamMovies = useMemo(() => filterKidSafeXtreamTitles(xtreamCatalogue.movies, isKidsMode), [xtreamCatalogue.movies, isKidsMode])
   const safeXtreamSeries = useMemo(() => filterKidSafeXtreamTitles(xtreamCatalogue.series, isKidsMode), [xtreamCatalogue.series, isKidsMode])
 
+  const publicFilms = useMemo(() => {
+    return mediaLibrary.allResources.filter(
+      (r) =>
+        r.category === 'movies' ||
+        r.category === 'films' ||
+        r.subcategory.includes('film') ||
+        r.subcategory.includes('cinema') ||
+        r.subcategory.includes('archive'),
+    )
+  }, [mediaLibrary.allResources])
+
+  const publicSeries = useMemo(() => {
+    return mediaLibrary.allResources.filter(
+      (r) =>
+        r.category === 'series' ||
+        r.category === 'tv' ||
+        r.subcategory.includes('series') ||
+        r.subcategory.includes('broadcasting'),
+    )
+  }, [mediaLibrary.allResources])
+
   const ratings = userPreferences?.preferences.ratings ?? {}
   const hiddenItems = userPreferences?.preferences.hiddenItems ?? []
   const homeSections = useMemo(() => {
@@ -774,6 +795,27 @@ export function Home() {
                 />
               ))}
             </ContentRail>
+          ) : publicFilms.length > 0 ? (
+            <ContentRail
+              key="public-cinema"
+              id="public-cinema"
+              icon="film"
+              title="Public Cinema & Cultural Film Archives"
+              sub="Curated classic cinema and national registries"
+              viewAll="/movies"
+              layout="poster"
+            >
+              {publicFilms.slice(0, 10).map((r) => (
+                <PosterCard
+                  key={r.id}
+                  to={`/movies/${encodeURIComponent(r.id)}`}
+                  title={r.name}
+                  art={r.artworkUrl}
+                  line={[r.provider, r.subcategory].filter(Boolean).join(' · ')}
+                  flag={<><Icon name="library" size={10} />Archive</>}
+                />
+              ))}
+            </ContentRail>
           ) : null,
 
     'radio-audio': () =>
@@ -977,6 +1019,27 @@ export function Home() {
           artworkKey={s.artworkKey}
           line={s.year ? String(s.year) : undefined}
           year={s.year}
+        />
+      ))}
+    </ContentRail>
+  ) : !demoTitles && publicSeries.length > 0 ? (
+    <ContentRail
+      key="public-series"
+      id="public-series"
+      icon="series"
+      title="Television Series Archives"
+      sub="Public broadcasts and episodic retrospective collections"
+      viewAll="/series"
+      layout="poster"
+    >
+      {publicSeries.slice(0, 10).map((r) => (
+        <PosterCard
+          key={r.id}
+          to={`/series/${encodeURIComponent(r.id)}`}
+          title={r.name}
+          art={r.artworkUrl}
+          line={[r.provider, r.subcategory].filter(Boolean).join(' · ')}
+          flag={<><Icon name="library" size={10} />Archive</>}
         />
       ))}
     </ContentRail>
