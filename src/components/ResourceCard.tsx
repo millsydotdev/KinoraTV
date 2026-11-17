@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { MediaResource } from '../data/personalLibrary'
 import { VERIFICATION_STATUS_META } from '../data/personalLibrary'
+import { classifyMediaResource } from '../data/provenance'
 import { inNativeShell, loadProgrammeArtwork } from '../lib/native'
 import { Icon, type IconName } from './Icon'
 import { MediaContextMenu } from './MediaContextMenu'
@@ -98,6 +99,7 @@ export function ResourceCard({
   const iconName = resource.artworkFallbackIcon ?? getCategoryIcon(resource.category)
   const computedVariant = variant ?? getDefaultVariant(resource.category)
   const isPlayable = Boolean(resource.playbackUrl) && (resource.playbackType === 'audio' || resource.playbackType === 'hls')
+  const { provenance, capability } = classifyMediaResource(resource, inLibrary)
   const isLogo = isLogoArtwork(resource)
   const roleLabel = getRoleLabel(resource)
   const monogram = getMonogram(resource.name)
@@ -191,6 +193,10 @@ export function ResourceCard({
             {resource.country && <span className="res-compact-country">{resource.country}</span>}
           </div>
           <div className="res-compact-meta">
+            <span className={`res-provenance-pill ${provenance.id === 'personal-source' ? 'res-prov-personal' : provenance.id === 'dev-fixture' ? 'res-prov-dev' : 'res-prov-public'}`} title={provenance.description}>
+              {provenance.shortLabel}
+            </span>
+            <span className="res-compact-separator" aria-hidden="true">·</span>
             <span className="res-role-pill-inline">{roleLabel}</span>
             <span className="res-compact-separator" aria-hidden="true">·</span>
             <span className="res-compact-provider">{resource.provider}</span>
@@ -313,10 +319,14 @@ export function ResourceCard({
           />
         )}
 
-        {/* Verification Status Pill */}
+        {/* Provenance, Capability & Verification Badges */}
         <div className="res-card-badges">
-          <span className="res-status-pill res-role-badge">
-            {roleLabel}
+          <span className={`res-provenance-pill ${provenance.id === 'personal-source' ? 'res-prov-personal' : provenance.id === 'dev-fixture' ? 'res-prov-dev' : 'res-prov-public'}`} title={provenance.description}>
+            {provenance.shortLabel}
+          </span>
+          <span className="res-cap-pill" title={capability.description}>
+            <Icon name={capability.icon} size={11} />
+            <span>{capability.label}</span>
           </span>
           {!isEnabled && (
             <span className="res-status-pill res-pill-disabled" title="Source is currently disabled">

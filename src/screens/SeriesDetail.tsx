@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { NoTitles } from './Movies'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { seriesById } from '../data/catalog'
 import { episodeCode, episodeRef } from '../data/refs'
 import { Icon } from '../components/Icon'
 import { PageHeader } from '../components/PageHeader'
-import { XtreamArt } from '../components/Tiles'
+import { PosterCard, Section, XtreamArt } from '../components/Tiles'
 import { TitleActions } from '../components/TitleActions'
 import { useToast } from '../components/Toast'
 import { Art, ProgressBar, StateBlock } from '../components/ui'
@@ -18,6 +17,9 @@ import { AgeRatingBadge } from '../components/AgeRatingBadge'
 import { Breadcrumbs } from '../components/Breadcrumbs'
 import { CollectionDialog } from '../components/CollectionDialog'
 import { RatingControls } from '../components/RatingControls'
+import type { MediaResource } from '../data/personalLibrary'
+import { VERIFICATION_STATUS_META } from '../data/personalLibrary'
+import { classifyMediaResource } from '../data/provenance'
 import './Detail.css'
 
 export function SeriesDetail() {
@@ -42,17 +44,59 @@ export function SeriesDetail() {
     )
   }
 
-  const imported = store.xtreamCatalogue.series.find((item) => `xt:${item.sourceId}:${item.id}` === id)
+  const imported = store.xtreamCatalogue.series.find((item) => `xt:${item.sourceId}:${item.id}` === id || String(item.id) === id)
 
   if (imported) return <XtreamSeriesDetail key={`${imported.sourceId}:${imported.id}`} show={imported} />
 
-  if (!store.demoTitles) return <NoTitles kind="series" />
+  const cleanResId = id.replace(/^res:/, '')
+  const publicRes = store.mediaLibrary.allResources.find((r) => r.id === cleanResId || r.id === id)
+  if (publicRes && (publicRes.category === 'series' || publicRes.subcategory.includes('tv') || publicRes.subcategory.includes('series') || publicRes.subcategory.includes('broadcasting'))) {
+    return <PublicDiscoverySeriesDetail resource={publicRes} />
+  }
+
+  if (!store.demoTitles) {
+    if (s) {
+      return (
+        <div className="page detail-page">
+          <PageHeader title="TV Shows" />
+          <div style={{ maxWidth: 720, margin: '60px auto', padding: '0 20px' }}>
+            <StateBlock
+              icon="series"
+              title="Development Fixture Series"
+              action={
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
+                  <Link to="/series" className="btn btn-primary">
+                    <Icon name="series" size={16} />
+                    <span>Browse TV Series Catalogue</span>
+                  </Link>
+                  <Link to="/sources?tab=active" className="btn btn-secondary">
+                    <Icon name="plus" size={16} />
+                    <span>Connect On-Demand Provider</span>
+                  </Link>
+                </div>
+              }
+            >
+              "{s.title}" is a development fixture provided for interface evaluation and is not part of your personal sources. In personal source mode, you can connect an on-demand provider in Sources or explore Kinora's verified public discovery television and documentary archives.
+            </StateBlock>
+          </div>
+        </div>
+      )
+    }
+    return (
+      <div className="page">
+        <PageHeader title="TV Shows" />
+        <StateBlock icon="series" title="TV show not found" action={<Link to="/series" className="btn btn-primary">Browse TV shows</Link>}>
+          There is no TV show at this address in the available catalogue.
+        </StateBlock>
+      </div>
+    )
+  }
   if (!s) {
     return (
       <div className="page">
         <PageHeader title="TV Shows" />
         <StateBlock icon="series" title="TV show not found" action={<Link to="/series" className="btn btn-primary">Browse TV shows</Link>}>
-          There is no TV show at this address in the demonstration catalogue.
+          There is no TV show at this address in the available catalogue.
         </StateBlock>
       </div>
     )
@@ -462,6 +506,163 @@ function XtreamSeriesDetail({ show }: { show: XtreamTitle }) {
           </StateBlock>
         )}
       </section>
+    </article>
+  )
+}
+
+function PublicDiscoverySeriesDetail({ resource }: { resource: MediaResource }) {
+  const store = useStore()
+  const toast = useToast()
+  const inLibrary = store.mediaLibrary.isInPersonalLibrary(resource.id)
+  const isFav = store.mediaLibrary.isResourceFavourite(resource.id)
+  const { provenance, capability } = classifyMediaResource(resource, inLibrary)
+  const statusMeta = VERIFICATION_STATUS_META[resource.verificationStatus] ?? VERIFICATION_STATUS_META.discovered
+
+  const similarSeries = useMemo(() => {
+    return store.mediaLibrary.allResources
+      .filter((r) => r.id !== resource.id && (r.category === 'series' || r.subcategory.includes('tv') || r.subcategory.includes('series') || r.subcategory.includes('broadcasting')))
+      .slice(0, 6)
+  }, [store.mediaLibrary.allResources, resource.id])
+
+  const handleOpenLink = () => {
+    const targetUrl = resource.url || resource.discoveryUrl
+    if (targetUrl) {
+      window.open(targetUrl, '_blank', 'noopener,noreferrer')
+    }
+  }
+
+  const toggleLibrary = () => {
+    if (inLibrary) {
+      store.mediaLibrary.removeFromPersonalLibrary(resource.id)
+      toast(`Removed ${resource.name} from My Sources`)
+    } else {
+      store.mediaLibrary.addToPersonalLibrary(resource.id)
+      toast(`Saved ${resource.name} to My Sources`)
+    }
+  }
+
+  const toggleFav = () => {
+    store.mediaLibrary.toggleResourceFavourite(resource.id)
+    toast(isFav ? `Removed ${resource.name} from favourites` : `Added ${resource.name} to favourites`)
+  }
+
+  return (
+    <article className="detail">
+      <header className="detail-hero">
+        {resource.artworkUrl ? (
+          <img src={resource.artworkUrl} alt="" className="detail-backdrop" style={{ objectFit: 'cover' }} />
+        ) : (
+          <div className="detail-backdrop" style={{ background: 'linear-gradient(135deg, #111827 0%, #030712 100%)' }} />
+        )}
+        <PageHeader overlay />
+        <div className="detail-hero-content">
+          <Breadcrumbs crumbs={[{ label: 'Home', to: '/' }, { label: 'TV Shows', to: '/series' }, { label: resource.name }]} />
+          <Link to="/series" className="text-link detail-back"><Icon name="back" size={16} />TV Shows</Link>
+          <p className="kicker">
+            <Icon name="archive" size={16} />
+            Public Discovery Television · {resource.subcategory.replace(/-/g, ' ').toUpperCase()}
+          </p>
+          <h1 className="title-xl">{resource.name}</h1>
+          <p className="detail-tagline">{resource.provider}</p>
+
+          <div className="meta detail-hero-meta">
+            <span className={`res-provenance-pill ${inLibrary ? 'res-prov-personal' : 'res-prov-public'}`}>
+              {provenance.label}
+            </span>
+            <span className="res-cap-pill">
+              <Icon name={capability.icon} size={12} />
+              <span>{capability.label}</span>
+            </span>
+            <span className="res-status-pill" style={{ '--pill-color': statusMeta.tone } as React.CSSProperties}>
+              <span className="res-status-dot" aria-hidden="true" />
+              {statusMeta.label}
+            </span>
+            {resource.country && <span>{resource.country}</span>}
+            {resource.language && <span>{resource.language}</span>}
+          </div>
+
+          <p className="detail-synopsis">{resource.description}</p>
+
+          <div className="title-actions-container">
+            <div className="title-actions-primary">
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleOpenLink}
+              >
+                <Icon name="link" size={16} />
+                <span>Explore Series Archive</span>
+              </button>
+            </div>
+
+            <div className="title-actions-feedback">
+              <button
+                type="button"
+                className={`btn btn-ghost btn-small ${isFav ? 'is-active' : ''}`}
+                onClick={toggleFav}
+                aria-label={isFav ? 'Remove from favourites' : 'Add to favourites'}
+                title={isFav ? 'Favourited' : 'Add to favourites'}
+              >
+                <Icon name="heart" size={16} />
+                <span>{isFav ? 'Favourited' : 'Favourite'}</span>
+              </button>
+            </div>
+
+            <div className="title-actions-library">
+              <button
+                type="button"
+                className={`btn btn-secondary btn-small ${inLibrary ? 'is-active' : ''}`}
+                onClick={toggleLibrary}
+              >
+                <Icon name={inLibrary ? 'check' : 'plus'} size={15} />
+                <span>{inLibrary ? 'In My Sources' : 'Save to My Sources'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div className="detail-body">
+        <section className="detail-body-main" style={{ maxWidth: 860 }}>
+          <h2 className="title-m" style={{ marginBottom: 12 }}>Series & Archive Information</h2>
+          <div className="detail-body-specs" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14 }}>
+            <div className="panel" style={{ padding: 14 }}>
+              <span className="faint" style={{ fontSize: '0.75rem', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>Broadcaster / Archive</span>
+              <strong>{resource.provider}</strong>
+            </div>
+            <div className="panel" style={{ padding: 14 }}>
+              <span className="faint" style={{ fontSize: '0.75rem', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>Licence & Distribution</span>
+              <strong>{resource.licence || 'Public Service Broadcaster / Heritage'}</strong>
+            </div>
+            <div className="panel" style={{ padding: 14 }}>
+              <span className="faint" style={{ fontSize: '0.75rem', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>Date Discovered</span>
+              <strong>{resource.dateDiscovered}</strong>
+            </div>
+            <div className="panel" style={{ padding: 14 }}>
+              <span className="faint" style={{ fontSize: '0.75rem', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>Official Origin Portal</span>
+              <a href={resource.discoveryUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', wordBreak: 'break-all', fontSize: '0.85rem' }}>
+                {resource.discoveryUrl}
+              </a>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      {similarSeries.length > 0 && (
+        <section className="detail-similar" style={{ padding: '0 24px 32px' }}>
+          <Section icon="series" title="Related Television Archives & Open Series" sub={`${similarSeries.length} titles`}>
+            {similarSeries.map((sim) => (
+              <PosterCard
+                key={sim.id}
+                to={`/series/${encodeURIComponent(sim.id)}`}
+                title={sim.name}
+                art={sim.artworkUrl}
+                line={[sim.provider, sim.country].filter(Boolean).join(' · ')}
+              />
+            ))}
+          </Section>
+        </section>
+      )}
     </article>
   )
 }

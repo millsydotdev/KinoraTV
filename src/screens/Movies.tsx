@@ -19,7 +19,7 @@ import {
   type HeroSlideData,
   type GenreItem,
 } from '../components/StreamingComponents'
-import { filterKidSafeTitles, filterKidSafeXtreamTitles } from '../lib/kidsMode'
+import { filterKidSafeResources, filterKidSafeTitles, filterKidSafeXtreamTitles } from '../lib/kidsMode'
 import { useProfiles } from '../state/profiles'
 import { useStore } from '../state/store'
 import './Browse.css'
@@ -129,7 +129,19 @@ export function Movies() {
   const isSampleProvider = typeof window !== 'undefined' && window.sessionStorage?.getItem('kinora.sample_provider_view') === '1'
   const hasXtream = store.xtreamSources.length > 0 && safeXtreamMovies.length > 0
   const hasDemo = (store.demoTitles || isSampleProvider) && safeMovies.length > 0
-  const hasAnyContent = hasXtream || hasDemo
+
+  // Public discovery cinema resources
+  const publicDiscoveryFilms = useMemo(() => {
+    const list = store.mediaLibrary.allResources.filter(
+      (r) =>
+        r.category === 'movies' ||
+        r.subcategory === 'public-domain-films' ||
+        r.subcategory === 'classic-cinema' ||
+        r.subcategory === 'film-archives' ||
+        r.subcategory === 'free-legal-streaming',
+    )
+    return isKidsMode ? filterKidSafeResources(list, true) : list
+  }, [store.mediaLibrary.allResources, isKidsMode])
 
   const normalizedQuery = providerQuery.trim().toLowerCase()
   const category = params.get('category') ?? 'All'
@@ -184,6 +196,19 @@ export function Movies() {
       })
   }, [hasDemo, safeMovies, category, year, selectedGenre, prefs.hideWatched, library.watched, normalizedQuery, sort, activeTab])
 
+  // Filtered public discovery movies
+  const filteredPublicDiscovery = useMemo(() => {
+    if (hasXtream || hasDemo) return []
+    return publicDiscoveryFilms
+      .filter((r) => !selectedGenre || r.tags.some((t) => t.toLowerCase().includes(selectedGenre.toLowerCase())) || r.subcategory.toLowerCase().includes(selectedGenre.toLowerCase()))
+      .filter((r) => !normalizedQuery || r.name.toLowerCase().includes(normalizedQuery) || r.description.toLowerCase().includes(normalizedQuery) || r.provider.toLowerCase().includes(normalizedQuery))
+      .sort((a, b) => {
+        if (sort === 'newest') return b.dateDiscovered.localeCompare(a.dateDiscovered)
+        if (sort === 'oldest') return a.dateDiscovered.localeCompare(b.dateDiscovered)
+        return a.name.localeCompare(b.name)
+      })
+  }, [hasXtream, hasDemo, publicDiscoveryFilms, selectedGenre, normalizedQuery, sort])
+
   // Top featured hero slides
   const heroSlides = useMemo<HeroSlideData[]>(() => {
     if (hasXtream) {
@@ -234,12 +259,31 @@ export function Movies() {
         }
       })
     }
+    if (publicDiscoveryFilms.length > 0) {
+      return publicDiscoveryFilms.slice(0, 5).map((r) => ({
+        id: r.id,
+        kicker: 'PUBLIC DISCOVERY CINEMA',
+        title: r.name,
+        synopsis: r.description,
+        art: r.artworkUrl,
+        backdropUrl: r.artworkUrl,
+        year: 'Public Archive',
+        genre: r.subcategory.replace(/-/g, ' ').toUpperCase(),
+        runtime: undefined,
+        ageRating: undefined,
+        badges: ['ARCHIVE', 'OPEN VOD'],
+        playUrl: `/movies/${encodeURIComponent(r.id)}`,
+        detailUrl: `/movies/${encodeURIComponent(r.id)}`,
+        itemRef: `res:${r.id}`,
+      }))
+    }
     return []
-  }, [hasXtream, hasDemo, safeXtreamMovies, safeMovies])
+  }, [hasXtream, hasDemo, publicDiscoveryFilms, safeXtreamMovies, safeMovies])
 
   // Rails data
   const trendingXtream = useMemo(() => safeXtreamMovies.slice(0, 8), [safeXtreamMovies])
   const trendingDemo = useMemo(() => safeMovies.slice(0, 8), [safeMovies])
+  const trendingPublicDiscovery = useMemo(() => publicDiscoveryFilms.slice(0, 8), [publicDiscoveryFilms])
 
   const newReleaseXtream = useMemo(() => {
     return [...safeXtreamMovies].sort((a, b) => (b.year ?? 0) - (a.year ?? 0)).slice(0, 8)
@@ -247,11 +291,13 @@ export function Movies() {
   const newReleaseDemo = useMemo(() => {
     return [...safeMovies].sort((a, b) => b.year - a.year).slice(0, 8)
   }, [safeMovies])
+  const newReleasePublicDiscovery = useMemo(() => publicDiscoveryFilms.slice(4, 12), [publicDiscoveryFilms])
 
   const popularXtream = useMemo(() => safeXtreamMovies.slice(4, 12), [safeXtreamMovies])
   const popularDemo = useMemo(() => {
     return [...safeMovies].sort((a, b) => a.title.localeCompare(b.title)).slice(0, 8)
   }, [safeMovies])
+  const popularPublicDiscovery = useMemo(() => publicDiscoveryFilms.slice(8, 16), [publicDiscoveryFilms])
 
   const continueWatchingMovies = useMemo(() => {
     if (hasDemo) {
@@ -274,12 +320,12 @@ export function Movies() {
     return []
   }, [hasDemo, safeMovies, library.watchlist])
 
-  // If no content is available in any mode, show clean honest empty state
-  if (!hasAnyContent) {
-    const hasDisabledSources = store.xtreamSources.length > 0 && !store.xtreamSources.some((s) => s.enabled)
-    const hasEmptyCat = store.xtreamSources.some((s) => s.enabled) && store.xtreamCatalogue.movies.length === 0
-    return <NoTitles kind="films" disabledSources={hasDisabledSources} emptyCatalogue={hasEmptyCat} />
-  }
+  const myListPublicDiscovery = useMemo(() => {
+    if (!hasXtream && !hasDemo) {
+      return publicDiscoveryFilms.filter((r) => store.mediaLibrary.isInPersonalLibrary(r.id) || library.watchlist.includes(`res:${r.id}`))
+    }
+    return []
+  }, [hasXtream, hasDemo, publicDiscoveryFilms, store.mediaLibrary, library.watchlist])
 
   const isFiltering = category !== 'All' || provider !== 'All' || year !== 'All' || Boolean(normalizedQuery) || Boolean(selectedGenre) || activeTab === 'a-z'
 
@@ -438,7 +484,7 @@ export function Movies() {
 
             {/* Trending Movies Rail */}
             <StreamingRail
-              title="Trending Movies"
+              title={hasXtream ? "Trending Movies" : hasDemo ? "Trending Movies" : "Preserved Cinema & Film Archives"}
               iconName="flame"
               iconColor="var(--accent)"
               onSeeAll={() => setActiveTab('a-z')}
@@ -460,7 +506,8 @@ export function Movies() {
                       />
                     )
                   })
-                : trendingDemo.map((movie) => {
+                : hasDemo
+                ? trendingDemo.map((movie) => {
                     const ref = movieRef(movie.id)
                     const isWatched = library.watched.includes(ref)
                     const progress = library.progress[ref]
@@ -477,12 +524,23 @@ export function Movies() {
                         progress={progress?.dur ? progress.pos / progress.dur : undefined}
                       />
                     )
-                  })}
+                  })
+                : trendingPublicDiscovery.map((r) => (
+                    <StreamingCard
+                      key={r.id}
+                      to={`/movies/${encodeURIComponent(r.id)}`}
+                      title={r.name}
+                      sub={[r.provider, r.country ?? 'Open Archive'].filter(Boolean).join(' · ')}
+                      art={r.artworkUrl}
+                      badges={['ARCHIVE']}
+                      itemRef={`res:${r.id}`}
+                    />
+                  ))}
             </StreamingRail>
 
             {/* New Releases Rail */}
             <StreamingRail
-              title="New Releases"
+              title={hasXtream ? "New Releases" : hasDemo ? "New Releases" : "National Registries & Classic Collections"}
               iconName="calendar"
               onSeeAll={() => setActiveTab('new-releases')}
             >
@@ -501,7 +559,8 @@ export function Movies() {
                       />
                     )
                   })
-                : newReleaseDemo.map((movie) => {
+                : hasDemo
+                ? newReleaseDemo.map((movie) => {
                     return (
                       <StreamingCard
                         key={movie.id}
@@ -513,12 +572,23 @@ export function Movies() {
                         itemRef={movieRef(movie.id)}
                       />
                     )
-                  })}
+                  })
+                : newReleasePublicDiscovery.map((r) => (
+                    <StreamingCard
+                      key={r.id}
+                      to={`/movies/${encodeURIComponent(r.id)}`}
+                      title={r.name}
+                      sub={[r.provider, r.country ?? 'Open Archive'].filter(Boolean).join(' · ')}
+                      art={r.artworkUrl}
+                      badges={['ARCHIVE']}
+                      itemRef={`res:${r.id}`}
+                    />
+                  ))}
             </StreamingRail>
 
             {/* Popular Movies Rail */}
             <StreamingRail
-              title="Popular Movies"
+              title={hasXtream ? "Popular Movies" : hasDemo ? "Popular Movies" : "Documentary & Cultural Archives"}
               iconName="star"
               onSeeAll={() => setActiveTab('top-rated')}
             >
@@ -534,7 +604,8 @@ export function Movies() {
                       itemRef={`movie:xt:${m.sourceId}:${m.id}`}
                     />
                   ))
-                : popularDemo.map((movie) => {
+                : hasDemo
+                ? popularDemo.map((movie) => {
                     return (
                       <StreamingCard
                         key={`pop-${movie.id}`}
@@ -546,7 +617,18 @@ export function Movies() {
                         itemRef={movieRef(movie.id)}
                       />
                     )
-                  })}
+                  })
+                : popularPublicDiscovery.map((r) => (
+                    <StreamingCard
+                      key={r.id}
+                      to={`/movies/${encodeURIComponent(r.id)}`}
+                      title={r.name}
+                      sub={[r.provider, r.country ?? 'Open Archive'].filter(Boolean).join(' · ')}
+                      art={r.artworkUrl}
+                      badges={['OPEN ACCESS']}
+                      itemRef={`res:${r.id}`}
+                    />
+                  ))}
             </StreamingRail>
 
             {/* Continue Watching Rail if progress exists */}
@@ -576,7 +658,7 @@ export function Movies() {
             )}
 
             {/* My List Rail if items saved */}
-            {(myListXtream.length > 0 || myListDemo.length > 0) && (
+            {(myListXtream.length > 0 || myListDemo.length > 0 || myListPublicDiscovery.length > 0) && (
               <StreamingRail
                 title="My List"
                 iconName="bookmark"
@@ -594,7 +676,8 @@ export function Movies() {
                         itemRef={`movie:xt:${m.sourceId}:${m.id}`}
                       />
                     ))
-                  : myListDemo.map((movie) => {
+                  : hasDemo
+                  ? myListDemo.map((movie) => {
                       return (
                         <StreamingCard
                           key={`ml-${movie.id}`}
@@ -606,7 +689,18 @@ export function Movies() {
                           itemRef={movieRef(movie.id)}
                         />
                       )
-                    })}
+                    })
+                  : myListPublicDiscovery.map((r) => (
+                      <StreamingCard
+                        key={`ml-${r.id}`}
+                        to={`/movies/${encodeURIComponent(r.id)}`}
+                        title={r.name}
+                        sub={`${r.provider} · Saved`}
+                        art={r.artworkUrl}
+                        badges={['SAVED']}
+                        itemRef={`res:${r.id}`}
+                      />
+                    ))}
               </StreamingRail>
             )}
           </div>
@@ -752,10 +846,10 @@ export function Movies() {
                 </div>
               )}
             </div>
-          ) : (
+          ) : hasDemo ? (
             <div>
               <p className="browse-count faint">
-                Showing {filteredDemo.length} movies in catalogue.
+                Showing {filteredDemo.length} movies in development mock catalogue.
               </p>
               {filteredDemo.length === 0 ? (
                 <StateBlock
@@ -789,6 +883,46 @@ export function Movies() {
                       focus={movie.focus}
                       line={`${movie.year} · ${movie.certificate} · ${runtimeLabel(movie.runtime)}`}
                       flag={library.watched.includes(movieRef(movie.id)) ? <><Icon name="check" size={12} />Watched</> : undefined}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div>
+              <p className="browse-count faint">
+                Showing {filteredPublicDiscovery.length} films and archives in public discovery catalogue.
+              </p>
+              {filteredPublicDiscovery.length === 0 ? (
+                <StateBlock
+                  icon="film"
+                  title="No movies found"
+                  action={
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => {
+                        setParams({}, { replace: true })
+                        setProviderQuery('')
+                        setSelectedGenre(null)
+                        setActiveTab('browse')
+                      }}
+                    >
+                      Reset filters
+                    </button>
+                  }
+                >
+                  Try selecting another genre or clearing the search query.
+                </StateBlock>
+              ) : (
+                <div className="grid-posters">
+                  {filteredPublicDiscovery.map((r) => (
+                    <PosterCard
+                      key={r.id}
+                      to={`/movies/${encodeURIComponent(r.id)}`}
+                      title={r.name}
+                      art={r.artworkUrl}
+                      line={[r.provider, r.country ?? 'Open Archive'].filter(Boolean).join(' · ')}
                     />
                   ))}
                 </div>

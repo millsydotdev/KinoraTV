@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { NoTitles } from './Movies'
 import { movieById, movies } from '../data/catalog'
 import { movieRef, runtimeLabel } from '../data/refs'
 import { Icon } from '../components/Icon'
@@ -17,6 +16,9 @@ import { Breadcrumbs } from '../components/Breadcrumbs'
 import { ArtworkLightboxModal } from '../components/ArtworkLightboxModal'
 import { CollectionDialog } from '../components/CollectionDialog'
 import { RatingControls } from '../components/RatingControls'
+import type { MediaResource } from '../data/personalLibrary'
+import { VERIFICATION_STATUS_META } from '../data/personalLibrary'
+import { classifyMediaResource } from '../data/provenance'
 import './Detail.css'
 
 export function MovieDetail() {
@@ -41,11 +43,53 @@ export function MovieDetail() {
     )
   }
 
-  const imported = store.xtreamCatalogue.movies.find((item) => `xt:${item.sourceId}:${item.id}` === id)
+  const imported = store.xtreamCatalogue.movies.find((item) => `xt:${item.sourceId}:${item.id}` === id || String(item.id) === id)
 
   if (imported) return <XtreamMovieDetail key={`${imported.sourceId}:${imported.id}`} movie={imported} />
 
-  if (!store.demoTitles) return <NoTitles kind="films" />
+  const cleanResId = id.replace(/^res:/, '')
+  const publicRes = store.mediaLibrary.allResources.find((r) => r.id === cleanResId || r.id === id)
+  if (publicRes && (publicRes.category === 'movies' || publicRes.subcategory.includes('film') || publicRes.subcategory.includes('cinema') || publicRes.subcategory.includes('archive') || publicRes.subcategory.includes('streaming'))) {
+    return <PublicDiscoveryFilmDetail resource={publicRes} />
+  }
+
+  if (!store.demoTitles) {
+    if (movie) {
+      return (
+        <div className="page detail-page">
+          <PageHeader title="Movies" />
+          <div style={{ maxWidth: 720, margin: '60px auto', padding: '0 20px' }}>
+            <StateBlock
+              icon="film"
+              title="Development Fixture Film"
+              action={
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
+                  <Link to="/movies" className="btn btn-primary">
+                    <Icon name="film" size={16} />
+                    <span>Browse Movie Catalogue</span>
+                  </Link>
+                  <Link to="/sources?tab=active" className="btn btn-secondary">
+                    <Icon name="plus" size={16} />
+                    <span>Connect On-Demand Provider</span>
+                  </Link>
+                </div>
+              }
+            >
+              "{movie.title}" is a development fixture provided for interface evaluation and is not part of your personal sources. In personal source mode, you can connect an on-demand provider in Sources or explore Kinora's verified public discovery film archives.
+            </StateBlock>
+          </div>
+        </div>
+      )
+    }
+    return (
+      <div className="page">
+        <PageHeader title="Movies" />
+        <StateBlock icon="film" title="Film not found" action={<Link to="/movies" className="btn btn-primary">Browse films</Link>}>
+          There is no film at this address in the available catalogue.
+        </StateBlock>
+      </div>
+    )
+  }
   if (!movie) {
     return (
       <div className="page">
@@ -446,5 +490,162 @@ function TrailerModal({
         </div>
       </div>
     </div>
+  )
+}
+
+function PublicDiscoveryFilmDetail({ resource }: { resource: MediaResource }) {
+  const store = useStore()
+  const toast = useToast()
+  const inLibrary = store.mediaLibrary.isInPersonalLibrary(resource.id)
+  const isFav = store.mediaLibrary.isResourceFavourite(resource.id)
+  const { provenance, capability } = classifyMediaResource(resource, inLibrary)
+  const statusMeta = VERIFICATION_STATUS_META[resource.verificationStatus] ?? VERIFICATION_STATUS_META.discovered
+
+  const similarFilms = useMemo(() => {
+    return store.mediaLibrary.allResources
+      .filter((r) => r.id !== resource.id && (r.category === 'movies' || r.subcategory.includes('film') || r.subcategory.includes('cinema') || r.subcategory.includes('archive')))
+      .slice(0, 6)
+  }, [store.mediaLibrary.allResources, resource.id])
+
+  const handleOpenLink = () => {
+    const targetUrl = resource.url || resource.discoveryUrl
+    if (targetUrl) {
+      window.open(targetUrl, '_blank', 'noopener,noreferrer')
+    }
+  }
+
+  const toggleLibrary = () => {
+    if (inLibrary) {
+      store.mediaLibrary.removeFromPersonalLibrary(resource.id)
+      toast(`Removed ${resource.name} from My Sources`)
+    } else {
+      store.mediaLibrary.addToPersonalLibrary(resource.id)
+      toast(`Saved ${resource.name} to My Sources`)
+    }
+  }
+
+  const toggleFav = () => {
+    store.mediaLibrary.toggleResourceFavourite(resource.id)
+    toast(isFav ? `Removed ${resource.name} from favourites` : `Added ${resource.name} to favourites`)
+  }
+
+  return (
+    <article className="detail">
+      <header className="detail-hero">
+        {resource.artworkUrl ? (
+          <img src={resource.artworkUrl} alt="" className="detail-backdrop" style={{ objectFit: 'cover' }} />
+        ) : (
+          <div className="detail-backdrop" style={{ background: 'linear-gradient(135deg, #111827 0%, #030712 100%)' }} />
+        )}
+        <PageHeader overlay />
+        <div className="detail-hero-content">
+          <Breadcrumbs crumbs={[{ label: 'Home', to: '/' }, { label: 'Movies', to: '/movies' }, { label: resource.name }]} />
+          <Link to="/movies" className="text-link detail-back"><Icon name="back" size={16} />Movies</Link>
+          <p className="kicker">
+            <Icon name="archive" size={16} />
+            Public Discovery Cinema · {resource.subcategory.replace(/-/g, ' ').toUpperCase()}
+          </p>
+          <h1 className="title-xl">{resource.name}</h1>
+          <p className="detail-tagline">{resource.provider}</p>
+
+          <div className="meta detail-hero-meta">
+            <span className={`res-provenance-pill ${inLibrary ? 'res-prov-personal' : 'res-prov-public'}`}>
+              {provenance.label}
+            </span>
+            <span className="res-cap-pill">
+              <Icon name={capability.icon} size={12} />
+              <span>{capability.label}</span>
+            </span>
+            <span className="res-status-pill" style={{ '--pill-color': statusMeta.tone } as React.CSSProperties}>
+              <span className="res-status-dot" aria-hidden="true" />
+              {statusMeta.label}
+            </span>
+            {resource.country && <span>{resource.country}</span>}
+            {resource.language && <span>{resource.language}</span>}
+          </div>
+
+          <p className="detail-synopsis">{resource.description}</p>
+
+          <div className="title-actions-container">
+            <div className="title-actions-primary">
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleOpenLink}
+              >
+                <Icon name="link" size={16} />
+                <span>Explore Archive Portal</span>
+              </button>
+            </div>
+
+            <div className="title-actions-feedback">
+              <button
+                type="button"
+                className={`btn btn-ghost btn-small ${isFav ? 'is-active' : ''}`}
+                onClick={toggleFav}
+                aria-label={isFav ? 'Remove from favourites' : 'Add to favourites'}
+                title={isFav ? 'Favourited' : 'Add to favourites'}
+              >
+                <Icon name="heart" size={16} />
+                <span>{isFav ? 'Favourited' : 'Favourite'}</span>
+              </button>
+            </div>
+
+            <div className="title-actions-library">
+              <button
+                type="button"
+                className={`btn btn-secondary btn-small ${inLibrary ? 'is-active' : ''}`}
+                onClick={toggleLibrary}
+              >
+                <Icon name={inLibrary ? 'check' : 'plus'} size={15} />
+                <span>{inLibrary ? 'In My Sources' : 'Save to My Sources'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div className="detail-body">
+        <section className="detail-body-main" style={{ maxWidth: 860 }}>
+          <h2 className="title-m" style={{ marginBottom: 12 }}>Resource Information & Access</h2>
+          <div className="detail-body-specs" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14 }}>
+            <div className="panel" style={{ padding: 14 }}>
+              <span className="faint" style={{ fontSize: '0.75rem', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>Provider / Institution</span>
+              <strong>{resource.provider}</strong>
+            </div>
+            <div className="panel" style={{ padding: 14 }}>
+              <span className="faint" style={{ fontSize: '0.75rem', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>Licence & Distribution</span>
+              <strong>{resource.licence || 'Public Service / Cultural Preservation'}</strong>
+            </div>
+            <div className="panel" style={{ padding: 14 }}>
+              <span className="faint" style={{ fontSize: '0.75rem', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>Date Discovered</span>
+              <strong>{resource.dateDiscovered}</strong>
+            </div>
+            <div className="panel" style={{ padding: 14 }}>
+              <span className="faint" style={{ fontSize: '0.75rem', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>Official Origin Portal</span>
+              <a href={resource.discoveryUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', wordBreak: 'break-all', fontSize: '0.85rem' }}>
+                {resource.discoveryUrl}
+              </a>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      {similarFilms.length > 0 && (
+        <section className="detail-similar" style={{ padding: '0 24px 32px' }}>
+          <Section icon="film" title="Related Film Archives & Public Cinema" sub={`${similarFilms.length} titles`}>
+            {similarFilms.map((sim) => (
+              <PosterCard
+                key={sim.id}
+                to={`/movies/${encodeURIComponent(sim.id)}`}
+                title={sim.name}
+                art={sim.artworkUrl}
+                line={[sim.provider, sim.country].filter(Boolean).join(' · ')}
+              />
+            ))}
+          </Section>
+        </section>
+      )}
+    </article>
   )
 }

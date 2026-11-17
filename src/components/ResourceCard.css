@@ -150,8 +150,57 @@
   top: 10px;
   left: 10px;
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+  max-width: calc(100% - 50px);
   z-index: 2;
+}
+
+.res-provenance-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: var(--r-s, 4px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.res-prov-public {
+  background: rgba(14, 116, 144, 0.45);
+  border: 1px solid rgba(56, 189, 248, 0.55);
+  color: #38bdf8;
+}
+
+.res-prov-personal {
+  background: rgba(16, 185, 129, 0.35);
+  border: 1px solid rgba(52, 211, 153, 0.55);
+  color: #34d399;
+}
+
+.res-prov-dev {
+  background: rgba(245, 158, 11, 0.35);
+  border: 1px solid rgba(251, 191, 36, 0.55);
+  color: #fbbf24;
+}
+
+.res-cap-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: var(--r-s, 4px);
+  background: rgba(12, 15, 20, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #e2e8f0;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .res-status-pill {

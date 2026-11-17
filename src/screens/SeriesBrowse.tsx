@@ -18,11 +18,10 @@ import {
   type HeroSlideData,
   type GenreItem,
 } from '../components/StreamingComponents'
-import { filterKidSafeTitles, filterKidSafeXtreamTitles } from '../lib/kidsMode'
+import { filterKidSafeResources, filterKidSafeTitles, filterKidSafeXtreamTitles } from '../lib/kidsMode'
 import { seriesNextUp } from '../lib/library'
 import { useProfiles } from '../state/profiles'
 import { useStore } from '../state/store'
-import { NoTitles } from './Movies'
 import './Browse.css'
 import './MediaStreaming.css'
 
@@ -95,7 +94,18 @@ export function SeriesBrowse() {
   const isSampleProvider = typeof window !== 'undefined' && window.sessionStorage?.getItem('kinora.sample_provider_view') === '1'
   const hasXtream = store.xtreamSources.length > 0 && safeXtreamSeries.length > 0
   const hasDemo = (store.demoTitles || isSampleProvider) && safeSeries.length > 0
-  const hasAnyContent = hasXtream || hasDemo
+
+  // Public discovery television & documentary series
+  const publicDiscoverySeries = useMemo(() => {
+    const list = store.mediaLibrary.allResources.filter(
+      (r) =>
+        r.category === 'series' ||
+        r.subcategory.includes('tv') ||
+        r.subcategory.includes('series') ||
+        r.subcategory.includes('broadcasting'),
+    )
+    return isKidsMode ? filterKidSafeResources(list, true) : list
+  }, [store.mediaLibrary.allResources, isKidsMode])
 
   const normalizedQuery = providerQuery.trim().toLowerCase()
   const category = params.get('category') ?? 'All'
@@ -143,6 +153,15 @@ export function SeriesBrowse() {
       })
   }, [hasDemo, safeSeries, category, selectedGenre, normalizedQuery, sort, activeTab, library.watchlist])
 
+  // Filtered public discovery series
+  const filteredPublicDiscovery = useMemo(() => {
+    if (hasXtream || hasDemo) return []
+    return publicDiscoverySeries
+      .filter((r) => !selectedGenre || r.tags.some((t) => t.toLowerCase().includes(selectedGenre.toLowerCase())) || r.subcategory.toLowerCase().includes(selectedGenre.toLowerCase()))
+      .filter((r) => !normalizedQuery || r.name.toLowerCase().includes(normalizedQuery) || r.description.toLowerCase().includes(normalizedQuery) || r.provider.toLowerCase().includes(normalizedQuery))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [hasXtream, hasDemo, publicDiscoverySeries, selectedGenre, normalizedQuery])
+
   // Hero slides
   const heroSlides = useMemo<HeroSlideData[]>(() => {
     if (hasXtream) {
@@ -188,12 +207,29 @@ export function SeriesBrowse() {
         itemRef: seriesRef(s.id),
       }))
     }
+    if (publicDiscoverySeries.length > 0) {
+      return publicDiscoverySeries.slice(0, 5).map((s) => ({
+        id: s.id,
+        kicker: 'FEATURED TELEVISION ARCHIVE',
+        title: s.name,
+        synopsis: s.description,
+        art: s.artworkUrl,
+        year: 'Public Archive',
+        genre: s.subcategory.replace(/-/g, ' ').toUpperCase(),
+        runtime: 'Broadcast Series',
+        badges: ['ARCHIVE', 'EPISODIC'],
+        playUrl: `/series/${encodeURIComponent(s.id)}`,
+        detailUrl: `/series/${encodeURIComponent(s.id)}`,
+        itemRef: `res:${s.id}`,
+      }))
+    }
     return []
-  }, [hasXtream, hasDemo, safeXtreamSeries, safeSeries])
+  }, [hasXtream, hasDemo, publicDiscoverySeries, safeXtreamSeries, safeSeries])
 
   // Rails data
   const trendingXtream = useMemo(() => safeXtreamSeries.slice(0, 8), [safeXtreamSeries])
   const trendingDemo = useMemo(() => safeSeries.slice(0, 8), [safeSeries])
+  const trendingPublicDiscovery = useMemo(() => publicDiscoverySeries.slice(0, 8), [publicDiscoverySeries])
 
   // New Episodes (latest season episodes)
   const newEpisodes = useMemo(() => {
@@ -235,6 +271,7 @@ export function SeriesBrowse() {
   const popularDemo = useMemo(() => {
     return [...safeSeries].sort((a, b) => b.seasons.flat().length - a.seasons.flat().length).slice(0, 8)
   }, [safeSeries])
+  const popularPublicDiscovery = useMemo(() => publicDiscoverySeries.slice(4, 12), [publicDiscoverySeries])
 
   // Returning Shows (continuing on-air series)
   const returningShows = useMemo(() => {
@@ -259,6 +296,13 @@ export function SeriesBrowse() {
     return []
   }, [hasDemo, safeSeries, library.watchlist])
 
+  const myShowsPublicDiscovery = useMemo(() => {
+    if (!hasXtream && !hasDemo) {
+      return publicDiscoverySeries.filter((r) => store.mediaLibrary.isInPersonalLibrary(r.id) || library.watchlist.includes(`res:${r.id}`))
+    }
+    return []
+  }, [hasXtream, hasDemo, publicDiscoverySeries, store.mediaLibrary, library.watchlist])
+
   // Continue Watching
   const continueWatchingShows = useMemo(() => {
     if (hasDemo) {
@@ -272,13 +316,6 @@ export function SeriesBrowse() {
     }
     return []
   }, [hasDemo, safeSeries, library])
-
-  const hasDisabledSources = store.xtreamSources.length > 0 && !store.xtreamSources.some((s) => s.enabled)
-  const hasEmptyCat = store.xtreamSources.some((s) => s.enabled) && store.xtreamCatalogue.series.length === 0
-
-  if (!hasAnyContent) {
-    return <NoTitles kind="series" disabledSources={hasDisabledSources} emptyCatalogue={hasEmptyCat} />
-  }
 
   const isFiltering = category !== 'All' || provider !== 'All' || Boolean(normalizedQuery) || Boolean(selectedGenre) || activeTab === 'a-z'
   const sourceName = (id: string) => store.xtreamSources.find((s) => s.id === id)?.name ?? 'Provider'
@@ -437,7 +474,7 @@ export function SeriesBrowse() {
 
             {/* Trending TV Shows Rail */}
             <StreamingRail
-              title="Trending TV Shows"
+              title={hasXtream ? 'Trending TV Shows' : hasDemo ? 'Trending TV Shows' : 'Broadcast & Episodic Archives'}
               iconName="flame"
               iconColor="var(--accent)"
               onSeeAll={() => setActiveTab('a-z')}
@@ -457,7 +494,8 @@ export function SeriesBrowse() {
                       />
                     )
                   })
-                : trendingDemo.map((show) => {
+                : hasDemo
+                ? trendingDemo.map((show) => {
                     const ref = seriesRef(show.id)
                     return (
                       <StreamingCard
@@ -470,7 +508,18 @@ export function SeriesBrowse() {
                         itemRef={ref}
                       />
                     )
-                  })}
+                  })
+                : trendingPublicDiscovery.map((r) => (
+                    <StreamingCard
+                      key={r.id}
+                      to={`/series/${encodeURIComponent(r.id)}`}
+                      title={r.name}
+                      sub={[r.provider, r.country ?? 'Open Archive'].filter(Boolean).join(' · ')}
+                      art={r.artworkUrl}
+                      badges={['ARCHIVE', 'EPISODIC']}
+                      itemRef={`res:${r.id}`}
+                    />
+                  ))}
             </StreamingRail>
 
             {/* New Episodes Rail */}
@@ -497,7 +546,7 @@ export function SeriesBrowse() {
 
             {/* Popular Shows Rail */}
             <StreamingRail
-              title="Popular Shows"
+              title={hasXtream ? 'Popular Shows' : hasDemo ? 'Popular Shows' : 'Documentary & National TV Series'}
               iconName="star"
               onSeeAll={() => setActiveTab('popular')}
             >
@@ -513,7 +562,8 @@ export function SeriesBrowse() {
                       itemRef={`series:xt:${s.sourceId}:${s.id}`}
                     />
                   ))
-                : popularDemo.map((show) => {
+                : hasDemo
+                ? popularDemo.map((show) => {
                     return (
                       <StreamingCard
                         key={`pop-${show.id}`}
@@ -525,7 +575,18 @@ export function SeriesBrowse() {
                         itemRef={seriesRef(show.id)}
                       />
                     )
-                  })}
+                  })
+                : popularPublicDiscovery.map((r) => (
+                    <StreamingCard
+                      key={`pop-res-${r.id}`}
+                      to={`/series/${encodeURIComponent(r.id)}`}
+                      title={r.name}
+                      sub={[r.provider, r.subcategory].filter(Boolean).join(' · ')}
+                      art={r.artworkUrl}
+                      badges={['ARCHIVE']}
+                      itemRef={`res:${r.id}`}
+                    />
+                  ))}
             </StreamingRail>
 
             {/* Returning Shows Rail */}
@@ -572,7 +633,7 @@ export function SeriesBrowse() {
             )}
 
             {/* My Shows Rail */}
-            {(myShowsXtream.length > 0 || myShowsDemo.length > 0) && (
+            {(myShowsXtream.length > 0 || myShowsDemo.length > 0 || myShowsPublicDiscovery.length > 0) && (
               <StreamingRail
                 title="My Shows"
                 iconName="bookmark"
@@ -590,7 +651,8 @@ export function SeriesBrowse() {
                         itemRef={`series:xt:${s.sourceId}:${s.id}`}
                       />
                     ))
-                  : myShowsDemo.map((show) => {
+                  : hasDemo
+                  ? myShowsDemo.map((show) => {
                       return (
                         <StreamingCard
                           key={`ms-${show.id}`}
@@ -602,7 +664,18 @@ export function SeriesBrowse() {
                           itemRef={seriesRef(show.id)}
                         />
                       )
-                    })}
+                    })
+                  : myShowsPublicDiscovery.map((r) => (
+                      <StreamingCard
+                        key={`ms-res-${r.id}`}
+                        to={`/series/${encodeURIComponent(r.id)}`}
+                        title={r.name}
+                        sub={[r.provider, 'Saved'].join(' · ')}
+                        art={r.artworkUrl}
+                        badges={['SAVED']}
+                        itemRef={`res:${r.id}`}
+                      />
+                    ))}
               </StreamingRail>
             )}
           </div>
@@ -610,7 +683,7 @@ export function SeriesBrowse() {
       )}
 
       {/* My Shows Tab View (Empty State) */}
-      {activeTab === 'my-shows' && myShowsXtream.length === 0 && myShowsDemo.length === 0 && (
+      {activeTab === 'my-shows' && myShowsXtream.length === 0 && myShowsDemo.length === 0 && myShowsPublicDiscovery.length === 0 && (
         <div className="streaming-body" style={{ paddingTop: 24 }}>
           <StateBlock
             icon="bookmark"
@@ -656,7 +729,7 @@ export function SeriesBrowse() {
       )}
 
       {/* Filtered Grid or Non-Browse Tab View */}
-      {(activeTab !== 'my-shows' || myShowsXtream.length > 0 || myShowsDemo.length > 0) && (activeTab !== 'genres' || Boolean(selectedGenre)) && (isFiltering || activeTab !== 'browse') && (
+      {(activeTab !== 'my-shows' || myShowsXtream.length > 0 || myShowsDemo.length > 0 || myShowsPublicDiscovery.length > 0) && (activeTab !== 'genres' || Boolean(selectedGenre)) && (isFiltering || activeTab !== 'browse') && (
         <div className="streaming-body" style={{ paddingTop: 20 }}>
           {hasXtream ? (
             <div>
@@ -703,7 +776,7 @@ export function SeriesBrowse() {
                 </div>
               )}
             </div>
-          ) : (
+          ) : hasDemo ? (
             <div>
               <p className="browse-count faint">
                 Showing {filteredDemo.length} TV shows in catalogue.
@@ -746,6 +819,47 @@ export function SeriesBrowse() {
                       />
                     )
                   })}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div>
+              <p className="browse-count faint">
+                Showing {filteredPublicDiscovery.length} public broadcast and episodic archive collections.
+              </p>
+              {filteredPublicDiscovery.length === 0 ? (
+                <StateBlock
+                  icon="series"
+                  title="No television archives found"
+                  action={
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => {
+                        setParams({}, { replace: true })
+                        setProviderQuery('')
+                        setSelectedGenre(null)
+                        setActiveTab('browse')
+                      }}
+                    >
+                      Reset filters
+                    </button>
+                  }
+                >
+                  Try selecting another category or resetting the search term.
+                </StateBlock>
+              ) : (
+                <div className="grid-posters">
+                  {filteredPublicDiscovery.map((r) => (
+                    <PosterCard
+                      key={r.id}
+                      to={`/series/${encodeURIComponent(r.id)}`}
+                      title={r.name}
+                      art={r.artworkUrl}
+                      line={[r.provider, r.subcategory].filter(Boolean).join(' · ')}
+                      flag={<><Icon name="library" size={10} />Archive</>}
+                    />
+                  ))}
                 </div>
               )}
             </div>

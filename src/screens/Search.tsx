@@ -10,6 +10,9 @@ import { Art, ChannelMark, ProgrammeArt, StateBlock } from '../components/ui'
 import { clock, useNow } from '../lib/time'
 import { categoryLabel, cleanChannelTitle } from '../state/playlists'
 import { isLogoArtwork, getRoleLabel } from '../components/ResourceCard'
+import { classifyMediaResource } from '../data/provenance'
+import { DISCOVERED_RESOURCES } from '../data/discoveredResources'
+import '../components/ResourceCard.css'
 import { useStore } from '../state/store'
 import { useToast } from '../components/Toast'
 import {
@@ -35,7 +38,7 @@ const groupLabels: Record<Group, string> = { channels: 'Channels', tv: 'On TV To
 const groupIcons: Record<Group, IconName> = { channels: 'tv', tv: 'guide', films: 'film', series: 'series', episodes: 'play', resources: 'sources' }
 const PER_GROUP = 8
 
-type Hit = { key: string; to: string; thumb: ReactNode; title: string; sub: string }
+type Hit = { key: string; to: string; thumb: ReactNode; title: string; sub: string; badge?: ReactNode }
 
 function Highlight({ text, q }: { text: string; q: string }) {
   const i = q ? text.toLowerCase().indexOf(q) : -1
@@ -158,6 +161,8 @@ export function Search() {
         else if (r.category === 'archives') to = '/archives'
         else if (r.category === 'culture') to = '/culture'
         const isLogo = isLogoArtwork(r)
+        const isPersonal = store.mediaLibrary.isInPersonalLibrary(r.id)
+        const { provenance } = classifyMediaResource(r, isPersonal, store.demoTitles)
         return {
           key: `res:${r.id}`,
           to,
@@ -172,6 +177,14 @@ export function Search() {
           ),
           title: r.name,
           sub: `${getRoleLabel(r)} · ${r.provider}${r.country ? ` · ${r.country}` : ''}`,
+          badge: (
+            <span
+              className={`res-provenance-pill ${provenance.badgeClass}`}
+              style={{ fontSize: '0.6875rem', padding: '1px 6px', borderRadius: 4 }}
+            >
+              {provenance.shortLabel}
+            </span>
+          ),
         }
       })
 
@@ -183,6 +196,14 @@ export function Search() {
       return {
         key: c.id, to: `/live?channel=${c.id}`, thumb: <ChannelMark channel={c} size={44} />, title: displayName,
         sub: `${c.number} · ${categoryLabel(c)}${c.hd ? ' · HD' : ''}${store.programmeAt(c, now) ? ` · Now: ${store.programmeAt(c, now)?.title}` : ''}`,
+        badge: (
+          <span
+            className={`res-provenance-pill ${store.demoTitles ? 'provenance-dev-fixture' : 'provenance-live-broadcast'}`}
+            style={{ fontSize: '0.6875rem', padding: '1px 6px', borderRadius: 4 }}
+          >
+            {store.demoTitles ? 'Dev Channel' : 'Live TV'}
+          </span>
+        ),
       }
     })
     const seen = new Set<string>()
@@ -197,6 +218,14 @@ export function Search() {
       .map(({ c, p }) => ({
         key: p.id, to: `/live?channel=${c.id}`, thumb: (p.art || p.icon) ? <ProgrammeArt programme={p} channel={c} /> : <ChannelMark channel={c} size={44} />, title: p.title,
         sub: `${p.start <= now ? 'On now' : clock(p.start, prefs.timeFormat)} · ${c.name} · ${p.category}`,
+        badge: (
+          <span
+            className={`res-provenance-pill ${store.demoTitles ? 'provenance-dev-fixture' : 'provenance-live-broadcast'}`}
+            style={{ fontSize: '0.6875rem', padding: '1px 6px', borderRadius: 4 }}
+          >
+            Guide
+          </span>
+        ),
       }))
 
     const safeXtreamMovies = filterKidSafeXtreamTitles(store.xtreamCatalogue.movies, store.isKidsMode)
@@ -208,6 +237,14 @@ export function Search() {
         thumb: <XtreamArt artworkKey={m.artworkKey} fallbackTitle={m.name} fallbackYear={m.year} className="result-poster" />,
         title: m.name,
         sub: `Movie · ${m.year ?? 'Provider catalogue'}`,
+        badge: (
+          <span
+            className="res-provenance-pill provenance-provider-catalogue"
+            style={{ fontSize: '0.6875rem', padding: '1px 6px', borderRadius: 4 }}
+          >
+            Provider
+          </span>
+        ),
       }
     })
     const safeXtreamSeries = filterKidSafeXtreamTitles(store.xtreamCatalogue.series, store.isKidsMode)
@@ -219,25 +256,111 @@ export function Search() {
         thumb: <XtreamArt artworkKey={s.artworkKey} fallbackTitle={s.name} fallbackYear={s.year} className="result-poster" />,
         title: s.name,
         sub: `Series · ${s.year ?? 'Provider catalogue'}`,
+        badge: (
+          <span
+            className="res-provenance-pill provenance-provider-catalogue"
+            style={{ fontSize: '0.6875rem', padding: '1px 6px', borderRadius: 4 }}
+          >
+            Provider
+          </span>
+        ),
       }
     })
+
+    const discFilms = DISCOVERED_RESOURCES
+      .filter((r) => r.category === 'films' || r.category === 'movies' || r.subcategory.includes('film') || r.subcategory.includes('cinema'))
+      .filter((r) => has(r.name, r.provider, r.description, ...(r.tags ?? [])))
+      .map((r) => ({
+        key: `res:${r.id}`,
+        to: `/movies/${encodeURIComponent(r.id)}`,
+        thumb: r.artworkUrl ? (
+          <div style={{ width: 44, height: 44, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-3)', overflow: 'hidden', border: '1px solid var(--line)' }}>
+            <img src={r.artworkUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          </div>
+        ) : (
+          <div style={{ width: 44, height: 44, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-3)', color: 'var(--accent-text)', border: '1px solid var(--line)' }}>
+            <Icon name="film" size={20} />
+          </div>
+        ),
+        title: r.name,
+        sub: `Public Archive · ${r.provider}${r.country ? ` · ${r.country}` : ''}`,
+        badge: (
+          <span
+            className="res-provenance-pill provenance-public-discovery"
+            style={{ fontSize: '0.6875rem', padding: '1px 6px', borderRadius: 4 }}
+          >
+            Discovery
+          </span>
+        ),
+      }))
+
+    const discSeries = DISCOVERED_RESOURCES
+      .filter((r) => r.category === 'tv' || r.category === 'series' || r.subcategory.includes('series') || r.subcategory.includes('television'))
+      .filter((r) => has(r.name, r.provider, r.description, ...(r.tags ?? [])))
+      .map((r) => ({
+        key: `res:${r.id}`,
+        to: `/series/${encodeURIComponent(r.id)}`,
+        thumb: r.artworkUrl ? (
+          <div style={{ width: 44, height: 44, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-3)', overflow: 'hidden', border: '1px solid var(--line)' }}>
+            <img src={r.artworkUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          </div>
+        ) : (
+          <div style={{ width: 44, height: 44, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-3)', color: 'var(--accent-text)', border: '1px solid var(--line)' }}>
+            <Icon name="series" size={20} />
+          </div>
+        ),
+        title: r.name,
+        sub: `Broadcast Archive · ${r.provider}${r.country ? ` · ${r.country}` : ''}`,
+        badge: (
+          <span
+            className="res-provenance-pill provenance-public-discovery"
+            style={{ fontSize: '0.6875rem', padding: '1px 6px', borderRadius: 4 }}
+          >
+            Discovery
+          </span>
+        ),
+      }))
 
     const safeMovies = filterKidSafeTitles(movies, store.isKidsMode)
     const safeSeries = filterKidSafeTitles(series, store.isKidsMode)
     groups.films = store.demoTitles
       ? safeMovies.filter((m) => has(m.title, m.synopsis, ...m.genres)).map((m) => ({
           key: m.id, to: `/movies/${m.id}`, thumb: <Art src={m.art} focus={m.focus} />, title: m.title, sub: `Movie · ${m.year} · ${m.genres.join(' / ')}`,
+          badge: (
+            <span
+              className="res-provenance-pill provenance-dev-fixture"
+              style={{ fontSize: '0.6875rem', padding: '1px 6px', borderRadius: 4 }}
+            >
+              Dev Fixture
+            </span>
+          ),
         }))
-      : xtMovies
+      : [...xtMovies, ...discFilms]
     groups.series = store.demoTitles
       ? safeSeries.filter((s) => has(s.title, s.synopsis, ...s.genres)).map((s) => ({
           key: s.id, to: `/series/${s.id}`, thumb: <Art src={s.art} focus={s.focus} />, title: s.title, sub: `Series · ${s.seasons.length} season${s.seasons.length > 1 ? 's' : ''} · ${s.genres.join(' / ')}`,
+          badge: (
+            <span
+              className="res-provenance-pill provenance-dev-fixture"
+              style={{ fontSize: '0.6875rem', padding: '1px 6px', borderRadius: 4 }}
+            >
+              Dev Fixture
+            </span>
+          ),
         }))
-      : xtSeries
+      : [...xtSeries, ...discSeries]
     groups.episodes = !store.demoTitles ? [] : safeSeries.flatMap((s) =>
       s.seasons.flat().filter((e) => has(e.title, e.synopsis)).map((e) => ({
         key: `${s.id}/${e.id}`, to: `/watch/${encodeURIComponent(episodeRef(s.id, e.id))}`, thumb: <Art src={e.still} focus={e.stillFocus} />,
         title: e.title, sub: `${s.title} · ${episodeCode(e)} · ${e.runtime} min`,
+        badge: (
+          <span
+            className="res-provenance-pill provenance-dev-fixture"
+            style={{ fontSize: '0.6875rem', padding: '1px 6px', borderRadius: 4 }}
+          >
+            Dev Fixture
+          </span>
+        ),
       })),
     )
     if (scope === 'library') {
@@ -577,7 +700,10 @@ export function Search() {
                     <Link to={h.to} data-result className="card result" onClick={() => store.addRecentSearch(q.trim())}>
                       <span className="result-thumb">{h.thumb}</span>
                       <span className="result-text">
-                        <strong><Highlight text={h.title} q={needle} /></strong>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                          <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><Highlight text={h.title} q={needle} /></strong>
+                          {h.badge}
+                        </span>
                         <span>{h.sub}</span>
                       </span>
                     </Link>
