@@ -92,8 +92,9 @@ export function SeriesBrowse() {
     return filterKidSafeTitles(series, isKidsMode)
   }, [isKidsMode])
 
+  const isSampleProvider = typeof window !== 'undefined' && window.sessionStorage?.getItem('kinora.sample_provider_view') === '1'
   const hasXtream = store.xtreamSources.length > 0 && safeXtreamSeries.length > 0
-  const hasDemo = store.demoTitles && safeSeries.length > 0
+  const hasDemo = (store.demoTitles || isSampleProvider) && safeSeries.length > 0
   const hasAnyContent = hasXtream || hasDemo
 
   const normalizedQuery = providerQuery.trim().toLowerCase()

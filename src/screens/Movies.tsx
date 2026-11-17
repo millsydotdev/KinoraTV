@@ -126,8 +126,9 @@ export function Movies() {
     return filterKidSafeTitles(movies, isKidsMode)
   }, [isKidsMode])
 
+  const isSampleProvider = typeof window !== 'undefined' && window.sessionStorage?.getItem('kinora.sample_provider_view') === '1'
   const hasXtream = store.xtreamSources.length > 0 && safeXtreamMovies.length > 0
-  const hasDemo = store.demoTitles && safeMovies.length > 0
+  const hasDemo = (store.demoTitles || isSampleProvider) && safeMovies.length > 0
   const hasAnyContent = hasXtream || hasDemo
 
   const normalizedQuery = providerQuery.trim().toLowerCase()

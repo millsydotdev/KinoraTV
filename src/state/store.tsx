@@ -316,7 +316,16 @@ function useStoreValue(
   const [src, setSrc] = usePersisted<SourcesState>('kinora.sources.v1', () => ({ sources: demoSources(Date.now()) }), ({ sources }) => ({ sources }))
 
   // Imported playlists: saved by Rust (sources.rs), never in localStorage. Restored once at start.
-  const [playlists, setPlaylists] = useState<PlaylistSource[]>(initialPlaylists)
+  const [playlists, setPlaylists] = useState<PlaylistSource[]>(() => {
+    if (initialPlaylists && initialPlaylists.length > 0) return initialPlaylists
+    if (!inNativeShell()) {
+      try {
+        const raw = localStorage.getItem('kinora.browser_playlists.v1')
+        if (raw) return JSON.parse(raw)
+      } catch {}
+    }
+    return initialPlaylists
+  })
   const lastOp = useRef(0)
   const [restored, setRestored] = useState(() => !inNativeShell())
   const [storageNotice, setStorageNotice] = useState<StorageNotice | 'save-failed' | null>(null)

@@ -1,8 +1,8 @@
 import { Fragment, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { featured, movies, series } from '../data/catalog'
+import { movies, series } from '../data/catalog'
 import { movieRef, seriesRef, channelRef } from '../data/refs'
-import type { Movie, Programme, Series } from '../data/types'
+import type { Movie, Series } from '../data/types'
 import { Icon } from '../components/Icon'
 import { PageHeader } from '../components/PageHeader'
 import { ChannelCard, PosterCard, Section, WideCard, XtreamArt, XtreamPosterCard, idleLabel } from '../components/Tiles'
@@ -13,8 +13,8 @@ import { AgeRatingBadge } from '../components/AgeRatingBadge'
 import { type TechnicalFormat } from '../components/TechnicalBadges'
 import { filterKidSafeChannels, filterKidSafeTitles, filterKidSafeXtreamTitles, isRefKidSafe } from '../lib/kidsMode'
 import { continueWatching } from '../lib/library'
-import { clock, useNow } from '../lib/time'
-import { categoryLabel, NOT_TESTED } from '../state/playlists'
+import { useNow } from '../lib/time'
+import { NOT_TESTED } from '../state/playlists'
 import { useProfiles } from '../state/profiles'
 import { useStore } from '../state/store'
 import { isLogoArtwork } from '../components/ResourceCard'
@@ -22,28 +22,28 @@ import type { MediaResource } from '../data/personalLibrary'
 import { computeRecommendations } from '../lib/recommendations'
 import { HomeCustomizeModal } from '../components/HomeCustomizeModal'
 import { DEFAULT_HOME_SECTIONS } from '../state/userPreferences'
+import {
+  selectFeaturedSlides,
+  hasGenuineProgrammeArt,
+  isValidProgrammeTitle,
+  type FeaturedSlide,
+} from '../lib/featuredSelection'
 import './Home.css'
 
-function Hero() {
+function HomeHero({ slides }: { slides: FeaturedSlide[] }) {
   const store = useStore()
   const toast = useToast()
-  const { isKidsMode } = useProfiles()
   const [carouselIndex, setCarouselIndex] = useState(0)
 
-  const featuredList = useMemo(() => {
-    if (isKidsMode) return filterKidSafeTitles([...movies, ...series], true)
-    const harbour = movies.find((m) => m.id === 'harbour-lights')
-    const others = featured.filter((f) => f.id !== 'harbour-lights')
-    return harbour ? [harbour, ...others] : featured
-  }, [isKidsMode])
+  if (slides.length === 0) return <PageHeader title="Home" />
 
-  const t = featuredList[carouselIndex % Math.max(1, featuredList.length)]
-  if (!t) return null
+  const currentSlide = slides[carouselIndex % Math.max(1, slides.length)]
+  if (!currentSlide) return <PageHeader title="Home" />
 
-  const ref = t.kind === 'movie' ? movieRef(t.id) : seriesRef(t.id)
-  const inLibrary = store.library.watchlist.includes(ref)
-  const play = t.kind === 'movie' ? `/watch/${encodeURIComponent(ref)}` : `/series/${t.id}`
-  const detailUrl = t.kind === 'movie' ? `/movies/${t.id}` : `/series/${t.id}`
+  const isLive = currentSlide.kind === 'live'
+  const inLibrary = isLive
+    ? store.library.favourites.includes(currentSlide.ref)
+    : store.library.watchlist.includes(currentSlide.ref)
 
   const renderTitle = (titleText: string) => {
     const parts = titleText.split(' ')
@@ -58,13 +58,52 @@ function Hero() {
     return titleText
   }
 
-  const hours = t.kind === 'movie' ? Math.floor(t.runtime / 60) : null
-  const mins = t.kind === 'movie' ? t.runtime % 60 : null
-  const formattedRuntime = hours != null && mins != null ? `${hours}h ${mins}m` : null
+  const renderArtwork = () => {
+    if (currentSlide.artworkKey) {
+      return (
+        <XtreamArt
+          artworkKey={currentSlide.artworkKey}
+          fallbackTitle={currentSlide.title}
+          fallbackYear={typeof currentSlide.yearOrYears === 'number' ? currentSlide.yearOrYears : undefined}
+          eager
+          className="hero-art"
+        />
+      )
+    }
+    if (isLive && currentSlide.channel) {
+      const p = currentSlide.programme
+      const hasArt = hasGenuineProgrammeArt(p)
+      return (
+        <div
+          className="hero-art real-channel-hero-art"
+          style={{ background: `radial-gradient(ellipse at 75% 35%, ${currentSlide.channel.mark.tone}35 0%, var(--bg) 75%)` }}
+        >
+          {hasArt ? (
+            <ProgrammeArt programme={p!} channel={currentSlide.channel} alt={p!.title} eager backdropOnly className="hero-prog-art" />
+          ) : (
+            <div className="hero-atmospheric-art" style={{ '--channel-tone': currentSlide.channel.mark.tone } as React.CSSProperties}>
+              <div className="hero-atmospheric-mesh" />
+              <div className="hero-atmospheric-watermark-mark">{currentSlide.channelMarkText || currentSlide.channel.mark.text}</div>
+            </div>
+          )}
+        </div>
+      )
+    }
+    if (currentSlide.art) {
+      return <Art src={currentSlide.art} focus={currentSlide.focus} eager className="hero-art" />
+    }
+    return (
+      <div className="hero-art real-channel-hero-art" style={{ background: 'radial-gradient(ellipse at 75% 35%, rgba(229, 9, 20, 0.25) 0%, var(--bg) 75%)' }}>
+        <div className="hero-atmospheric-art">
+          <div className="hero-atmospheric-mesh" />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <section className="hero" aria-labelledby="hero-title">
-      <Art src={t.art} focus={t.focus} eager className="hero-art" />
+      {renderArtwork()}
       <PageHeader overlay />
 
       {/* Genuine generated geometric framing artwork asset */}
@@ -82,111 +121,146 @@ function Hero() {
       <div className="hero-content">
         <div className="hero-kicker-badge">
           <span className="kicker-pill" />
-          <span>{t.kind === 'movie' ? 'FEATURED MOVIE' : 'FEATURED SERIES'}</span>
+          {currentSlide.channel && <ChannelMark channel={currentSlide.channel} size={16} />}
+          <span>{currentSlide.kicker}</span>
         </div>
         <h1 id="hero-title" className="hero-title title-xl">
-          <Link to={detailUrl} className="hero-title-link">
-            {renderTitle(t.title)}
+          <Link to={currentSlide.to} className="hero-title-link">
+            {renderTitle(currentSlide.title)}
           </Link>
         </h1>
-        {t.tagline && <p className="hero-tagline">{t.tagline}</p>}
+        {currentSlide.tagline && <p className="hero-tagline">{currentSlide.tagline}</p>}
         <div className="hero-meta-row">
-          {t.genres.map((g, idx) => (
+          {currentSlide.genres && currentSlide.genres.map((g, idx) => (
             <Fragment key={g}>
               {idx > 0 && <span className="meta-sep">|</span>}
               <span>{g}</span>
             </Fragment>
           ))}
-          <span className="meta-sep">|</span>
-          <span>{t.kind === 'movie' ? t.year : t.years}</span>
-          {formattedRuntime && (
+          {currentSlide.yearOrYears && (
+            <>
+              <span className="meta-sep">|</span>
+              <span>{currentSlide.yearOrYears}</span>
+            </>
+          )}
+          {currentSlide.runtime && (
             <>
               <span className="meta-sep">|</span>
               <span className="meta-time">
                 <Icon name="clock" size={14} />
-                <span>{formattedRuntime}</span>
+                <span>{currentSlide.runtime}</span>
               </span>
             </>
           )}
-          <span className="meta-sep">|</span>
-          <AgeRatingBadge rating={t.certificate} system="bbfc" />
+          {currentSlide.timeRemaining && (
+            <>
+              <span className="meta-sep">|</span>
+              <span className="meta-time">
+                <Icon name="clock" size={14} />
+                <span>{currentSlide.timeRemaining}</span>
+              </span>
+            </>
+          )}
+          {currentSlide.certificate && (
+            <>
+              <span className="meta-sep">|</span>
+              <AgeRatingBadge rating={currentSlide.certificate} system="bbfc" />
+            </>
+          )}
+          {currentSlide.isLive && (
+            <>
+              <span className="meta-sep">|</span>
+              <span className="badge badge-live">Live</span>
+            </>
+          )}
         </div>
-        <p className="hero-synopsis">{t.synopsis}</p>
+        {currentSlide.synopsis && <p className="hero-synopsis">{currentSlide.synopsis}</p>}
         <div className="hero-actions">
-          <Link to={play} className="btn btn-hero-watch btn-primary">
-            <Icon name="play" size={18} />
-            <span>Watch Now</span>
+          <Link to={currentSlide.playUrl} className="btn btn-hero-watch btn-primary">
+            <Icon
+              name={!store.demoTitles && (currentSlide.kind === 'movie' || currentSlide.kind === 'series') ? 'info' : 'play'}
+              size={18}
+            />
+            <span>
+              {currentSlide.isLive
+                ? 'Watch Live'
+                : !store.demoTitles && (currentSlide.kind === 'movie' || currentSlide.kind === 'series')
+                  ? 'View Details'
+                  : 'Watch Now'}
+            </span>
           </Link>
           <button
             type="button"
             className="btn btn-hero-secondary"
             aria-pressed={inLibrary}
             onClick={() => {
-              store.toggleWatchlist(ref)
-              toast(inLibrary ? `Removed ${t.title} from your library` : `Added ${t.title} to your library`, { label: 'Undo', run: () => store.toggleWatchlist(ref) })
+              if (isLive) {
+                store.toggleFavourite(currentSlide.ref)
+                toast(inLibrary ? `Removed ${currentSlide.title} from favourites` : `Added ${currentSlide.title} to favourites`)
+              } else {
+                store.toggleWatchlist(currentSlide.ref)
+                toast(inLibrary ? `Removed ${currentSlide.title} from your library` : `Added ${currentSlide.title} to your library`, {
+                  label: 'Undo',
+                  run: () => store.toggleWatchlist(currentSlide.ref),
+                })
+              }
             }}
           >
             <Icon name={inLibrary ? 'check' : 'plus'} size={18} />
-            <span>{inLibrary ? 'In Library' : 'Add to Library'}</span>
+            <span>{inLibrary ? (isLive ? 'In Favourites' : 'In Library') : (isLive ? 'Add to Favourites' : 'Add to Library')}</span>
           </button>
-          <Link to={detailUrl} className="btn btn-hero-details">
-            <Icon name="info" size={18} />
-            <span>Details</span>
-          </Link>
+          {(!(!store.demoTitles && (currentSlide.kind === 'movie' || currentSlide.kind === 'series'))) && (
+            <Link to={currentSlide.to} className="btn btn-hero-details">
+              <Icon name={isLive ? 'guide' : 'info'} size={18} />
+              <span>{isLive ? 'TV Guide' : 'Details'}</span>
+            </Link>
+          )}
         </div>
       </div>
 
       {/* Carousel indicators and controls */}
-      <div className="hero-carousel-controls">
-        <div className="sr-only" aria-live="polite" aria-atomic="true">
-          {`Slide ${(carouselIndex % featuredList.length) + 1} of ${featuredList.length}: ${t.title}`}
-        </div>
-        <div className="hero-carousel-indicators" role="tablist" aria-label="Featured titles carousel">
-          {featuredList.slice(0, 4).map((_, i) => (
+      {slides.length > 1 && (
+        <div className="hero-carousel-controls">
+          <div className="sr-only" aria-live="polite" aria-atomic="true">
+            {`Slide ${(carouselIndex % slides.length) + 1} of ${slides.length}: ${currentSlide.title}`}
+          </div>
+          <div className="hero-carousel-indicators" role="tablist" aria-label="Featured content carousel">
+            {slides.slice(0, 4).map((_, i) => (
+              <button
+                key={i}
+                type="button"
+                role="tab"
+                aria-selected={i === (carouselIndex % slides.length)}
+                className={`hero-carousel-dot ${i === (carouselIndex % slides.length) ? 'is-active' : ''}`}
+                onClick={() => setCarouselIndex(i)}
+                aria-label={`Go to slide ${i + 1}`}
+              />
+            ))}
+          </div>
+          <div className="hero-carousel-nav">
             <button
-              key={i}
               type="button"
-              role="tab"
-              aria-selected={i === (carouselIndex % featuredList.length)}
-              className={`hero-carousel-dot ${i === (carouselIndex % featuredList.length) ? 'is-active' : ''}`}
-              onClick={() => setCarouselIndex(i)}
-              aria-label={`Go to slide ${i + 1}`}
-            />
-          ))}
+              className="hero-nav-btn"
+              onClick={() => setCarouselIndex((p) => (p - 1 + slides.length) % slides.length)}
+              aria-label="Previous featured title"
+            >
+              <Icon name="left" size={16} />
+            </button>
+            <button
+              type="button"
+              className="hero-nav-btn"
+              onClick={() => setCarouselIndex((p) => (p + 1) % slides.length)}
+              aria-label="Next featured title"
+            >
+              <Icon name="right" size={16} />
+            </button>
+          </div>
         </div>
-        <div className="hero-carousel-nav">
-          <button
-            type="button"
-            className="hero-nav-btn"
-            onClick={() => setCarouselIndex((p) => (p - 1 + featuredList.length) % featuredList.length)}
-            aria-label="Previous featured title"
-          >
-            <Icon name="left" size={16} />
-          </button>
-          <button
-            type="button"
-            className="hero-nav-btn"
-            onClick={() => setCarouselIndex((p) => (p + 1) % featuredList.length)}
-            aria-label="Next featured title"
-          >
-            <Icon name="right" size={16} />
-          </button>
-        </div>
-      </div>
+      )}
     </section>
   )
 }
 
-function isValidProgrammeTitle(p: Programme | undefined): boolean {
-  const t = p?.title?.trim() ?? ''
-  if (!t || t.startsWith('.')) return false
-  const lower = t.toLowerCase()
-  return !lower.includes('programmes start at') && !lower.includes('off air') && !lower.includes('close down')
-}
-
-function hasGenuineProgrammeArt(p: Programme | undefined): boolean {
-  return Boolean(p?.icon || p?.art)
-}
 
 function formatRemainingTime(seconds: number): string {
   const totalMins = Math.max(1, Math.round(seconds / 60))
@@ -271,107 +345,7 @@ function HomeAudioCard({
   )
 }
 
-function RealHero() {
-  const store = useStore()
-  const toast = useToast()
-  const now = useNow()
-  const { xtreamCatalogue, channels, programmeAt, prefs } = store
 
-  if (xtreamCatalogue.movies.length > 0) {
-    const m = xtreamCatalogue.movies[0]
-    if (!m) return <PageHeader title="Home" />
-    const routeId = `xt:${m.sourceId}:${m.id}`
-    const ref = `movie:${routeId}`
-    const inLibrary = store.library.watchlist.includes(ref)
-    const play = `/movies/${encodeURIComponent(routeId)}`
-    return (
-      <section className="hero" aria-labelledby="hero-title">
-        <XtreamArt artworkKey={m.artworkKey} fallbackTitle={m.name} fallbackYear={m.year} eager className="hero-art" />
-        <PageHeader overlay />
-        <div className="hero-content">
-          <p className="kicker"><Icon name="film" size={16} />Featured movie</p>
-          <h1 id="hero-title" className="title-xl"><Link to={play} className="hero-title-link">{m.name}</Link></h1>
-          <div className="meta">
-            {m.year && <span>{m.year}</span>}
-            <span>{m.extension ? m.extension.toUpperCase() : 'VOD'}</span>
-            <span>Provider catalogue</span>
-          </div>
-          {m.plot && <p className="hero-synopsis">{m.plot}</p>}
-          <div className="hero-actions">
-            <Link to={play} className="btn btn-hero-watch btn-primary"><Icon name="info" size={16} />View Details</Link>
-            <button
-              type="button"
-              className="btn btn-hero-secondary"
-              aria-pressed={inLibrary}
-              onClick={() => {
-                store.toggleWatchlist(ref)
-                toast(inLibrary ? `Removed ${m.name} from your library` : `Added ${m.name} to your library`, { label: 'Undo', run: () => store.toggleWatchlist(ref) })
-              }}
-            >
-              <Icon name={inLibrary ? 'check' : 'plus'} size={18} /><span>{inLibrary ? 'In Library' : 'Add to Library'}</span>
-            </button>
-          </div>
-        </div>
-      </section>
-    )
-  }
-
-  if (channels.length > 0) {
-    const top =
-      channels.find((c) => {
-        const p = programmeAt(c, now)
-        return hasGenuineProgrammeArt(p) && isValidProgrammeTitle(p) && Boolean(p?.desc?.trim())
-      }) ??
-      channels.find((c) => {
-        const p = programmeAt(c, now)
-        return hasGenuineProgrammeArt(p) && isValidProgrammeTitle(p)
-      }) ??
-      channels.find((c) => isValidProgrammeTitle(programmeAt(c, now))) ??
-      channels.find((c) => programmeAt(c, now)) ??
-      channels[0]
-    if (!top) return <PageHeader title="Home" />
-    const p = programmeAt(top, now)
-    const hasArt = hasGenuineProgrammeArt(p)
-    return (
-      <section className="hero real-channel-hero" aria-labelledby="hero-title">
-        <div className="hero-art real-channel-hero-art" style={{ background: `radial-gradient(ellipse at 75% 35%, ${top.mark.tone}35 0%, var(--bg) 75%)` }}>
-          {hasArt ? (
-            <ProgrammeArt programme={p!} channel={top} alt={p!.title} eager backdropOnly className="hero-prog-art" />
-          ) : (
-            <div className="hero-atmospheric-art" style={{ '--channel-tone': top.mark.tone } as React.CSSProperties}>
-              <div className="hero-atmospheric-mesh" />
-              <div className="hero-atmospheric-watermark-mark">{top.mark.text}</div>
-            </div>
-          )}
-        </div>
-        <PageHeader overlay />
-        <div className="hero-content">
-          <p className="kicker">
-            <ChannelMark channel={top} size={20} />
-            <span className="live-dot" style={{ marginLeft: 6 }}>Live</span>
-            Now on {top.name}
-          </p>
-          <h1 id="hero-title" className="title-xl">
-            <Link to={`/live?channel=${top.id}`} className="hero-title-link">
-              {p ? p.title : top.name}
-            </Link>
-          </h1>
-          <div className="meta">
-            <span>{categoryLabel(top)}</span>
-            {p && <span>until {clock(p.stop, prefs.timeFormat)}</span>}
-          </div>
-          {p?.desc && <p className="hero-synopsis">{p.desc}</p>}
-          <div className="hero-actions">
-            <Link to={`/live?channel=${top.id}`} className="btn btn-primary"><Icon name="play" size={16} />Watch Live</Link>
-            <Link to="/live" className="btn btn-secondary"><Icon name="guide" size={16} />TV Guide</Link>
-          </div>
-        </div>
-      </section>
-    )
-  }
-
-  return <PageHeader title="Home" />
-}
 
 export function Home() {
   const now = useNow()
@@ -421,6 +395,38 @@ export function Home() {
   }, [resume, isKidsMode, findChannel])
 
   const safeChannelsList = useMemo(() => filterKidSafeChannels(channels, isKidsMode), [channels, isKidsMode])
+
+  const featuredSlides = useMemo(() => {
+    return selectFeaturedSlides({
+      now,
+      demoTitles,
+      isKidsMode,
+      demoMovies: safeMovies,
+      demoSeries: safeSeries,
+      channels: safeChannelsList,
+      programmeAt,
+      xtreamCatalogue,
+      mediaLibrary:
+        mediaLibrary.mySources.length > 0
+          ? mediaLibrary.mySources.map((s) => s.resource)
+          : mediaLibrary.allResources,
+      favourites: library.favourites,
+      timeFormat: prefs.timeFormat,
+    })
+  }, [
+    now,
+    demoTitles,
+    isKidsMode,
+    safeMovies,
+    safeSeries,
+    safeChannelsList,
+    programmeAt,
+    xtreamCatalogue,
+    mediaLibrary.mySources,
+    mediaLibrary.allResources,
+    library.favourites,
+    prefs.timeFormat,
+  ])
 
   // Channels with active programmes and genuine EPG artwork first, followed by remaining on-air and other channels
   const onNowChannels = [
@@ -984,7 +990,7 @@ export function Home() {
 
   return (
     <>
-      {demoTitles ? <Hero /> : <RealHero />}
+      <HomeHero slides={featuredSlides} />
       <div className={`page stack home-body home-density-${cardDensity}`}>
         {!demoTitles && (
           <div className="home-rails-header">
