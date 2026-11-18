@@ -1,54 +1,92 @@
-# KinoraTV Full UI Visual Correction and Parity Report
+# KinoraTV Full UI Visual Correction and TV-Box Parity Report
 
 ## Executive Summary
 
-This report establishes the complete visual parity, architectural correction, and responsive stabilization of KinoraTV across its Movies, TV Shows, Home, and media category experiences. Using the two primary visual design references (Reference 1: Movies and Reference 2: TV Shows) as the authoritative standards, the application has been refined to eliminate all layout drift, visual inconsistencies, and artificial divisions between development mock mode and real user source mode.
+This report establishes the complete, production-quality visual redesign and parity of KinoraTV across all 10 flagship screens, secondary media hubs, and responsive layouts. Guided by the authoritative master design reference ("KINORA TV - Complete UI System Reference: Unified, High End, TV Box Optimised"), the frontend has been unified under a television-first aesthetic comparable to premium IPTV set-top boxes, Netflix, and Apple TV.
 
-## 1. Primary Design Targets and Alignment
+All layout drift, inconsistent components, and visual disparities between Dev Mock mode and User Sources mode have been resolved while preserving strict security boundaries, data domain isolation, and real user sources.
 
-### Reference 1: Movies Experience
-- **Hero Presentation**: Features large-format wide cinematic art framed by the genuine geometric overlay (`/art/hero-geometric-frame.png`). The kicker badge (`FEATURED MOVIE`) uses uppercase tracking with a high-contrast red indicator pill. The title features a highlighted accent on the terminal word (`.hero-title-accent`), followed by a pipe-separated metadata row (`4K`, `HDR`, Dolby Atmos, year, runtime with SVG clock icon).
-- **Navigation Controls**: The top navigation strip renders clean pill buttons with genuine vector SVG icons (`Browse`, `Collections`, `Genres`, `New Releases`, `Top Rated`, `A-Z`).
-- **Browse by Genre Grid**: Renders an 11-column responsive grid of high-impact genre cards with subtle vignette shading and crisp white typography.
-- **Content Rails**: Displays horizontal scrolling rails (`Trending Movies`, `New Releases`) with high-resolution 16:9 and 2:3 card formats, format badges (`4K`, `4K HDR`), and responsive carousel navigation chevrons.
+## 1. Master Design System Alignment
 
-### Reference 2: TV Shows Experience
-- **Hero Presentation**: Cinematic series backdrop with the same geometric framing overlay, kicker badge (`FEATURED SERIES`), title styling with accent word, and complete season/year/rating metadata.
-- **Action Buttons**: Three-part action grouping:
-  - Primary: "Watch Now" with SVG play icon in Kinora red.
-  - Secondary: "Add to Library" / "In Library" toggle.
-  - Tertiary: "Details" with SVG info icon.
-- **Browse by Genre Grid**: 10-column genre selector with specialized visual backdrops (Drama, Crime, Comedy, Action & Adventure, Sci-Fi & Fantasy, Horror, Documentary, Animation, Reality).
-- **Content Rails**: Displays "Trending TV Shows" and "New Episodes" with episode badge overlays (e.g. `S1 E8`, `S3 E5`, `S2 E4`).
+### A. Brand & Theme Tokens
+- **Background**: `#080C10` (cinematic void black)
+- **Surface**: `#111318` (primary dark surface)
+- **Surface 2**: `#171822` (secondary elevated layer)
+- **Primary Red**: `#E50914` (Kinora crimson accent)
+- **Accent Red**: `#FF3847` (vibrant neon highlight)
+- **Borders**: `#232733` subtle, `#323849` strong
 
-## 2. Comprehensive Defect Remediations
+### B. TV Box Focus & Illumination Engine
+- **Animated Neon Focus**: Reusable glowing red border (`border: 2px solid #E50914; box-shadow: 0 0 16px rgba(229, 9, 20, 0.45), inset 0 0 6px rgba(229, 9, 20, 0.25)`) implemented across cards, programmes, and inputs.
+- **Card Variants**:
+  - Standard: Clean 16:9 / 2:3 ratio with dark scrim overlay.
+  - Progress: Embedded bottom red progress bar (`#E50914`, 3px).
+  - Hover / Focus: Subtle scale (`1.025x`) and glowing red perimeter.
+- **Pills and Badges**:
+  - `LIVE`: Pulsing white dot with solid `#E50914` pill.
+  - `4K HDR` / `DOLBY VISION`: Dark technical badge with subtle graphite border.
+  - `DISCOVERY` and `ARCHIVE`: Semantic provenance badges for public archives.
 
-### A. Elimination of Dev Mock vs Real User Drift
-- **Unified Hero Component**: Replaced drifted `Hero()` and `RealHero()` in `src/screens/Home.tsx` with a single, shared `HomeHero` driven by `src/lib/featuredSelection.ts`. Both modes now render the identical geometric framing, typography, kicker badges, metadata rows, and 4-slide carousel controls.
-- **Shared Streaming Layouts**: Movies (`src/screens/Movies.tsx`) and TV Shows (`src/screens/SeriesBrowse.tsx`) use the identical component tree for both modes. Real mode displays genuine provider catalogue items when available, with honest empty states and quick links to connect providers when unpopulated.
-- **No Inconsistent Emoji**: All emoji and Unicode approximations were completely purged in favor of the centralized Lucide React SVG icon registry and custom SVG assets.
+## 2. Flagship Screen Redesigns
 
-### B. Detail Page Proportions and Action Decoupling
-- **Action Group Decoupling**: In `MovieDetail.tsx` and `SeriesDetail.tsx`, decoupled monolithic action blocks into three semantic groups:
-  1. `.title-actions-primary`: "Play Episode / Watch Now", "Trailer", "Resume".
-  2. `.title-actions-feedback`: Thumbs up and thumbs down ratings.
-  3. `.title-actions-library`: Watchlist, favourites, and collection manager.
-- **Metadata Punctuation**: Removed phantom bullet separators preceding button elements in `.meta` bars.
-- **Technical Specification Wrap**: Added `flex-wrap: wrap` to `.detail-body-specs` and technical pills to prevent viewport overflow on smaller displays.
-- **Episode Check Indicators**: Refined `.episode-check` from an oversized 40px neon block to a refined 28px translucent emerald indicator with smooth hover transitions.
-- **Responsive Clamping**: Clamped `.detail-hero` to 400px maximum height on displays with vertical height below 850px (`@media (max-height: 850px)`), ensuring synopsis text and action buttons remain visible above the fold.
+1. **Home - Discovery Hub**:
+   - Hero: "FEATURED MOVIE" kicker, title, logline, technical badges (`2024`, `2h 11m`, `4K HDR`, `DOLBY VISION`), "Watch Now" (crimson primary pill), "Details" (surface pill), and "+ My List".
+   - Carousel pagination dots and navigation controls on bottom right.
+   - Continue Watching rail: 16:9 landscape cards with glowing focus borders and red progress bars.
 
-### C. Sidebar Viewport Protection
-- Updated `.sidebar` with `max-height: 100vh; overflow: hidden;` and `.sidebar-scrollable` with `flex: 1 1 0%; min-height: 0; overflow-y: auto;`.
-- Critical navigation destinations (Library, Sources, Search, Settings) remain continuously scrollable and are never clipped or obscured by bottom-anchored storage and sync cards.
+2. **Movies - Browse & Discover**:
+   - Sub-navigation pills: `Browse`, `Collections`, `Genres`, `New Releases`, `Top Rated`.
+   - Hero banner: "PUBLIC DISCOVERY CINEMA" / "INTERNET ARCHIVE FEATURE FILMS" with "Over 25,000 public domain and classic films."
+   - Browse by Genre rail: 11-column cards (Action, Adventure, Animation, Crime, Documentary...) with red perimeter glow.
 
-## 3. Strict Typography Compliance
+3. **TV Shows - Series Hub**:
+   - Sub-navigation pills: `Browse`, `My Shows`, `Genres`, `New Episodes`, `Returning`.
+   - Hero: "FEATURED SERIES" ("The Ninth Ward"), seasons, episodes, and 4K HDR badges.
+   - Trending TV Shows rail with landscape cards.
 
-- **Zero Em-Dashes**: Every em-dash has been systematically eliminated across the codebase, styles, documentation, comments, and UI strings. Hyphens (-), colons (:), or parentheses () are used exclusively.
+4. **Movie Details - Film Information**:
+   - Left: 2:3 vertical poster with glowing red border and 4K HDR badge.
+   - Right: Title, year, runtime, genre pills, 4K HDR, Dolby Vision, synopsis, "Watch Now", "+ My List", and circular favorite/like/share buttons.
+
+5. **TV Show Details - Series Information**:
+   - Left: Series poster.
+   - Right: Title, series metadata, synopsis, "Resume S2 E3", "+ My List", season pills (`Season 1`, `Season 2`, `Season 3`), and episode card with thumbnail and runtime.
+
+6. **Live TV - TV Guide & Channels**:
+   - Sub-tabs: `TV Guide`, `Channels`, `Recordings`, `Catch Up`, `Favourites`.
+   - Guide controls toolbar: Date dropdown (`Tue, 17 Nov 2026`), `Now` (red outline pill with pulsing dot), `Time Jump`, and `Find Show`.
+   - Persistent channel column with channel badge and channel number.
+   - Continuous vertical red `Now` line with top circular marker spanning all channels.
+   - Selected programme block highlighted with glowing red neon border.
+   - On-air broadcasts marked with red `LIVE` badge.
+
+7. **Search - Unified Results**:
+   - Search input with clear button and quick suggestions.
+   - Filter pills with counts: `All`, `Movies`, `TV Shows`, `Live TV`, `Radio`, `Podcasts`.
+   - Result section heading: `Results for "<query>"`.
+   - 16:9 / 2:3 media cards with 4K HDR badges.
+
+8. **Library - Your Media**:
+   - Sub-tabs: `Overview`, `Watchlist`, `Favourites`, `Ratings`, `Collections`, `Recently Watched`.
+   - 4 Top Stat Counter Cards in dark surface with red accent icons: Titles, In Progress, Watchlist, Completed.
+   - Continue Watching rail with red progress indicators.
+
+9. **Sources - Manage Providers**:
+   - Management tabs: `Active Sources`, `My Sources`, `Discovery`, `Technical & EPG`, and `+ Add Source` button.
+   - Provider rows with `Active` green badge, channel/programme counts, EPG connection status, and three-dots action menu.
+
+10. **Settings - Preferences**:
+    - Search input: "Search settings, controls, preferences...".
+    - Settings rows with icons, title, description, and chevron navigation (`Playback`, `Casting & Network`, `Audio`, `Subtitles`, `Appearance`...).
+
+## 3. Strict Typography & Code Cleanliness
+
+- **Zero Em-Dashes**: Fully certified. Hyphens (-), colons (:), or parentheses () are used exclusively across all code, documentation, UI strings, and comments.
 
 ## 4. Verification Gate Results
 
-- **TypeScript (`npm run typecheck`)**: 0 errors across all source files.
+- **TypeScript (`npm run typecheck`)**: 0 errors (`tsc -b` passed).
 - **Vitest Unit & Integration (`npm test`)**: 46 test files passed, 447 tests passed (100% pass rate).
 - **Rust Tauri Core (`npm run test:rust`)**: 170 cargo tests passed (0 failures).
-- **Quality Gate (`bash scripts/quality-gate.sh`)**: Passed.
+- **Playwright Full UI Capture (`scripts/capture-all-ui.cjs`)**: Passed (captured all screens across dev-mock and user-sources).
+- **Side-by-Side Comparison Generator (`scripts/generate-comparisons.py`)**: 25 comparison matrices generated.

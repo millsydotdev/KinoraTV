@@ -72,6 +72,28 @@
 }
 
 .search-filters { margin-bottom: 24px; display: flex; flex-wrap: wrap; gap: 8px; }
+.search-filters .chip[aria-pressed='true'] {
+  background: #E50914 !important;
+  color: #ffffff !important;
+  border-color: #E50914 !important;
+  box-shadow: 0 0 12px rgba(229, 9, 20, 0.5) !important;
+}
+.search-filters .chip[aria-pressed='true'] .count {
+  background: rgba(0, 0, 0, 0.3) !important;
+  color: #ffffff !important;
+}
+.card.result {
+  border-radius: var(--r-m);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  transition: transform 140ms var(--ease), border-color 140ms var(--ease), box-shadow 140ms var(--ease);
+}
+.card.result:hover,
+.card.result:focus-visible {
+  transform: scale(1.02);
+  border-color: #E50914;
+  box-shadow: 0 0 14px rgba(229, 9, 20, 0.45);
+}
 .recent-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 
 .search-idle { display: grid; grid-template-columns: 1fr 1.4fr; gap: clamp(24px, 4vw, 56px); }

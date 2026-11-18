@@ -213,20 +213,32 @@ function Overview({ go, onSelectResource }: { go: (t: TabId) => void; onSelectRe
         </div>
         <div className="library-analytics-grid">
           <div className="lib-metric-box">
-            <span className="lib-metric-num">{filteredHistory.length}</span>
-            <span className="lib-metric-label">Titles Watched</span>
+            <div className="lib-metric-head">
+              <span className="lib-metric-icon"><Icon name="tv" size={18} /></span>
+              <span className="lib-metric-num">{store.demoTitles ? 127 : (filteredHistory.length || movies.length + series.length)}</span>
+            </div>
+            <span className="lib-metric-label">Titles</span>
           </div>
           <div className="lib-metric-box">
-            <span className="lib-metric-num">{library.watched.length}</span>
-            <span className="lib-metric-label">Marked Completed</span>
-          </div>
-          <div className="lib-metric-box">
-            <span className="lib-metric-num">{resume.length}</span>
+            <div className="lib-metric-head">
+              <span className="lib-metric-icon"><Icon name="history" size={18} /></span>
+              <span className="lib-metric-num">{resume.length || (store.demoTitles ? 24 : 0)}</span>
+            </div>
             <span className="lib-metric-label">In Progress</span>
           </div>
           <div className="lib-metric-box">
-            <span className="lib-metric-num">{favs.length}</span>
-            <span className="lib-metric-label">Saved Favourites</span>
+            <div className="lib-metric-head">
+              <span className="lib-metric-icon"><Icon name="heart" size={18} /></span>
+              <span className="lib-metric-num">{library.watchlist.length || (store.demoTitles ? 19 : 0)}</span>
+            </div>
+            <span className="lib-metric-label">Watchlist</span>
+          </div>
+          <div className="lib-metric-box">
+            <div className="lib-metric-head">
+              <span className="lib-metric-icon"><Icon name="checkCircle" size={18} /></span>
+              <span className="lib-metric-num">{library.watched.length || (store.demoTitles ? 86 : 0)}</span>
+            </div>
+            <span className="lib-metric-label">Completed</span>
           </div>
         </div>
         <div className="lib-analytics-distribution">

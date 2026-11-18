@@ -34,8 +34,8 @@ interface SavedSearch {
 }
 
 type Group = 'channels' | 'tv' | 'films' | 'series' | 'episodes' | 'resources'
-const groupLabels: Record<Group, string> = { channels: 'Channels', tv: 'On TV Today', films: 'Movies', series: 'TV Shows', episodes: 'Episodes', resources: 'Media Resources' }
-const groupIcons: Record<Group, IconName> = { channels: 'tv', tv: 'guide', films: 'film', series: 'series', episodes: 'play', resources: 'sources' }
+const groupLabels: Record<Group, string> = { channels: 'Live TV', tv: 'On TV Today', films: 'Movies', series: 'TV Shows', episodes: 'Episodes', resources: 'Media Resources' }
+const groupIcons: Record<Group, IconName> = { channels: 'live', tv: 'guide', films: 'film', series: 'series', episodes: 'play', resources: 'sources' }
 const PER_GROUP = 8
 
 type Hit = { key: string; to: string; thumb: ReactNode; title: string; sub: string; badge?: ReactNode }
@@ -684,6 +684,12 @@ export function Search() {
           </StateBlock>
         )}
 
+        {needle && !isSafeSearchBlocked && total > 0 && (
+          <div className="search-results-banner" style={{ marginBottom: 16 }}>
+            <h2 className="section-title" style={{ fontSize: '1.25rem', fontWeight: 700 }}>Results for &ldquo;{q.trim()}&rdquo;</h2>
+          </div>
+        )}
+
         {shown.map((g) => {
           const hits = filter === 'all' ? groups[g].slice(0, PER_GROUP) : groups[g]
           return (
@@ -703,6 +709,9 @@ export function Search() {
                         <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                           <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><Highlight text={h.title} q={needle} /></strong>
                           {h.badge}
+                          {(g === 'films' || g === 'series') && (
+                            <span className="badge-tech" style={{ marginLeft: 'auto', fontSize: '0.625rem' }}>4K HDR</span>
+                          )}
                         </span>
                         <span>{h.sub}</span>
                       </span>

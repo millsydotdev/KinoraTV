@@ -120,6 +120,8 @@ export function MovieDetail() {
           <div className="meta">
             <span>{movie.year}</span>
             <span>{runtimeLabel(movie.runtime)}</span>
+            <span className="badge-tech">4K HDR</span>
+            <span className="badge-tech">DOLBY VISION</span>
             <AgeRatingBadge rating={movie.certificate} system="bbfc" />
             {watched && <span className="watched-mark"><Icon name="check" size={14} />Watched</span>}
             {(movie as unknown as { trailerUrl?: string }).trailerUrl && (

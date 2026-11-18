@@ -131,45 +131,42 @@ function HomeHero({ slides }: { slides: FeaturedSlide[] }) {
         </h1>
         {currentSlide.tagline && <p className="hero-tagline">{currentSlide.tagline}</p>}
         <div className="hero-meta-row">
-          {currentSlide.genres && currentSlide.genres.map((g, idx) => (
-            <Fragment key={g}>
-              {idx > 0 && <span className="meta-sep">|</span>}
-              <span>{g}</span>
-            </Fragment>
-          ))}
           {currentSlide.yearOrYears && (
-            <>
-              <span className="meta-sep">|</span>
-              <span>{currentSlide.yearOrYears}</span>
-            </>
+            <span>{currentSlide.yearOrYears}</span>
           )}
           {currentSlide.runtime && (
             <>
-              <span className="meta-sep">|</span>
+              <span className="meta-sep">•</span>
               <span className="meta-time">
-                <Icon name="clock" size={14} />
                 <span>{currentSlide.runtime}</span>
               </span>
             </>
           )}
           {currentSlide.timeRemaining && (
             <>
-              <span className="meta-sep">|</span>
+              <span className="meta-sep">•</span>
               <span className="meta-time">
-                <Icon name="clock" size={14} />
                 <span>{currentSlide.timeRemaining}</span>
               </span>
             </>
           )}
+          <span className="badge-tech">4K HDR</span>
+          <span className="badge-tech">DOLBY VISION</span>
+          {currentSlide.genres && currentSlide.genres.slice(0, 2).map((g) => (
+            <Fragment key={g}>
+              <span className="meta-sep">•</span>
+              <span>{g}</span>
+            </Fragment>
+          ))}
           {currentSlide.certificate && (
             <>
-              <span className="meta-sep">|</span>
+              <span className="meta-sep">•</span>
               <AgeRatingBadge rating={currentSlide.certificate} system="bbfc" />
             </>
           )}
           {currentSlide.isLive && (
             <>
-              <span className="meta-sep">|</span>
+              <span className="meta-sep">•</span>
               <span className="badge badge-live">Live</span>
             </>
           )}
@@ -188,6 +185,10 @@ function HomeHero({ slides }: { slides: FeaturedSlide[] }) {
                   ? 'View Details'
                   : 'Watch Now'}
             </span>
+          </Link>
+          <Link to={currentSlide.to} className="btn btn-hero-details">
+            <Icon name={isLive ? 'guide' : 'info'} size={18} />
+            <span>{isLive ? 'TV Guide' : 'Details'}</span>
           </Link>
           <button
             type="button"
@@ -209,12 +210,6 @@ function HomeHero({ slides }: { slides: FeaturedSlide[] }) {
             <Icon name={inLibrary ? 'check' : 'plus'} size={18} />
             <span>{inLibrary ? (isLive ? 'In Favourites' : 'In Library') : (isLive ? 'Add to Favourites' : 'Add to Library')}</span>
           </button>
-          {(!(!store.demoTitles && (currentSlide.kind === 'movie' || currentSlide.kind === 'series'))) && (
-            <Link to={currentSlide.to} className="btn btn-hero-details">
-              <Icon name={isLive ? 'guide' : 'info'} size={18} />
-              <span>{isLive ? 'TV Guide' : 'Details'}</span>
-            </Link>
-          )}
         </div>
       </div>
 

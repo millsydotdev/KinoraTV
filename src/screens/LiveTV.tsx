@@ -445,8 +445,11 @@ export function LiveTV() {
 
   const tabs = (
     <div className="tabs" role="tablist" aria-label="Live TV views">
-      <button type="button" role="tab" className="tab" aria-selected={view === 'guide'} onClick={() => setView('guide')}>TV Guide</button>
-      <button type="button" role="tab" className="tab" aria-selected={view === 'channels'} onClick={() => setView('channels')}>Channels</button>
+      <button type="button" role="tab" className="tab" aria-selected={view === 'guide' && group !== 'Favourites' && group !== 'Catch-up'} onClick={() => { setView('guide'); if (group === 'Favourites' || group === 'Catch-up') setGroup('All') }}>TV Guide</button>
+      <button type="button" role="tab" className="tab" aria-selected={view === 'channels' && group !== 'Favourites' && group !== 'Catch-up'} onClick={() => { setView('channels'); if (group === 'Favourites' || group === 'Catch-up') setGroup('All') }}>Channels</button>
+      <Link to="/recordings" role="tab" className="tab">Recordings</Link>
+      <button type="button" role="tab" className="tab" aria-selected={group === 'Catch-up'} onClick={() => { setView('channels'); setGroup('Catch-up') }}>Catch Up</button>
+      <button type="button" role="tab" className="tab" aria-selected={group === 'Favourites'} onClick={() => { setView('channels'); setGroup('Favourites') }}>Favourites</button>
     </div>
   )
 
@@ -892,6 +895,9 @@ export function LiveTV() {
                                   <span className="prog-label">
                                     <span className="prog-title">
                                       {onNow && isPlaying && <Icon name="play" size={10} className="prog-playing" />}
+                                      {onNow && (w >= 100 || p.title.toLowerCase().includes('live')) && (
+                                        <span className="badge-live" style={{ fontSize: '0.625rem', padding: '1px 5px', marginRight: 5, verticalAlign: 'middle' }}>LIVE</span>
+                                      )}
                                       {past && c.tvArchive === 1 && (
                                         <span
                                           title="Catch-up available"

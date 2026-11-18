@@ -3,16 +3,16 @@
    lib/theme.ts so they stay readable whatever accent is chosen. See DESIGN.md. */
 :root, [data-theme='dark'], .force-dark {
   color-scheme: dark;
-  --bg-rgb: 8 9 11;
-  --bg: #08090b;
-  --nav: #08090b;
-  --surface: #0d0f12;
-  --surface-1: #0d0f12;
-  --surface-2: #12151a;
-  --surface-3: #181b20;
-  --raised: #181b20;
-  --line: #292d33;
-  --line-strong: #383d44;
+  --bg-rgb: 8 12 16;
+  --bg: #080C10;
+  --nav: #080C10;
+  --surface: #111318;
+  --surface-1: #111318;
+  --surface-2: #171822;
+  --surface-3: #1f222e;
+  --raised: #1f222e;
+  --line: #232733;
+  --line-strong: #323849;
   --text: #f5f5f5;
   --text-2: #b4b7bd;
   --text-3: #858a93;
@@ -25,34 +25,35 @@
   --mix-to: #ffffff;
 
   /* Authoritative Semantic Design Tokens: Backgrounds & Tones */
-  --bg-app: #08090b;
-  --main-bg: #08090b;
-  --sidebar-bg: #08090b;
-  --header-bg: rgba(8, 9, 11, 0.88);
-  --hero-bg: #08090b;
-  --overlay-bg: rgba(8, 9, 11, 0.85);
+  --bg-app: #080C10;
+  --main-bg: #080C10;
+  --sidebar-bg: #080C10;
+  --header-bg: rgba(8, 12, 16, 0.88);
+  --hero-bg: #080C10;
+  --overlay-bg: rgba(8, 12, 16, 0.85);
 
   /* Red Accent & Controlled Illumination Tokens */
-  --accent-red-primary: #f20d24;
-  --accent-red-hover: #ff253b;
+  --accent-red-primary: #E50914;
+  --accent-red-hover: #FF253B;
   --accent-red-active: #b90018;
+  --accent-red-accent: #FF3847;
   --accent-red-deep: #b90018;
-  --red-illumination-sharp: 0 0 10px rgba(242, 13, 36, 0.65);
-  --red-illumination-soft: 0 0 20px rgba(242, 13, 36, 0.35);
-  --graphite-border: #292d33;
-  --strong-divider: #383d44;
-  --steel-border: #292d33;
-  --steel-border-hover: #383d44;
+  --red-illumination-sharp: 0 0 10px rgba(229, 9, 20, 0.65);
+  --red-illumination-soft: 0 0 20px rgba(229, 9, 20, 0.35);
+  --graphite-border: #232733;
+  --strong-divider: #323849;
+  --steel-border: #232733;
+  --steel-border-hover: #323849;
   --cool-highlight: rgba(255, 255, 255, 0.05);
 
   /* Semantic Surface Tokens */
-  --surface-elevated: #181b20;
-  --surface-card: #0d0f12;
-  --surface-selected: color-mix(in oklab, var(--accent) 15%, #12151a);
-  --surface-input: #12151a;
-  --surface-drawer: #181b20;
-  --surface-modal: #181b20;
-  --surface-popover: #181b20;
+  --surface-elevated: #1f222e;
+  --surface-card: #111318;
+  --surface-selected: color-mix(in oklab, var(--accent) 15%, #171822);
+  --surface-input: #171822;
+  --surface-drawer: #1f222e;
+  --surface-modal: #1f222e;
+  --surface-popover: #1f222e;
 
   /* Semantic Typography Tokens */
   --text-primary: #f5f5f5;
@@ -466,10 +467,94 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .card-play svg { width: 44px; height: 44px; padding: 13px; border-radius: 50%; background: rgb(var(--scrim) / 0.6); color: #ffffff; border: 1px solid rgb(255 255 255 / 0.35); }
 .card:hover .card-play, .card:focus-visible .card-play { opacity: 1; }
 .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 3px 7px; border-radius: var(--r-s); background: rgb(var(--scrim) / 0.75); color: #f3f5f8; }
-.badge-live::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #ff5a63; }
+.badge-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #E50914 !important;
+  color: #ffffff !important;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 4px;
+  box-shadow: 0 0 8px rgba(229, 9, 20, 0.6);
+}
+.badge-live::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #ffffff; animation: pulse-live 1.6s infinite ease-in-out; }
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
 .badge-accent { background: var(--accent); color: var(--accent-ink); }
+.badge-tech, .badge-4k, .badge-hdr, .badge-dolby {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(23, 24, 34, 0.9);
+  border: 1px solid #323849;
+  color: #f5f5f5;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.badge-discovery {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(30, 144, 255, 0.15);
+  border: 1px solid rgba(30, 144, 255, 0.4);
+  color: #60a5fa;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+.badge-archive {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+.badge-new {
+  display: inline-flex;
+  align-items: center;
+  background: #E50914;
+  color: #ffffff;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
 .badge-hd { background: color-mix(in oklab, var(--surface) 70%, transparent); border: 1px solid var(--line-strong); color: var(--text-2); font-size: 0.625rem; }
 .badge-offline { background: color-mix(in oklab, var(--warn) 20%, transparent); color: var(--warn); border: 1px solid color-mix(in oklab, var(--warn) 40%, transparent); font-size: 0.625rem; }
+
+/* TV Box Animated Neon Focus and Card Border */
+.neon-focus,
+.neon-focus-box,
+.focus-glow:focus-visible,
+.is-focused-glow {
+  outline: none !important;
+  border-color: #E50914 !important;
+  box-shadow: 0 0 16px rgba(229, 9, 20, 0.55), inset 0 0 6px rgba(229, 9, 20, 0.25) !important;
+}
+
+.card-tv-interactive {
+  transition: transform 160ms var(--ease), box-shadow 160ms var(--ease), border-color 160ms var(--ease);
+}
+.card-tv-interactive:hover,
+.card-tv-interactive:focus-visible {
+  transform: scale(1.025);
+  border-color: #E50914 !important;
+  box-shadow: 0 0 16px rgba(229, 9, 20, 0.45) !important;
+  z-index: 5;
+}
 .card-top-badges { display: flex; align-items: center; gap: 5px; margin-left: auto; flex: none; }
 
 /* Rows of equal cards. Each row type has its own ratio and column count. */

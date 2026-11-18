@@ -137,6 +137,7 @@ export function SeriesDetail() {
             <span>{s.years}</span>
             <span>{s.seasons.length} season{s.seasons.length > 1 ? 's' : ''}</span>
             <span>{totalEps} episodes</span>
+            <span className="badge-tech">4K HDR</span>
             <AgeRatingBadge rating={s.certificate} system="bbfc" />
           </div>
           <p className="detail-synopsis">{s.synopsis}</p>

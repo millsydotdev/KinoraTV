@@ -78,9 +78,12 @@ export function Sources() {
     setRemoveId(null)
   }
 
+  const totalActive = store.playlists.length + store.guides.length + store.xtreamSources.length + (store.demoTitles ? store.sources.length : 0)
   const tabs = (
     <div className="tabs" role="tablist" aria-label="Sources">
-      <button type="button" role="tab" className="tab" aria-selected={tab === 'active'} onClick={() => setParams({}, { replace: true })}>Active Sources</button>
+      <button type="button" role="tab" className="tab" aria-selected={tab === 'active'} onClick={() => setParams({}, { replace: true })}>
+        Active Sources {totalActive > 0 ? `(${totalActive})` : ''}
+      </button>
       <button type="button" role="tab" className="tab" aria-selected={tab === 'my-sources'} onClick={() => setParams({ tab: 'my-sources' }, { replace: true })}>
         My Sources ({store.mediaLibrary.mySources.length})
       </button>

@@ -44,6 +44,19 @@
 .detail-hero-content .title-actions { margin-top: 10px; }
 .title-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 .title-actions-primary { display: inline-flex; align-items: center; gap: 10px; }
+.title-actions-primary .btn-primary {
+  background: #E50914;
+  border-radius: 999px;
+  box-shadow: 0 4px 18px rgba(229, 9, 20, 0.5);
+  font-weight: 700;
+  padding: 10px 24px;
+  transition: transform 140ms var(--ease), box-shadow 140ms var(--ease), background 140ms var(--ease);
+}
+.title-actions-primary .btn-primary:hover {
+  background: #FF253B;
+  box-shadow: 0 6px 24px rgba(229, 9, 20, 0.75);
+  transform: translateY(-1px);
+}
 .title-actions-feedback,
 .title-actions-library {
   display: inline-flex;
