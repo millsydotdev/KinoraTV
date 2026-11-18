@@ -54,7 +54,9 @@ export function SeriesDetail() {
     return <PublicDiscoverySeriesDetail resource={publicRes} />
   }
 
-  if (!store.demoTitles) {
+  const isSampleProvider = typeof window !== 'undefined' && window.sessionStorage?.getItem('kinora.sample_provider_view') === '1'
+
+  if (!store.demoTitles && !isSampleProvider) {
     if (s) {
       return (
         <div className="page detail-page">
@@ -62,7 +64,7 @@ export function SeriesDetail() {
           <div style={{ maxWidth: 720, margin: '60px auto', padding: '0 20px' }}>
             <StateBlock
               icon="series"
-              title="Development Fixture Series"
+              title="Series Unavailable in Personal Sources"
               action={
                 <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
                   <Link to="/series" className="btn btn-primary">
@@ -76,7 +78,7 @@ export function SeriesDetail() {
                 </div>
               }
             >
-              "{s.title}" is a development fixture provided for interface evaluation and is not part of your personal sources. In personal source mode, you can connect an on-demand provider in Sources or explore Kinora's verified public discovery television and documentary archives.
+              "{s.title}" is not available in your currently connected personal sources. Connect an on-demand provider in Sources or explore Kinora's verified public discovery television archives.
             </StateBlock>
           </div>
         </div>

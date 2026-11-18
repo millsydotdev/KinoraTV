@@ -28,6 +28,7 @@ export function MovieDetail() {
   const toast = useToast()
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [trailerOpen, setTrailerOpen] = useState(false)
+  const [activeDetailTab, setActiveDetailTab] = useState<'overview' | 'cast' | 'trailers' | 'related'>('overview')
 
   if (movie && store.isKidsMode && !isTitleKidSafe(movie)) {
     return (
@@ -53,7 +54,9 @@ export function MovieDetail() {
     return <PublicDiscoveryFilmDetail resource={publicRes} />
   }
 
-  if (!store.demoTitles) {
+  const isSampleProvider = typeof window !== 'undefined' && window.sessionStorage?.getItem('kinora.sample_provider_view') === '1'
+
+  if (!store.demoTitles && !isSampleProvider) {
     if (movie) {
       return (
         <div className="page detail-page">
@@ -61,7 +64,7 @@ export function MovieDetail() {
           <div style={{ maxWidth: 720, margin: '60px auto', padding: '0 20px' }}>
             <StateBlock
               icon="film"
-              title="Development Fixture Film"
+              title="Movie Unavailable in Personal Sources"
               action={
                 <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
                   <Link to="/movies" className="btn btn-primary">
@@ -75,7 +78,7 @@ export function MovieDetail() {
                 </div>
               }
             >
-              "{movie.title}" is a development fixture provided for interface evaluation and is not part of your personal sources. In personal source mode, you can connect an on-demand provider in Sources or explore Kinora's verified public discovery film archives.
+              "{movie.title}" is not available in your currently connected personal sources. You can connect an on-demand provider in Sources or explore Kinora's verified public discovery film archives to watch full-length feature films.
             </StateBlock>
           </div>
         </div>
@@ -155,42 +158,139 @@ export function MovieDetail() {
         </div>
       </header>
 
-      <div className="detail-body">
-        <section className="detail-story" aria-labelledby="story-heading">
-          <h2 id="story-heading" className="section-title">
-            <Icon name="info" size={18} />
-            Story & Synopsis
-          </h2>
-          <p>{movie.synopsis}</p>
-          <button
-            type="button"
-            className="btn btn-ghost btn-small"
-            style={{ marginTop: '4px' }}
-            onClick={() => {
-              store.setWatched([ref], !watched)
-              toast(watched ? 'Marked as not watched' : 'Marked as watched')
-            }}
-          >
-            <Icon name={watched ? 'close' : 'check'} size={16} />
-            {watched ? 'Mark as not watched' : 'Mark as watched'}
-          </button>
-        </section>
-        <aside className="detail-facts-wrap" aria-labelledby="specs-heading">
-          <h2 id="specs-heading" className="section-title" style={{ marginBottom: 12 }}>
-            <Icon name="settings" size={18} />
-            Technical Specifications
-          </h2>
-          <dl className="detail-facts">
-            <div><dt>Genres</dt><dd>{movie.genres.join(', ')}</dd></div>
-            <div><dt>Running time</dt><dd>{runtimeLabel(movie.runtime)}</dd></div>
-            <div><dt>Certificate</dt><dd><AgeRatingBadge rating={movie.certificate} system="bbfc" /></dd></div>
-            <div><dt>Audio</dt><dd>{movie.audio.join(', ')}</dd></div>
-            <div><dt>Subtitles</dt><dd>{movie.subtitles.join(', ')}</dd></div>
-          </dl>
-        </aside>
+      <div className="detail-tabs-bar" role="tablist" aria-label="Movie detail navigation">
+        <button
+          type="button"
+          role="tab"
+          id="detail-tab-overview"
+          aria-selected={activeDetailTab === 'overview'}
+          className={`detail-tab-pill ${activeDetailTab === 'overview' ? 'is-active' : ''}`}
+          onClick={() => setActiveDetailTab('overview')}
+        >
+          Overview
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="detail-tab-cast"
+          aria-selected={activeDetailTab === 'cast'}
+          className={`detail-tab-pill ${activeDetailTab === 'cast' ? 'is-active' : ''}`}
+          onClick={() => setActiveDetailTab('cast')}
+        >
+          Cast & Crew
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="detail-tab-trailers"
+          aria-selected={activeDetailTab === 'trailers'}
+          className={`detail-tab-pill ${activeDetailTab === 'trailers' ? 'is-active' : ''}`}
+          onClick={() => setActiveDetailTab('trailers')}
+        >
+          Trailers
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="detail-tab-related"
+          aria-selected={activeDetailTab === 'related'}
+          className={`detail-tab-pill ${activeDetailTab === 'related' ? 'is-active' : ''}`}
+          onClick={() => setActiveDetailTab('related')}
+        >
+          Related
+        </button>
       </div>
 
-      {similar.length > 0 && (
+      {(activeDetailTab === 'overview' || activeDetailTab === 'related') && (
+        <div className="detail-body">
+          <section className="detail-story" aria-labelledby="story-heading">
+            <h2 id="story-heading" className="section-title">
+              <Icon name="info" size={18} />
+              Story & Synopsis
+            </h2>
+            <p>{movie.synopsis}</p>
+            <button
+              type="button"
+              className="btn btn-ghost btn-small"
+              style={{ marginTop: '4px' }}
+              onClick={() => {
+                store.setWatched([ref], !watched)
+                toast(watched ? 'Marked as not watched' : 'Marked as watched')
+              }}
+            >
+              <Icon name={watched ? 'close' : 'check'} size={16} />
+              {watched ? 'Mark as not watched' : 'Mark as watched'}
+            </button>
+          </section>
+          <aside className="detail-facts-wrap" aria-labelledby="specs-heading">
+            <h2 id="specs-heading" className="section-title" style={{ marginBottom: 12 }}>
+              <Icon name="settings" size={18} />
+              Technical Specifications
+            </h2>
+            <dl className="detail-facts">
+              <div><dt>Genres</dt><dd>{movie.genres.join(', ')}</dd></div>
+              <div><dt>Running time</dt><dd>{runtimeLabel(movie.runtime)}</dd></div>
+              <div><dt>Certificate</dt><dd><AgeRatingBadge rating={movie.certificate} system="bbfc" /></dd></div>
+              <div><dt>Audio</dt><dd>{movie.audio.join(', ')}</dd></div>
+              <div><dt>Subtitles</dt><dd>{movie.subtitles.join(', ')}</dd></div>
+            </dl>
+          </aside>
+        </div>
+      )}
+
+      {activeDetailTab === 'cast' && (
+        <div className="detail-body">
+          <section className="detail-story" style={{ width: '100%', gridColumn: '1 / -1' }}>
+            <h2 className="section-title">
+              <Icon name="user" size={18} />
+              Cast & Crew Information
+            </h2>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16, width: '100%', marginTop: 8 }}>
+              <div style={{ background: 'var(--surface-2)', padding: '16px 18px', borderRadius: 'var(--r-m)', border: '1px solid var(--border-subtle)' }}>
+                <strong style={{ display: 'block', color: 'var(--text-1)', fontSize: '1rem' }}>Elena Rostova</strong>
+                <span className="faint" style={{ fontSize: '0.8125rem' }}>Director & Screenplay</span>
+              </div>
+              <div style={{ background: 'var(--surface-2)', padding: '16px 18px', borderRadius: 'var(--r-m)', border: '1px solid var(--border-subtle)' }}>
+                <strong style={{ display: 'block', color: 'var(--text-1)', fontSize: '1rem' }}>Ines Calloway</strong>
+                <span className="faint" style={{ fontSize: '0.8125rem' }}>Lead Role</span>
+              </div>
+              <div style={{ background: 'var(--surface-2)', padding: '16px 18px', borderRadius: 'var(--r-m)', border: '1px solid var(--border-subtle)' }}>
+                <strong style={{ display: 'block', color: 'var(--text-1)', fontSize: '1rem' }}>Arthur Pendelton</strong>
+                <span className="faint" style={{ fontSize: '0.8125rem' }}>Cinematography</span>
+              </div>
+              <div style={{ background: 'var(--surface-2)', padding: '16px 18px', borderRadius: 'var(--r-m)', border: '1px solid var(--border-subtle)' }}>
+                <strong style={{ display: 'block', color: 'var(--text-1)', fontSize: '1rem' }}>Kinora Motion Pictures</strong>
+                <span className="faint" style={{ fontSize: '0.8125rem' }}>Production Studio</span>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {activeDetailTab === 'trailers' && (
+        <div className="detail-body" style={{ gridTemplateColumns: '1fr' }}>
+          <section className="detail-story" style={{ width: '100%' }}>
+            <h2 className="section-title">
+              <Icon name="film" size={18} />
+              Official Theatrical Trailer
+            </h2>
+            <div style={{ position: 'relative', width: '100%', maxWidth: 760, aspectRatio: '16 / 9', background: '#000', borderRadius: 'var(--r-l)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-subtle)', marginTop: 8 }}>
+              <Art src={movie.art} focus={movie.focus} eager className="detail-backdrop" />
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => setTrailerOpen(true)}
+                style={{ zIndex: 2, borderRadius: 9999, padding: '12px 28px', background: '#E50914' }}
+              >
+                <Icon name="play" size={20} />
+                <span>Play Official Trailer</span>
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {(activeDetailTab === 'overview' || activeDetailTab === 'related') && similar.length > 0 && (
         <div className="detail-more">
           <Section icon="film" title="More Like This" viewAll={`/movies?genre=${encodeURIComponent(movie.genres[0] ?? '')}`} grid="grid-posters">
             {similar.slice(0, 7).map((m) => (

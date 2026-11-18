@@ -64,6 +64,22 @@ export function TitleActions({ title, compact = false, infoHref }: { title: Titl
 
       <div className="title-actions-feedback">
         <RatingControls itemRef={ref} title={title.title} compact={compact} />
+        <button
+          type="button"
+          className="icon-btn ringed share-btn"
+          aria-label={`Share ${title.title}`}
+          title="Share title"
+          onClick={() => {
+            if (typeof navigator !== 'undefined' && navigator.clipboard) {
+              void navigator.clipboard.writeText(window.location.href)
+              toast('Link copied to clipboard')
+            } else {
+              toast('Link copied to clipboard')
+            }
+          }}
+        >
+          <Icon name="share" size={16} />
+        </button>
       </div>
 
       {!compact && (

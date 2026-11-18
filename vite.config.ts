@@ -8,8 +8,8 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(packageJson.version),
     __APP_NAME__: JSON.stringify(packageJson.name),
   },
-  // Tauri's devUrl points at this exact port, so fail rather than silently move to another one.
-  server: { port: 5199, strictPort: true, watch: { ignored: ['**/src-tauri/**'] } },
+  // Tauri's devUrl points at localhost:5199. Explicitly bind to 127.0.0.1 so WebKitGTK resolves IPv4 loopback reliably.
+  server: { host: '127.0.0.1', port: 5199, strictPort: true, watch: { ignored: ['**/src-tauri/**'] } },
   // Keep Rust compiler output visible when running under `tauri dev`.
   clearScreen: false,
   // Small font subsets would otherwise be inlined as data: URLs, which the Tauri CSP (font-src 'self') blocks.

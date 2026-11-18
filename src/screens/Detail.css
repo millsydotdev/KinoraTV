@@ -81,6 +81,40 @@
 .btn-sub { font-weight: 500; opacity: 0.8; padding-left: 10px; border-left: 1px solid rgba(255, 255, 255, 0.4); }
 .watched-mark { display: inline-flex; align-items: center; gap: 4px; color: var(--ok); font-weight: 600; }
 
+/* Detail navigation tabs bar (Overview, Cast & Crew, Trailers, Related) */
+.detail-tabs-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px var(--gutter) 6px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 16px;
+  overflow-x: auto;
+}
+.detail-tab-pill {
+  padding: 8px 20px;
+  min-height: 36px;
+  border-radius: 9999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-2);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 140ms var(--ease);
+}
+.detail-tab-pill:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.detail-tab-pill.is-active {
+  background: #E50914;
+  color: #fff;
+  border-color: #E50914;
+  box-shadow: 0 2px 12px rgba(229, 9, 20, 0.45);
+}
+
 .detail-body { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(300px, 1fr); gap: clamp(24px, 3.5vw, 56px); padding: 16px var(--gutter) 0; }
 .detail-story { display: grid; gap: 16px; justify-items: start; align-content: start; }
 .detail-story p { color: var(--text-2); font-size: 1rem; max-width: 64ch; line-height: 1.7; margin: 0; }
@@ -94,6 +128,32 @@
 /* Episodes as a list of cards */
 .episodes { padding: 4px var(--gutter) 64px; }
 .episodes-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+.episodes-head .tabs { display: flex; gap: 8px; border-bottom: none; }
+.episodes-head .tab {
+  padding: 8px 18px;
+  min-height: 36px;
+  border-radius: 9999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-2);
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: all 140ms var(--ease);
+}
+.episodes-head .tab:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.episodes-head .tab[aria-selected='true'] {
+  background: #E50914;
+  color: #fff;
+  border-color: #E50914;
+  box-shadow: 0 2px 12px rgba(229, 9, 20, 0.45);
+}
+.episodes-head .tab[aria-selected='true']::after {
+  display: none;
+}
 .episodes-head .btn { margin-bottom: 8px; }
 .episode-list { display: grid; gap: 10px; }
 .episode { display: grid; grid-template-columns: clamp(170px, 16vw, 240px) 1fr auto; gap: 18px; align-items: center; padding: 10px 16px 10px 10px; border: 1px solid var(--line); border-radius: var(--r-l); background: var(--surface); transition: border-color 150ms var(--ease); }
