@@ -2,6 +2,9 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Kinora Staging",
   "identifier": "io.github.millsydotdev.kinora.staging",
+  "build": {
+    "beforeBuildCommand": "npm run build:staging"
+  },
   "app": {
     "windows": [
       {

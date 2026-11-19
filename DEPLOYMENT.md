@@ -11,9 +11,11 @@ For the developer workflow and release gates, see [DEVELOPMENT-AND-RELEASE-WORKF
 Kinora utilizes GitHub Actions for continuous integration, multi-platform packaging, code signing, and release deployment.
 
 ```
-[ Developer Commit ] -> [ ci.yml: Quality Gate & Linux Smoke ] -> [ GitHub Artifacts ]
+[ Developer Branch ] -> [ ci.yml: Quality Gate ] -> [ PR Validation ]
                                |
-[ Tag: v0.6.0 ]      -> [ release.yml: 4-Platform Matrix Build ] -> [ GitHub Release Draft ]
+[ Push to staging ]  -> [ staging.yml: 4-Platform Matrix ] -> [ GitHub Pre-Release: staging-latest ]
+                               |
+[ Tag: v0.6.0 ]      -> [ release.yml: 4-Platform Matrix ] -> [ GitHub Release Draft ]
 ```
 
 ---
@@ -31,7 +33,21 @@ Kinora utilizes GitHub Actions for continuous integration, multi-platform packag
   5. Build Linux packages (`.rpm`, `.deb`, `.AppImage`) via `npm run tauri:build`.
   6. Upload build artifacts as `kinora-packages`.
 
-### Multi-Platform Release Pipeline (`.github/workflows/release.yml`)
+### Automated Staging Deployment (`.github/workflows/staging.yml`)
+- **Triggers:** Push to `staging` branch, tags matching `staging-*` or `v*-staging*`, manual `workflow_dispatch` with dry-run toggle.
+- **Platform Matrix:**
+  - `linux-x64` (Ubuntu 24.04): `.rpm`, `.deb`, `.AppImage`
+  - `windows-x64` (Windows Latest): `.exe` (NSIS), `.msi`
+  - `macos-arm64` (macOS Latest): Apple Silicon `.dmg`
+  - `macos-x64` (macOS Latest): Intel `.dmg`
+- **Execution Steps:**
+  1. Execute full quality gate (`scripts/quality-gate.sh`).
+  2. Build native staging packages using `npm run tauri:build:staging` with Minisign signing if secret is present.
+  3. Generate SHA-256 checksums per platform.
+  4. Consolidate artifacts into `staging-dist/` and generate unified `SHA256SUMS-staging.txt`.
+  5. Publish pre-release on GitHub Releases targeting the `staging-latest` tag.
+
+### Multi-Platform Production Release Pipeline (`.github/workflows/release.yml`)
 - **Triggers:** Push of tags matching `v*`, manual `workflow_dispatch` with dry-run toggle.
 - **Platform Matrix:**
   - `linux-x64` (Ubuntu 24.04): `.rpm`, `.deb`, `.AppImage`
@@ -55,8 +71,8 @@ The following secrets are configured in repository settings:
 
 | Secret Name | Purpose | Required For |
 |---|---|---|
-| `TAURI_SIGNING_PRIVATE_KEY` | Minisign private key for updater bundle signing | Release & CI builds |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Password for the Minisign private key | Release & CI builds |
+| `TAURI_SIGNING_PRIVATE_KEY` | Minisign private key for updater bundle signing | Release, Staging & CI builds |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Password for the Minisign private key | Release, Staging & CI builds |
 | `APPLE_CERTIFICATE` | Base64-encoded Developer ID Application certificate | macOS releases |
 | `APPLE_CERTIFICATE_PASSWORD` | Password for the Apple signing certificate | macOS releases |
 | `APPLE_SIGNING_IDENTITY` | 10-character Team ID or Common Name on certificate | macOS releases |
@@ -84,8 +100,11 @@ npm run tauri:build
 
 ### Staging Desktop Package Build
 ```bash
-# Uses staging configuration and separate bundle identifier
+# Uses staging configuration and separate bundle identifier (io.github.millsydotdev.kinora.staging)
 npm run tauri:build:staging
+
+# Unsigned staging build
+npm run tauri:build:staging -- --no-sign
 ```
 
 ### Unsigned Development Build
@@ -103,13 +122,17 @@ Following a deployment or installation:
 1. **Verify Integrity:**
    ```bash
    sha256sum -c SHA256SUMS.txt
+   # Or for staging:
+   sha256sum -c SHA256SUMS-staging.txt
    ```
 
 2. **Verify Identity and Environment:**
    - Launch application and navigate to Settings > About.
    - Confirm version matches `0.6.0`.
    - Confirm build channel displays `Stable` (production) or `Staging` (staging).
-   - Confirm active data location matches expected isolated path.
+   - Confirm active data location matches expected isolated path:
+     - Production: `~/.local/share/io.github.millsydotdev.kinora/`
+     - Staging: `~/.local/share/io.github.millsydotdev.kinora.staging/`
 
 3. **Verify Updater Connectivity:**
    - Click "Check for updates" in Settings > About.

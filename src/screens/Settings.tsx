@@ -6,7 +6,7 @@ import { Icon, type IconName } from '../components/Icon'
 import { useToast } from '../components/Toast'
 import { PageHeader } from '../components/PageHeader'
 import { Segmented, Switch } from '../components/ui'
-import { getAppInfo, checkForUpdates, installUpdate, inNativeShell, type AppInfo, type UpdateCheckResult, APP_VERSION, getVersionChannel, formatChannelName } from '../lib/native'
+import { getAppInfo, checkForUpdates, installUpdate, inNativeShell, type AppInfo, type UpdateCheckResult, APP_VERSION, APP_ENV, isStaging, isProduction, getVersionChannel, formatChannelName } from '../lib/native'
 import { CODEC_HELP, codecSupport } from '../lib/playback'
 import { ACCENTS, THEME_PRESETS, safeHex, type AccentName } from '../lib/theme'
 import { defaultPrefs, useStore, type Prefs } from '../state/store'
@@ -1964,24 +1964,28 @@ function BuildRow() {
     return () => { live = false }
   }, [])
 
-  if (state === 'loading') return <Row title="Kinora"><span className="muted">Reading build details…</span></Row>
-  if ('error' in state) return <Row title="Kinora" hint={state.error}><span className="pending-tag">Unavailable</span></Row>
+  const appDisplayName = isStaging() ? 'Kinora Staging' : 'Kinora'
+  const envLabel = isStaging() ? 'Staging' : isProduction() ? 'Production' : 'Development'
+
+  if (state === 'loading') return <Row title={appDisplayName}><span className="muted">Reading build details…</span></Row>
+  if ('error' in state) return <Row title={appDisplayName} hint={state.error}><span className="pending-tag">Unavailable</span></Row>
   if (!state.info) {
     const channelName = formatChannelName(getVersionChannel(APP_VERSION, 'preview'))
     return (
-      <Row title="Kinora" hint={`Running in web browser. Channel: ${channelName}.`}>
-        <span className="muted tnum">v{APP_VERSION} (Web Preview)</span>
+      <Row title={appDisplayName} hint={`Running in web browser (${envLabel}). Channel: ${channelName}.`}>
+        <span className="muted tnum">v{APP_VERSION} ({envLabel} Preview)</span>
       </Row>
     )
   }
-  const { version, profile, os, arch, tauriVersion, commitHash, dataDir } = state.info
+  const { name, version, profile, os, arch, tauriVersion, commitHash, dataDir } = state.info
+  const effectiveName = name || appDisplayName
   const channelName = formatChannelName(getVersionChannel(version, profile))
   const devBuildNotice = profile === 'debug' ? ' [Source / Development Build]' : ''
   const commitText = commitHash ? ` Commit: ${commitHash.slice(0, 7)}.` : ''
   return (
     <>
-      <Row title="Kinora" hint={`Native shell: Tauri ${tauriVersion} on ${os} (${arch}). Channel: ${channelName}.${commitText}`}>
-        <span className="muted tnum">v{version} ({profile}){devBuildNotice}</span>
+      <Row title={effectiveName} hint={`Native shell: Tauri ${tauriVersion} on ${os} (${arch}). Channel: ${channelName}.${commitText} Environment: ${APP_ENV}.`}>
+        <span className="muted tnum">v{version} ({profile}) [{envLabel}]{devBuildNotice}</span>
       </Row>
       {dataDir && (
         <Row title="Active data directory" hint="Storage location for sources, cached guides, and credentials.">
@@ -2135,7 +2139,7 @@ function About() {
             <KPlayMark size={28} idPrefix="about" />
           </div>
           <div>
-            <h3 className="about-creator-product">Kinora (KinoraTV)</h3>
+            <h3 className="about-creator-product">{isStaging() ? 'Kinora Staging (KinoraTV)' : 'Kinora (KinoraTV)'}</h3>
             <p className="about-creator-by">
               Created by{' '}
               <a

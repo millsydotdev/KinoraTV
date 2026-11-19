@@ -167,15 +167,28 @@ npm run ci
 - Pre-releases append channel tags: e.g. `0.6.0-rc.1`, `0.6.0-beta.2`.
 - Version updates are executed via `node scripts/sync-version.cjs <new-version>` to synchronize all project manifests atomically.
 
+### Developer Staging Workflow
+Developers promote features through this verified pipeline:
+1. **Feature Branch:** Create a branch from `staging` (e.g. `git checkout -b feature/playback-cache`).
+2. **Local Gate Verification:** Ensure `npm run test:gate` and `npm run tauri:build:staging -- --no-sign` succeed.
+3. **Pull Request:** Open PR targeting the `staging` branch. CI runs the automated quality gate.
+4. **Integration & Deployment:** Merge into `staging` (`git merge --ff-only feature/playback-cache && git push origin staging`).
+5. **Automated Staging Release:** `.github/workflows/staging.yml` builds packages across all 4 platforms and publishes to the `staging-latest` pre-release channel.
+6. **QA Validation:** Test the built staging packages in an isolated environment (`io.github.millsydotdev.kinora.staging`).
+7. **Production Release:** Once approved, fast-forward merge `staging` into `main`, tag the release (`git tag -a v0.6.0 -m "Release v0.6.0"`), and push to trigger `.github/workflows/release.yml`.
+
 ### Staging Verification Procedure
 1. Create staging build:
    ```bash
    npm run build:staging
    npm run tauri:build:staging
+   # Or unsigned local build:
+   npm run tauri:build:staging -- --no-sign
    ```
 2. Verify package installation in clean test container or isolated Linux user.
 3. Validate that existing production data in `~/.local/share/io.github.millsydotdev.kinora/` is untouched.
 4. Verify playback, channel tuning, and XMLTV matching against staging endpoints.
+5. Verify About screen displays `Kinora Staging`, version, build profile, commit hash, and isolated data directory.
 
 ### Production Release Procedure
 1. Confirm all quality gates pass on `main`: `npm run test:gate`.
