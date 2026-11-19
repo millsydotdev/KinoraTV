@@ -738,6 +738,7 @@ export function Movies() {
                       artworkKey={movie.artworkKey}
                       badges={getTechnicalBadges(movie)}
                       itemRef={isXt ? `movie:${routeId}` : movieRef(movie.id)}
+                      layout="poster"
                     />
                   </div>
                 )
@@ -777,6 +778,7 @@ export function Movies() {
                       art={movie.artPath || undefined}
                       badges={['LOCAL', ...(movie.resolution ? [movie.resolution] : [])]}
                       itemRef={routeId}
+                      layout="poster"
                     />
                   )
                 })}
@@ -804,6 +806,7 @@ export function Movies() {
                         badges={getTechnicalBadges(m)}
                         itemRef={`movie:${routeId}`}
                         watched={isWatched}
+                        layout="poster"
                       />
                     )
                   })
@@ -823,6 +826,7 @@ export function Movies() {
                         itemRef={ref}
                         watched={isWatched}
                         progress={progress?.dur ? progress.pos / progress.dur : undefined}
+                        layout="poster"
                       />
                     )
                   })
@@ -835,6 +839,7 @@ export function Movies() {
                       art={r.artworkUrl}
                       badges={['ARCHIVE']}
                       itemRef={`res:${r.id}`}
+                      layout="poster"
                     />
                   ))}
             </StreamingRail>
@@ -857,6 +862,7 @@ export function Movies() {
                         artworkKey={m.artworkKey}
                         badges={getTechnicalBadges(m)}
                         itemRef={`movie:${routeId}`}
+                        layout="poster"
                       />
                     )
                   })
@@ -871,6 +877,7 @@ export function Movies() {
                         art={movie.art}
                         badges={getTechnicalBadges(movie)}
                         itemRef={movieRef(movie.id)}
+                        layout="poster"
                       />
                     )
                   })
@@ -883,6 +890,7 @@ export function Movies() {
                       art={r.artworkUrl}
                       badges={['ARCHIVE']}
                       itemRef={`res:${r.id}`}
+                      layout="poster"
                     />
                   ))}
             </StreamingRail>
@@ -903,6 +911,7 @@ export function Movies() {
                       artworkKey={m.artworkKey}
                       badges={getTechnicalBadges(m)}
                       itemRef={`movie:xt:${m.sourceId}:${m.id}`}
+                      layout="poster"
                     />
                   ))
                 : hasDemo
@@ -916,6 +925,7 @@ export function Movies() {
                         art={movie.art}
                         badges={getTechnicalBadges(movie)}
                         itemRef={movieRef(movie.id)}
+                        layout="poster"
                       />
                     )
                   })
@@ -928,6 +938,7 @@ export function Movies() {
                       art={r.artworkUrl}
                       badges={['OPEN ACCESS']}
                       itemRef={`res:${r.id}`}
+                      layout="poster"
                     />
                   ))}
             </StreamingRail>
@@ -975,6 +986,7 @@ export function Movies() {
                         artworkKey={m.artworkKey}
                         badges={getTechnicalBadges(m)}
                         itemRef={`movie:xt:${m.sourceId}:${m.id}`}
+                        layout="poster"
                       />
                     ))
                   : hasDemo
@@ -988,6 +1000,7 @@ export function Movies() {
                           art={movie.art}
                           badges={getTechnicalBadges(movie)}
                           itemRef={movieRef(movie.id)}
+                          layout="poster"
                         />
                       )
                     })
@@ -1000,6 +1013,7 @@ export function Movies() {
                         art={r.artworkUrl}
                         badges={['SAVED']}
                         itemRef={`res:${r.id}`}
+                        layout="poster"
                       />
                     ))}
               </StreamingRail>

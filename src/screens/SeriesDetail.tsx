@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { seriesById } from '../data/catalog'
-import { episodeCode, episodeRef } from '../data/refs'
+import { episodeRef } from '../data/refs'
 import { Icon } from '../components/Icon'
 import { PageHeader } from '../components/PageHeader'
-import { PosterCard, Section, XtreamArt } from '../components/Tiles'
+import { EpisodeCard, PosterCard, Section, XtreamArt } from '../components/Tiles'
+import { EpisodeDetailModal } from '../components/EpisodeDetailModal'
 import { TitleActions } from '../components/TitleActions'
 import { useToast } from '../components/Toast'
 import { Art, ProgressBar, StateBlock } from '../components/ui'
 import { seriesNextUp } from '../lib/library'
-import { minutesLeft } from '../lib/time'
 import { progressOf, useStore, type XtreamTitle } from '../state/store'
 import { isTitleKidSafe } from '../lib/kidsMode'
 import type { XtreamSeriesDetails as ProviderSeriesDetails } from '../lib/native'
@@ -24,7 +24,7 @@ import { OPEN_SERIES } from '../data/openCatalogue'
 import './Detail.css'
 
 export function SeriesDetail() {
-  const { id = '' } = useParams()
+  const { id = '', epId } = useParams()
   const [params, setParams] = useSearchParams()
   const store = useStore()
   const toast = useToast()
@@ -47,12 +47,12 @@ export function SeriesDetail() {
 
   const imported = store.xtreamCatalogue.series.find((item) => `xt:${item.sourceId}:${item.id}` === id || String(item.id) === id)
 
-  if (imported) return <XtreamSeriesDetail key={`${imported.sourceId}:${imported.id}`} show={imported} />
+  if (imported) return <XtreamSeriesDetail key={`${imported.sourceId}:${imported.id}`} show={imported} initialEpisodeId={epId || params.get('episode') || null} />
 
   const cleanResId = id.replace(/^res:/, '')
   const publicRes = store.mediaLibrary.allResources.find((r) => r.id === cleanResId || r.id === id)
   if (publicRes && (publicRes.category === 'series' || publicRes.subcategory.includes('tv') || publicRes.subcategory.includes('series') || publicRes.subcategory.includes('broadcasting'))) {
-    return <PublicDiscoverySeriesDetail resource={publicRes} />
+    return <PublicDiscoverySeriesDetail resource={publicRes} initialEpisodeId={epId || params.get('episode') || null} />
   }
 
   const isSampleProvider = typeof window !== 'undefined' && window.sessionStorage?.getItem('kinora.sample_provider_view') === '1'
@@ -111,6 +111,7 @@ export function SeriesDetail() {
   const up = seriesNextUp(store.library, s)
   const seasonNo = Math.min(s.seasons.length, Math.max(1, Number(params.get('season')) || up.episode.season))
   const episodes = s.seasons[seasonNo - 1] ?? []
+  const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | null>(params.get('episode') || null)
   const seasonRefs = episodes.map((e) => episodeRef(s.id, e.id))
   const seasonWatched = seasonRefs.every((r) => store.library.watched.includes(r))
   const totalEps = s.seasons.flat().length
@@ -203,49 +204,66 @@ export function SeriesDetail() {
             const watched = store.library.watched.includes(ref)
             const prog = progressOf(store.library, ref)
             const isNext = up.episode.id === e.id && up.state !== 'rewatch'
-            const p = store.library.progress[ref]
             return (
-              <li key={e.id} className={`episode${watched ? ' is-watched' : ''}${isNext ? ' is-next' : ''}`}>
-                <Link to={`/watch/${encodeURIComponent(ref)}`} className="episode-still" aria-label={`Play ${episodeCode(e)}, ${e.title}`}>
-                  <Art src={e.still} focus={e.stillFocus}>
-                    <span className="episode-play"><Icon name="play" size={18} /></span>
-                    {prog !== null && <ProgressBar value={prog} label={`${Math.round(prog * 100)}% watched`} />}
-                  </Art>
-                </Link>
-                <div className="episode-text">
-                  <p className="episode-meta">
-                    <span className="tnum">{e.number}</span>
-                    <span>{e.runtime} min</span>
-                    {isNext && <span className="episode-next">{up.state === 'resume' ? `Resume · ${p ? minutesLeft(p.pos, p.dur) : e.runtime} min left` : 'Up next'}</span>}
-                  </p>
-                  <h3>{e.title}</h3>
-                  <p className="muted">{e.synopsis}</p>
-                </div>
-                <button
-                  type="button"
-                  className="episode-check"
-                  role="checkbox"
-                  aria-checked={watched}
-                  aria-label={`${episodeCode(e)} watched`}
-                  onClick={() => store.setWatched([ref], !watched)}
-                >
-                  <Icon name="check" size={14} />
-                </button>
+              <li key={e.id} className="episode-item">
+                <EpisodeCard
+                  to={`/watch/${encodeURIComponent(ref)}`}
+                  seriesId={s.id}
+                  seriesTitle={s.title}
+                  episodeId={e.id}
+                  episodeTitle={e.title}
+                  seasonNumber={e.season}
+                  episodeNumber={e.number}
+                  stillUrl={e.still}
+                  seriesBackdropUrl={s.backdropUrl || s.art}
+                  runtimeMin={e.runtime}
+                  synopsis={e.synopsis}
+                  progress={prog}
+                  watched={watched}
+                  isNext={isNext}
+                  itemRef={ref}
+                  onToggleWatched={() => store.setWatched([ref], !watched)}
+                  onOpenDetails={() => setSelectedEpisodeId(e.id)}
+                />
               </li>
             )
           })}
         </ol>
       </section>
+
+      <EpisodeDetailModal
+        open={Boolean(selectedEpisodeId)}
+        onClose={() => setSelectedEpisodeId(null)}
+        seriesId={s.id}
+        seriesTitle={s.title}
+        seriesBackdropUrl={s.backdropUrl || s.art}
+        seriesCertificate={s.certificate}
+        seriesGenres={s.genres}
+        seasonNumber={seasonNo}
+        totalSeasons={s.seasons.length}
+        episodesInSeason={episodes.map((e) => ({
+          id: e.id,
+          number: e.number,
+          title: e.title,
+          synopsis: e.synopsis,
+          runtime: e.runtime,
+          still: e.still,
+        }))}
+        currentEpisodeId={selectedEpisodeId || episodes[0]?.id || ''}
+        onSelectEpisode={(id) => setSelectedEpisodeId(id)}
+        onSelectSeason={(n) => pickSeason(n)}
+      />
     </article>
   )
 }
 
-function XtreamSeriesDetail({ show }: { show: XtreamTitle }) {
+function XtreamSeriesDetail({ show, initialEpisodeId }: { show: XtreamTitle; initialEpisodeId?: string | null }) {
   const store = useStore()
   const toast = useToast()
   const [params, setParams] = useSearchParams()
   const tabs = useRef<(HTMLButtonElement | null)[]>([])
   const [details, setDetails] = useState<ProviderSeriesDetails | null>(store.xtreamSeriesDetails[`${show.sourceId}:${show.id}`] ?? null)
+  const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | null>(initialEpisodeId || params.get('episode') || null)
   const [error, setError] = useState('')
   const [retry, setRetry] = useState(0)
 
@@ -471,36 +489,24 @@ function XtreamSeriesDetail({ show }: { show: XtreamTitle }) {
               const prog = progressOf(store.library, epRef)
               const runtimeMin = episode.runtimeSeconds != null ? Math.round(episode.runtimeSeconds / 60) : null
               return (
-                <li key={episode.id} className={`episode${isWatched ? ' is-watched' : ''}`}>
-                  <Link
+                <li key={episode.id} className="episode-item">
+                  <EpisodeCard
                     to={`/watch/${encodeURIComponent(epRef)}`}
-                    className="episode-still"
-                    aria-label={`Play S${seasonNo} E${episode.number}, ${episode.title}`}
-                  >
-                    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-                      <XtreamArt artworkKey={episode.artworkKey} alt="" fallbackTitle={`Episode ${episode.number}`} />
-                      <span className="episode-play"><Icon name="play" size={18} /></span>
-                      {prog !== null && <ProgressBar value={prog} label={`${Math.round(prog * 100)}% watched`} />}
-                    </div>
-                  </Link>
-                  <div className="episode-text">
-                    <p className="episode-meta">
-                      <span className="tnum">Episode {episode.number}</span>
-                      {runtimeMin !== null && <span>{runtimeMin} min</span>}
-                    </p>
-                    <h3>{episode.title}</h3>
-                    {episode.plot && <p className="muted">{episode.plot}</p>}
-                  </div>
-                  <button
-                    type="button"
-                    className="episode-check"
-                    role="checkbox"
-                    aria-checked={isWatched}
-                    aria-label={`Episode ${episode.number} watched`}
-                    onClick={() => store.setWatched([epRef], !isWatched)}
-                  >
-                    <Icon name="check" size={14} />
-                  </button>
+                    seriesId={`xt:${show.sourceId}:${show.id}`}
+                    seriesTitle={show.name}
+                    episodeId={String(episode.id)}
+                    episodeTitle={episode.title}
+                    seasonNumber={seasonNo}
+                    episodeNumber={episode.number}
+                    artworkKey={episode.artworkKey || show.artworkKey || null}
+                    runtimeMin={runtimeMin}
+                    synopsis={episode.plot || undefined}
+                    progress={prog}
+                    watched={isWatched}
+                    itemRef={epRef}
+                    onToggleWatched={() => store.setWatched([epRef], !isWatched)}
+                    onOpenDetails={() => setSelectedEpisodeId(String(episode.id))}
+                  />
                 </li>
               )
             })}
@@ -513,17 +519,49 @@ function XtreamSeriesDetail({ show }: { show: XtreamTitle }) {
           </StateBlock>
         )}
       </section>
+
+      <EpisodeDetailModal
+        open={Boolean(selectedEpisodeId)}
+        onClose={() => setSelectedEpisodeId(null)}
+        seriesId={`xt:${show.sourceId}:${show.id}`}
+        seriesTitle={show.name}
+        seasonNumber={seasonNo}
+        totalSeasons={seasons.length}
+        episodesInSeason={episodes.map((e) => ({
+          id: String(e.id),
+          number: e.number,
+          title: e.title,
+          synopsis: e.plot || undefined,
+          runtime: e.runtimeSeconds != null ? Math.round(e.runtimeSeconds / 60) : undefined,
+          artworkKey: e.artworkKey || show.artworkKey || null,
+        }))}
+        currentEpisodeId={selectedEpisodeId || String(episodes[0]?.id || '')}
+        onSelectEpisode={(id) => setSelectedEpisodeId(id)}
+        onSelectSeason={(n) => pickSeason(n)}
+      />
     </article>
   )
 }
 
-function PublicDiscoverySeriesDetail({ resource }: { resource: MediaResource }) {
+function PublicDiscoverySeriesDetail({ resource, initialEpisodeId }: { resource: MediaResource; initialEpisodeId?: string | null }) {
   const store = useStore()
   const toast = useToast()
   const inLibrary = store.mediaLibrary.isInPersonalLibrary(resource.id)
   const isFav = store.mediaLibrary.isResourceFavourite(resource.id)
   const { provenance, capability } = classifyMediaResource(resource, inLibrary)
   const statusMeta = VERIFICATION_STATUS_META[resource.verificationStatus] ?? VERIFICATION_STATUS_META.discovered
+
+  const matchingOpenSeries = useMemo(() => {
+    return OPEN_SERIES.find(
+      (s) =>
+        s.id === resource.id ||
+        resource.id.includes(s.id) ||
+        s.id.includes(resource.id.replace(/^res-tv-/, '')) ||
+        s.title.toLowerCase() === resource.name.toLowerCase(),
+    )
+  }, [resource.id, resource.name])
+  const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | null>(initialEpisodeId || null)
+  const openEpisodes = matchingOpenSeries?.seasons[0] ?? []
 
   const similarSeries = useMemo(() => {
     return store.mediaLibrary.allResources
@@ -655,6 +693,41 @@ function PublicDiscoverySeriesDetail({ resource }: { resource: MediaResource }) 
         </section>
       </div>
 
+      {openEpisodes.length > 0 && matchingOpenSeries && (
+        <section className="episodes" aria-label="Episodes" style={{ padding: '0 24px 32px' }}>
+          <h2 className="title-m" style={{ marginBottom: 16 }}>Available Episodes ({openEpisodes.length})</h2>
+          <ol className="episode-list">
+            {openEpisodes.map((e) => {
+              const ref = episodeRef(matchingOpenSeries.id, e.id)
+              const watched = store.library.watched.includes(ref)
+              const prog = progressOf(store.library, ref)
+              return (
+                <li key={e.id} className="episode-item">
+                  <EpisodeCard
+                    to={`/watch/${encodeURIComponent(ref)}`}
+                    seriesId={matchingOpenSeries.id}
+                    seriesTitle={matchingOpenSeries.title}
+                    episodeId={e.id}
+                    episodeTitle={e.title}
+                    seasonNumber={e.season}
+                    episodeNumber={e.number}
+                    stillUrl={e.still}
+                    seriesBackdropUrl={matchingOpenSeries.backdropUrl || matchingOpenSeries.art}
+                    runtimeMin={e.runtime}
+                    synopsis={e.synopsis}
+                    progress={prog}
+                    watched={watched}
+                    itemRef={ref}
+                    onToggleWatched={() => store.setWatched([ref], !watched)}
+                    onOpenDetails={() => setSelectedEpisodeId(e.id)}
+                  />
+                </li>
+              )
+            })}
+          </ol>
+        </section>
+      )}
+
       {similarSeries.length > 0 && (
         <section className="detail-similar" style={{ padding: '0 24px 32px' }}>
           <Section icon="series" title="Related Television Archives & Open Series" sub={`${similarSeries.length} titles`}>
@@ -669,6 +742,30 @@ function PublicDiscoverySeriesDetail({ resource }: { resource: MediaResource }) 
             ))}
           </Section>
         </section>
+      )}
+
+      {matchingOpenSeries && (
+        <EpisodeDetailModal
+          open={Boolean(selectedEpisodeId)}
+          onClose={() => setSelectedEpisodeId(null)}
+          seriesId={matchingOpenSeries.id}
+          seriesTitle={matchingOpenSeries.title}
+          seriesBackdropUrl={matchingOpenSeries.backdropUrl || matchingOpenSeries.art}
+          seriesCertificate={matchingOpenSeries.certificate}
+          seriesGenres={matchingOpenSeries.genres}
+          seasonNumber={1}
+          totalSeasons={matchingOpenSeries.seasons.length}
+          episodesInSeason={openEpisodes.map((e) => ({
+            id: e.id,
+            number: e.number,
+            title: e.title,
+            synopsis: e.synopsis,
+            runtime: e.runtime,
+            still: e.still,
+          }))}
+          currentEpisodeId={selectedEpisodeId || openEpisodes[0]?.id || ''}
+          onSelectEpisode={(id) => setSelectedEpisodeId(id)}
+        />
       )}
     </article>
   )

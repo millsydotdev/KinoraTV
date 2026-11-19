@@ -848,7 +848,7 @@ export function Home() {
           title="Recommended for You"
           sub="Personalised based on your ratings and library"
           viewAll="/movies"
-          layout="tile"
+          layout="poster"
         >
           {items.map((r) =>
             demoTitles ? (
@@ -859,7 +859,7 @@ export function Home() {
                 art={r.art}
                 focus={r.focus}
                 badges={'badges' in r ? (r.badges as TechnicalFormat[]) : undefined}
-                hideCaption
+                line={'year' in r && r.year ? `${r.year}` : undefined}
               />
             ) : (
               <XtreamPosterCard

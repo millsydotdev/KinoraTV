@@ -503,6 +503,7 @@ export function SeriesBrowse() {
                       art={s.artPath || undefined}
                       badges={['LOCAL']}
                       itemRef={routeId}
+                      layout="poster"
                     />
                   )
                 })}
@@ -528,6 +529,7 @@ export function SeriesBrowse() {
                         artworkKey={s.artworkKey}
                         badges={getTechnicalBadges(s)}
                         itemRef={`series:${routeId}`}
+                        layout="poster"
                       />
                     )
                   })
@@ -543,6 +545,7 @@ export function SeriesBrowse() {
                         art={show.art}
                         badges={getTechnicalBadges(show)}
                         itemRef={ref}
+                        layout="poster"
                       />
                     )
                   })
@@ -555,6 +558,7 @@ export function SeriesBrowse() {
                       art={r.artworkUrl}
                       badges={['ARCHIVE', 'EPISODIC']}
                       itemRef={`res:${r.id}`}
+                      layout="poster"
                     />
                   ))}
             </StreamingRail>
@@ -597,6 +601,7 @@ export function SeriesBrowse() {
                       artworkKey={s.artworkKey}
                       badges={getTechnicalBadges(s)}
                       itemRef={`series:xt:${s.sourceId}:${s.id}`}
+                      layout="poster"
                     />
                   ))
                 : hasDemo
@@ -610,6 +615,7 @@ export function SeriesBrowse() {
                         art={show.art}
                         badges={getTechnicalBadges(show)}
                         itemRef={seriesRef(show.id)}
+                        layout="poster"
                       />
                     )
                   })
@@ -622,6 +628,7 @@ export function SeriesBrowse() {
                       art={r.artworkUrl}
                       badges={['ARCHIVE']}
                       itemRef={`res:${r.id}`}
+                      layout="poster"
                     />
                   ))}
             </StreamingRail>
@@ -642,6 +649,7 @@ export function SeriesBrowse() {
                     art={show.art}
                     badges={getTechnicalBadges(show)}
                     itemRef={seriesRef(show.id)}
+                    layout="poster"
                   />
                 ))}
               </StreamingRail>
@@ -686,6 +694,7 @@ export function SeriesBrowse() {
                         artworkKey={s.artworkKey}
                         badges={getTechnicalBadges(s)}
                         itemRef={`series:xt:${s.sourceId}:${s.id}`}
+                        layout="poster"
                       />
                     ))
                   : hasDemo
@@ -699,6 +708,7 @@ export function SeriesBrowse() {
                           art={show.art}
                           badges={getTechnicalBadges(show)}
                           itemRef={seriesRef(show.id)}
+                          layout="poster"
                         />
                       )
                     })
@@ -711,6 +721,7 @@ export function SeriesBrowse() {
                         art={r.artworkUrl}
                         badges={['SAVED']}
                         itemRef={`res:${r.id}`}
+                        layout="poster"
                       />
                     ))}
               </StreamingRail>

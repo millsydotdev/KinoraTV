@@ -435,6 +435,7 @@ export function StreamingCard({
   itemRef,
   watched = false,
   progress = null,
+  layout = 'wide',
 }: {
   to: string
   title: string
@@ -446,15 +447,17 @@ export function StreamingCard({
   itemRef?: string
   watched?: boolean
   progress?: number | null
+  layout?: 'wide' | 'poster'
 }) {
   const { onContextMenu, menu } = useCardContextMenu(to, title, itemRef)
   const [artFailed, setArtFailed] = useState(false)
+  const isPoster = layout === 'poster'
 
   return (
     <>
       <Link
         to={to}
-        className="streaming-card-wide"
+        className={isPoster ? 'streaming-card-poster' : 'streaming-card-wide'}
         onContextMenu={onContextMenu}
         aria-label={`${title}${sub ? `, ${sub}` : ''}`}
       >

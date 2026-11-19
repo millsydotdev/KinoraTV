@@ -115,17 +115,20 @@
   scroll-snap-align: start;
 }
 
-/* Card sizing inside tile / square track (master mockup parity: 220px by 185px) */
+.content-rail-track.is-poster .card-poster .card-media,
+.content-rail-track.is-poster .card-media {
+  aspect-ratio: 2 / 3;
+}
+
+/* Card sizing inside tile / square track */
 .content-rail-track.is-tile > .card,
-.content-rail-track.is-tile .card-poster,
 .content-rail-track.is-tile .card-tile {
   flex: 0 0 clamp(180px, calc((100% - 5 * var(--gap, 16px)) / 6), 240px);
   width: clamp(180px, calc((100% - 5 * var(--gap, 16px)) / 6), 240px);
   scroll-snap-align: start;
 }
 
-.content-rail-track.is-tile .card-poster .card-media,
-.content-rail-track.is-tile .card-media {
+.content-rail-track.is-tile .card-tile .card-media {
   aspect-ratio: 220 / 185;
 }
 

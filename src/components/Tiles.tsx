@@ -277,6 +277,180 @@ export function XtreamPosterCard({ to, title, artworkKey, line, year, flag }: { 
   )
 }
 
+export interface EpisodeCardProps {
+  to: string
+  seriesId: string
+  seriesTitle: string
+  episodeId: string
+  episodeTitle: string
+  seasonNumber: number
+  episodeNumber: number
+  stillUrl?: string
+  artworkKey?: string | null
+  seriesBackdropUrl?: string
+  runtimeMin?: number | null
+  airDate?: string | null
+  synopsis?: string
+  progress?: number | null
+  watched?: boolean
+  isNext?: boolean
+  itemRef?: string
+  onToggleWatched?: () => void
+  onOpenDetails?: () => void
+}
+
+/**
+ * Dedicated 16:9 landscape episode card with genuine still, season/episode badge,
+ * progress bar, play affordance, details trigger, and deliberate series fallback.
+ */
+export function EpisodeCard({
+  to,
+  seriesId,
+  seriesTitle,
+  episodeId,
+  episodeTitle,
+  seasonNumber,
+  episodeNumber,
+  stillUrl,
+  artworkKey,
+  seriesBackdropUrl,
+  runtimeMin,
+  airDate,
+  synopsis,
+  progress,
+  watched = false,
+  isNext = false,
+  itemRef,
+  onToggleWatched,
+  onOpenDetails,
+}: EpisodeCardProps) {
+  const ref = itemRef || `episode:${seriesId}/${episodeId}`
+  const { onContextMenu, menu } = useCardContextMenu(to, episodeTitle, ref)
+
+  let resolvedStill = stillUrl
+  if (!resolvedStill && !artworkKey) {
+    const engineStill = artworkEngine.getArtwork(`episode:still:${seriesId}:${seasonNumber}:${episodeNumber}`)?.sourceUrl
+      || artworkEngine.findArtwork(`${seriesTitle} S${seasonNumber}E${episodeNumber}`, 'episode-still')?.sourceUrl
+    if (engineStill) resolvedStill = engineStill
+  }
+
+  const isFallback = !resolvedStill && !artworkKey && Boolean(seriesBackdropUrl)
+  const displayStill = resolvedStill || seriesBackdropUrl || ''
+  const epCode = `S${String(seasonNumber).padStart(2, '0')} E${String(episodeNumber).padStart(2, '0')}`
+
+  return (
+    <>
+      <div
+        className={`card episode-card${watched ? ' is-watched' : ''}${isNext ? ' is-next' : ''}`}
+        onContextMenu={onContextMenu}
+      >
+        <div className="episode-still-container">
+          <Link
+            to={to}
+            className="episode-still"
+            aria-label={`Play ${epCode}, ${episodeTitle}`}
+          >
+            {artworkKey ? (
+              <XtreamArt
+                artworkKey={artworkKey}
+                alt={episodeTitle}
+                className="card-media episode-card-art"
+                fallbackTitle={`Episode ${episodeNumber}`}
+              />
+            ) : (
+              <Art
+                src={displayStill}
+                alt={episodeTitle}
+                className="card-media episode-card-art"
+              />
+            )}
+
+            <span className="episode-still-badge">{epCode}</span>
+
+            {isFallback && (
+              <span className="episode-fallback-tag" title="Deliberate series artwork fallback">
+                Still unavailable
+              </span>
+            )}
+
+            <span className="episode-still-play" aria-hidden="true">
+              <span className="episode-play-circle">
+                <Icon name="play" size={18} />
+              </span>
+            </span>
+
+            {progress != null && (
+              <ProgressBar value={progress} label={`${Math.round(progress * 100)}% watched`} />
+            )}
+          </Link>
+        </div>
+
+        <div className="episode-card-content">
+          <div className="episode-card-meta">
+            <span className="episode-code-label">{epCode}</span>
+            {airDate && <span className="episode-meta-text">{airDate}</span>}
+            {runtimeMin != null && <span className="episode-meta-text">{runtimeMin} min</span>}
+            {isNext && <span className="episode-next-badge">Up next</span>}
+          </div>
+
+          <h3 className="episode-card-heading">
+            {onOpenDetails ? (
+              <button
+                type="button"
+                className="episode-title-button"
+                onClick={onOpenDetails}
+                title={`Open details for ${episodeTitle}`}
+              >
+                {episodeTitle}
+              </button>
+            ) : (
+              <Link to={to} className="episode-title-link">
+                {episodeTitle}
+              </Link>
+            )}
+          </h3>
+
+          {synopsis && <p className="episode-card-plot">{synopsis}</p>}
+
+          <div className="episode-card-btn-row">
+            <Link to={to} className="btn btn-primary btn-small episode-btn-play" aria-label={`Play ${episodeTitle}`}>
+              <Icon name="play" size={13} />
+              <span>{progress != null ? 'Resume' : 'Play'}</span>
+            </Link>
+
+            {onOpenDetails && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-small episode-btn-details"
+                onClick={onOpenDetails}
+                aria-label={`View details for ${episodeTitle}`}
+              >
+                <Icon name="info" size={13} />
+                <span>Details</span>
+              </button>
+            )}
+
+            {onToggleWatched && (
+              <button
+                type="button"
+                className={`episode-card-check ${watched ? 'is-checked' : ''}`}
+                role="checkbox"
+                aria-checked={watched}
+                aria-label={`${epCode} watched`}
+                title={watched ? 'Mark as unwatched' : 'Mark as watched'}
+                onClick={onToggleWatched}
+              >
+                <Icon name="check" size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+      {menu}
+    </>
+  )
+}
+
 /**
  * Landscape card. Text sits over a soft scrim by default; `captionBelow` moves it under the image
  * (series rows); `playable` shows a play affordance on hover/focus (continue watching).

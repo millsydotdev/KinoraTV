@@ -322,7 +322,9 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .programme-art.is-portrait > .art { background: transparent; }
 .programme-art.is-portrait > .art img { object-fit: contain; }
 .xtream-art { position: relative; overflow: hidden; background: var(--surface-2); }
-.xtream-art.card-media { aspect-ratio: 2 / 3; }
+.card-poster .xtream-art.card-media { aspect-ratio: 2 / 3; }
+.card-wide .xtream-art.card-media,
+.episode-card .xtream-art.card-media { aspect-ratio: 16 / 9; }
 .xtream-art > .art { position: absolute; inset: 0; width: 100%; height: 100%; }
 .xtream-art-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-3); background: var(--surface-2); }
 .art img { width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 350ms var(--ease), transform 500ms var(--ease); }
@@ -495,7 +497,12 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   animation: tv-border-glow 2.4s ease-in-out infinite;
 }
 .card-media { aspect-ratio: 16 / 9; }
-.card-poster .card-media { aspect-ratio: 2 / 3; }
+.card-poster .card-media,
+.card-poster .xtream-art.card-media { aspect-ratio: 2 / 3; }
+.card-wide .card-media,
+.card-wide .xtream-art.card-media,
+.episode-card .card-media,
+.episode-card .xtream-art.card-media { aspect-ratio: 16 / 9; }
 /* Text over artwork is always light on a dark scrim, whatever the theme. */
 .card-media { --text: #f3f5f8; --text-2: #cfd4dc; --text-3: #aeb5c0; color: var(--text); }
 .card-shade::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to top, rgb(var(--scrim) / 0.88) 0%, rgb(var(--scrim) / 0.32) 42%, rgb(var(--scrim) / 0) 68%); }
