@@ -1,9 +1,18 @@
 import { useState, useEffect, useRef, useLayoutEffect, type ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useStore } from '../state/store'
+import { useLocalMedia } from '../state/localMedia'
 import { getAppInfo, APP_VERSION } from '../lib/native'
 import { Icon, type IconName } from './Icon'
 import './Sidebar.css'
+
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
+  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  const val = bytes / Math.pow(1024, i)
+  return `${val >= 10 || i === 0 ? val.toFixed(1) : val.toFixed(2)} ${units[i]}`
+}
 
 interface NavItem {
   to: string
@@ -127,6 +136,16 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
   const [exploreMoreOpen, setExploreMoreOpen] = useState(isExploreMoreActive)
   const [appVersion, setAppVersion] = useState<string>(APP_VERSION)
   const exploreNavRef = useRef<HTMLElement>(null)
+  const { storageSummary } = useLocalMedia()
+
+  const freeText = storageSummary ? formatBytes(storageSummary.availableDiskBytes) : '4.2 TB'
+  const totalText = storageSummary ? formatBytes(storageSummary.totalDiskBytes) : '8 TB'
+  const usedText = storageSummary ? formatBytes(storageSummary.usedDiskBytes) : '3.8 TB'
+  const usedPercent = storageSummary ? Math.min(100, Math.max(0, storageSummary.percentUsed)) : 47.5
+  const indexedText = storageSummary && storageSummary.mediaIndexedBytes > 0 ? formatBytes(storageSummary.mediaIndexedBytes) : null
+  const storageTooltip = storageSummary
+    ? `${storageSummary.volumes.length} storage volume(s) connected: ${usedText} used, ${freeText} free (${usedPercent.toFixed(1)}%). ${indexedText ? `${indexedText} indexed by Kinora across ${storageSummary.mediaItemCount} titles.` : 'No local media files indexed yet.'}`
+    : 'Personal storage and media library space'
 
   useEffect(() => {
     void getAppInfo().then((info) => {
@@ -341,18 +360,18 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
 
         {/* BOTTOM STORAGE CARD & STATUS */}
         <div className="sidebar-bottom">
-          <div className="sidebar-storage-card" title="Personal storage and media library space">
+          <div className="sidebar-storage-card" title={storageTooltip}>
             <div className="storage-card-row">
               <span className="storage-card-icon">
                 <Icon name="hardDrive" size={18} />
               </span>
               <div className="storage-card-meta">
                 <strong className="storage-card-title">Library</strong>
-                <span className="storage-card-sub">4.2 TB free of 8 TB</span>
+                <span className="storage-card-sub">{freeText} free of {totalText}</span>
               </div>
             </div>
-            <div className="storage-progress-bar" aria-label="Storage used: 3.8 of 8 TB">
-              <div className="storage-progress-fill" style={{ width: '47.5%' }} />
+            <div className="storage-progress-bar" aria-label={`Storage used: ${usedText} of ${totalText}`}>
+              <div className="storage-progress-fill" style={{ width: `${usedPercent.toFixed(1)}%` }} />
             </div>
           </div>
 

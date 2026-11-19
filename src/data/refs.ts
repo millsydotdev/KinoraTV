@@ -15,6 +15,8 @@ export const seriesRef = (id: string) => `series:${id}`
 export const channelRef = (id: string) => `channel:${id}`
 export const episodeRef = (seriesId: string, episodeId: string) => `episode:${seriesId}/${episodeId}`
 export const recordingRef = (id: string) => `recording:${id}`
+export const localMovieRef = (id: string) => `local-movie:${id}`
+export const localEpisodeRef = (id: string) => `local-episode:${id}`
 export const catchupRef = (sourceId: string, streamId: string, startTimestamp: number, durationMins: number) =>
   `catchup:xt:${sourceId}:${streamId}:${startTimestamp}:${durationMins}`
 
@@ -37,8 +39,61 @@ export function resolve(
   const kind = colonIndex >= 0 ? ref.slice(0, colonIndex) : ref
   const rest = colonIndex >= 0 ? ref.slice(colonIndex + 1) : ''
   const isXtream = rest.startsWith('xt:')
-  if (!titles && kind !== 'channel' && kind !== 'recording' && kind !== 'catchup' && !isXtream) return undefined // fictional titles are hidden next to real playlists
+  if (!titles && kind !== 'channel' && kind !== 'recording' && kind !== 'catchup' && kind !== 'local-movie' && kind !== 'local-episode' && !isXtream) return undefined // fictional titles are hidden next to real playlists
   const play = `/watch/${encodeURIComponent(ref)}`
+  if (kind === 'local-movie') {
+    return {
+      kind: 'movie',
+      ref,
+      title: 'Local Film',
+      meta: 'Local Media Library',
+      art: '',
+      focus: 50,
+      href: `/movies/${encodeURIComponent(ref)}`,
+      play,
+      streamUrl: `kstream://localhost/local/${rest}/playlist.m3u8`,
+      item: {
+        kind: 'movie',
+        id: rest,
+        title: 'Local Film',
+        year: 2026,
+        runtime: 120,
+        genres: ['Local Media'],
+        certificate: 'PG',
+        tagline: 'Personal Media Library',
+        synopsis: 'Local media file streamed directly from personal storage.',
+        art: '',
+        focus: 50,
+        added: new Date().toISOString(),
+        audio: ['Original'],
+        subtitles: [],
+      },
+    }
+  }
+  if (kind === 'local-episode') {
+    return {
+      kind: 'episode',
+      ref,
+      title: 'Local Episode',
+      meta: 'Local Series',
+      art: '',
+      focus: 50,
+      href: `/series/${encodeURIComponent(ref)}`,
+      play,
+      streamUrl: `kstream://localhost/local/${rest}/playlist.m3u8`,
+      item: {
+        seriesId: 'local',
+        season: 1,
+        id: rest,
+        number: 1,
+        title: 'Local Episode',
+        synopsis: 'Local series episode streamed directly from personal storage.',
+        runtime: 45,
+        still: '',
+        stillFocus: 50,
+      },
+    }
+  }
   if (kind === 'recording') {
     return {
       kind,

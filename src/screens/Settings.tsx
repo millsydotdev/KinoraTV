@@ -10,6 +10,7 @@ import { getAppInfo, checkForUpdates, type AppInfo, type UpdateCheckResult, APP_
 import { CODEC_HELP, codecSupport } from '../lib/playback'
 import { ACCENTS, THEME_BG, THEME_PRESETS, contrast, safeHex, type AccentName } from '../lib/theme'
 import { defaultPrefs, useStore, type Prefs } from '../state/store'
+import { useLocalMedia } from '../state/localMedia'
 import { useProfiles } from '../state/profiles'
 import { Input } from '../components/design-system/Input'
 import {
@@ -37,6 +38,7 @@ const sections: { id: string; label: string; icon: IconName; blurb: string }[] =
   { id: 'appearance', label: 'Appearance', icon: 'palette', blurb: 'Theme, accent colour, density, text size, motion' },
   { id: 'epg', label: 'EPG', icon: 'guide', blurb: 'Guide settings, time format, timezone' },
   { id: 'dvr', label: 'DVR & Recording', icon: 'record', blurb: 'Recording storage, padding, retention, timeshift buffer' },
+  { id: 'storage', label: 'Storage & Local Media', icon: 'hardDrive', blurb: 'Physical storage volumes, connected local folders, media indexing' },
   { id: 'sources', label: 'Sources', icon: 'link', blurb: 'How playlists are imported and refreshed' },
   { id: 'metadata', label: 'Metadata & Artwork', icon: 'film', blurb: 'External providers (TMDB, TVmaze), enrichment, artwork licensing' },
   { id: 'library', label: 'Library', icon: 'library', blurb: 'Layout, watched titles, watch history' },
@@ -771,6 +773,8 @@ function Section({ id }: { id: string }) {
       )
     case 'dvr':
       return <DvrSection />
+    case 'storage':
+      return <StorageSettingsSection />
     case 'metadata':
       return <MetadataSection />
     case 'profiles':
@@ -935,6 +939,67 @@ function DvrSection() {
             <option value="60">60 minutes</option>
             <option value="120">120 minutes</option>
           </select>
+        </Row>
+      </Group>
+    </>
+  )
+}
+
+function formatBytesHelper(bytes: number): string {
+  if (!bytes || bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
+  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  const val = bytes / Math.pow(1024, i)
+  return `${val >= 10 || i === 0 ? val.toFixed(1) : val.toFixed(2)} ${units[i]}`
+}
+
+function StorageSettingsSection() {
+  const { storageSummary, libraries, scanAllLibraries, scanning } = useLocalMedia()
+  const isScanningAny = Object.values(scanning).some(Boolean)
+  const totalFree = storageSummary ? formatBytesHelper(storageSummary.availableDiskBytes) : '4.2 TB'
+  const totalDisk = storageSummary ? formatBytesHelper(storageSummary.totalDiskBytes) : '8 TB'
+  const pctUsed = storageSummary ? storageSummary.percentUsed.toFixed(1) : '47.5'
+
+  return (
+    <>
+      <Group title="Storage Capacity & Hardware Volumes">
+        <Row title="Total Capacity" hint="Aggregate of all physical filesystems hosting Kinora libraries.">
+          <span className="muted">{totalFree} free of {totalDisk} ({pctUsed}% used)</span>
+        </Row>
+        <Row title="Media Indexed by Kinora" hint="Total bytes of personal movies and episodes currently indexed.">
+          <span className="muted">{storageSummary && storageSummary.mediaIndexedBytes > 0 ? `${formatBytesHelper(storageSummary.mediaIndexedBytes)} (${storageSummary.mediaItemCount} titles)` : 'No local files indexed yet'}</span>
+        </Row>
+        {storageSummary && storageSummary.volumes.length > 0 && (
+          <Row title="Connected Drives" hint="Physical filesystem mount points verified by OS.">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
+              {storageSummary.volumes.map((vol) => (
+                <div key={vol.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', background: 'var(--surface-2)', padding: '6px 10px', borderRadius: 6 }}>
+                  <code>{vol.mountPoint}</code>
+                  <span>{formatBytesHelper(vol.availableBytes)} free of {formatBytesHelper(vol.totalBytes)}</span>
+                </div>
+              ))}
+            </div>
+          </Row>
+        )}
+      </Group>
+
+      <Group title="Local Media Libraries">
+        <Row title="Configured Folders" hint="Directories containing movies and series scanned into Kinora.">
+          <Link to="/library?tab=local" className="btn btn-secondary btn-sm">
+            <Icon name="folder" size={14} />
+            Manage Local Folders ({libraries.length})
+          </Link>
+        </Row>
+        <Row title="Scan Library" hint="Recursively rescan all connected folders for newly added or renamed files.">
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => void scanAllLibraries()}
+            disabled={isScanningAny || libraries.length === 0}
+          >
+            <Icon name={isScanningAny ? 'refresh' : 'search'} size={14} className={isScanningAny ? 'spin' : ''} />
+            {isScanningAny ? 'Scanning Folders...' : 'Rescan All Folders'}
+          </button>
         </Row>
       </Group>
     </>

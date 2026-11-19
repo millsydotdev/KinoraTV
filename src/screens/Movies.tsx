@@ -22,6 +22,7 @@ import {
 import { filterKidSafeResources, filterKidSafeTitles, filterKidSafeXtreamTitles } from '../lib/kidsMode'
 import { useProfiles } from '../state/profiles'
 import { useStore } from '../state/store'
+import { useLocalMedia } from '../state/localMedia'
 import './Browse.css'
 import './MediaStreaming.css'
 
@@ -94,6 +95,7 @@ type SortKey = keyof typeof sorts
 
 export function Movies() {
   const store = useStore()
+  const navigate = useNavigate()
   const { isKidsMode } = useProfiles()
   const { prefs, library } = store
   const [params, setParams] = useSearchParams()
@@ -127,6 +129,7 @@ export function Movies() {
   }, [isKidsMode])
 
   const isSampleProvider = typeof window !== 'undefined' && window.sessionStorage?.getItem('kinora.sample_provider_view') === '1'
+  const { catalogue: localCatalogue } = useLocalMedia()
   const hasXtream = store.xtreamSources.length > 0 && safeXtreamMovies.length > 0
   const hasDemo = (store.demoTitles || isSampleProvider) && safeMovies.length > 0
 
@@ -481,6 +484,31 @@ export function Movies() {
               }}
               onViewAll={() => setActiveTab('genres')}
             />
+
+            {/* Local Media Library Movies Rail */}
+            {localCatalogue.movies.length > 0 && (
+              <StreamingRail
+                title="From Your Local Media Library"
+                iconName="folder"
+                iconColor="var(--accent-red-primary)"
+                onSeeAll={() => navigate('/library?tab=local')}
+              >
+                {localCatalogue.movies.map((movie) => {
+                  const routeId = `local-movie:${movie.id}`
+                  return (
+                    <StreamingCard
+                      key={movie.id}
+                      to={`/watch/${encodeURIComponent(routeId)}`}
+                      title={movie.title}
+                      sub={[movie.year, movie.edition, 'Local'].filter(Boolean).join(' · ')}
+                      art={movie.artPath || undefined}
+                      badges={['LOCAL', ...(movie.resolution ? [movie.resolution] : [])]}
+                      itemRef={routeId}
+                    />
+                  )
+                })}
+              </StreamingRail>
+            )}
 
             {/* Trending Movies Rail */}
             <StreamingRail

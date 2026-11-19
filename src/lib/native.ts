@@ -1748,6 +1748,239 @@ export async function checkForUpdates(endpoint?: string | null): Promise<UpdateC
   }
 }
 
+export interface LocalLibrary {
+  id: string
+  name: string
+  mediaType: 'movies' | 'tv'
+  folders: string[]
+  lastScannedAt: number | null
+  autoScan: boolean
+  scanIntervalHours: number
+}
+
+export interface LocalMovie {
+  id: string
+  libraryId: string
+  filePath: string
+  title: string
+  year: number | null
+  edition: string | null
+  resolution: string | null
+  container: string
+  fileSizeBytes: number
+  durationSecs: number | null
+  artPath: string | null
+  backdropPath: string | null
+  discoveredAt: number
+  modifiedAt: number
+}
+
+export interface LocalEpisode {
+  id: string
+  seriesId: string
+  filePath: string
+  seasonNumber: number
+  episodeNumber: number
+  title: string | null
+  fileSizeBytes: number
+  durationSecs: number | null
+  artPath: string | null
+  resolution: string | null
+  container: string
+}
+
+export interface LocalSeason {
+  seasonNumber: number
+  episodes: LocalEpisode[]
+}
+
+export interface LocalSeries {
+  id: string
+  libraryId: string
+  folderPath: string
+  title: string
+  year: number | null
+  artPath: string | null
+  backdropPath: string | null
+  seasons: LocalSeason[]
+}
+
+export interface LocalMediaCatalogue {
+  movies: LocalMovie[]
+  series: LocalSeries[]
+  totalMediaBytes: number
+}
+
+export interface LocalScanResult {
+  libraryId: string
+  itemsIndexed: number
+  itemsRemoved: number
+  errors: string[]
+  durationMs: number
+}
+
+export interface StorageVolumeInfo {
+  id: string
+  mountPoint: string
+  label: string
+  totalBytes: number
+  availableBytes: number
+  usedBytes: number
+  percentUsed: number
+}
+
+export interface StorageVolumesSummary {
+  volumes: StorageVolumeInfo[]
+  totalDiskBytes: number
+  availableDiskBytes: number
+  usedDiskBytes: number
+  percentUsed: number
+  mediaIndexedBytes: number
+  mediaItemCount: number
+}
+
+export async function getLocalLibraries(): Promise<LocalLibrary[]> {
+  if (!isTauri()) {
+    try {
+      const saved = localStorage.getItem('kinora.local_libraries.v1')
+      return saved ? JSON.parse(saved) : []
+    } catch {
+      return []
+    }
+  }
+  try {
+    return (await invoke<LocalLibrary[]>('get_local_libraries')) ?? []
+  } catch {
+    return []
+  }
+}
+
+export async function saveLocalLibrary(library: LocalLibrary): Promise<LocalLibrary> {
+  if (!isTauri()) {
+    try {
+      const saved = localStorage.getItem('kinora.local_libraries.v1')
+      const libs: LocalLibrary[] = saved ? JSON.parse(saved) : []
+      const idx = libs.findIndex((l) => l.id === library.id)
+      if (idx >= 0) libs[idx] = library
+      else libs.push(library)
+      localStorage.setItem('kinora.local_libraries.v1', JSON.stringify(libs))
+    } catch {
+      // Ignore
+    }
+    return library
+  }
+  return await invoke<LocalLibrary>('save_local_library', { library })
+}
+
+export async function deleteLocalLibrary(libraryId: string): Promise<boolean> {
+  if (!isTauri()) {
+    try {
+      const saved = localStorage.getItem('kinora.local_libraries.v1')
+      if (saved) {
+        const libs: LocalLibrary[] = JSON.parse(saved)
+        localStorage.setItem('kinora.local_libraries.v1', JSON.stringify(libs.filter((l) => l.id !== libraryId)))
+      }
+    } catch {
+      // Ignore
+    }
+    return true
+  }
+  return await invoke<boolean>('delete_local_library', { libraryId })
+}
+
+export async function scanLocalLibrary(libraryId: string): Promise<LocalScanResult> {
+  if (!isTauri()) {
+    return {
+      libraryId,
+      itemsIndexed: 0,
+      itemsRemoved: 0,
+      errors: [],
+      durationMs: 120,
+    }
+  }
+  return await invoke<LocalScanResult>('scan_local_library', { libraryId })
+}
+
+export async function getLocalMediaCatalogue(): Promise<LocalMediaCatalogue> {
+  if (!isTauri()) {
+    return {
+      movies: [],
+      series: [],
+      totalMediaBytes: 0,
+    }
+  }
+  try {
+    return (await invoke<LocalMediaCatalogue>('get_local_media_catalogue')) ?? { movies: [], series: [], totalMediaBytes: 0 }
+  } catch {
+    return { movies: [], series: [], totalMediaBytes: 0 }
+  }
+}
+
+export async function getStorageVolumesInfo(): Promise<StorageVolumesSummary> {
+  if (!isTauri()) {
+    return {
+      volumes: [
+        {
+          id: 'dev_host',
+          mountPoint: '/',
+          label: 'System Storage',
+          totalBytes: 1024 * 1024 * 1024 * 1024,
+          availableBytes: 620 * 1024 * 1024 * 1024,
+          usedBytes: 404 * 1024 * 1024 * 1024,
+          percentUsed: 39.4,
+        },
+      ],
+      totalDiskBytes: 1024 * 1024 * 1024 * 1024,
+      availableDiskBytes: 620 * 1024 * 1024 * 1024,
+      usedDiskBytes: 404 * 1024 * 1024 * 1024,
+      percentUsed: 39.4,
+      mediaIndexedBytes: 0,
+      mediaItemCount: 0,
+    }
+  }
+  try {
+    return await invoke<StorageVolumesSummary>('get_storage_volumes_info')
+  } catch {
+    return {
+      volumes: [],
+      totalDiskBytes: 0,
+      availableDiskBytes: 0,
+      usedDiskBytes: 0,
+      percentUsed: 0,
+      mediaIndexedBytes: 0,
+      mediaItemCount: 0,
+    }
+  }
+}
+
+export async function selectLocalMediaFolder(folderPath?: string): Promise<string | null> {
+  if (!isTauri()) {
+    return folderPath ?? null
+  }
+  try {
+    return (await invoke<string | null>('select_local_media_folder', { folderPath })) ?? null
+  } catch {
+    return null
+  }
+}
+
+export async function openLocalMediaStream(mediaId: string): Promise<OpenedStream | null> {
+  if (!isTauri()) return null
+  try {
+    const raw = await invoke<{ url: string; session: number; format?: string }>('open_local_media_stream', { mediaId })
+    if (raw && typeof raw.url === 'string') {
+      return {
+        url: raw.url,
+        session: raw.session || 1,
+        format: 'hls',
+      }
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
 if (typeof window !== 'undefined') {
   ;(window as unknown as { __kinora_native?: Record<string, unknown> }).__kinora_native = {
     fetchPlaylist,
@@ -1755,6 +1988,4 @@ if (typeof window !== 'undefined') {
     saveSources,
   }
 }
-
-
 

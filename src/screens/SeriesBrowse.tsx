@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { genresOf, series } from '../data/catalog'
 import { episodeCode, episodeRef, seriesRef } from '../data/refs'
 import type { Series } from '../data/types'
@@ -22,6 +22,7 @@ import { filterKidSafeResources, filterKidSafeTitles, filterKidSafeXtreamTitles 
 import { seriesNextUp } from '../lib/library'
 import { useProfiles } from '../state/profiles'
 import { useStore } from '../state/store'
+import { useLocalMedia } from '../state/localMedia'
 import './Browse.css'
 import './MediaStreaming.css'
 
@@ -59,6 +60,7 @@ type SortKey = keyof typeof sorts
 
 export function SeriesBrowse() {
   const store = useStore()
+  const navigate = useNavigate()
   const { isKidsMode } = useProfiles()
   const { library } = store
   const [params, setParams] = useSearchParams()
@@ -92,6 +94,7 @@ export function SeriesBrowse() {
   }, [isKidsMode])
 
   const isSampleProvider = typeof window !== 'undefined' && window.sessionStorage?.getItem('kinora.sample_provider_view') === '1'
+  const { catalogue: localCatalogue } = useLocalMedia()
   const hasXtream = store.xtreamSources.length > 0 && safeXtreamSeries.length > 0
   const hasDemo = (store.demoTitles || isSampleProvider) && safeSeries.length > 0
 
@@ -471,6 +474,32 @@ export function SeriesBrowse() {
               }}
               onViewAll={() => setActiveTab('genres')}
             />
+
+            {/* Local Media Library TV Shows Rail */}
+            {localCatalogue.series.length > 0 && (
+              <StreamingRail
+                title="From Your Local Media Library"
+                iconName="folder"
+                iconColor="var(--accent-red-primary)"
+                onSeeAll={() => navigate('/library?tab=local')}
+              >
+                {localCatalogue.series.map((s) => {
+                  const routeId = `local-series:${s.id}`
+                  const totalEpisodes = s.seasons.reduce((acc, sn) => acc + sn.episodes.length, 0)
+                  return (
+                    <StreamingCard
+                      key={s.id}
+                      to="/library?tab=local"
+                      title={s.title}
+                      sub={[s.year, `${s.seasons.length} Seasons`, `${totalEpisodes} Episodes`].filter(Boolean).join(' · ')}
+                      art={s.artPath || undefined}
+                      badges={['LOCAL']}
+                      itemRef={routeId}
+                    />
+                  )
+                })}
+              </StreamingRail>
+            )}
 
             {/* Trending TV Shows Rail */}
             <StreamingRail

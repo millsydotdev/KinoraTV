@@ -51,6 +51,14 @@ fn main() {
             "verify_parental_pin",
             "fetch_metadata",
             "check_for_updates",
+            "get_local_libraries",
+            "save_local_library",
+            "delete_local_library",
+            "scan_local_library",
+            "get_local_media_catalogue",
+            "get_storage_volumes_info",
+            "select_local_media_folder",
+            "open_local_media_stream",
         ]),
     ))
     .expect("failed to run the Tauri build script");

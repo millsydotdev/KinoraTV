@@ -23,6 +23,7 @@ mod stream;
 mod updater;
 mod xmltv;
 mod xtream;
+mod local_media;
 
 use serde::Serialize;
 use tauri::Manager;
@@ -619,6 +620,133 @@ async fn verify_parental_pin(
     pin::verify_pin(&pin, &stored)
 }
 
+/// Queries local media libraries configured by the user.
+#[tauri::command]
+fn get_local_libraries(
+    engine: tauri::State<'_, local_media::LocalMediaEngine>,
+) -> Vec<local_media::LocalLibrary> {
+    engine.get_libraries()
+}
+
+/// Saves or updates a local media library definition.
+#[tauri::command]
+fn save_local_library(
+    library: local_media::LocalLibrary,
+    engine: tauri::State<'_, local_media::LocalMediaEngine>,
+) -> Result<local_media::LocalLibrary, ingest::IngestError> {
+    engine.save_library(library)
+}
+
+/// Deletes a local library configuration and drops indexed items without touching media files on disk.
+#[tauri::command]
+fn delete_local_library(
+    library_id: String,
+    engine: tauri::State<'_, local_media::LocalMediaEngine>,
+) -> Result<bool, ingest::IngestError> {
+    engine.delete_library(&library_id)
+}
+
+/// Scans media folders in a local library recursively and updates the local catalogue.
+#[tauri::command]
+fn scan_local_library(
+    library_id: String,
+    engine: tauri::State<'_, local_media::LocalMediaEngine>,
+) -> Result<local_media::LocalScanResult, ingest::IngestError> {
+    engine.scan_library(&library_id)
+}
+
+/// Returns all indexed local movies and TV series.
+#[tauri::command]
+fn get_local_media_catalogue(
+    engine: tauri::State<'_, local_media::LocalMediaEngine>,
+) -> local_media::LocalMediaCatalogue {
+    engine.get_catalogue()
+}
+
+/// Returns genuine operating-system storage capacity measurements for all distinct volumes.
+#[tauri::command]
+fn get_storage_volumes_info(
+    engine: tauri::State<'_, local_media::LocalMediaEngine>,
+) -> local_media::StorageVolumesSummary {
+    engine.get_storage_volumes_info()
+}
+
+/// Validates or selects a local media folder path safely.
+#[tauri::command]
+fn select_local_media_folder(
+    folder_path: Option<String>,
+) -> Result<Option<String>, ingest::IngestError> {
+    if let Some(path_str) = folder_path {
+        let p = std::path::PathBuf::from(&path_str);
+        if p.is_dir() {
+            return Ok(Some(
+                p.canonicalize().unwrap_or(p).to_string_lossy().to_string(),
+            ));
+        } else {
+            return Err(ingest::IngestError::new(
+                ingest::ErrorCode::Storage,
+                "Specified path is not an existing directory.",
+            ));
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(output) = std::process::Command::new("zenity")
+            .args(["--file-selection", "--directory", "--title=Select Media Folder"])
+            .output()
+        {
+            if output.status.success() {
+                let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !s.is_empty() && std::path::Path::new(&s).is_dir() {
+                    return Ok(Some(s));
+                }
+            }
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let script = "POSIX path of (choose folder with prompt \"Select Media Folder\")";
+        if let Ok(output) = std::process::Command::new("osascript")
+            .args(["-e", script])
+            .output()
+        {
+            if output.status.success() {
+                let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !s.is_empty() && std::path::Path::new(&s).is_dir() {
+                    return Ok(Some(s));
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// Starts an HLS playback stream for an indexed local media file inside an approved library root.
+#[tauri::command]
+fn open_local_media_stream(
+    media_id: String,
+    engine: tauri::State<'_, local_media::LocalMediaEngine>,
+) -> Result<stream::Opened, ingest::IngestError> {
+    let cat = engine.get_catalogue();
+    let is_movie = cat.movies.iter().any(|m| m.id == media_id);
+    let is_ep = cat
+        .series
+        .iter()
+        .any(|s| s.seasons.iter().any(|sn| sn.episodes.iter().any(|e| e.id == media_id)));
+    if is_movie || is_ep {
+        Ok(stream::Opened {
+            url: format!("kstream://localhost/local/{}/playlist.m3u8", media_id),
+            session: 0,
+            format: "hls",
+        })
+    } else {
+        Err(ingest::IngestError::new(
+            ingest::ErrorCode::Storage,
+            "Local media item not found.",
+        ))
+    }
+}
+
 /// The page origin allowed to read `kstream` responses: the dev server in `tauri dev`, otherwise
 /// the bundled app's origin (verified as `tauri://localhost` on Linux in the D4A spike).
 fn app_origin(config: &tauri::Config) -> String {
@@ -642,6 +770,7 @@ pub fn run() {
             // A private folder inside the app's data directory; without one, sources are not saved.
             let app_data = app.path().app_data_dir().ok();
             let dir = app_data.as_ref().map(|d| d.join("sources"));
+            app.manage(local_media::LocalMediaEngine::new(app_data.clone()));
             app.manage(dvr::DvrEngine::new(app_data));
             app.manage(guides::GuideStore::new(dir.clone()));
             app.manage(catalogue::CatalogueStore::new(dir.clone()));
@@ -688,6 +817,27 @@ pub fn run() {
                         )
                         .await;
                     responder.respond(dvr::into_response(reply));
+                    return;
+                }
+                if uri_path.starts_with("/local/") {
+                    let local_eng = app.state::<local_media::LocalMediaEngine>();
+                    let header =
+                        |name: &str| request.headers().get(name).and_then(|v| v.to_str().ok());
+                    let ranges: Vec<&str> = request
+                        .headers()
+                        .get_all("range")
+                        .iter()
+                        .filter_map(|v| v.to_str().ok())
+                        .collect();
+                    let reply = local_eng
+                        .serve(
+                            request.method().as_str(),
+                            uri_path,
+                            header("origin"),
+                            &ranges,
+                        )
+                        .await;
+                    responder.respond(local_media::into_response(reply));
                     return;
                 }
                 let streams = app.state::<stream::Streams>();
@@ -758,7 +908,15 @@ pub fn run() {
             hash_parental_pin,
             verify_parental_pin,
             fetch_metadata,
-            check_for_updates
+            check_for_updates,
+            get_local_libraries,
+            save_local_library,
+            delete_local_library,
+            scan_local_library,
+            get_local_media_catalogue,
+            get_storage_volumes_info,
+            select_local_media_folder,
+            open_local_media_stream
         ])
         .run(tauri::generate_context!());
 

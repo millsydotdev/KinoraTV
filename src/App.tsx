@@ -42,6 +42,7 @@ import { WhatsNewModal, hasSeenWhatsNew } from './components/WhatsNewModal'
 import { applyThemeTokensToElement } from './lib/theme'
 import { ProfileProvider } from './state/profiles'
 import { StoreProvider, useStore } from './state/store'
+import { LocalMediaProvider } from './state/localMedia'
 
 function Shell() {
   const { prefs, setupDone, mediaLibrary } = useStore()
@@ -265,13 +266,15 @@ export function App() {
     <BrowserRouter>
       <ProfileProvider>
         <StoreProvider>
-          <NotificationProvider>
-            <BackgroundTaskProvider>
-              <ToastProvider>
-                <Shell />
-              </ToastProvider>
-            </BackgroundTaskProvider>
-          </NotificationProvider>
+          <LocalMediaProvider>
+            <NotificationProvider>
+              <BackgroundTaskProvider>
+                <ToastProvider>
+                  <Shell />
+                </ToastProvider>
+              </BackgroundTaskProvider>
+            </NotificationProvider>
+          </LocalMediaProvider>
         </StoreProvider>
       </ProfileProvider>
     </BrowserRouter>

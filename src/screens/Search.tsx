@@ -14,6 +14,7 @@ import { classifyMediaResource } from '../data/provenance'
 import { DISCOVERED_RESOURCES } from '../data/discoveredResources'
 import '../components/ResourceCard.css'
 import { useStore } from '../state/store'
+import { useLocalMedia } from '../state/localMedia'
 import { useToast } from '../components/Toast'
 import {
   filterKidSafeChannels,
@@ -49,6 +50,7 @@ function Highlight({ text, q }: { text: string; q: string }) {
 export function Search() {
   const now = useNow()
   const store = useStore()
+  const { catalogue: localCatalogue } = useLocalMedia()
   const { channels } = store
   const { prefs, library } = store
   const [params, setParams] = useSearchParams()
@@ -323,8 +325,57 @@ export function Search() {
 
     const safeMovies = filterKidSafeTitles(movies, store.isKidsMode)
     const safeSeries = filterKidSafeTitles(series, store.isKidsMode)
+
+    const localMovieHits: Hit[] = localCatalogue.movies
+      .filter((m) => has(m.title, m.edition ?? ''))
+      .map((m) => ({
+        key: `local-movie:${m.id}`,
+        to: `/watch/${encodeURIComponent('local-movie:' + m.id)}`,
+        thumb: m.artPath ? (
+          <img src={m.artPath} alt={m.title} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4 }} />
+        ) : (
+          <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', background: 'var(--surface-2)' }}>
+            <Icon name="film" size={24} />
+          </div>
+        ),
+        title: m.title,
+        sub: `Local Film · ${m.year ?? ''} ${m.resolution ? `· ${m.resolution}` : ''}`,
+        badge: (
+          <span
+            className="res-provenance-pill"
+            style={{ fontSize: '0.6875rem', padding: '1px 6px', borderRadius: 4, background: 'rgba(229, 9, 20, 0.2)', color: '#ff3847', border: '1px solid rgba(229, 9, 20, 0.4)' }}
+          >
+            Local Library
+          </span>
+        ),
+      }))
+
+    const localSeriesHits: Hit[] = localCatalogue.series
+      .filter((s) => has(s.title))
+      .map((s) => ({
+        key: `local-series:${s.id}`,
+        to: '/library?tab=local',
+        thumb: s.artPath ? (
+          <img src={s.artPath} alt={s.title} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4 }} />
+        ) : (
+          <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', background: 'var(--surface-2)' }}>
+            <Icon name="series" size={24} />
+          </div>
+        ),
+        title: s.title,
+        sub: `Local Series · ${s.year ?? ''} · ${s.seasons.length} Season(s)`,
+        badge: (
+          <span
+            className="res-provenance-pill"
+            style={{ fontSize: '0.6875rem', padding: '1px 6px', borderRadius: 4, background: 'rgba(229, 9, 20, 0.2)', color: '#ff3847', border: '1px solid rgba(229, 9, 20, 0.4)' }}
+          >
+            Local Library
+          </span>
+        ),
+      }))
+
     groups.films = store.demoTitles
-      ? safeMovies.filter((m) => has(m.title, m.synopsis, ...m.genres)).map((m) => ({
+      ? [...safeMovies.filter((m) => has(m.title, m.synopsis, ...m.genres)).map((m) => ({
           key: m.id, to: `/movies/${m.id}`, thumb: <Art src={m.art} focus={m.focus} />, title: m.title, sub: `Movie · ${m.year} · ${m.genres.join(' / ')}`,
           badge: (
             <span
@@ -334,10 +385,10 @@ export function Search() {
               Dev Fixture
             </span>
           ),
-        }))
-      : [...xtMovies, ...discFilms]
+        })), ...localMovieHits]
+      : [...xtMovies, ...discFilms, ...localMovieHits]
     groups.series = store.demoTitles
-      ? safeSeries.filter((s) => has(s.title, s.synopsis, ...s.genres)).map((s) => ({
+      ? [...safeSeries.filter((s) => has(s.title, s.synopsis, ...s.genres)).map((s) => ({
           key: s.id, to: `/series/${s.id}`, thumb: <Art src={s.art} focus={s.focus} />, title: s.title, sub: `Series · ${s.seasons.length} season${s.seasons.length > 1 ? 's' : ''} · ${s.genres.join(' / ')}`,
           badge: (
             <span
@@ -347,8 +398,8 @@ export function Search() {
               Dev Fixture
             </span>
           ),
-        }))
-      : [...xtSeries, ...discSeries]
+        })), ...localSeriesHits]
+      : [...xtSeries, ...discSeries, ...localSeriesHits]
     groups.episodes = !store.demoTitles ? [] : safeSeries.flatMap((s) =>
       s.seasons.flat().filter((e) => has(e.title, e.synopsis)).map((e) => ({
         key: `${s.id}/${e.id}`, to: `/watch/${encodeURIComponent(episodeRef(s.id, e.id))}`, thumb: <Art src={e.still} focus={e.stillFocus} />,

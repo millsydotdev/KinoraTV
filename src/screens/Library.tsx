@@ -22,10 +22,13 @@ import type { RatingValue, DislikeReason } from '../state/userPreferences'
 import { Badge } from '../components/design-system/Badge'
 import { SaveIndicator } from '../components/design-system/Feedback'
 import { movies, series } from '../data/catalog'
+import { LocalMediaTab } from './LocalMediaTab'
+import './LocalMediaTab.css'
 import './Library.css'
 
 const tabs = [
   { id: 'overview', label: 'Overview' },
+  { id: 'local', label: 'Local Media' },
   { id: 'watchlist', label: 'Watchlist' },
   { id: 'favourites', label: 'Favourites' },
   { id: 'ratings', label: 'Ratings & Preferences' },
@@ -124,6 +127,7 @@ export function Library() {
       <p className="page-intro">Everything you have saved, started and sorted, kept on this device.</p>
       <div id="lib-panel" role="tabpanel" aria-labelledby={`lib-tab-${tab}`} className="lib-panel">
         {tab === 'overview' && <Overview go={go} onSelectResource={setSelectedResource} />}
+        {tab === 'local' && <LocalMediaTab />}
         {tab === 'watchlist' && <SavedList list="watchlist" />}
         {tab === 'favourites' && <SavedList list="favourites" />}
         {tab === 'ratings' && <RatingsTab />}
