@@ -11,8 +11,9 @@ import { useStore } from '../state/store'
 import { useToast } from './Toast'
 import { ContextMenu, type ContextMenuItem } from './design-system/ContextMenu'
 import { CollectionDialog } from './CollectionDialog'
-import { artworkEngine } from '../data/artworkEngine'
+import { artworkEngine, type ArtworkType } from '../data/artworkEngine'
 import { TechnicalBadge, type TechnicalFormat } from './TechnicalBadges'
+import { resolveArtwork } from '../lib/artworkResolver'
 
 export function useCardContextMenu(to: string, title: string, itemRef?: string) {
   const store = useStore()
@@ -177,11 +178,16 @@ export function PosterCard({ to, title, art, posterUrl, artworkKey, focus = 50, 
   to: string; title: string; art?: string; posterUrl?: string; artworkKey?: string; focus?: number; line?: string; flag?: ReactNode; badges?: TechnicalFormat[]; year?: number | null; itemRef?: string; hideCaption?: boolean
 }) {
   const { onContextMenu, menu } = useCardContextMenu(to, title, itemRef)
-  const resolvedArtwork = !posterUrl && !art
-    ? artworkEngine.findArtwork(title, 'movie-poster')?.sourceUrl ||
-      artworkEngine.findArtwork(title, 'series-poster')?.sourceUrl
-    : ''
-  const effectiveArt = posterUrl || art || resolvedArtwork || ''
+  const isSeries = to.startsWith('/series') || (itemRef && itemRef.startsWith('series:'))
+  const artType: ArtworkType = isSeries ? 'series-poster' : 'movie-poster'
+  const resolved = resolveArtwork({
+    contentId: itemRef || (to.startsWith('/movies/') ? `movie:${to.slice(8)}` : to.startsWith('/series/') ? `series:${to.slice(8)}` : undefined),
+    title,
+    type: artType,
+    providerArt: posterUrl || art,
+    year,
+  })
+  const effectiveArt = resolved.src || ''
   return (
     <>
       <Link to={to} className="card card-poster" aria-label={line ? `${title}, ${line}` : title} onContextMenu={onContextMenu}>
@@ -196,7 +202,15 @@ export function PosterCard({ to, title, art, posterUrl, artworkKey, focus = 50, 
         {artworkKey ? (
           <XtreamArt artworkKey={artworkKey} alt={title} className="card-media" fallbackTitle={title} fallbackYear={year} />
         ) : (
-          <Art src={effectiveArt} focus={focus} className="card-media" />
+          <Art
+            src={effectiveArt}
+            alt={title}
+            contentId={itemRef || to}
+            focus={focus}
+            className="card-media"
+            fallbackIcon={isSeries ? 'series' : 'film'}
+            fallbackYear={year}
+          />
         )}
         {!hideCaption && (
           <span className="card-caption" aria-hidden="true">
@@ -361,7 +375,9 @@ export function EpisodeCard({
               <Art
                 src={displayStill}
                 alt={episodeTitle}
+                contentId={ref}
                 className="card-media episode-card-art"
+                fallbackIcon="series"
               />
             )}
 
@@ -459,12 +475,15 @@ export function WideCard({ to, title, sub, art, backdropUrl, artworkKey, focus =
   to: string; title: string; sub?: string; art?: string; backdropUrl?: string; artworkKey?: string; focus?: number; progress?: number | null; flag?: ReactNode; captionBelow?: boolean; playable?: boolean; itemRef?: string; onDismiss?: () => void
 }) {
   const { onContextMenu, menu } = useCardContextMenu(to, title, itemRef)
-  const resolvedBackdrop = !backdropUrl && !art
-    ? artworkEngine.findArtwork(title, 'movie-backdrop')?.sourceUrl ||
-      artworkEngine.findArtwork(title, 'series-backdrop')?.sourceUrl ||
-      artworkEngine.findArtwork(title, 'episode-still')?.sourceUrl
-    : ''
-  const effectiveArt = backdropUrl || art || resolvedBackdrop || ''
+  const isSeries = to.startsWith('/series') || (itemRef && itemRef.startsWith('series:'))
+  const artType: ArtworkType = isSeries ? 'series-backdrop' : 'movie-backdrop'
+  const resolved = resolveArtwork({
+    contentId: itemRef || (to.startsWith('/movies/') ? `movie:${to.slice(8)}` : to.startsWith('/series/') ? `series:${to.slice(8)}` : undefined),
+    title,
+    type: artType,
+    providerArt: backdropUrl || art,
+  })
+  const effectiveArt = resolved.src || ''
   return (
     <>
       <Link to={to} className="card card-wide" aria-label={sub ? `${title}, ${sub}` : title} onContextMenu={onContextMenu}>
@@ -499,7 +518,14 @@ export function WideCard({ to, title, sub, art, backdropUrl, artworkKey, focus =
         {artworkKey ? (
           <XtreamArt artworkKey={artworkKey} alt={title} className={`card-media${captionBelow ? '' : ' card-shade'}`} fallbackTitle={title} />
         ) : (
-          <Art src={effectiveArt} focus={focus} className={`card-media${captionBelow ? '' : ' card-shade'}`}>
+          <Art
+            src={effectiveArt}
+            alt={title}
+            contentId={itemRef || to}
+            focus={focus}
+            className={`card-media${captionBelow ? '' : ' card-shade'}`}
+            fallbackIcon={isSeries ? 'series' : 'film'}
+          >
             {playable && <span className="card-play" aria-hidden="true"><Icon name="play" size={18} /></span>}
             {!captionBelow && (
               <span className={`card-overlay${progress != null ? ' has-progress' : ''}`} aria-hidden="true">

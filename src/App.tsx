@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { BrowserRouter, Link, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { ToastProvider } from './components/Toast'
 import { NotificationProvider } from './components/Notifications'
 import { BackgroundTaskProvider } from './components/BackgroundTaskCenter'
@@ -195,6 +195,7 @@ function Shell() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/live" element={<LiveTV />} />
+            <Route path="/guide" element={<Navigate to="/live" replace />} />
             <Route path="/recordings" element={<Recordings />} />
             <Route path="/movies" element={<Movies />} />
             <Route path="/movies/:id" element={<MovieDetail />} />

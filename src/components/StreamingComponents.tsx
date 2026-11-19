@@ -4,6 +4,7 @@ import { Icon, type IconName } from './Icon'
 import { useStore } from '../state/store'
 import { useToast } from './Toast'
 import { useCardContextMenu, XtreamArt } from './Tiles'
+import { Art } from './ui'
 import '../screens/MediaStreaming.css'
 
 export interface NavTabItem {
@@ -118,17 +119,18 @@ export function StreamingHero({
             eager
             className="hero-art"
             fallbackTitle={current.title}
-          />
-        ) : (current.backdropUrl || current.art) ? (
-          <img
-            src={current.backdropUrl || current.art}
-            alt=""
-            loading="eager"
+            fallbackYear={typeof current.year === 'number' ? current.year : Number(current.year) || null}
           />
         ) : (
-          <div className="streaming-card-fallback-art" style={{ position: 'absolute', inset: 0 }}>
-            <div className="streaming-card-fallback-glow" />
-          </div>
+          <Art
+            src={current.backdropUrl || current.art || ''}
+            alt={current.title}
+            contentId={current.itemRef}
+            eager
+            className="hero-art"
+            fallbackIcon={isTv ? 'series' : 'film'}
+            fallbackYear={typeof current.year === 'number' ? current.year : Number(current.year) || null}
+          />
         )}
       </div>
       <div className="streaming-hero-scrim" aria-hidden="true" />
@@ -291,7 +293,7 @@ export function StreamingGenreRow({
               onClick={() => onSelectGenre(g.name)}
               title={`Browse ${g.name}`}
             >
-              <img src={g.art} alt="" className="streaming-genre-tile-art" loading="lazy" />
+              <Art src={g.art} alt={g.name} className="streaming-genre-tile-art" fallbackIcon="film" />
               <div className="streaming-genre-tile-scrim" />
               <span className="streaming-genre-tile-label">{g.name}</span>
             </button>
@@ -450,7 +452,6 @@ export function StreamingCard({
   layout?: 'wide' | 'poster'
 }) {
   const { onContextMenu, menu } = useCardContextMenu(to, title, itemRef)
-  const [artFailed, setArtFailed] = useState(false)
   const isPoster = layout === 'poster'
 
   return (
@@ -466,20 +467,16 @@ export function StreamingCard({
             artworkKey={artworkKey}
             alt={title}
             className="streaming-card-art"
-          />
-        ) : !artFailed && art ? (
-          <img
-            src={art}
-            alt=""
-            className="streaming-card-art"
-            loading="lazy"
-            onError={() => setArtFailed(true)}
+            fallbackTitle={title}
           />
         ) : (
-          <div className="streaming-card-fallback-art" aria-hidden="true">
-            <div className="streaming-card-fallback-glow" />
-            <Icon name={episodeBadge ? 'series' : 'film'} size={28} />
-          </div>
+          <Art
+            src={art || ''}
+            alt={title}
+            contentId={itemRef || to}
+            className="streaming-card-art"
+            fallbackIcon={episodeBadge ? 'series' : isPoster ? 'film' : 'tv'}
+          />
         )}
 
         <div className="streaming-card-scrim" />

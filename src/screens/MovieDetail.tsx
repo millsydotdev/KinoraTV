@@ -116,7 +116,16 @@ export function MovieDetail() {
   return (
     <article className="detail">
       <header className="detail-hero">
-        <Art src={movie.art} focus={movie.focus} eager className="detail-backdrop" />
+        <Art
+          src={movie.backdropUrl || movie.art}
+          alt={movie.title}
+          contentId={ref}
+          focus={movie.focus}
+          eager
+          className="detail-backdrop"
+          fallbackIcon="film"
+          fallbackYear={movie.year}
+        />
         <PageHeader overlay />
         <div className="detail-hero-content">
           <Breadcrumbs crumbs={[{ label: 'Home', to: '/' }, { label: 'Movies', to: '/movies' }, { label: movie.title }]} />
@@ -279,7 +288,16 @@ export function MovieDetail() {
               Official Theatrical Trailer
             </h2>
             <div style={{ position: 'relative', width: '100%', maxWidth: 760, aspectRatio: '16 / 9', background: '#000', borderRadius: 'var(--r-l)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-subtle)', marginTop: 8 }}>
-              <Art src={movie.art} focus={movie.focus} eager className="detail-backdrop" />
+              <Art
+          src={movie.backdropUrl || movie.art}
+          alt={movie.title}
+          contentId={ref}
+          focus={movie.focus}
+          eager
+          className="detail-backdrop"
+          fallbackIcon="film"
+          fallbackYear={movie.year}
+        />
               <button
                 type="button"
                 className="btn btn-primary"

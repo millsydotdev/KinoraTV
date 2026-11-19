@@ -8,7 +8,7 @@ import { PageHeader } from '../components/PageHeader'
 import { ChannelCard, PosterCard, Section, WideCard, XtreamArt, XtreamPosterCard, idleLabel } from '../components/Tiles'
 import { ContentRail } from '../components/ContentRail'
 import { useToast } from '../components/Toast'
-import { ChannelMark } from '../components/ui'
+import { ChannelMark, Art } from '../components/ui'
 import { type TechnicalFormat } from '../components/TechnicalBadges'
 import { filterKidSafeChannels, filterKidSafeTitles, filterKidSafeXtreamTitles, isRefKidSafe } from '../lib/kidsMode'
 import { continueWatching } from '../lib/library'
@@ -82,7 +82,7 @@ function HomeHero({
           {currentSlide && (
             <div className="home-hero-art-layer">
               {currentSlide.art ? (
-                <img src={currentSlide.art} alt="" loading="eager" />
+                <Art src={currentSlide.art} alt={currentSlide.title} contentId={currentSlide.ref} eager className="home-hero-art" />
               ) : currentSlide.artworkKey ? (
                 <XtreamArt artworkKey={currentSlide.artworkKey} fallbackTitle={currentSlide.title} eager />
               ) : (
@@ -212,7 +212,7 @@ function HomeHero({
             <div className="home-mini-live-preview">
               <span className="home-mini-live-badge">LIVE</span>
               {previewProg?.art ? (
-                <img src={previewProg.art} alt="" className="home-mini-live-video" />
+                <Art src={previewProg.art} alt={previewProg.title} className="home-mini-live-video" />
               ) : previewChannel ? (
                 <div className="home-mini-live-stage">
                   <div className="home-mini-live-stage-crt" />
@@ -416,11 +416,12 @@ function HomeAudioCard({
       >
         <div className="home-audio-artwork-frame">
           {resource.artworkUrl ? (
-            <img
+            <Art
               src={resource.artworkUrl}
-              alt=""
+              alt={resource.name}
+              contentId={resource.id}
               className={`home-audio-img${isLogo ? ' is-logo' : ''}`}
-              loading="lazy"
+              fallbackIcon="radio"
             />
           ) : (
             <Icon name="radio" size={32} />

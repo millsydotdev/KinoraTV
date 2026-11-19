@@ -1026,7 +1026,8 @@ const programmeArtCache = new Map<string, Promise<string | null>>()
 
 /** Fetches, caches and validates programme artwork in Rust; returns base64 data URI or null. */
 export async function loadProgrammeArtwork(url: string | null): Promise<string | null> {
-  if (!isTauri() || !url) return null
+  if (!url) return null
+  if (!isTauri()) return null
   let pending = programmeArtCache.get(url)
   if (!pending) {
     pending = invoke('fetch_programme_artwork', { url }).then((raw) => {

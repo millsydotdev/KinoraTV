@@ -11,7 +11,7 @@ import { TechnicalBadge } from '../components/TechnicalBadges'
 import { useToast } from '../components/Toast'
 import { PageHeader } from '../components/PageHeader'
 import { ChannelCard } from '../components/Tiles'
-import { ChannelMark, ProgressBar, ProgrammeArt, StateBlock } from '../components/ui'
+import { Art, ChannelMark, ProgressBar, ProgrammeArt, StateBlock } from '../components/ui'
 import { filterKidSafeChannels, filterKidSafeProgrammes, isChannelKidSafe } from '../lib/kidsMode'
 import { guideChannels, type GuideChannel } from '../lib/native'
 import { useStreamPlayback, playbackText, type PlaybackStatus } from '../lib/playback'
@@ -851,13 +851,12 @@ export function LiveTV() {
           </div>
           {nextProg && (
             <div className="tvguide-next-preview-card">
-              {nextProg.art ? (
-                <img src={nextProg.art} alt="" className="tvguide-next-thumb" />
-              ) : (
-                <div className="tvguide-next-thumb" style={{ display: 'grid', placeItems: 'center' }}>
-                  <Icon name="tv" size={14} />
-                </div>
-              )}
+              <Art
+                src={nextProg.art || ''}
+                alt={nextProg.title}
+                className="tvguide-next-thumb"
+                fallbackIcon="tv"
+              />
               <div className="tvguide-next-info">
                 <span className="tvguide-next-kicker">Next on {previewChannel.name} &gt;</span>
                 <span className="tvguide-next-name">{nextProg.title}</span>
@@ -973,13 +972,12 @@ export function LiveTV() {
       </div>
 
       <div className="tvguide-dock-hero-img-wrap">
-        {currentDetailProg.art ? (
-          <img src={currentDetailProg.art} alt="" className="tvguide-dock-hero-img" />
-        ) : (
-          <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', background: '#121820' }}>
-            <ChannelMark channel={currentDetailChannel} size={48} />
-          </div>
-        )}
+        <Art
+          src={currentDetailProg.art || ''}
+          alt={currentDetailProg.title}
+          className="tvguide-dock-hero-img"
+          fallbackIcon="tv"
+        />
         <div className="tvguide-dock-channel-overlay">
           <ChannelMark channel={currentDetailChannel} size={18} />
           <span>{currentDetailChannel.name}</span>
@@ -1086,13 +1084,12 @@ export function LiveTV() {
       <h4 className="tvguide-dock-section-title">On Next</h4>
       {nextProg ? (
         <div className="tvguide-dock-next-item">
-          {nextProg.art ? (
-            <img src={nextProg.art} alt="" className="tvguide-dock-next-thumb" />
-          ) : (
-            <div className="tvguide-dock-next-thumb" style={{ display: 'grid', placeItems: 'center' }}>
-              <Icon name="tv" size={14} />
-            </div>
-          )}
+          <Art
+            src={nextProg.art || ''}
+            alt={nextProg.title}
+            className="tvguide-dock-next-thumb"
+            fallbackIcon="tv"
+          />
           <div className="tvguide-dock-next-meta">
             <div className="tvguide-dock-next-title">{nextProg.title}</div>
             <div className="tvguide-dock-next-timing">{clock(nextProg.start, prefs.timeFormat)} - {clock(nextProg.stop, prefs.timeFormat)}</div>

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Channel, Programme } from '../data/types'
 import { Icon, type IconName } from './Icon'
-import { loadChannelLogo, loadProgrammeArtwork } from '../lib/native'
+import { inNativeShell, loadChannelLogo, loadProgrammeArtwork } from '../lib/native'
 import { getCustomArtwork } from '../state/customArtwork'
 import { artworkEngine } from '../data/artworkEngine'
 import { clock } from '../lib/time'
@@ -14,6 +14,8 @@ export function Art({
   className = '',
   eager = false,
   contentId,
+  fallbackIcon = 'film',
+  fallbackYear,
   onLoad: onImageLoad,
   onError: onImageError,
   children,
@@ -24,6 +26,8 @@ export function Art({
   className?: string
   eager?: boolean
   contentId?: string
+  fallbackIcon?: IconName
+  fallbackYear?: number | null
   onLoad?: (e: React.SyntheticEvent<HTMLImageElement>) => void
   onError?: (e: React.SyntheticEvent<HTMLImageElement>) => void
   children?: ReactNode
@@ -32,32 +36,48 @@ export function Art({
   const custom = (contentId || alt) ? getCustomArtwork(contentId || alt) : undefined
   const effectiveSrc = custom?.dataUrl || src
   const imgRef = useRef<HTMLImageElement>(null)
-  const [resolvedSrc, setResolvedSrc] = useState<string>(effectiveSrc)
-  const [image, setImage] = useState<{ src: string; state: ImageState }>({
-    src: effectiveSrc,
-    state: effectiveSrc ? 'loading' : 'error',
+
+  const isRemote = Boolean(effectiveSrc && (effectiveSrc.startsWith('http://') || effectiveSrc.startsWith('https://')))
+  const native = inNativeShell()
+
+  const [resolvedSrc, setResolvedSrc] = useState<string>(() => {
+    if (!effectiveSrc) return ''
+    if (isRemote && native) return ''
+    return effectiveSrc
+  })
+
+  const [imageState, setImageState] = useState<ImageState>(() => {
+    if (!effectiveSrc) return 'error'
+    return 'loading'
   })
 
   useEffect(() => {
     let active = true
     if (!effectiveSrc) {
-      setImage({ src: '', state: 'error' })
+      setResolvedSrc('')
+      setImageState('error')
       return
     }
 
-    if (effectiveSrc.startsWith('http://') || effectiveSrc.startsWith('https://')) {
-      loadProgrammeArtwork(effectiveSrc)
-        .then((dataUri) => {
-          if (!active) return
-          if (dataUri) {
-            setResolvedSrc(dataUri)
-          } else {
-            setResolvedSrc(effectiveSrc)
-          }
-        })
-        .catch(() => {
-          if (active) setResolvedSrc(effectiveSrc)
-        })
+    if (isRemote) {
+      if (native) {
+        setResolvedSrc('')
+        setImageState('loading')
+        loadProgrammeArtwork(effectiveSrc)
+          .then((dataUri) => {
+            if (!active) return
+            if (dataUri) {
+              setResolvedSrc(dataUri)
+            } else {
+              setImageState('error')
+            }
+          })
+          .catch(() => {
+            if (active) setImageState('error')
+          })
+      } else {
+        setResolvedSrc(effectiveSrc)
+      }
     } else {
       setResolvedSrc(effectiveSrc)
     }
@@ -65,31 +85,26 @@ export function Art({
     return () => {
       active = false
     }
-  }, [effectiveSrc])
-
-  const state = image.src === resolvedSrc ? image.state : resolvedSrc ? 'loading' : 'error'
+  }, [effectiveSrc, isRemote, native])
 
   useEffect(() => {
-    if (!resolvedSrc) {
-      setImage({ src: '', state: 'error' })
-      return
-    }
+    if (!resolvedSrc) return
     const el = imgRef.current
     if (el && el.complete) {
       if (el.naturalWidth > 0) {
-        setImage({ src: resolvedSrc, state: 'loaded' })
+        setImageState('loaded')
         onImageLoad?.({ currentTarget: el, target: el } as unknown as React.SyntheticEvent<HTMLImageElement>)
       } else {
-        setImage({ src: resolvedSrc, state: 'error' })
+        setImageState('error')
       }
-      return
     }
-    setImage((cur) => (cur.src === resolvedSrc ? cur : { src: resolvedSrc, state: 'loading' }))
   }, [resolvedSrc, onImageLoad])
+
+  const state = !effectiveSrc ? 'error' : imageState
 
   return (
     <div className={`art ${state === 'loading' ? 'is-loading' : ''} ${className}`}>
-      {state !== 'error' && (
+      {state !== 'error' && resolvedSrc ? (
         <img
           ref={imgRef}
           src={resolvedSrc}
@@ -99,19 +114,25 @@ export function Art({
           style={{ objectPosition: `${focus}% 50%` }}
           className={state === 'loaded' ? 'is-loaded' : ''}
           onLoad={(e) => {
-            setImage((current) => current.src === resolvedSrc ? { src: resolvedSrc, state: 'loaded' } : current)
+            setImageState('loaded')
             onImageLoad?.(e)
           }}
           onError={(e) => {
-            setImage((current) => current.src === resolvedSrc ? { src: resolvedSrc, state: 'error' } : current)
+            setImageState('error')
             onImageError?.(e)
           }}
         />
-      )}
+      ) : null}
       {state === 'error' && (
-        <div className="art-fallback art-fallback-branded" role="img" aria-label={alt ? `Artwork for ${alt}` : 'Artwork unavailable'}>
-          <Icon name="film" size={24} className="fallback-icon" />
+        <div
+          className="art-fallback art-fallback-branded"
+          role="img"
+          aria-label={alt ? `Artwork for ${alt}` : 'Artwork unavailable'}
+        >
+          <div className="art-fallback-glow" aria-hidden="true" />
+          <Icon name={fallbackIcon} size={28} className="fallback-icon" />
           {alt && <span className="fallback-title">{alt}</span>}
+          {fallbackYear != null && <span className="fallback-year">{fallbackYear}</span>}
         </div>
       )}
       {children}
@@ -353,7 +374,10 @@ export function ChannelMark({ channel, size = 40 }: { channel: Channel; size?: n
     }
     const load = () => {
       void loadChannelLogo(channel.logoUrl, channel.id, channel.tvgId).then((data) => {
-        if (active && data) setLogo(data)
+        if (active) {
+          if (data) setLogo(data)
+          else if (!inNativeShell() && channel.logoUrl) setLogo(channel.logoUrl)
+        }
       })
     }
     if (typeof IntersectionObserver === 'undefined' || !mark.current) load()

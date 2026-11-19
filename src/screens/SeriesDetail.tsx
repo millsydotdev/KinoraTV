@@ -127,12 +127,20 @@ export function SeriesDetail() {
     tabs.current[n - 1]?.focus()
   }
 
-  const seasonBackdrop = episodes[0]?.still || s.art
+  const seasonBackdrop = episodes[0]?.still || s.backdropUrl || s.art
 
   return (
     <article className="detail">
       <header className="detail-hero">
-        <Art src={seasonBackdrop} focus={s.focus} eager className="detail-backdrop" />
+        <Art
+          src={seasonBackdrop}
+          alt={s.title}
+          contentId={`series:${s.id}`}
+          focus={s.focus}
+          eager
+          className="detail-backdrop"
+          fallbackIcon="series"
+        />
         <PageHeader overlay />
         <div className="detail-hero-content">
           <Breadcrumbs crumbs={[{ label: 'Home', to: '/' }, { label: 'TV Shows', to: '/series' }, { label: s.title }]} />
