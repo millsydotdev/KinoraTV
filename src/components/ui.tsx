@@ -13,6 +13,7 @@ export function Art({
   focus = 50,
   className = '',
   eager = false,
+  contentId,
   onLoad: onImageLoad,
   onError: onImageError,
   children,
@@ -22,55 +23,97 @@ export function Art({
   focus?: number
   className?: string
   eager?: boolean
+  contentId?: string
   onLoad?: (e: React.SyntheticEvent<HTMLImageElement>) => void
   onError?: (e: React.SyntheticEvent<HTMLImageElement>) => void
   children?: ReactNode
 }) {
   type ImageState = 'loading' | 'loaded' | 'error'
+  const custom = (contentId || alt) ? getCustomArtwork(contentId || alt) : undefined
+  const effectiveSrc = custom?.dataUrl || src
   const imgRef = useRef<HTMLImageElement>(null)
-  const [image, setImage] = useState<{ src: string; state: ImageState }>({ src, state: src ? 'loading' : 'error' })
-  const state = image.src === src ? image.state : src ? 'loading' : 'error'
+  const [resolvedSrc, setResolvedSrc] = useState<string>(effectiveSrc)
+  const [image, setImage] = useState<{ src: string; state: ImageState }>({
+    src: effectiveSrc,
+    state: effectiveSrc ? 'loading' : 'error',
+  })
 
   useEffect(() => {
-    if (!src) {
+    let active = true
+    if (!effectiveSrc) {
+      setImage({ src: '', state: 'error' })
+      return
+    }
+
+    if (effectiveSrc.startsWith('http://') || effectiveSrc.startsWith('https://')) {
+      loadProgrammeArtwork(effectiveSrc)
+        .then((dataUri) => {
+          if (!active) return
+          if (dataUri) {
+            setResolvedSrc(dataUri)
+          } else {
+            setResolvedSrc(effectiveSrc)
+          }
+        })
+        .catch(() => {
+          if (active) setResolvedSrc(effectiveSrc)
+        })
+    } else {
+      setResolvedSrc(effectiveSrc)
+    }
+
+    return () => {
+      active = false
+    }
+  }, [effectiveSrc])
+
+  const state = image.src === resolvedSrc ? image.state : resolvedSrc ? 'loading' : 'error'
+
+  useEffect(() => {
+    if (!resolvedSrc) {
       setImage({ src: '', state: 'error' })
       return
     }
     const el = imgRef.current
     if (el && el.complete) {
       if (el.naturalWidth > 0) {
-        setImage({ src, state: 'loaded' })
+        setImage({ src: resolvedSrc, state: 'loaded' })
         onImageLoad?.({ currentTarget: el, target: el } as unknown as React.SyntheticEvent<HTMLImageElement>)
       } else {
-        setImage({ src, state: 'error' })
+        setImage({ src: resolvedSrc, state: 'error' })
       }
       return
     }
-    setImage((cur) => (cur.src === src ? cur : { src, state: 'loading' }))
-  }, [src, onImageLoad])
+    setImage((cur) => (cur.src === resolvedSrc ? cur : { src: resolvedSrc, state: 'loading' }))
+  }, [resolvedSrc, onImageLoad])
 
   return (
     <div className={`art ${state === 'loading' ? 'is-loading' : ''} ${className}`}>
       {state !== 'error' && (
         <img
           ref={imgRef}
-          src={src}
+          src={resolvedSrc}
           alt={alt}
           loading={eager ? 'eager' : 'lazy'}
           decoding={eager ? 'sync' : 'async'}
           style={{ objectPosition: `${focus}% 50%` }}
           className={state === 'loaded' ? 'is-loaded' : ''}
           onLoad={(e) => {
-            setImage((current) => current.src === src ? { src, state: 'loaded' } : current)
+            setImage((current) => current.src === resolvedSrc ? { src: resolvedSrc, state: 'loaded' } : current)
             onImageLoad?.(e)
           }}
           onError={(e) => {
-            setImage((current) => current.src === src ? { src, state: 'error' } : current)
+            setImage((current) => current.src === resolvedSrc ? { src: resolvedSrc, state: 'error' } : current)
             onImageError?.(e)
           }}
         />
       )}
-      {state === 'error' && src && <div className="art-fallback">{alt ? `Artwork unavailable: ${alt}` : 'Artwork unavailable'}</div>}
+      {state === 'error' && (
+        <div className="art-fallback art-fallback-branded" role="img" aria-label={alt ? `Artwork for ${alt}` : 'Artwork unavailable'}>
+          <Icon name="film" size={24} className="fallback-icon" />
+          {alt && <span className="fallback-title">{alt}</span>}
+        </div>
+      )}
       {children}
     </div>
   )

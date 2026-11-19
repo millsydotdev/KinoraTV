@@ -339,7 +339,38 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 
 .channel-card-media { position: relative; overflow: hidden; background: var(--surface-2); }
 .channel-card-art { width: 100%; height: 100%; }
-.channel-card-ambient { position: absolute; inset: 0; background: radial-gradient(circle at 80% 20%, var(--channel-tone, #3d4650) 0%, transparent 65%), linear-gradient(180deg, var(--surface-2) 0%, var(--surface-3) 100%); opacity: 0.85; }
+.channel-card-ambient { position: absolute; inset: 0; background: radial-gradient(circle at 80% 20%, color-mix(in oklab, var(--channel-tone, #3d4650) 30%, transparent) 0%, transparent 65%), linear-gradient(180deg, #151820 0%, #0d1015 100%); opacity: 0.9; }
+
+.art-fallback-branded {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justifyContent: center;
+  gap: 8px;
+  padding: 12px;
+  background: linear-gradient(145deg, #161a22 0%, #0c0e13 100%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: #9ca3af;
+  text-align: center;
+}
+
+.art-fallback-branded .fallback-icon {
+  color: #E50914;
+  opacity: 0.75;
+}
+
+.art-fallback-branded .fallback-title {
+  font-size: 0.775rem;
+  font-weight: 600;
+  color: #e5e7eb;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 
 /* Honest, polished branded programme placeholder (no fake photos) */
 .programme-ambient-card {

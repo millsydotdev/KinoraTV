@@ -44,6 +44,80 @@ const ALLOWED_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'im
 
 let memoryArtwork: Record<string, CustomArtworkRecord> = {}
 
+const IDB_NAME = 'kinora_artwork_db'
+const IDB_STORE = 'custom_artwork'
+const IDB_VERSION = 1
+
+function openArtworkDb(): Promise<IDBDatabase | null> {
+  if (typeof window === 'undefined' || !window.indexedDB) return Promise.resolve(null)
+  return new Promise((resolve) => {
+    try {
+      const req = window.indexedDB.open(IDB_NAME, IDB_VERSION)
+      req.onupgradeneeded = (e) => {
+        const db = (e.target as IDBOpenDBRequest).result
+        if (!db.objectStoreNames.contains(IDB_STORE)) {
+          db.createObjectStore(IDB_STORE, { keyPath: 'contentId' })
+        }
+      }
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => resolve(null)
+    } catch {
+      resolve(null)
+    }
+  })
+}
+
+export async function hydrateCustomArtworkFromIDB(): Promise<void> {
+  const db = await openArtworkDb()
+  if (!db) return
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(IDB_STORE, 'readonly')
+      const store = tx.objectStore(IDB_STORE)
+      const req = store.getAll()
+      req.onsuccess = () => {
+        const list = req.result as CustomArtworkRecord[]
+        if (Array.isArray(list) && list.length > 0) {
+          for (const item of list) {
+            memoryArtwork[item.contentId] = item
+          }
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('kinora:custom-artwork-changed'))
+          }
+        }
+        resolve()
+      }
+      req.onerror = () => resolve()
+    } catch {
+      resolve()
+    }
+  })
+}
+
+async function saveToIDB(record: CustomArtworkRecord): Promise<void> {
+  const db = await openArtworkDb()
+  if (!db) return
+  try {
+    const tx = db.transaction(IDB_STORE, 'readwrite')
+    const store = tx.objectStore(IDB_STORE)
+    store.put(record)
+  } catch {}
+}
+
+async function deleteFromIDB(contentId: string): Promise<void> {
+  const db = await openArtworkDb()
+  if (!db) return
+  try {
+    const tx = db.transaction(IDB_STORE, 'readwrite')
+    const store = tx.objectStore(IDB_STORE)
+    store.delete(contentId)
+  } catch {}
+}
+
+if (typeof window !== 'undefined') {
+  void hydrateCustomArtworkFromIDB()
+}
+
 export function loadCustomArtworks(): Record<string, CustomArtworkRecord> {
   if (typeof window === 'undefined') return memoryArtwork
   try {
@@ -117,6 +191,7 @@ export function saveCustomArtwork(
 
   records[entry.contentId] = record
   persistCustomArtworks(records)
+  void saveToIDB(record)
   return record
 }
 
@@ -125,6 +200,7 @@ export function deleteCustomArtwork(contentId: string): boolean {
   if (records[contentId]) {
     delete records[contentId]
     persistCustomArtworks(records)
+    void deleteFromIDB(contentId)
     return true
   }
 
@@ -134,6 +210,7 @@ export function deleteCustomArtwork(contentId: string): boolean {
     if (recNorm === normalized) {
       delete records[key]
       persistCustomArtworks(records)
+      void deleteFromIDB(record.contentId)
       return true
     }
   }

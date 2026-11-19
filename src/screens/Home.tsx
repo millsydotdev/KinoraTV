@@ -86,19 +86,23 @@ function HomeHero({
               ) : currentSlide.artworkKey ? (
                 <XtreamArt artworkKey={currentSlide.artworkKey} fallbackTitle={currentSlide.title} eager />
               ) : (
-                <div
-                  className="home-hero-fallback-backdrop"
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    background: `radial-gradient(ellipse at 75% 35%, ${currentSlide.channelMarkTone || '#e50914'}33 0%, #0d1117 70%)`,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'flex-end',
-                    paddingRight: '12%',
-                  }}
-                >
-                  {currentSlide.channel && <ChannelMark channel={currentSlide.channel} size={110} />}
+                <div className="home-hero-cinematic-stage">
+                  <div className="home-hero-stage-glow" />
+                  <div className="home-hero-stage-grid" />
+                  <div className="home-hero-stage-watermark" aria-hidden="true">
+                    {currentSlide.channel?.name ? currentSlide.channel.name.toUpperCase() : 'KINORA BROADCAST'}
+                  </div>
+                  <div className="home-hero-stage-medallion">
+                    <div className="home-hero-stage-radar" />
+                    {currentSlide.channel && <ChannelMark channel={currentSlide.channel} size={96} />}
+                    <div className="home-hero-stage-status">
+                      <span className="home-hero-stage-live-dot" />
+                      <span>LIVE BROADCAST</span>
+                    </div>
+                    <span className="home-hero-stage-caption">
+                      {currentSlide.channel?.name || 'Kinora Direct Feed'}
+                    </span>
+                  </div>
                 </div>
               )}
             </div>
@@ -210,8 +214,19 @@ function HomeHero({
               {previewProg?.art ? (
                 <img src={previewProg.art} alt="" className="home-mini-live-video" />
               ) : previewChannel ? (
-                <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', background: '#0d1117' }}>
-                  <ChannelMark channel={previewChannel} size={48} />
+                <div className="home-mini-live-stage">
+                  <div className="home-mini-live-stage-crt" />
+                  <span className="home-mini-live-corner-tag">HD 1080p</span>
+                  <div className="home-mini-live-center">
+                    <ChannelMark channel={previewChannel} size={54} />
+                    <div className="home-mini-live-status-pill">
+                      <span className="home-mini-live-dot" />
+                      <span>BROADCAST ON AIR</span>
+                    </div>
+                    <div className="home-mini-signal-bars" aria-hidden="true">
+                      <span className="bar b1" /><span className="bar b2" /><span className="bar b3" /><span className="bar b4" />
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <div style={{ width: '100%', height: '100%', background: '#0a0d12' }} />
@@ -726,45 +741,100 @@ export function Home() {
   const sectionRenderers: Record<string, () => React.ReactNode> = {
     'continue-watching': () => {
       const items = demoTitles ? safeResume.slice(0, 4) : safeResume
-      if (items.length === 0) return null
-      return (
-        <ContentRail
-          key="continue-watching"
-          id="continue-watching"
-          icon="play"
-          title="Continue Watching"
-          sub="Pick up where you left off"
-          viewAll="/library?tab=history"
-          layout="wide"
-        >
-          {items.map((r) => (
-            <WideCard
-              key={r.ref}
-              to={r.play}
-              title={r.title}
-              sub={`${r.kind === 'episode' ? r.meta : 'Movie'} · ${formatRemainingTime(r.secondsLeft)}`}
-              art={r.art}
-              focus={r.focus}
-              progress={r.progress}
-              itemRef={r.ref}
-              onDismiss={() => {
-                const saved = library.progress[r.ref]
-                store.removeProgress(r.ref)
-                toast(`Removed “${r.title}” from Continue Watching`, {
-                  label: 'Undo',
-                  run: () => {
-                    if (saved) {
-                      store.restoreProgress(r.ref, saved)
-                      toast(`Restored “${r.title}” to Continue Watching`)
-                    }
-                  },
-                })
-              }}
-              playable
-            />
-          ))}
-        </ContentRail>
-      )
+      if (items.length > 0) {
+        return (
+          <ContentRail
+            key="continue-watching"
+            id="continue-watching"
+            icon="play"
+            title={demoTitles ? 'Continue Watching' : 'Jump Back In'}
+            sub="Pick up where you left off"
+            viewAll="/library?tab=history"
+            layout="wide"
+          >
+            {items.map((r) => (
+              <WideCard
+                key={r.ref}
+                to={r.play}
+                title={r.title}
+                sub={`${r.kind === 'episode' ? r.meta : 'Movie'} · ${formatRemainingTime(r.secondsLeft)}`}
+                art={r.art}
+                focus={r.focus}
+                progress={r.progress}
+                itemRef={r.ref}
+                onDismiss={() => {
+                  const saved = library.progress[r.ref]
+                  store.removeProgress(r.ref)
+                  toast(`Removed “${r.title}” from Jump Back In`, {
+                    label: 'Undo',
+                    run: () => {
+                      if (saved) {
+                        store.restoreProgress(r.ref, saved)
+                        toast(`Restored “${r.title}” to Jump Back In`)
+                      }
+                    },
+                  })
+                }}
+                playable
+              />
+            ))}
+          </ContentRail>
+        )
+      }
+      if (!demoTitles) {
+        return (
+          <ContentRail
+            key="jump-back-in"
+            id="jump-back-in"
+            icon="play"
+            title="Jump Back In"
+            sub="Quick access across your media lineup"
+            layout="wide"
+          >
+            <Link to="/live" className="card wide-card home-empty-action-card">
+              <div className="card-media card-shade home-action-card-media">
+                <div className="home-action-icon"><Icon name="calendar" size={28} /></div>
+                <span className="card-top"><span className="badge badge-accent">Live TV</span></span>
+                <span className="card-overlay">
+                  <strong>Full TV Guide & Channels</strong>
+                  <span className="faint">Browse complete electronic programme guide</span>
+                </span>
+              </div>
+            </Link>
+            <Link to="/movies" className="card wide-card home-empty-action-card">
+              <div className="card-media card-shade home-action-card-media">
+                <div className="home-action-icon"><Icon name="film" size={28} /></div>
+                <span className="card-top"><span className="badge badge-accent">Cinema</span></span>
+                <span className="card-overlay">
+                  <strong>Browse Movies & Cinema</strong>
+                  <span className="faint">Explore full film catalogue and archives</span>
+                </span>
+              </div>
+            </Link>
+            <Link to="/radio" className="card wide-card home-empty-action-card">
+              <div className="card-media card-shade home-action-card-media">
+                <div className="home-action-icon"><Icon name="radio" size={28} /></div>
+                <span className="card-top"><span className="badge badge-accent">Audio</span></span>
+                <span className="card-overlay">
+                  <strong>Live Radio & Audio</strong>
+                  <span className="faint">Listen to world radio streams and broadcasts</span>
+                </span>
+              </div>
+            </Link>
+            <Link to="/sources" className="card wide-card home-empty-action-card">
+              <div className="card-media card-shade home-action-card-media">
+                <div className="home-action-icon"><Icon name="plus" size={28} /></div>
+                <span className="card-top"><span className="badge badge-accent">Sources</span></span>
+                <span className="card-overlay">
+                  <strong>Sources & Playlists</strong>
+                  <span className="faint">Add M3U playlists, guides or Xtream accounts</span>
+                </span>
+              </div>
+            </Link>
+          </ContentRail>
+        )
+      }
+      return null
     },
 
     'recommended-for-you': () => {
@@ -995,125 +1065,285 @@ export function Home() {
         </ContentRail>
       ) : null,
 
-    'scifi-space': () =>
-      demoTitles && scifiTitles.length > 0 ? (
+    'scifi-space': () => {
+      if (demoTitles) {
+        if (scifiTitles.length === 0) return null
+        return (
+          <ContentRail
+            key="scifi-space"
+            id="scifi-space"
+            icon="film"
+            title="Sci-Fi & Space Exploration"
+            sub="Distant worlds and future frontiers"
+            viewAll="/movies?genre=Science%20fiction"
+            layout="poster"
+          >
+            {scifiTitles.map((t) => (
+              <PosterCard
+                key={t.id}
+                to={t.kind === 'movie' ? `/movies/${t.id}` : `/series/${t.id}`}
+                title={t.title}
+                art={t.art}
+                focus={t.focus}
+                line={t.kind === 'movie' ? `${t.year} · ${t.genres[0]}` : `${t.seasons.length} ${t.seasons.length === 1 ? 'Season' : 'Seasons'} · ${t.genres[0]}`}
+              />
+            ))}
+          </ContentRail>
+        )
+      }
+      const realScifi = publicFilms.filter(
+        (r) =>
+          r.tags?.some((tag) => ['space', 'science', 'scifi', 'nasa', 'astronomy', 'cosmos'].includes(tag.toLowerCase())) ||
+          r.subcategory.toLowerCase().includes('space') ||
+          r.subcategory.toLowerCase().includes('science'),
+      )
+      if (realScifi.length === 0) return null
+      return (
         <ContentRail
           key="scifi-space"
           id="scifi-space"
           icon="film"
           title="Sci-Fi & Space Exploration"
-          sub="Distant worlds and future frontiers"
-          viewAll="/movies?genre=Science%20fiction"
+          sub="Science fiction archives and deep space exploration"
+          viewAll="/movies"
           layout="poster"
         >
-          {scifiTitles.map((t) => (
+          {realScifi.slice(0, 10).map((r) => (
             <PosterCard
-              key={t.id}
-              to={t.kind === 'movie' ? `/movies/${t.id}` : `/series/${t.id}`}
-              title={t.title}
-              art={t.art}
-              focus={t.focus}
-              line={t.kind === 'movie' ? `${t.year} · ${t.genres[0]}` : `${t.seasons.length} ${t.seasons.length === 1 ? 'Season' : 'Seasons'} · ${t.genres[0]}`}
+              key={r.id}
+              to={`/movies/${encodeURIComponent(r.id)}`}
+              title={r.name}
+              art={r.artworkUrl}
+              line={[r.provider, r.subcategory].filter(Boolean).join(' · ')}
+              flag={<><Icon name="library" size={10} />Archive</>}
             />
           ))}
         </ContentRail>
-      ) : null,
+      )
+    },
 
-    'crime-drama': () =>
-      demoTitles && crimeDramaTitles.length > 0 ? (
+    'crime-drama': () => {
+      if (demoTitles) {
+        if (crimeDramaTitles.length === 0) return null
+        return (
+          <ContentRail
+            key="crime-drama"
+            id="crime-drama"
+            icon="film"
+            title="Crime & Psychological Drama"
+            sub="Gripping investigations and moral dilemmas"
+            viewAll="/movies?genre=Crime"
+            layout="poster"
+          >
+            {crimeDramaTitles.map((t) => (
+              <PosterCard
+                key={t.id}
+                to={t.kind === 'movie' ? `/movies/${t.id}` : `/series/${t.id}`}
+                title={t.title}
+                art={t.art}
+                focus={t.focus}
+                line={t.kind === 'movie' ? `${t.year} · ${t.genres[0]}` : `${t.seasons.length} ${t.seasons.length === 1 ? 'Season' : 'Seasons'} · ${t.genres[0]}`}
+              />
+            ))}
+          </ContentRail>
+        )
+      }
+      const realDrama = publicFilms.filter(
+        (r) =>
+          r.tags?.some((tag) => ['mystery', 'crime', 'drama', 'thriller', 'detective', 'film-noir'].includes(tag.toLowerCase())) ||
+          r.subcategory.toLowerCase().includes('drama') ||
+          r.subcategory.toLowerCase().includes('mystery'),
+      )
+      if (realDrama.length === 0) return null
+      return (
         <ContentRail
           key="crime-drama"
           id="crime-drama"
           icon="film"
-          title="Crime & Psychological Drama"
-          sub="Gripping investigations and moral dilemmas"
-          viewAll="/movies?genre=Crime"
+          title="Mystery & Classical Drama"
+          sub="Suspense, film noir and psychological narratives"
+          viewAll="/movies"
           layout="poster"
         >
-          {crimeDramaTitles.map((t) => (
+          {realDrama.slice(0, 10).map((r) => (
             <PosterCard
-              key={t.id}
-              to={t.kind === 'movie' ? `/movies/${t.id}` : `/series/${t.id}`}
-              title={t.title}
-              art={t.art}
-              focus={t.focus}
-              line={t.kind === 'movie' ? `${t.year} · ${t.genres[0]}` : `${t.seasons.length} ${t.seasons.length === 1 ? 'Season' : 'Seasons'} · ${t.genres[0]}`}
+              key={r.id}
+              to={`/movies/${encodeURIComponent(r.id)}`}
+              title={r.name}
+              art={r.artworkUrl}
+              line={[r.provider, r.subcategory].filter(Boolean).join(' · ')}
+              flag={<><Icon name="library" size={10} />Archive</>}
             />
           ))}
         </ContentRail>
-      ) : null,
+      )
+    },
 
-    'action-adventure': () =>
-      demoTitles && actionTitles.length > 0 ? (
+    'action-adventure': () => {
+      if (demoTitles) {
+        if (actionTitles.length === 0) return null
+        return (
+          <ContentRail
+            key="action-adventure"
+            id="action-adventure"
+            icon="film"
+            title="Action & Adventure"
+            sub="High-octane missions, chases and survival"
+            viewAll="/movies?genre=Action"
+            layout="poster"
+          >
+            {actionTitles.map((t) => (
+              <PosterCard
+                key={t.id}
+                to={t.kind === 'movie' ? `/movies/${t.id}` : `/series/${t.id}`}
+                title={t.title}
+                art={t.art}
+                focus={t.focus}
+                line={t.kind === 'movie' ? `${t.year} · ${t.genres[0]}` : `${t.seasons.length} ${t.seasons.length === 1 ? 'Season' : 'Seasons'} · ${t.genres[0]}`}
+              />
+            ))}
+          </ContentRail>
+        )
+      }
+      const realAction = publicFilms.filter(
+        (r) =>
+          r.tags?.some((tag) => ['action', 'adventure', 'western', 'thriller', 'expedition'].includes(tag.toLowerCase())) ||
+          r.subcategory.toLowerCase().includes('action') ||
+          r.subcategory.toLowerCase().includes('adventure'),
+      )
+      if (realAction.length === 0) return null
+      return (
         <ContentRail
           key="action-adventure"
           id="action-adventure"
           icon="film"
-          title="Action & Adventure"
-          sub="High-octane missions, chases and survival"
-          viewAll="/movies?genre=Action"
+          title="Action & Classical Adventure"
+          sub="High-stakes epics and cinematic expeditions"
+          viewAll="/movies"
           layout="poster"
         >
-          {actionTitles.map((t) => (
+          {realAction.slice(0, 10).map((r) => (
             <PosterCard
-              key={t.id}
-              to={t.kind === 'movie' ? `/movies/${t.id}` : `/series/${t.id}`}
-              title={t.title}
-              art={t.art}
-              focus={t.focus}
-              line={t.kind === 'movie' ? `${t.year} · ${t.genres[0]}` : `${t.seasons.length} ${t.seasons.length === 1 ? 'Season' : 'Seasons'} · ${t.genres[0]}`}
+              key={r.id}
+              to={`/movies/${encodeURIComponent(r.id)}`}
+              title={r.name}
+              art={r.artworkUrl}
+              line={[r.provider, r.subcategory].filter(Boolean).join(' · ')}
+              flag={<><Icon name="library" size={10} />Archive</>}
             />
           ))}
         </ContentRail>
-      ) : null,
+      )
+    },
 
-    'comedy-entertainment': () =>
-      demoTitles && comedyTitles.length > 0 ? (
+    'comedy-entertainment': () => {
+      if (demoTitles) {
+        if (comedyTitles.length === 0) return null
+        return (
+          <ContentRail
+            key="comedy-entertainment"
+            id="comedy-entertainment"
+            icon="film"
+            title="Comedy & Family Entertainment"
+            sub="Lighter moments and animated tales"
+            viewAll="/movies?genre=Animation"
+            layout="poster"
+          >
+            {comedyTitles.map((t) => (
+              <PosterCard
+                key={t.id}
+                to={t.kind === 'movie' ? `/movies/${t.id}` : `/series/${t.id}`}
+                title={t.title}
+                art={t.art}
+                focus={t.focus}
+                line={t.kind === 'movie' ? `${t.year} · ${t.genres[0]}` : `${t.seasons.length} ${t.seasons.length === 1 ? 'Season' : 'Seasons'} · ${t.genres[0]}`}
+              />
+            ))}
+          </ContentRail>
+        )
+      }
+      const realComedy = publicFilms.filter(
+        (r) =>
+          r.tags?.some((tag) => ['comedy', 'animation', 'humor', 'family', 'silent-comedy'].includes(tag.toLowerCase())) ||
+          r.subcategory.toLowerCase().includes('comedy') ||
+          r.subcategory.toLowerCase().includes('animation'),
+      )
+      if (realComedy.length === 0) return null
+      return (
         <ContentRail
           key="comedy-entertainment"
           id="comedy-entertainment"
           icon="film"
-          title="Comedy & Family Entertainment"
-          sub="Lighter moments and animated tales"
-          viewAll="/movies?genre=Animation"
+          title="Comedy & Animation Classics"
+          sub="Timeless humor and foundational animation"
+          viewAll="/movies"
           layout="poster"
         >
-          {comedyTitles.map((t) => (
+          {realComedy.slice(0, 10).map((r) => (
             <PosterCard
-              key={t.id}
-              to={t.kind === 'movie' ? `/movies/${t.id}` : `/series/${t.id}`}
-              title={t.title}
-              art={t.art}
-              focus={t.focus}
-              line={t.kind === 'movie' ? `${t.year} · ${t.genres[0]}` : `${t.seasons.length} ${t.seasons.length === 1 ? 'Season' : 'Seasons'} · ${t.genres[0]}`}
+              key={r.id}
+              to={`/movies/${encodeURIComponent(r.id)}`}
+              title={r.name}
+              art={r.artworkUrl}
+              line={[r.provider, r.subcategory].filter(Boolean).join(' · ')}
+              flag={<><Icon name="library" size={10} />Archive</>}
             />
           ))}
         </ContentRail>
-      ) : null,
+      )
+    },
 
-    'recently-added': () =>
-      demoTitles && recentlyAdded.length > 0 ? (
+    'recently-added': () => {
+      if (demoTitles) {
+        if (recentlyAdded.length === 0) return null
+        return (
+          <ContentRail
+            key="recently-added"
+            id="recently-added"
+            icon="film"
+            title="Recently Added"
+            sub="Latest arrivals across all genres"
+            viewAll="/movies"
+            layout="poster"
+          >
+            {recentlyAdded.map((t) => (
+              <PosterCard
+                key={t.id}
+                to={t.kind === 'movie' ? `/movies/${t.id}` : `/series/${t.id}`}
+                title={t.title}
+                art={t.art}
+                focus={t.focus}
+                line={t.kind === 'movie' ? `${t.year} · ${t.genres[0]}` : `${t.seasons.length} ${t.seasons.length === 1 ? 'Season' : 'Seasons'} · ${t.genres[0]}`}
+              />
+            ))}
+          </ContentRail>
+        )
+      }
+      const recentItems = [...publicFilms, ...publicSeries].slice(0, 12)
+      if (recentItems.length === 0) return null
+      return (
         <ContentRail
           key="recently-added"
           id="recently-added"
           icon="film"
-          title="Recently Added"
-          sub="Latest arrivals across all genres"
+          title="Curated Public Cinema & Archives"
+          sub="Selected historical works and restored media"
           viewAll="/movies"
           layout="poster"
         >
-          {recentlyAdded.map((t) => (
+          {recentItems.map((r) => (
             <PosterCard
-              key={t.id}
-              to={t.kind === 'movie' ? `/movies/${t.id}` : `/series/${t.id}`}
-              title={t.title}
-              art={t.art}
-              focus={t.focus}
-              line={t.kind === 'movie' ? `${t.year} · ${t.genres[0]}` : `${t.seasons.length} ${t.seasons.length === 1 ? 'Season' : 'Seasons'} · ${t.genres[0]}`}
+              key={r.id}
+              to={r.category === 'series' ? `/series/${encodeURIComponent(r.id)}` : `/movies/${encodeURIComponent(r.id)}`}
+              title={r.name}
+              art={r.artworkUrl}
+              line={[r.provider, r.subcategory].filter(Boolean).join(' · ')}
+              flag={<><Icon name="library" size={10} />Archive</>}
             />
           ))}
         </ContentRail>
-      ) : null,
+      )
+    },
   }
 
   // Real mode series rail renderer

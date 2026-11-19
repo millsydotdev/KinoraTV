@@ -325,7 +325,7 @@ function buildLiveSlide(
     synopsis: p?.desc || `Live broadcast on ${c.name}.`,
     kicker: `Now on ${c.name}`,
     badgeIcon: 'tv',
-    art: p?.art || p?.icon || c.logoUrl || undefined,
+    art: p?.art || (hasGenuineProgrammeArt(p) && !p?.icon?.includes('imgur.com') ? p?.icon : undefined) || undefined,
     channel: c,
     programme: p,
     channelMarkText: c.mark.text,
