@@ -37,6 +37,8 @@ export interface AppInfo {
   os: string
   arch: string
   tauriVersion: string
+  commitHash?: string
+  dataDir?: string
 }
 
 const isText = (v: unknown, max = 64): v is string => typeof v === 'string' && v.length > 0 && v.length <= max
@@ -51,7 +53,16 @@ export function parseAppInfo(raw: unknown): AppInfo {
   ) {
     throw new Error('The native shell returned app information in an unexpected shape.')
   }
-  return { name: v.name, version: v.version, profile: v.profile, os: v.os, arch: v.arch, tauriVersion: v.tauriVersion }
+  return {
+    name: v.name,
+    version: v.version,
+    profile: v.profile,
+    os: v.os,
+    arch: v.arch,
+    tauriVersion: v.tauriVersion,
+    commitHash: typeof v.commitHash === 'string' && v.commitHash.length > 0 ? v.commitHash : undefined,
+    dataDir: typeof v.dataDir === 'string' && v.dataDir.length > 0 ? v.dataDir : undefined,
+  }
 }
 
 /** True inside the Kinora desktop app; false in a plain browser and in tests. */

@@ -41,6 +41,7 @@ import { AudioPlayerBar } from './components/AudioPlayerBar'
 import { OfflineBanner } from './components/OfflineBanner'
 import { WhatsNewModal, hasSeenWhatsNew } from './components/WhatsNewModal'
 import { applyThemeTokensToElement } from './lib/theme'
+import { APP_VERSION } from './lib/native'
 import { ProfileProvider } from './state/profiles'
 import { StoreProvider, useStore } from './state/store'
 import { LocalMediaProvider } from './state/localMedia'
@@ -70,10 +71,10 @@ function Shell() {
     checkedUpgrade.current = true
     try {
       const lastVersion = localStorage.getItem('kinora.version.v1')
-      if (lastVersion && lastVersion !== '0.5.0' && !hasSeenWhatsNew('0.5.0')) {
+      if (lastVersion && lastVersion !== APP_VERSION && !hasSeenWhatsNew(APP_VERSION)) {
         setWhatsNewOpen(true)
       }
-      localStorage.setItem('kinora.version.v1', '0.5.0')
+      localStorage.setItem('kinora.version.v1', APP_VERSION)
     } catch {
       // Ignore storage errors
     }

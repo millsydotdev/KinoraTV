@@ -220,9 +220,10 @@ async function runCaptureMode(browser, mode) {
         };
       }
       if (cmd === 'app_info') {
+        const pkg = require('./package.json');
         return {
           name: 'Kinora',
-          version: '0.5.1',
+          version: pkg.version || '0.6.0',
           profile: 'release',
           os: 'linux',
           arch: 'x86_64',

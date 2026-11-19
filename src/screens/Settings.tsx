@@ -1704,6 +1704,9 @@ function DataSection() {
         buildProfile: appInfo?.profile ?? 'unknown',
         targetOs: appInfo?.os ?? 'unknown',
         targetArch: appInfo?.arch ?? 'unknown',
+        commitHash: appInfo?.commitHash ?? 'dev',
+        dataDir: appInfo?.dataDir ?? 'default',
+        channel: getVersionChannel(appInfo?.version ?? APP_VERSION, appInfo?.profile),
         profileSchema: 2,
       },
       system: {
@@ -1971,12 +1974,21 @@ function BuildRow() {
       </Row>
     )
   }
-  const { version, profile, os, arch, tauriVersion } = state.info
+  const { version, profile, os, arch, tauriVersion, commitHash, dataDir } = state.info
   const channelName = formatChannelName(getVersionChannel(version, profile))
+  const devBuildNotice = profile === 'debug' ? ' [Source / Development Build]' : ''
+  const commitText = commitHash ? ` Commit: ${commitHash.slice(0, 7)}.` : ''
   return (
-    <Row title="Kinora" hint={`Native shell: Tauri ${tauriVersion} on ${os} (${arch}). Channel: ${channelName}.`}>
-      <span className="muted tnum">v{version} ({profile})</span>
-    </Row>
+    <>
+      <Row title="Kinora" hint={`Native shell: Tauri ${tauriVersion} on ${os} (${arch}). Channel: ${channelName}.${commitText}`}>
+        <span className="muted tnum">v{version} ({profile}){devBuildNotice}</span>
+      </Row>
+      {dataDir && (
+        <Row title="Active data directory" hint="Storage location for sources, cached guides, and credentials.">
+          <span className="muted tnum" style={{ fontSize: '0.8125rem', wordBreak: 'break-all' }}>{dataDir}</span>
+        </Row>
+      )}
+    </>
   )
 }
 

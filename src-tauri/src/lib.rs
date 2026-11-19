@@ -367,6 +367,10 @@ pub struct AppInfo {
     pub os: &'static str,
     pub arch: &'static str,
     pub tauri_version: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub commit_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_dir: Option<String>,
 }
 
 fn build_info(name: &str, version: &str) -> AppInfo {
@@ -381,6 +385,8 @@ fn build_info(name: &str, version: &str) -> AppInfo {
         os: std::env::consts::OS,
         arch: std::env::consts::ARCH,
         tauri_version: tauri::VERSION,
+        commit_hash: None,
+        data_dir: None,
     }
 }
 
@@ -388,7 +394,14 @@ fn build_info(name: &str, version: &str) -> AppInfo {
 #[tauri::command]
 fn app_info(app: tauri::AppHandle) -> AppInfo {
     let package = app.package_info();
-    build_info(&package.name, &package.version.to_string())
+    let mut info = build_info(&package.name, &package.version.to_string());
+    if let Ok(data_dir) = app.path().app_data_dir() {
+        info.data_dir = Some(data_dir.to_string_lossy().to_string());
+    }
+    info.commit_hash = option_env!("GIT_COMMIT_HASH")
+        .or(option_env!("GITHUB_SHA"))
+        .map(|s| s.to_string());
+    info
 }
 
 /// Downloads and parses an M3U channel list from a user-supplied http(s) address. The address is
