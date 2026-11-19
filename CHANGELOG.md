@@ -5,6 +5,30 @@ All notable changes to Kinora will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-11-19 (Desktop Expansion and Layout Overhaul)
+
+### Added
+- **Staging Environment Isolation:** Created dedicated staging configuration (`src-tauri/tauri.staging.conf.json`) with bundle identifier `io.github.millsydotdev.kinora.staging` and isolated application data directory (`~/.local/share/io.github.millsydotdev.kinora.staging/`), ensuring staging builds never touch production user data.
+- **Staging Build Tooling:** Added `build:staging`, `tauri:dev:staging`, and `tauri:build:staging` npm scripts with build-time environment injection via `__APP_ENV__`.
+- **Unified 5-Stage Artwork Pipeline:** Implemented prioritized artwork resolution (custom, TMDB/TVmaze metadata, provider/local media, bundled assets, and branded SVG fallbacks) with strict aspect-ratio enforcement across movies (2:3), series (2:3), episodes (16:9), and channel logos.
+- **Development and Release Documentation:** Authored comprehensive architectural guides including `STAGING.md`, `RELEASE.md`, `DEPLOYMENT.md`, and `docs/DEVELOPMENT-AND-RELEASE-WORKFLOW.md`.
+
+### Fixed
+- **Global Layout Composition:** Eliminated permanent right-hand columns that squeezed main content across Live TV, Movies, and Settings.
+- **Full-Width Live TV Guide:** Removed redundant `tvguide-split-layout` and `tvguide-side-dock`; TV Guide now renders at 100% full width, and programme details open cleanly in the contextual slide-out sheet drawer.
+- **Movies Quick Look Drawer:** Converted `.movies-side-panel` into a contextual slide-out drawer overlay with a dimmed backdrop and close button, eliminating the permanent 360px layout reservation.
+- **Settings 2-Column Grid:** Restructured Settings into a clean 2-column layout (240px nav, 1fr content) across all sections, embedding Live Preview, Theme Presets, Typography, and Interface Density controls directly inside the Appearance section.
+- **Home Top Stage Rebalance:** Rebalanced top stage grid so companion hub stays proportionally bounded (340px to 420px) while the cinematic hero stage dominates.
+- **Search and Sources Width Expansion:** Removed restrictive max-width limits on Search (`width: 100%`) and Discovery (`width: 100%`), allowing desktop grids to expand cleanly.
+- **Gutter Padding Alignment:** Standardized horizontal padding to `var(--gutter, 24px)` across MediaStreaming, Recordings, and Browse bars.
+
+### Security
+- **Strict SSRF Protections:** Verified destination IP checks in native Rust fetch engine, refusing private, loopback, link-local, and multicast destinations.
+- **Token Redaction:** Verified that all error messages scrub paths, queries, and authentication tokens before reporting to the frontend.
+- **Zero Em-Dash Standard:** Enforced strict typographic rule prohibiting em-dashes across all code, comments, documentation, and UI text.
+
+---
+
 ## [0.5.0] - 2026-11-15 (Public Desktop Release Candidate)
 
 ### Added
