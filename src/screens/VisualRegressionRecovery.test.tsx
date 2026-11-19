@@ -144,9 +144,9 @@ describe('Phase 1 Visual Regression Recovery Suite', () => {
     const countBadge = sidebar?.querySelector('.sidebar-explore-count')
     expect(countBadge).toBeNull()
 
-    // Verify all 11 explore links are rendered when expanded
+    // Verify deduplicated explore links (Recordings and Books deduplicated)
     const exploreLinks = sidebar?.querySelectorAll('.sidebar-nav-explore .side-link')
-    expect(exploreLinks?.length).toBe(11)
+    expect(exploreLinks?.length).toBe(9)
   })
 
   it('REG-12: Controlled Search input triggers synthetic change events in React 19', async () => {

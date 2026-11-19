@@ -60,7 +60,11 @@ export function LocalMediaProvider({ children }: { children: ReactNode }) {
     try {
       const cat = await getLocalMediaCatalogue()
       if (cat) {
-        setCatalogue(cat)
+        setCatalogue({
+          movies: Array.isArray(cat.movies) ? cat.movies : [],
+          series: Array.isArray(cat.series) ? cat.series : Array.isArray((cat as any).shows) ? (cat as any).shows : [],
+          totalMediaBytes: typeof cat.totalMediaBytes === 'number' ? cat.totalMediaBytes : 0,
+        })
       }
     } catch {
       // Catalogue loading fallback

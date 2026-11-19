@@ -537,7 +537,14 @@ function useStoreValue(
     if (queries.length === 0 || requested.current.has(tag)) return
     requested.current.add(tag)
     guideProgrammes(queries, day, addDays(day, 1)).then((answers) => {
-      if (!answers || currentKey.current !== epgKey) return
+      if (!answers || currentKey.current !== epgKey) {
+        requested.current.delete(tag)
+        return
+      }
+      const allLoaded = answers.length > 0 && answers.every((a) => a.loaded)
+      if (!allLoaded) {
+        requested.current.delete(tag)
+      }
       const matches = resolveMatches(allChannels, guides, mappings, answers)
       setEpg((e) => {
         const days = new Map(e.key === epgKey ? e.days : NO_DAYS)

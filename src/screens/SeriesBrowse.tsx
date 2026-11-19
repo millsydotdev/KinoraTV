@@ -150,7 +150,11 @@ export function SeriesBrowse() {
       .filter((s) => activeTab !== 'returning' || s.years.toLowerCase().includes('present'))
       .filter((s) => !normalizedQuery || s.title.toLowerCase().includes(normalizedQuery))
       .sort((a, b) => {
-        if (activeTab === 'popular' || sort === 'episodes') return b.seasons.flat().length - a.seasons.flat().length
+        if (activeTab === 'popular' || sort === 'episodes') {
+          const bCount = Array.isArray(b.seasons) ? b.seasons.flat().length : 0
+          const aCount = Array.isArray(a.seasons) ? a.seasons.flat().length : 0
+          return bCount - aCount
+        }
         if (sort === 'added') return b.added.localeCompare(a.added)
         return a.title.localeCompare(b.title)
       })
@@ -202,7 +206,7 @@ export function SeriesBrowse() {
         art: s.art,
         year: s.years.split(' ')[0] || 2023,
         genre: s.genres[0] || 'Drama',
-        runtime: `${s.seasons.length} Season${s.seasons.length > 1 ? 's' : ''}`,
+        runtime: `${s.seasons?.length || 0} Season${(s.seasons?.length || 0) > 1 ? 's' : ''}`,
         ageRating: s.certificate,
         badges: getTechnicalBadges(s),
         playUrl: `/series/${s.id}`,
@@ -272,7 +276,11 @@ export function SeriesBrowse() {
   // Popular Shows
   const popularXtream = useMemo(() => safeXtreamSeries.slice(2, 10), [safeXtreamSeries])
   const popularDemo = useMemo(() => {
-    return [...safeSeries].sort((a, b) => b.seasons.flat().length - a.seasons.flat().length).slice(0, 8)
+    return [...safeSeries].sort((a, b) => {
+      const bCount = Array.isArray(b.seasons) ? b.seasons.flat().length : 0
+      const aCount = Array.isArray(a.seasons) ? a.seasons.flat().length : 0
+      return bCount - aCount
+    }).slice(0, 8)
   }, [safeSeries])
   const popularPublicDiscovery = useMemo(() => publicDiscoverySeries.slice(4, 12), [publicDiscoverySeries])
 
@@ -476,22 +484,22 @@ export function SeriesBrowse() {
             />
 
             {/* Local Media Library TV Shows Rail */}
-            {localCatalogue.series.length > 0 && (
+            {Boolean(localCatalogue?.series && localCatalogue.series.length > 0) && (
               <StreamingRail
                 title="From Your Local Media Library"
                 iconName="folder"
                 iconColor="var(--accent-red-primary)"
                 onSeeAll={() => navigate('/library?tab=local')}
               >
-                {localCatalogue.series.map((s) => {
+                {(localCatalogue?.series || []).map((s) => {
                   const routeId = `local-series:${s.id}`
-                  const totalEpisodes = s.seasons.reduce((acc, sn) => acc + sn.episodes.length, 0)
+                  const totalEpisodes = (s.seasons || []).reduce((acc, sn) => acc + (sn.episodes?.length || 0), 0)
                   return (
                     <StreamingCard
                       key={s.id}
                       to="/library?tab=local"
                       title={s.title}
-                      sub={[s.year, `${s.seasons.length} Seasons`, `${totalEpisodes} Episodes`].filter(Boolean).join(' · ')}
+                      sub={[s.year, `${s.seasons?.length || 0} Seasons`, `${totalEpisodes} Episodes`].filter(Boolean).join(' · ')}
                       art={s.artPath || undefined}
                       badges={['LOCAL']}
                       itemRef={routeId}
@@ -531,7 +539,7 @@ export function SeriesBrowse() {
                         key={show.id}
                         to={`/series/${show.id}`}
                         title={show.title}
-                        sub={`${show.seasons.length} Season${show.seasons.length > 1 ? 's' : ''} · ${show.genres[0] || 'Drama'}`}
+                        sub={`${show.seasons?.length || 0} Season${(show.seasons?.length || 0) > 1 ? 's' : ''} · ${show.genres[0] || 'Drama'}`}
                         art={show.art}
                         badges={getTechnicalBadges(show)}
                         itemRef={ref}
@@ -598,7 +606,7 @@ export function SeriesBrowse() {
                         key={`pop-${show.id}`}
                         to={`/series/${show.id}`}
                         title={show.title}
-                        sub={`${show.seasons.length} Season${show.seasons.length > 1 ? 's' : ''} · ${show.certificate}`}
+                        sub={`${show.seasons?.length || 0} Season${(show.seasons?.length || 0) > 1 ? 's' : ''} · ${show.certificate}`}
                         art={show.art}
                         badges={getTechnicalBadges(show)}
                         itemRef={seriesRef(show.id)}
@@ -687,7 +695,7 @@ export function SeriesBrowse() {
                           key={`ms-${show.id}`}
                           to={`/series/${show.id}`}
                           title={show.title}
-                          sub={`${show.seasons.length} Season${show.seasons.length > 1 ? 's' : ''}`}
+                          sub={`${show.seasons?.length || 0} Season${(show.seasons?.length || 0) > 1 ? 's' : ''}`}
                           art={show.art}
                           badges={getTechnicalBadges(show)}
                           itemRef={seriesRef(show.id)}

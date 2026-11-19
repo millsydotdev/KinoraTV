@@ -98,12 +98,10 @@ const navSections: NavSection[] = [
     label: 'Discover',
     icon: 'compass',
     children: [
-      { to: '/recordings', label: 'Recordings', icon: 'record' },
       { to: '/documentaries', label: 'Documentaries', icon: 'documentary' },
       { to: '/news', label: 'News', icon: 'news' },
       { to: '/sports', label: 'Sports', icon: 'sports' },
       { to: '/education', label: 'Education', icon: 'education' },
-      { to: '/books', label: 'Books', icon: 'book' },
       { to: '/culture', label: 'Culture & Arts', icon: 'palette' },
       { to: '/nature-science', label: 'Nature & Space', icon: 'nature' },
       { to: '/gaming', label: 'Gaming', icon: 'gaming' },
@@ -254,7 +252,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                   <NavLink
                     to={section.to ?? '/'}
                     className={({ isActive }) => `sidebar-root-btn ${isActive ? 'is-active' : ''}`}
-                    title={section.label}
+                    title={section.id === 'sources' ? `Sources (${playlists.length} playlists, ${guides.length} guide feeds)` : section.label}
                   >
                     <Icon name={section.icon} size={20} className="sidebar-icon" />
                     {!collapsed && <span className="sidebar-label">{section.label}</span>}

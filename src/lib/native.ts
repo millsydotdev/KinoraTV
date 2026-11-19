@@ -1910,7 +1910,12 @@ export async function getLocalMediaCatalogue(): Promise<LocalMediaCatalogue> {
     }
   }
   try {
-    return (await invoke<LocalMediaCatalogue>('get_local_media_catalogue')) ?? { movies: [], series: [], totalMediaBytes: 0 }
+    const raw = await invoke<any>('get_local_media_catalogue')
+    return {
+      movies: Array.isArray(raw?.movies) ? raw.movies : [],
+      series: Array.isArray(raw?.series) ? raw.series : Array.isArray(raw?.shows) ? raw.shows : [],
+      totalMediaBytes: typeof raw?.totalMediaBytes === 'number' ? raw.totalMediaBytes : 0,
+    }
   } catch {
     return { movies: [], series: [], totalMediaBytes: 0 }
   }

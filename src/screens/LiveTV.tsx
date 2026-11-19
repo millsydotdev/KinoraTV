@@ -80,6 +80,131 @@ function useMedia(query: string) {
   return match
 }
 
+function GuidePreviewPlayer({
+  channel,
+  onInfo,
+  onTune,
+}: {
+  channel: Channel
+  onInfo: () => void
+  onTune: () => void
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const store = useStore()
+  const playback = useStreamPlayback(channel.streamUrl, videoRef, {
+    quality: 'auto',
+    audioLanguage: store.prefs.audioLanguage,
+    subtitles: store.prefs.subtitles,
+    subtitleLanguage: store.prefs.subtitleLanguage,
+  })
+  const isPlaying = playback.ready && playback.state.status === 'playing'
+  const isLoading = playback.state.status === 'loading' || playback.state.status === 'buffering'
+  const isError = playback.state.status === 'error' || playback.state.status === 'unsupported'
+
+  return (
+    <div className="tvguide-player-card">
+      <div className="tvguide-player-media-wrap">
+        {channel.streamUrl ? (
+          <video
+            ref={videoRef}
+            playsInline
+            autoPlay
+            muted={playback.muted}
+            className="tvguide-player-video"
+            aria-label={`${channel.name} live preview`}
+          />
+        ) : (
+          <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#0d1117', gap: 12, padding: 16, textAlign: 'center' }}>
+            <ChannelMark channel={channel} size={56} />
+            <div style={{ fontSize: '0.8125rem', color: 'rgba(255,255,255,0.6)' }}>
+              No direct stream address configured for this channel
+            </div>
+          </div>
+        )}
+
+        {isLoading && (
+          <div className="tvguide-player-overlay-state">
+            <span className="spinner" />
+            <span>Connecting stream...</span>
+          </div>
+        )}
+
+        {isError && (
+          <div className="tvguide-player-overlay-state is-error">
+            <Icon name="warning" size={20} />
+            <span>Stream unavailable</span>
+            <button type="button" className="btn btn-small" onClick={playback.retry}>Retry</button>
+          </div>
+        )}
+      </div>
+
+      <div className="tvguide-player-scrim" />
+      <div className="tvguide-player-top-badge">
+        <span className="tvguide-live-pill">LIVE</span>
+        <span>{channel.name}{channel.number ? ` Ch ${channel.number}` : ''}</span>
+      </div>
+
+      <div className="tvguide-player-controls-bar">
+        <div className="tvguide-player-ctrl-group">
+          {channel.streamUrl ? (
+            <button
+              type="button"
+              className="tvguide-ctrl-icon-btn"
+              onClick={playback.togglePlay}
+              aria-label={isPlaying ? 'Pause live stream' : 'Play live stream'}
+            >
+              <Icon name={isPlaying ? 'pause' : 'play'} size={16} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="tvguide-ctrl-icon-btn"
+              onClick={onTune}
+              aria-label="Tune to channel"
+            >
+              <Icon name="play" size={16} />
+            </button>
+          )}
+          <button
+            type="button"
+            className="tvguide-ctrl-icon-btn"
+            onClick={playback.toggleMute}
+            aria-label={playback.muted ? 'Unmute' : 'Mute'}
+          >
+            <Icon name={playback.muted ? 'mute' : 'volume'} size={16} />
+          </button>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={Math.round(playback.volume * 100)}
+            onChange={(e) => playback.setVolume(Number(e.target.value) / 100)}
+            className="tvguide-volume-slider"
+            aria-label="Volume"
+          />
+        </div>
+        <div className="tvguide-player-ctrl-group">
+          <button
+            type="button"
+            className="tvguide-ctrl-icon-btn"
+            onClick={onInfo}
+            aria-label="Show programme information"
+          >
+            <Icon name="info" size={16} />
+          </button>
+          <Link
+            to={`/watch/${encodeURIComponent(channelRef(channel.id))}`}
+            className="tvguide-ctrl-icon-btn"
+            aria-label="Fullscreen player"
+          >
+            <Icon name="fullscreen" size={16} />
+          </Link>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function LiveTV() {
   const now = useNow(15_000)
   const store = useStore()
@@ -704,75 +829,11 @@ export function LiveTV() {
   const topStage = view === 'guide' && previewChannel && (
     <div className="tvguide-top-stage">
       {/* Left Card: Live Video Player Preview */}
-      <div className="tvguide-player-card">
-        <div className="tvguide-player-media-wrap">
-          {previewProg?.art ? (
-            <img src={previewProg.art} alt="" className="tvguide-player-fallback-art" />
-          ) : previewChannel ? (
-            <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', background: '#0d1117' }}>
-              <ChannelMark channel={previewChannel} size={56} />
-            </div>
-          ) : (
-            <div style={{ width: '100%', height: '100%', background: '#0a0d12' }} />
-          )}
-        </div>
-        <div className="tvguide-player-scrim" />
-        <div className="tvguide-player-top-badge">
-          <span className="tvguide-live-pill">LIVE</span>
-          <span>{previewChannel.name} Ch {previewChannel.number || '101'}</span>
-        </div>
-        <div className="tvguide-player-controls-bar">
-          <div className="tvguide-player-ctrl-group">
-            <button
-              type="button"
-              className="tvguide-ctrl-icon-btn"
-              onClick={() => tune(previewChannel)}
-              aria-label="Play or pause live stream"
-            >
-              <Icon name="play" size={16} />
-            </button>
-            <button
-              type="button"
-              className="tvguide-ctrl-icon-btn"
-              aria-label="Volume toggle"
-            >
-              <Icon name="volume" size={16} />
-            </button>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              defaultValue="80"
-              className="tvguide-volume-slider"
-              aria-label="Volume"
-            />
-          </div>
-          <div className="tvguide-player-ctrl-group">
-            <button
-              type="button"
-              className="tvguide-ctrl-icon-btn"
-              onClick={() => setSelected(previewProg ?? null)}
-              aria-label="Show programme information"
-            >
-              <Icon name="info" size={16} />
-            </button>
-            <button
-              type="button"
-              className="tvguide-ctrl-icon-btn"
-              aria-label="Closed captions"
-            >
-              <span style={{ fontSize: '0.6875rem', fontWeight: 700, border: '1px solid currentColor', padding: '1px 3px', borderRadius: '3px' }}>CC</span>
-            </button>
-            <Link
-              to={`/watch/${encodeURIComponent(channelRef(previewChannel.id))}`}
-              className="tvguide-ctrl-icon-btn"
-              aria-label="Fullscreen player"
-            >
-              <Icon name="fullscreen" size={16} />
-            </Link>
-          </div>
-        </div>
-      </div>
+      <GuidePreviewPlayer
+        channel={previewChannel}
+        onInfo={() => setSelected(previewProg ?? null)}
+        onTune={() => tune(previewChannel)}
+      />
 
       {/* Right Card: Now Playing Info Card */}
       <div className="tvguide-now-card">
@@ -783,7 +844,7 @@ export function LiveTV() {
             <div className="tvguide-now-channel-time">
               <span>{previewChannel.name}</span>
               <span>•</span>
-              <span>{previewProg ? `${clock(previewProg.start, prefs.timeFormat)} - ${clock(previewProg.stop, prefs.timeFormat)}` : '18:00 - 19:00'}</span>
+              <span>{previewProg ? `${clock(previewProg.start, prefs.timeFormat)} - ${clock(previewProg.stop, prefs.timeFormat)}` : 'On air'}</span>
             </div>
           </div>
           {nextProg && (
@@ -809,13 +870,13 @@ export function LiveTV() {
             <div className="tvguide-now-prog-fill" style={{ width: `${Math.round(progProgress * 100)}%` }} />
           </div>
           <div className="tvguide-now-prog-meta">
-            <span>{minsLeft} min left</span>
-            <span>{previewProg?.category ?? 'News & Current Affairs'}</span>
+            <span>{minsLeft > 0 ? `${minsLeft} min left` : 'Live'}</span>
+            <span>{previewProg?.category ?? previewChannel.group ?? 'General'}</span>
           </div>
         </div>
 
         <p className="tvguide-now-synopsis">
-          {previewProg?.desc ?? 'Alex Jones and Roman Kemp bring you the latest news, stories and interviews from across the UK.'}
+          {previewProg?.desc ?? (previewChannel ? `Live broadcast on ${previewChannel.name}.` : 'Select a channel to browse live programming.')}
         </p>
 
         <div className="tvguide-now-actions-row">
@@ -927,11 +988,11 @@ export function LiveTV() {
       </div>
 
       <div className="tvguide-dock-genre-tags">
-        {[currentDetailProg.category, currentDetailChannel.group].filter(Boolean).join(' • ') || 'News & Current Affairs'}
+        {[currentDetailProg.category, currentDetailChannel.group].filter(Boolean).join(' • ') || 'General Broadcast'}
       </div>
 
       <p className="tvguide-dock-synopsis">
-        {currentDetailProg.desc || 'Alex Jones and Roman Kemp bring you the latest news, stories and interviews from across the UK, with special guests, human interest features and live reports.'}
+        {currentDetailProg.desc || 'No detailed programme description provided for this broadcast.'}
       </p>
 
       <div className="tvguide-dock-actions">
@@ -1007,8 +1068,8 @@ export function LiveTV() {
             <Icon name="tv" size={14} />
           </div>
           <div className="tvguide-dock-next-meta">
-            <div className="tvguide-dock-next-title">The Great British Bake Off</div>
-            <div className="tvguide-dock-next-timing">19:00 - 20:00</div>
+            <div className="tvguide-dock-next-title">No upcoming programme listed</div>
+            <div className="tvguide-dock-next-timing">Check later schedule</div>
           </div>
         </div>
       )}
@@ -1986,7 +2047,7 @@ function ProgrammePanel({ programme: p, channel, now, isPlayingChannel, isSelect
 function LiveMatchGuideDialog({ channel, onClose }: { channel: Channel; onClose: () => void }) {
   const store = useStore()
   const toast = useToast()
-  const availableGuides = store.guides.filter((g) => g.summary)
+  const availableGuides = store.guides.filter((g) => Boolean(g.summary) || g.status === 'ready')
   const [guideId, setGuideId] = useState(() => availableGuides[0]?.id ?? '')
   const [list, setList] = useState<GuideChannel[] | null>(null)
   const [query, setQuery] = useState('')

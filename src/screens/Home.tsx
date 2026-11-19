@@ -55,7 +55,9 @@ function HomeHero({
   const [channelsTab, setChannelsTab] = useState<'now' | 'next'>('now')
 
   const currentSlide = slides[carouselIndex % Math.max(1, slides.length)]
-  const previewChannel = channels[0]
+  const previewChannel = useMemo(() => {
+    return channels.find((c) => Boolean(store.programmeAt(c, now))) ?? channels[0]
+  }, [channels, store, now])
   const previewProg = previewChannel ? store.programmeAt(previewChannel, now) : undefined
 
   const inLibrary = currentSlide ? (
@@ -69,7 +71,7 @@ function HomeHero({
     : 0.5
   const minsLeft = previewProg && previewProg.stop > now
     ? Math.max(1, Math.round((previewProg.stop - now) / 60000))
-    : 42
+    : 0
 
   return (
     <div className="home-smarttv-wrapper">
@@ -84,38 +86,62 @@ function HomeHero({
               ) : currentSlide.artworkKey ? (
                 <XtreamArt artworkKey={currentSlide.artworkKey} fallbackTitle={currentSlide.title} eager />
               ) : (
-                <div style={{ width: '100%', height: '100%', background: '#121820' }} />
+                <div
+                  className="home-hero-fallback-backdrop"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    background: `radial-gradient(ellipse at 75% 35%, ${currentSlide.channelMarkTone || '#e50914'}33 0%, #0d1117 70%)`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'flex-end',
+                    paddingRight: '12%',
+                  }}
+                >
+                  {currentSlide.channel && <ChannelMark channel={currentSlide.channel} size={110} />}
+                </div>
               )}
             </div>
           )}
 
           <div className="home-hero-inner">
             <span className="home-hero-tag">
-              {currentSlide?.kicker ?? 'FEATURED MOVIE'}
+              {currentSlide?.kicker ?? 'Featured'}
             </span>
             <h1 id="hero-title" className="home-hero-main-title">
-              {currentSlide?.title ?? 'Dune: Part Two'}
+              {currentSlide?.title ?? (previewChannel?.name ? `${previewChannel.name} Live` : 'Kinora')}
             </h1>
             <div className="home-hero-meta">
-              <span>{currentSlide?.yearOrYears ?? '2024'}</span>
-              <span>•</span>
-              <span>{currentSlide?.genres?.slice(0, 2).join(', ') ?? 'Sci-Fi'}</span>
-              <span>•</span>
-              <span>{currentSlide?.runtime ?? '2h 46m'}</span>
-              <span>•</span>
-              <span className="badge-tech">4K HDR</span>
-              <span className="badge-tech">DOLBY VISION</span>
+              {currentSlide?.yearOrYears && <span>{currentSlide.yearOrYears}</span>}
+              {currentSlide?.genres?.length ? (
+                <>
+                  {currentSlide.yearOrYears && <span>•</span>}
+                  <span>{currentSlide.genres.slice(0, 2).join(', ')}</span>
+                </>
+              ) : null}
+              {currentSlide?.runtime && (
+                <>
+                  <span>•</span>
+                  <span>{currentSlide.runtime}</span>
+                </>
+              )}
+              {currentSlide?.certificate && (
+                <span className="badge-tech">{currentSlide.certificate}</span>
+              )}
+              {currentSlide?.isLive && (
+                <span className="badge-live">LIVE</span>
+              )}
             </div>
             <p className="home-hero-desc">
               {currentSlide?.synopsis ??
-                'Paul Atreides unites with the Fremen to seek revenge against those who destroyed his family, and threatens Arrakis.'}
+                'Stream live television, browse guides and discover curated media.'}
             </p>
             <div className="home-hero-btns">
-              <Link to={currentSlide?.playUrl ?? '/watch/movie:dune-part-two'} className="home-btn-watch">
+              <Link to={currentSlide?.playUrl ?? (previewChannel ? `/live?channel=${previewChannel.id}` : '/live')} className="home-btn-watch">
                 <Icon name="play" size={18} />
-                <span>{currentSlide?.kind === 'live' ? 'Watch Live' : 'Watch Now'}</span>
+                <span>{currentSlide?.kind === 'live' || !currentSlide ? 'Watch Live' : 'Watch Now'}</span>
               </Link>
-              <Link to={currentSlide?.to ?? '/movies'} className="home-btn-info" title="View Details">
+              <Link to={currentSlide?.to ?? '/live'} className="home-btn-info" title="View Details">
                 <Icon name="info" size={18} />
                 <span>View Details</span>
               </Link>
@@ -195,15 +221,17 @@ function HomeHero({
             </div>
             <div className="home-mini-live-meta">
               <h3 className="home-mini-live-title">
-                {previewProg?.title ?? (previewChannel ? `${previewChannel.name} Live` : 'BBC News at Six')}
+                {previewProg?.title ?? (previewChannel ? `${previewChannel.name} Live` : 'Live Broadcast')}
               </h3>
               <p className="home-mini-live-sub">
-                <span>{previewChannel?.name ?? 'BBC One'} • {previewProg?.category ?? 'News & Current Affairs'}</span>
-                <span>{previewProg ? `${clock(previewProg.start, store.prefs.timeFormat)} - ${clock(previewProg.stop, store.prefs.timeFormat)}` : '18:00 - 19:00'}</span>
+                <span>{previewChannel?.name ?? 'Live Channel'}{previewProg?.category ? ` • ${previewProg.category}` : ''}</span>
+                <span>{previewProg ? `${clock(previewProg.start, store.prefs.timeFormat)} - ${clock(previewProg.stop, store.prefs.timeFormat)}` : 'On air'}</span>
               </p>
-              <div className="home-mini-live-progress" title={`${minsLeft} min left`}>
-                <div className="home-mini-live-progress-fill" style={{ width: `${Math.round(progProgress * 100)}%` }} />
-              </div>
+              {previewProg && (
+                <div className="home-mini-live-progress" title={`${minsLeft} min left`}>
+                  <div className="home-mini-live-progress-fill" style={{ width: `${Math.round(progProgress * 100)}%` }} />
+                </div>
+              )}
             </div>
           </div>
 
@@ -434,7 +462,7 @@ export function Home() {
   const now = useNow()
   const store = useStore()
   const toast = useToast()
-  const { storageSummary } = useLocalMedia()
+  const { storageSummary, catalogue: localCatalogue } = useLocalMedia()
   const {
     library,
     prefs,
@@ -1120,10 +1148,16 @@ export function Home() {
         slides={featuredSlides}
         channels={safeChannelsList}
         now={now}
-        totalMovies={(demoTitles ? movies.length : 0) + xtreamCatalogue.movies.length}
-        totalSeries={(demoTitles ? series.length : 0) + xtreamCatalogue.series.length}
+        totalMovies={(demoTitles ? movies.length : 0) + xtreamCatalogue.movies.length + (localCatalogue?.movies?.length || 0)}
+        totalSeries={(demoTitles ? series.length : 0) + xtreamCatalogue.series.length + (localCatalogue?.series?.length || 0)}
         totalChannels={channels.length || (demoTitles ? 45 : 0)}
-        storageText={storageSummary ? `${(storageSummary.availableDiskBytes / (1024 ** 4)).toFixed(1)} TB` : '2.4 TB'}
+        storageText={
+          storageSummary
+            ? storageSummary.availableDiskBytes >= 1024 ** 4
+              ? `${(storageSummary.availableDiskBytes / 1024 ** 4).toFixed(1)} TB Free`
+              : `${Math.round(storageSummary.availableDiskBytes / 1024 ** 3)} GB Free`
+            : '0 B Indexed'
+        }
       />
       <div className={`page stack home-body home-density-${cardDensity}`}>
         {!demoTitles && (

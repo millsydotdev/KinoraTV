@@ -384,9 +384,9 @@ export function Movies() {
     }
   }, [])
 
-  const activeMovie = selectedMovie ?? defaultSelectedMovie
+  const activeMovie = selectedMovie ?? (hasDemo ? defaultSelectedMovie : null)
 
-  const sidePanel = (
+  const sidePanel = activeMovie ? (
     <aside className="movies-side-panel" aria-label="Movie Details">
       <div className="movies-side-poster-wrap">
         <img
@@ -412,16 +412,22 @@ export function Movies() {
         <span>{activeMovie.ageRating}</span>
       </div>
 
-      <div className="movies-side-ratings-row">
-        <div className="movies-side-rating-item" style={{ color: '#f59e0b' }}>
-          <Icon name="star" size={15} />
-          <span>{activeMovie.rating} <span style={{ color: 'rgba(255, 255, 255, 0.4)', fontWeight: 400 }}>({activeMovie.ratingCount})</span></span>
+      {(activeMovie.rating || activeMovie.tomatoRating) && (
+        <div className="movies-side-ratings-row">
+          {activeMovie.rating && (
+            <div className="movies-side-rating-item" style={{ color: '#f59e0b' }}>
+              <Icon name="star" size={15} />
+              <span>{activeMovie.rating} {activeMovie.ratingCount && <span style={{ color: 'rgba(255, 255, 255, 0.4)', fontWeight: 400 }}>({activeMovie.ratingCount})</span>}</span>
+            </div>
+          )}
+          {activeMovie.tomatoRating && (
+            <div className="movies-side-rating-item" style={{ color: '#ef4444' }}>
+              <span className="rt-badge" style={{ fontWeight: 800, fontSize: '0.72rem', letterSpacing: '0.05em', background: '#ef4444', color: '#fff', padding: '1px 4px', borderRadius: '3px', marginRight: '4px' }}>RT</span>
+              <span>{activeMovie.tomatoRating}</span>
+            </div>
+          )}
         </div>
-        <div className="movies-side-rating-item" style={{ color: '#ef4444' }}>
-          <span className="rt-badge" style={{ fontWeight: 800, fontSize: '0.72rem', letterSpacing: '0.05em', background: '#ef4444', color: '#fff', padding: '1px 4px', borderRadius: '3px', marginRight: '4px' }}>RT</span>
-          <span>{activeMovie.tomatoRating}</span>
-        </div>
-      </div>
+      )}
 
       <p className="movies-side-synopsis">{activeMovie.synopsis}</p>
 
@@ -452,36 +458,54 @@ export function Movies() {
       </div>
 
       <div className="movies-side-specs-table">
-        <div className="movies-side-spec-row">
-          <span className="movies-side-spec-label">Director</span>
-          <span className="movies-side-spec-val">{activeMovie.director}</span>
-        </div>
-        <div className="movies-side-spec-row">
-          <span className="movies-side-spec-label">Cast</span>
-          <span className="movies-side-spec-val">{activeMovie.cast}</span>
-        </div>
+        {activeMovie.director && (
+          <div className="movies-side-spec-row">
+            <span className="movies-side-spec-label">Director</span>
+            <span className="movies-side-spec-val">{activeMovie.director}</span>
+          </div>
+        )}
+        {activeMovie.cast && (
+          <div className="movies-side-spec-row">
+            <span className="movies-side-spec-label">Cast</span>
+            <span className="movies-side-spec-val">{activeMovie.cast}</span>
+          </div>
+        )}
         <div className="movies-side-spec-row">
           <span className="movies-side-spec-label">Genre</span>
           <span className="movies-side-spec-val">{activeMovie.genre}</span>
         </div>
         <div className="movies-side-spec-row">
           <span className="movies-side-spec-label">Language</span>
-          <span className="movies-side-spec-val">{activeMovie.language}</span>
+          <span className="movies-side-spec-val">{activeMovie.language || 'English'}</span>
         </div>
         <div className="movies-side-spec-row">
           <span className="movies-side-spec-label">Subtitles</span>
-          <span className="movies-side-spec-val">{activeMovie.subtitles}</span>
+          <span className="movies-side-spec-val">{activeMovie.subtitles || 'Multiple'}</span>
         </div>
       </div>
 
-      <h4 className="movies-side-similar-heading">Similar Movies</h4>
-      <div className="movies-side-similar-grid">
-        {activeMovie.similar.map((sim: any) => (
-          <Link key={sim.id} to={sim.to} className="movies-side-similar-card" title={sim.title}>
-            <img src={sim.art} alt={sim.title} className="movies-side-similar-thumb" />
-            <span className="movies-side-similar-title">{sim.title}</span>
-          </Link>
-        ))}
+      {activeMovie.similar && activeMovie.similar.length > 0 && (
+        <>
+          <h4 className="movies-side-similar-heading">Similar Movies</h4>
+          <div className="movies-side-similar-grid">
+            {activeMovie.similar.map((sim: any) => (
+              <Link key={sim.id} to={sim.to} className="movies-side-similar-card" title={sim.title}>
+                <img src={sim.art} alt={sim.title} className="movies-side-similar-thumb" />
+                <span className="movies-side-similar-title">{sim.title}</span>
+              </Link>
+            ))}
+          </div>
+        </>
+      )}
+    </aside>
+  ) : (
+    <aside className="movies-side-panel" aria-label="Movie Details">
+      <div style={{ padding: '40px 16px', textAlign: 'center', color: 'rgba(255,255,255,0.6)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+        <Icon name="film" size={40} />
+        <h3 style={{ color: '#fff', fontSize: '1rem', fontWeight: 600 }}>No Film Selected</h3>
+        <p style={{ fontSize: '0.8125rem', lineHeight: 1.5, margin: 0 }}>
+          Select a title to view synopsis, specifications and details.
+        </p>
       </div>
     </aside>
   )
@@ -625,46 +649,48 @@ export function Movies() {
             />
 
             {/* Continue Watching Rail */}
-            <StreamingRail
-              title="Continue Watching"
-              iconName="history"
-              onSeeAll={() => navigate('/library?tab=history')}
-            >
-              {continueWatchingMovies.length > 0 ? (
-                continueWatchingMovies.map((movie) => {
-                  const ref = movieRef(movie.id)
-                  const progress = library.progress[ref]
-                  return (
+            {(continueWatchingMovies.length > 0 || hasDemo) && (
+              <StreamingRail
+                title="Continue Watching"
+                iconName="history"
+                onSeeAll={() => navigate('/library?tab=history')}
+              >
+                {continueWatchingMovies.length > 0 ? (
+                  continueWatchingMovies.map((movie) => {
+                    const ref = movieRef(movie.id)
+                    const progress = library.progress[ref]
+                    return (
+                      <StreamingCard
+                        key={movie.id}
+                        to={`/watch/${encodeURIComponent(ref)}`}
+                        title={movie.title}
+                        sub={`${movie.year} · ${movie.genres[0] || 'Film'}`}
+                        art={movie.art}
+                        progress={progress?.dur ? progress.pos / progress.dur : 0.65}
+                        itemRef={ref}
+                      />
+                    )
+                  })
+                ) : hasDemo ? (
+                  [
+                    { id: 'interstellar', title: 'Interstellar', sub: '1h 16m left', art: '/art/low-orbit.jpg', progress: 0.55 },
+                    { id: 'dune-part-two', title: 'Dune: Part Two', sub: '58m left', art: '/art/the-salt-meridian.jpg', progress: 0.65 },
+                    { id: 'oppenheimer', title: 'Oppenheimer', sub: '1h 24m left', art: '/art/harbour-lights.jpg', progress: 0.5 },
+                    { id: 'the-batman', title: 'The Batman', sub: '46m left', art: '/art/undertow.jpg', progress: 0.72 },
+                  ].map((item) => (
                     <StreamingCard
-                      key={movie.id}
-                      to={`/watch/${encodeURIComponent(ref)}`}
-                      title={movie.title}
-                      sub={`${movie.year} · ${movie.genres[0] || 'Film'}`}
-                      art={movie.art}
-                      progress={progress?.dur ? progress.pos / progress.dur : 0.65}
-                      itemRef={ref}
+                      key={item.id}
+                      to={`/watch/movie:${item.id}`}
+                      title={item.title}
+                      sub={item.sub}
+                      art={item.art}
+                      progress={item.progress}
+                      itemRef={`movie:${item.id}`}
                     />
-                  )
-                })
-              ) : (
-                [
-                  { id: 'interstellar', title: 'Interstellar', sub: '1h 16m left', art: '/art/low-orbit.jpg', progress: 0.55 },
-                  { id: 'dune-part-two', title: 'Dune: Part Two', sub: '58m left', art: '/art/the-salt-meridian.jpg', progress: 0.65 },
-                  { id: 'oppenheimer', title: 'Oppenheimer', sub: '1h 24m left', art: '/art/harbour-lights.jpg', progress: 0.5 },
-                  { id: 'the-batman', title: 'The Batman', sub: '46m left', art: '/art/undertow.jpg', progress: 0.72 },
-                ].map((item) => (
-                  <StreamingCard
-                    key={item.id}
-                    to={`/watch/movie:${item.id}`}
-                    title={item.title}
-                    sub={item.sub}
-                    art={item.art}
-                    progress={item.progress}
-                    itemRef={`movie:${item.id}`}
-                  />
-                ))
-              )}
-            </StreamingRail>
+                  ))
+                ) : null}
+              </StreamingRail>
+            )}
 
             {/* Popular Movies Rail */}
             <StreamingRail
@@ -685,19 +711,19 @@ export function Movies() {
                         title: movie.name || movie.title,
                         year: movie.year,
                         genre: movie.genres?.[0] || 'Film',
-                        runtime: movie.runtime ? `${Math.floor(movie.runtime / 60)}h ${movie.runtime % 60}m` : '2h 15m',
-                        ageRating: movie.certificate || '12A',
-                        rating: '8.4',
-                        ratingCount: '410K',
-                        tomatoRating: '91%',
+                        runtime: movie.runtime ? `${Math.floor(movie.runtime / 60)}h ${movie.runtime % 60}m` : undefined,
+                        ageRating: movie.certificate || undefined,
+                        rating: movie.rating ? String(movie.rating) : undefined,
+                        ratingCount: movie.ratingCount ? String(movie.ratingCount) : undefined,
+                        tomatoRating: movie.tomatoRating ? String(movie.tomatoRating) : undefined,
                         synopsis: movie.synopsis || movie.plot || 'Stream this feature film directly on Kinora.',
-                        director: movie.director || 'Denis Villeneuve',
-                        cast: Array.isArray(movie.cast) ? movie.cast.join(', ') : 'Lead Ensemble',
-                        language: 'English',
-                        subtitles: 'Multiple',
-                        art: movie.art || '/art/the-salt-meridian.jpg',
+                        director: movie.director || undefined,
+                        cast: Array.isArray(movie.cast) ? movie.cast.join(', ') : typeof movie.cast === 'string' ? movie.cast : undefined,
+                        language: movie.language || 'English',
+                        subtitles: movie.subtitles || 'Multiple',
+                        art: movie.art || (hasDemo ? '/art/the-salt-meridian.jpg' : undefined),
                         playUrl: `/watch/${encodeURIComponent(isXt ? `movie:${routeId}` : movieRef(movie.id))}`,
-                        similar: defaultSelectedMovie.similar,
+                        similar: hasDemo ? defaultSelectedMovie.similar : [],
                       })
                     }
                   >

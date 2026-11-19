@@ -86,6 +86,159 @@ async function runCaptureMode(browser, mode) {
   const page = await context.newPage();
   const rawUserData = !isDev ? getRawUserSources() : null;
 
+  // Load real guides in Node for genuine IPC responses
+  const loadedGuides = new Map();
+  if (!isDev && rawUserData && Array.isArray(rawUserData.guides)) {
+    const GUIDE_DIR = '/home/millsy/.local/share/io.github.millsydotdev.kinora/sources';
+    for (const g of rawUserData.guides) {
+      try {
+        const filePath = path.join(GUIDE_DIR, `guide-${g.id}.json`);
+        if (fs.existsSync(filePath)) {
+          const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+          const chanMap = new Map();
+          parsed.guide.channels.forEach((c, idx) => {
+            chanMap.set(c.id.toLowerCase().trim(), idx);
+            const parts = c.id.split('@')[0].split('.');
+            chanMap.set(parts[0].toLowerCase().trim(), idx);
+            chanMap.set(c.name.toLowerCase().trim(), idx);
+          });
+          loadedGuides.set(g.id, { file: parsed, chanMap });
+        }
+      } catch (e) {
+        console.warn(`Error loading guide ${g.id}:`, e.message);
+      }
+    }
+  }
+
+  if (!isDev && rawUserData) {
+    await page.exposeFunction('nodeTauriInvoke', async (cmd, args) => {
+      if (cmd === 'load_sources') {
+        return {
+          sources: rawUserData.sources || [],
+          guides: rawUserData.guides || [],
+          mappings: rawUserData.mappings || [],
+          xtreamSources: rawUserData.xtreamSources || [],
+          notice: null,
+        };
+      }
+      if (cmd === 'load_guide') {
+        const gData = loadedGuides.get(args.id);
+        if (!gData) return null;
+        const file = gData.file;
+        return {
+          id: args.id,
+          channels: file.guide.channels.length,
+          programmes: file.guide.schedules.reduce((acc, s) => acc + s.length, 0),
+          fetchedAt: file.fetchedAt,
+          duplicates: file.guide.duplicates || 0,
+          skipped: file.guide.skipped || 0,
+          warnings: file.guide.warnings || [],
+        };
+      }
+      if (cmd === 'guide_channels') {
+        const gData = loadedGuides.get(args.id);
+        if (!gData) return [];
+        return gData.file.guide.channels;
+      }
+      if (cmd === 'guide_programmes') {
+        const { queries, from, to } = args;
+        const answers = [];
+        for (const q of queries) {
+          const gData = loadedGuides.get(q.guide);
+          if (!gData) {
+            answers.push({
+              guide: q.guide,
+              loaded: false,
+              matches: q.ids.map((id) => ({ id, channel: null })),
+              programmes: [],
+            });
+            continue;
+          }
+          const file = gData.file;
+          const matches = [];
+          const programmes = [];
+          const matchedIndices = new Set();
+
+          for (const id of q.ids) {
+            const norm = id.toLowerCase().trim();
+            const base = norm.split('@')[0];
+            const idx = gData.chanMap.has(norm)
+              ? gData.chanMap.get(norm)
+              : gData.chanMap.has(base)
+              ? gData.chanMap.get(base)
+              : undefined;
+
+            if (idx !== undefined && !matchedIndices.has(idx)) {
+              matchedIndices.add(idx);
+              const chanId = file.guide.channels[idx].id;
+              matches.push({ id, channel: chanId });
+              const schedule = file.guide.schedules[idx] || [];
+              for (const p of schedule) {
+                if (p.start < to && p.stop > from) {
+                  programmes.push({
+                    channel: chanId,
+                    start: p.start,
+                    stop: p.stop,
+                    stopEstimated: Boolean(p.stopEstimated),
+                    title: p.title,
+                    subtitle: p.subtitle || null,
+                    desc: p.desc || null,
+                    category: p.category || null,
+                    episode: p.episode || null,
+                    icon: p.icon || null,
+                  });
+                }
+              }
+            } else {
+              matches.push({ id, channel: null });
+            }
+          }
+          answers.push({ guide: q.guide, loaded: true, matches, programmes });
+        }
+        return answers;
+      }
+      if (cmd === 'get_storage_volumes_info' || cmd === 'get_storage_metrics') {
+        return {
+          volumes: [
+            {
+              mountPoint: '/',
+              totalBytes: 995900000000,
+              availableBytes: 245400000000,
+              usedBytes: 750600000000,
+              fsType: 'ext4',
+              isRemovable: false,
+              isSystemDrive: true,
+              deviceId: 1,
+            },
+          ],
+          totalDiskBytes: 995900000000,
+          availableDiskBytes: 245400000000,
+          usedDiskBytes: 750600000000,
+          percentUsed: 75.4,
+          mediaIndexedBytes: 0,
+          mediaItemCount: 0,
+        };
+      }
+      if (cmd === 'app_info') {
+        return {
+          name: 'Kinora',
+          version: '0.5.1',
+          profile: 'release',
+          os: 'linux',
+          arch: 'x86_64',
+          tauriVersion: '2.0.0',
+        };
+      }
+      if (cmd === 'get_local_libraries') return { folders: [], totalFiles: 0, lastScan: Date.now() };
+      if (cmd === 'get_local_media_catalogue') return { movies: [], series: [], totalMediaBytes: 0 };
+      if (cmd === 'is_xtream_connected') return false;
+      if (cmd === 'load_xtream_catalogue') return null;
+      if (cmd === 'save_sources') return;
+      if (cmd && cmd.startsWith('dvr_')) return [];
+      return null;
+    });
+  }
+
   // Configure localStorage and runtime for the mode
   await page.addInitScript(({ devMode, realSourcesData }) => {
     localStorage.setItem('kinora.setup.v1', JSON.stringify({ done: true }));
@@ -99,58 +252,12 @@ async function runCaptureMode(browser, mode) {
     }));
 
     if (!devMode && realSourcesData) {
-      // Mock Tauri IPC to load genuine persisted sources and storage metrics
       window.isTauri = true;
       window.__TAURI_INTERNALS__ = {
         invoke: async (cmd, args) => {
-          if (cmd === 'load_sources') {
-            return {
-              sources: realSourcesData.sources || [],
-              guides: realSourcesData.guides || [],
-              mappings: realSourcesData.mappings || [],
-              xtreamSources: realSourcesData.xtreamSources || [],
-              notice: null,
-            };
+          if (window.nodeTauriInvoke) {
+            return await window.nodeTauriInvoke(cmd, args);
           }
-          if (cmd === 'get_storage_volumes_info' || cmd === 'get_storage_metrics') {
-            return {
-              volumes: [
-                {
-                  mountPoint: '/',
-                  totalBytes: 1024 * 1024 * 1024 * 1024,
-                  availableBytes: 620 * 1024 * 1024 * 1024,
-                  usedBytes: 404 * 1024 * 1024 * 1024,
-                  fsType: 'ext4',
-                  isRemovable: false,
-                  isSystemDrive: true,
-                  deviceId: 1,
-                }
-              ],
-              totalDiskBytes: 1024 * 1024 * 1024 * 1024,
-              availableDiskBytes: 620 * 1024 * 1024 * 1024,
-              usedDiskBytes: 404 * 1024 * 1024 * 1024,
-              percentUsed: 39.4,
-              mediaIndexedBytes: 0,
-              mediaItemCount: 0,
-            };
-          }
-          if (cmd === 'app_info') {
-            return {
-              name: 'Kinora',
-              version: '0.5.1',
-              profile: 'release',
-              os: 'linux',
-              arch: 'x86_64',
-              tauriVersion: '2.0.0',
-            };
-          }
-          if (cmd === 'get_local_libraries') return { folders: [], totalFiles: 0, lastScan: Date.now() };
-          if (cmd === 'get_local_media_catalogue') return { movies: [], shows: [], tracks: [] };
-          if (cmd === 'is_xtream_connected') return false;
-          if (cmd === 'load_guide') return null;
-          if (cmd === 'load_xtream_catalogue') return null;
-          if (cmd === 'save_sources') return;
-          if (cmd && cmd.startsWith('dvr_')) return [];
           return null;
         }
       };
@@ -331,7 +438,12 @@ async function runCaptureMode(browser, mode) {
   await captureScreen(page, 'settings.png', outDir);
 
   // 34. Player Controls Overlay
-  await page.goto(`${BASE_URL}/watch/movie%3Aharbour-lights`, { waitUntil: 'networkidle' });
+  if (!isDev) {
+    const firstChanId = rawUserData?.sources?.[0]?.channels?.[0]?.id || 'ch-0';
+    await page.goto(`${BASE_URL}/watch/channel%3A${encodeURIComponent(firstChanId)}`, { waitUntil: 'networkidle' });
+  } else {
+    await page.goto(`${BASE_URL}/watch/movie%3Aharbour-lights`, { waitUntil: 'networkidle' });
+  }
   await page.waitForTimeout(1000);
   await captureScreen(page, 'player-controls.png', outDir);
 
