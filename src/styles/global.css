@@ -163,7 +163,7 @@
   --font: 'Hanken Grotesk Variable', 'Segoe UI', system-ui, sans-serif;
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
   --side-w: clamp(230px, 15.8vw, 264px);
-  --side-compact-w: 68px;
+  --side-compact-w: 76px;
   --head-h: 76px;
   --audio-bar-height: 0px;
   --modal-w: clamp(340px, 48vw, 640px);

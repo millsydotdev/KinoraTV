@@ -2,7 +2,9 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
-  padding-bottom: 48px;
+  padding: 0 var(--gutter, 24px) calc(76px + var(--audio-bar-height, 0px));
+  box-sizing: border-box;
+  width: 100%;
 }
 
 .dvr-storage-banner {

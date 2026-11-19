@@ -264,11 +264,6 @@ export function Settings() {
           <div className="settings-center-col">
             <Section id={activeSectionId} />
           </div>
-
-          {/* COLUMN 3: Right Live Preview & Presets */}
-          <aside className="settings-aside-col" aria-label="Settings preview and presets">
-            <SettingsAsidePanel activeSection={activeSectionId} />
-          </aside>
         </div>
       </div>
     </>
@@ -667,6 +662,11 @@ function AppearanceSection({
             </label>
           </div>
         </div>
+      </div>
+
+      {/* Visual Presets, Typography, Density and Live Preview */}
+      <div className="settings-appearance-addons">
+        <SettingsAsidePanel activeSection="appearance" />
       </div>
     </>
   )

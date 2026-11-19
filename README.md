@@ -186,17 +186,23 @@ React 19 + TypeScript (src/)          Rust + Tauri 2 (src-tauri/)
 ## Commands
 
 ```bash
-npm install            # frontend dependencies + pinned Tauri CLI/API (2.12.4)
-npm run dev            # React UI only, in a browser: http://localhost:5199
-npm run tauri:dev      # native app in development (starts Vite, opens the Tauri window)
-npm test               # frontend tests (Vitest)
-npm run test:rust      # Rust tests
-npm run typecheck      # TypeScript
-npm run build          # frontend production build into dist/
-npm run tauri:build    # native release binary + .rpm bundle
+npm install                  # frontend dependencies + pinned Tauri CLI/API (2.12.4)
+npm run dev                  # React UI only, in a browser: http://localhost:5199
+npm run tauri:dev            # native app in development (starts Vite, opens the Tauri window)
+npm run tauri:dev:staging    # native app in staging mode with isolated staging identifier
+npm test                     # frontend tests (Vitest)
+npm run test:rust            # Rust tests
+npm run typecheck            # TypeScript
+npm run test:gate            # full multi-gate quality pipeline
+npm run build                # frontend production build into dist/
+npm run build:staging        # frontend staging build into dist/
+npm run tauri:build:staging  # native staging desktop packages (.rpm, .deb, AppImage)
+npm run tauri:build          # native production release binary + packages
 ```
 
-Release output: `src-tauri/target/release/kinora` and `src-tauri/target/release/bundle/` (RPM and DEB packages on Linux; NSIS and MSI on Windows; DMG on macOS).
+Release output: `src-tauri/target/release/kinora` and `src-tauri/target/release/bundle/` (RPM and DEB packages on Linux; NSIS and MSI on Windows; DMG on macOS). Staging releases use an isolated identifier (`io.github.millsydotdev.kinora.staging`) so staging never modifies production data.
+
+For comprehensive architectural standards, environment configuration, and release procedures, see [DEVELOPMENT-AND-RELEASE-WORKFLOW.md](docs/DEVELOPMENT-AND-RELEASE-WORKFLOW.md).
 
 The native app keeps its own local storage, separate from the browser at localhost:5199, so it starts
 with the default demo library and appearance settings.

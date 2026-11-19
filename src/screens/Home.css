@@ -601,7 +601,7 @@
 /* Smart TV Home Stage: 2-Column Split matching Reference Mockup */
 .home-smarttv-top-stage {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(350px, 1.15fr);
+  grid-template-columns: minmax(0, 1fr) clamp(340px, 26vw, 420px);
   gap: 24px;
   padding: 12px var(--gutter, 24px) 24px;
   box-sizing: border-box;

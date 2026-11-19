@@ -375,7 +375,7 @@ export function SeriesBrowse() {
       {/* Filter and Search Bar for Test and Filter Parity */}
       <div
         className={activeTab === 'browse' && !isFiltering ? 'streaming-compat-controls' : 'browse-bar'}
-        style={activeTab === 'browse' && !isFiltering ? undefined : { padding: '12px 40px', background: 'var(--surface-1)', borderBottom: '1px solid var(--line)', display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}
+        style={activeTab === 'browse' && !isFiltering ? undefined : { padding: '12px var(--gutter, 24px)', background: 'var(--surface-1)', borderBottom: '1px solid var(--line)', display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}
       >
         <label className="provider-search" style={{ margin: 0, flex: '1 1 200px', minWidth: '180px' }}>
           <span className="sr-only">Search TV shows</span>

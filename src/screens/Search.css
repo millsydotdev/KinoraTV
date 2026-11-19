@@ -1,4 +1,4 @@
-.search { max-width: 1320px; }
+.search { width: 100%; }
 .search-field-wrapper { position: relative; width: 100%; }
 .search-field { display: flex; align-items: center; gap: 14px; height: 60px; padding: 0 8px 0 22px; border-radius: 30px; background: var(--surface); border: 1px solid var(--line-strong); transition: border-color 150ms var(--ease); }
 .search-field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }

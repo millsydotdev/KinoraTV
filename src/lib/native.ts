@@ -7,6 +7,16 @@ import packageInfo from '../../package.json'
 export const AUTHORITATIVE_VERSION: string = packageInfo.version
 export const APP_VERSION: string = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : AUTHORITATIVE_VERSION
 
+export type AppEnvironment = 'development' | 'staging' | 'production' | 'test'
+export const APP_ENV: AppEnvironment =
+  typeof __APP_ENV__ !== 'undefined'
+    ? (__APP_ENV__ as AppEnvironment)
+    : (import.meta.env?.MODE as AppEnvironment) || (import.meta.env?.DEV ? 'development' : 'production')
+
+export const isDevelopment = (): boolean => APP_ENV === 'development'
+export const isStaging = (): boolean => APP_ENV === 'staging'
+export const isProduction = (): boolean => APP_ENV === 'production'
+
 export type VersionChannel = 'stable' | 'rc' | 'beta' | 'alpha' | 'development'
 
 export function getVersionChannel(version: string, profile?: string): VersionChannel {

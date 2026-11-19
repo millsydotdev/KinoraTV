@@ -387,129 +387,146 @@ export function Movies() {
   }, [])
 
   const [shareModalOpen, setShareModalOpen] = useState(false)
-  const activeMovie = selectedMovie ?? (hasDemo ? defaultSelectedMovie : null)
+  const activeMovie = selectedMovie
 
-  const sidePanel = activeMovie ? (
-    <aside className="movies-side-panel" aria-label="Movie Details">
-      <div className="movies-side-poster-wrap">
-        <img
-          src={activeMovie.art}
-          alt={activeMovie.title}
-          className="movies-side-poster-img"
-        />
-        <Link to={activeMovie.playUrl} className="movies-side-play-overlay" aria-label={`Play ${activeMovie.title}`}>
-          <div className="movies-side-play-btn">
-            <Icon name="play" size={20} />
-          </div>
-        </Link>
-      </div>
-
-      <h3 className="movies-side-title">{activeMovie.title}</h3>
-      <div className="movies-side-meta">
-        <span>{activeMovie.year}</span>
-        <span>•</span>
-        <span>{activeMovie.genre}</span>
-        <span>•</span>
-        <span>{activeMovie.runtime}</span>
-        <span>•</span>
-        <span>{activeMovie.ageRating}</span>
-      </div>
-
-      {(activeMovie.rating || activeMovie.tomatoRating) && (
-        <div className="movies-side-ratings-row">
-          {activeMovie.rating && (
-            <div className="movies-side-rating-item" style={{ color: '#f59e0b' }}>
-              <Icon name="star" size={15} />
-              <span>{activeMovie.rating} {activeMovie.ratingCount && <span style={{ color: 'rgba(255, 255, 255, 0.4)', fontWeight: 400 }}>({activeMovie.ratingCount})</span>}</span>
-            </div>
-          )}
-          {activeMovie.tomatoRating && (
-            <div className="movies-side-rating-item" style={{ color: '#ef4444' }}>
-              <span className="rt-badge" style={{ fontWeight: 800, fontSize: '0.72rem', letterSpacing: '0.05em', background: '#ef4444', color: '#fff', padding: '1px 4px', borderRadius: '3px', marginRight: '4px' }}>RT</span>
-              <span>{activeMovie.tomatoRating}</span>
-            </div>
-          )}
-        </div>
-      )}
-
-      <p className="movies-side-synopsis">{activeMovie.synopsis}</p>
-
-      <div className="movies-side-actions">
-        <Link to={activeMovie.playUrl} className="movies-side-watch-btn">
-          <Icon name="play" size={16} />
-          <span>Watch Now</span>
-        </Link>
-        <button
-          type="button"
-          className="movies-side-icon-btn"
-          aria-label="Mark as watched or add to list"
-          onClick={() => {
-            store.toggleWatchlist(activeMovie.id)
-            toast('Updated watchlist')
-          }}
-        >
-          <Icon name="check" size={18} />
-        </button>
-        <button
-          type="button"
-          className="movies-side-icon-btn"
-          aria-label="Share movie"
-          onClick={() => setShareModalOpen(true)}
-        >
-          <Icon name="share" size={18} />
-        </button>
-      </div>
-
-      <div className="movies-side-specs-table">
-        {activeMovie.director && (
-          <div className="movies-side-spec-row">
-            <span className="movies-side-spec-label">Director</span>
-            <span className="movies-side-spec-val">{activeMovie.director}</span>
-          </div>
-        )}
-        {activeMovie.cast && (
-          <div className="movies-side-spec-row">
-            <span className="movies-side-spec-label">Cast</span>
-            <span className="movies-side-spec-val">{activeMovie.cast}</span>
-          </div>
-        )}
-        <div className="movies-side-spec-row">
-          <span className="movies-side-spec-label">Genre</span>
-          <span className="movies-side-spec-val">{activeMovie.genre}</span>
-        </div>
-        <div className="movies-side-spec-row">
-          <span className="movies-side-spec-label">Language</span>
-          <span className="movies-side-spec-val">{activeMovie.language || 'English'}</span>
-        </div>
-        <div className="movies-side-spec-row">
-          <span className="movies-side-spec-label">Subtitles</span>
-          <span className="movies-side-spec-val">{activeMovie.subtitles || 'Multiple'}</span>
-        </div>
-      </div>
-
-      {activeMovie.similar && activeMovie.similar.length > 0 && (
+  const sidePanel = (
+    <aside
+      className={`movies-side-panel ${activeMovie ? 'is-open' : ''}`}
+      aria-label="Movie Details"
+    >
+      {activeMovie ? (
         <>
-          <h4 className="movies-side-similar-heading">Similar Movies</h4>
-          <div className="movies-side-similar-grid">
-            {activeMovie.similar.map((sim: any) => (
-              <Link key={sim.id} to={sim.to} className="movies-side-similar-card" title={sim.title}>
-                <img src={sim.art} alt={sim.title} className="movies-side-similar-thumb" />
-                <span className="movies-side-similar-title">{sim.title}</span>
-              </Link>
-            ))}
+          <div className="movies-side-head-bar">
+            <span className="movies-side-head-label">Quick Look</span>
+            <button
+              type="button"
+              className="movies-side-close-btn"
+              onClick={() => setSelectedMovie(null)}
+              aria-label="Close movie details"
+            >
+              <Icon name="close" size={16} />
+            </button>
           </div>
+
+          <div className="movies-side-poster-wrap">
+            <img
+              src={activeMovie.art}
+              alt={activeMovie.title}
+              className="movies-side-poster-img"
+            />
+            <Link to={activeMovie.playUrl} className="movies-side-play-overlay" aria-label={`Play ${activeMovie.title}`}>
+              <div className="movies-side-play-btn">
+                <Icon name="play" size={20} />
+              </div>
+            </Link>
+          </div>
+
+          <h3 className="movies-side-title">{activeMovie.title}</h3>
+          <div className="movies-side-meta">
+            <span>{activeMovie.year}</span>
+            <span>·</span>
+            <span>{activeMovie.genre}</span>
+            <span>·</span>
+            <span>{activeMovie.runtime}</span>
+            <span>·</span>
+            <span>{activeMovie.ageRating}</span>
+          </div>
+
+          {(activeMovie.rating || activeMovie.tomatoRating) && (
+            <div className="movies-side-ratings-row">
+              {activeMovie.rating && (
+                <div className="movies-side-rating-item" style={{ color: '#f59e0b' }}>
+                  <Icon name="star" size={15} />
+                  <span>{activeMovie.rating} {activeMovie.ratingCount && <span style={{ color: 'rgba(255, 255, 255, 0.4)', fontWeight: 400 }}>({activeMovie.ratingCount})</span>}</span>
+                </div>
+              )}
+              {activeMovie.tomatoRating && (
+                <div className="movies-side-rating-item" style={{ color: '#ef4444' }}>
+                  <span className="rt-badge" style={{ fontWeight: 800, fontSize: '0.72rem', letterSpacing: '0.05em', background: '#ef4444', color: '#fff', padding: '1px 4px', borderRadius: '3px', marginRight: '4px' }}>RT</span>
+                  <span>{activeMovie.tomatoRating}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          <p className="movies-side-synopsis">{activeMovie.synopsis}</p>
+
+          <div className="movies-side-actions">
+            <Link to={activeMovie.playUrl} className="movies-side-watch-btn">
+              <Icon name="play" size={16} />
+              <span>Watch Now</span>
+            </Link>
+            <button
+              type="button"
+              className="movies-side-icon-btn"
+              aria-label="Mark as watched or add to list"
+              onClick={() => {
+                store.toggleWatchlist(activeMovie.id)
+                toast('Updated watchlist')
+              }}
+            >
+              <Icon name="check" size={18} />
+            </button>
+            <button
+              type="button"
+              className="movies-side-icon-btn"
+              aria-label="Share movie"
+              onClick={() => setShareModalOpen(true)}
+            >
+              <Icon name="share" size={18} />
+            </button>
+          </div>
+
+          <div className="movies-side-specs-table">
+            {activeMovie.director && (
+              <div className="movies-side-spec-row">
+                <span className="movies-side-spec-label">Director</span>
+                <span className="movies-side-spec-val">{activeMovie.director}</span>
+              </div>
+            )}
+            {activeMovie.cast && (
+              <div className="movies-side-spec-row">
+                <span className="movies-side-spec-label">Cast</span>
+                <span className="movies-side-spec-val">{activeMovie.cast}</span>
+              </div>
+            )}
+            <div className="movies-side-spec-row">
+              <span className="movies-side-spec-label">Genre</span>
+              <span className="movies-side-spec-val">{activeMovie.genre}</span>
+            </div>
+            <div className="movies-side-spec-row">
+              <span className="movies-side-spec-label">Language</span>
+              <span className="movies-side-spec-val">{activeMovie.language || 'English'}</span>
+            </div>
+            <div className="movies-side-spec-row">
+              <span className="movies-side-spec-label">Subtitles</span>
+              <span className="movies-side-spec-val">{activeMovie.subtitles || 'Multiple'}</span>
+            </div>
+          </div>
+
+          {activeMovie.similar && activeMovie.similar.length > 0 && (
+            <>
+              <h4 className="movies-side-similar-heading">Similar Movies</h4>
+              <div className="movies-side-similar-grid">
+                {activeMovie.similar.map((sim: any) => (
+                  <Link key={sim.id} to={sim.to} className="movies-side-similar-card" title={sim.title}>
+                    <img src={sim.art} alt={sim.title} className="movies-side-similar-thumb" />
+                    <span className="movies-side-similar-title">{sim.title}</span>
+                  </Link>
+                ))}
+              </div>
+            </>
+          )}
         </>
+      ) : (
+        <div style={{ padding: '40px 16px', textAlign: 'center', color: 'rgba(255,255,255,0.6)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+          <Icon name="film" size={40} />
+          <h3 style={{ color: '#fff', fontSize: '1rem', fontWeight: 600 }}>No Film Selected</h3>
+          <p style={{ fontSize: '0.8125rem', lineHeight: 1.5, margin: 0 }}>
+            Select a title to view synopsis, specifications and details.
+          </p>
+        </div>
       )}
-    </aside>
-  ) : (
-    <aside className="movies-side-panel" aria-label="Movie Details">
-      <div style={{ padding: '40px 16px', textAlign: 'center', color: 'rgba(255,255,255,0.6)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-        <Icon name="film" size={40} />
-        <h3 style={{ color: '#fff', fontSize: '1rem', fontWeight: 600 }}>No Film Selected</h3>
-        <p style={{ fontSize: '0.8125rem', lineHeight: 1.5, margin: 0 }}>
-          Select a title to view synopsis, specifications and details.
-        </p>
-      </div>
     </aside>
   )
 
@@ -557,7 +574,7 @@ export function Movies() {
       {/* Filter and Search Bar for Test and Filter Parity */}
       <div
         className={activeTab === 'browse' && !isFiltering ? 'streaming-compat-controls' : 'browse-bar'}
-        style={activeTab === 'browse' && !isFiltering ? undefined : { padding: '12px 40px', background: 'var(--surface-1)', borderBottom: '1px solid var(--line)', display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}
+        style={activeTab === 'browse' && !isFiltering ? undefined : { padding: '12px var(--gutter, 24px)', background: 'var(--surface-1)', borderBottom: '1px solid var(--line)', display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}
       >
         <label className="provider-search" style={{ margin: 0, flex: '1 1 200px', minWidth: '180px' }}>
           <span className="sr-only">Search movies</span>
@@ -1020,6 +1037,13 @@ export function Movies() {
             )}
             </div>
           </div>
+          {activeMovie && (
+            <div
+              className="movies-side-backdrop"
+              onClick={() => setSelectedMovie(null)}
+              aria-hidden="true"
+            />
+          )}
           {sidePanel}
         </div>
       )}
