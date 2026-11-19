@@ -8,7 +8,7 @@
   --nav: #080C10;
   --surface: #111318;
   --surface-1: #111318;
-  --surface-2: #171822;
+  --surface-2: #171B22;
   --surface-3: #1f222e;
   --raised: #1f222e;
   --line: #232733;
@@ -49,8 +49,8 @@
   /* Semantic Surface Tokens */
   --surface-elevated: #1f222e;
   --surface-card: #111318;
-  --surface-selected: color-mix(in oklab, var(--accent) 15%, #171822);
-  --surface-input: #171822;
+  --surface-selected: color-mix(in oklab, var(--accent) 15%, #171B22);
+  --surface-input: #171B22;
   --surface-drawer: #1f222e;
   --surface-modal: #1f222e;
   --surface-popover: #1f222e;
@@ -439,13 +439,30 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   display: none !important;
 }
 
-/* Cards: hover lifts with a neutral edge; keyboard focus gets a single crisp accent border;
+/* Cards: hover lifts with a glowing red edge; keyboard focus gets a crisp illuminated accent border;
    selection is an accent border plus a text badge, never colour alone. */
 .card { position: relative; display: block; border-radius: var(--r-m); background: var(--surface); border: 1px solid var(--line); overflow: hidden; transition: border-color 160ms var(--ease), box-shadow 160ms var(--ease), transform 160ms var(--ease); }
-.card:hover { border-color: var(--line-strong); box-shadow: var(--card-shadow); transform: translateY(-2px); }
-.card:focus-visible { outline: 2px solid var(--focus); outline-offset: -1px; border-color: transparent; border-radius: var(--r-m); box-shadow: 0 12px 28px rgba(0, 0, 0, 0.58); transform: translateY(-2px); z-index: 4; }
-.card:hover .art img, .card:focus-visible .art img { transform: scale(1.03); }
-.card.is-selected { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.card:hover { border-color: #E50914; box-shadow: 0 0 14px rgba(229, 9, 20, 0.45), var(--card-shadow); transform: translateY(-4px); }
+.card:focus-visible { outline: 2px solid #E50914; outline-offset: 1px; border-color: #E50914; border-radius: var(--r-m); box-shadow: 0 0 18px rgba(229, 9, 20, 0.65), 0 14px 32px rgba(0, 0, 0, 0.7); transform: translateY(-4px); z-index: 4; }
+.card:hover .art img, .card:focus-visible .art img { transform: scale(1.04); }
+.card.is-selected { border-color: #E50914; box-shadow: 0 0 14px rgba(229, 9, 20, 0.55), inset 0 0 6px rgba(229, 9, 20, 0.25); }
+
+/* Reusable animated focus / border (TV Box & High-End visual system) */
+@keyframes tv-border-glow {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(229, 9, 20, 0.5), inset 0 0 4px rgba(229, 9, 20, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 18px rgba(229, 9, 20, 0.8), inset 0 0 8px rgba(229, 9, 20, 0.4);
+  }
+}
+
+.animated-focus-border,
+.tv-focus-border {
+  border: 2px solid #E50914 !important;
+  box-shadow: 0 0 14px rgba(229, 9, 20, 0.55), inset 0 0 6px rgba(229, 9, 20, 0.25);
+  animation: tv-border-glow 2.4s ease-in-out infinite;
+}
 .card-media { aspect-ratio: 16 / 9; }
 .card-poster .card-media { aspect-ratio: 2 / 3; }
 /* Text over artwork is always light on a dark scrim, whatever the theme. */
