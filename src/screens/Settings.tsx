@@ -5,10 +5,10 @@ import { Dialog } from '../components/Dialog'
 import { Icon, type IconName } from '../components/Icon'
 import { useToast } from '../components/Toast'
 import { PageHeader } from '../components/PageHeader'
-import { Segmented, StateBlock, Switch } from '../components/ui'
+import { Segmented, Switch } from '../components/ui'
 import { getAppInfo, checkForUpdates, type AppInfo, type UpdateCheckResult, APP_VERSION, getVersionChannel, formatChannelName } from '../lib/native'
 import { CODEC_HELP, codecSupport } from '../lib/playback'
-import { ACCENTS, THEME_BG, THEME_PRESETS, contrast, safeHex, type AccentName } from '../lib/theme'
+import { ACCENTS, THEME_PRESETS, safeHex, type AccentName } from '../lib/theme'
 import { defaultPrefs, useStore, type Prefs } from '../state/store'
 import { useLocalMedia } from '../state/localMedia'
 import { useProfiles } from '../state/profiles'
@@ -31,20 +31,19 @@ import './Settings.css'
 // Categories follow the mockup's Settings list (Playback, Interface, EPG, Sources, Library, Advanced),
 // split further where the brief asks for Audio, Subtitles, Data and About.
 const sections: { id: string; label: string; icon: IconName; blurb: string }[] = [
+  { id: 'appearance', label: 'Appearance', icon: 'desktop', blurb: 'Personalise the look and feel of Kinora across all devices' },
   { id: 'playback', label: 'Playback', icon: 'play', blurb: 'Video quality, resuming, next episode' },
-  { id: 'casting', label: 'Casting & Network', icon: 'cast', blurb: 'Device discovery, Chromecast, AirPlay, DLNA receivers' },
-  { id: 'audio', label: 'Audio', icon: 'audio', blurb: 'Preferred language' },
-  { id: 'subtitles', label: 'Subtitles', icon: 'subtitles', blurb: 'Language, size, style' },
-  { id: 'appearance', label: 'Appearance', icon: 'palette', blurb: 'Theme, accent colour, density, text size, motion' },
-  { id: 'epg', label: 'EPG', icon: 'guide', blurb: 'Guide settings, time format, timezone' },
-  { id: 'dvr', label: 'DVR & Recording', icon: 'record', blurb: 'Recording storage, padding, retention, timeshift buffer' },
-  { id: 'storage', label: 'Storage & Local Media', icon: 'hardDrive', blurb: 'Physical storage volumes, connected local folders, media indexing' },
-  { id: 'sources', label: 'Sources', icon: 'link', blurb: 'How playlists are imported and refreshed' },
-  { id: 'metadata', label: 'Metadata & Artwork', icon: 'film', blurb: 'External providers (TMDB, TVmaze), enrichment, artwork licensing' },
-  { id: 'library', label: 'Library', icon: 'library', blurb: 'Layout, watched titles, watch history' },
-  { id: 'profiles', label: 'Profiles', icon: 'user', blurb: 'Household profiles, Kids mode, avatar' },
-  { id: 'data', label: 'Data', icon: 'database', blurb: 'Export, reset, clear saved data' },
-  { id: 'about', label: 'About', icon: 'info', blurb: 'Version, licences, keyboard shortcuts' },
+  { id: 'epg', label: 'TV Guide & EPG', icon: 'calendar', blurb: 'Guide settings, time format, timezone' },
+  { id: 'dvr', label: 'DVR & Recording', icon: 'record', blurb: 'Recording storage, retention, padding and live timeshift' },
+  { id: 'sources', label: 'Sources & Providers', icon: 'sources', blurb: 'How playlists are imported and refreshed' },
+  { id: 'storage', label: 'Media Library', icon: 'library', blurb: 'Physical storage volumes, connected local folders, media indexing' },
+  { id: 'subtitles', label: 'Subtitles & Audio', icon: 'subtitles', blurb: 'Language, font, audio streams, and style' },
+  { id: 'notifications', label: 'Notifications', icon: 'bell', blurb: 'System notifications, episode reminders, recordings' },
+  { id: 'shortcuts', label: 'Shortcuts', icon: 'keyboard', blurb: 'Keyboard shortcuts and remote control mapping' },
+  { id: 'profiles', label: 'User Profile', icon: 'user', blurb: 'Household profiles, Kids mode, avatar, parental lock' },
+  { id: 'privacy', label: 'Privacy & Security', icon: 'shield', blurb: 'Telemetry, permissions, security policies' },
+  { id: 'data', label: 'Advanced', icon: 'adjustments', blurb: 'Data backup, export, reset, performance' },
+  { id: 'about', label: 'About Kinora', icon: 'info', blurb: 'Version, licences, documentation' },
 ]
 
 type BoolPref = { [K in keyof Prefs]: Prefs[K] extends boolean ? K : never }[keyof Prefs]
@@ -212,99 +211,193 @@ const SETTING_DIRECT_LINKS = [
 ]
 
 export function Settings() {
-  const { section } = useParams()
+  const { section: routeSection } = useParams()
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const highlight = params.get('highlight')
-  const current = sections.find((x) => x.id === section)
-  const [searchQuery, setSearchQuery] = useState('')
+  const activeSectionId = routeSection || 'appearance'
 
   useEffect(() => {
-    if (!section && highlight) {
+    if (!routeSection && highlight) {
       const match = SETTING_DIRECT_LINKS.find((l) => l.rowId === highlight)
       if (match) {
         navigate(`/settings/${match.section}?highlight=${encodeURIComponent(highlight)}`, { replace: true })
       }
     }
-  }, [section, highlight, navigate])
-
-  if (!section) {
-    const q = searchQuery.trim().toLowerCase()
-    const matchingSections = q
-      ? sections.filter((s) => s.label.toLowerCase().includes(q) || s.blurb.toLowerCase().includes(q))
-      : sections
-    const matchingLinks = q
-      ? SETTING_DIRECT_LINKS.filter((l) => l.label.toLowerCase().includes(q) || l.keywords.toLowerCase().includes(q))
-      : []
-
-    return (
-      <>
-        <PageHeader title={<><Icon name="cog" size={20} />Settings</>} />
-        <div className="page settings">
-          <div style={{ marginBottom: 18 }}>
-            <input
-              type="search"
-              className="input input-lg"
-              placeholder="Search settings, controls, preferences..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              aria-label="Search settings"
-              style={{ width: '100%', maxWidth: 540 }}
-            />
-          </div>
-
-          {q && matchingLinks.length > 0 && (
-            <div style={{ marginBottom: 24 }}>
-              <h3 className="section-title" style={{ fontSize: '0.9375rem', marginBottom: 10 }}>Direct Setting Links</h3>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {matchingLinks.map((item) => (
-                  <Link
-                    key={item.label}
-                    to={`/settings/${item.section}?highlight=${item.rowId}`}
-                    className="chip"
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                  >
-                    <Icon name="cog" size={14} />
-                    <span>{item.label}</span>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <p className="page-intro">Saved on this device as you change them.</p>
-          <ul className="settings-list">
-            {matchingSections.map((x) => (
-              <li key={x.id}>
-                <Link to={`/settings/${x.id}`} className="card settings-item">
-                  <span className="settings-icon"><Icon name={x.icon} /></span>
-                  <span className="settings-text"><strong>{x.label}</strong><span className="faint">{x.blurb}</span></span>
-                  <Icon name="right" size={18} />
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </>
-    )
-  }
-
-  if (!current) {
-    return (
-      <>
-        <PageHeader title="Settings" />
-        <div className="page"><StateBlock icon="warning" title="No such settings page" action={<Link to="/settings" className="btn btn-primary">All settings</Link>} /></div>
-      </>
-    )
-  }
+  }, [routeSection, highlight, navigate])
 
   return (
     <>
-      <PageHeader title={current.label} tabs={<Link to="/settings" className="text-link"><Icon name="back" size={16} />Settings</Link>} />
-      <div className="page settings">
-        <div className="settings-panel">
-          <p className="page-intro">{current.blurb}.</p>
-          <Section id={current.id} />
+      <PageHeader title="Settings" />
+      <div className="page settings-page">
+        <div className="settings-header-banner">
+          <div className="settings-header-icon-box">
+            <Icon name="cog" size={24} />
+          </div>
+          <div>
+            <h1 className="settings-header-title">Settings</h1>
+            <p className="settings-header-desc">Customise Kinora, manage your media, sources and playback preferences.</p>
+          </div>
+        </div>
+
+        <div className="settings-columns-grid">
+          {/* COLUMN 1: Category Sub-Navigation */}
+          <nav className="settings-nav-col" aria-label="Settings sub navigation">
+            {sections.map((s) => {
+              const isActive = s.id === activeSectionId
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  className={`settings-nav-btn ${isActive ? 'is-active' : ''}`}
+                  onClick={() => navigate(`/settings/${s.id}`)}
+                >
+                  <Icon name={s.icon} size={18} className="settings-nav-icon" />
+                  <span className="settings-nav-label">{s.label}</span>
+                  <Icon name="chevronRight" size={14} className="settings-nav-chevron" />
+                </button>
+              )
+            })}
+          </nav>
+
+          {/* COLUMN 2: Center Stage Configuration */}
+          <div className="settings-center-col">
+            <Section id={activeSectionId} />
+          </div>
+
+          {/* COLUMN 3: Right Live Preview & Presets */}
+          <aside className="settings-aside-col" aria-label="Settings preview and presets">
+            <SettingsAsidePanel activeSection={activeSectionId} />
+          </aside>
+        </div>
+      </div>
+    </>
+  )
+}
+
+function SettingsAsidePanel({ activeSection: _ }: { activeSection?: string }) {
+  const { prefs, setPref } = useStore()
+  const toast = useToast()
+
+  const densityOptions = [
+    { label: 'Comfortable', value: 'spacious' as const },
+    { label: 'Standard', value: 'comfortable' as const },
+    { label: 'Compact', value: 'compact' as const },
+  ]
+
+  return (
+    <>
+      {/* Live Preview Card */}
+      <div className="settings-aside-card">
+        <div className="settings-aside-card-header">
+          <h4 className="settings-aside-card-title">Live Preview</h4>
+          <button type="button" className="settings-aside-card-action" title="Popout preview" aria-label="Popout live preview">
+            <Icon name="externalLink" size={15} />
+          </button>
+        </div>
+        <div className="settings-mini-preview-box" data-theme={prefs.theme}>
+          <div className="smp-sidebar">
+            <div className="smp-sidebar-dot is-active" />
+            <div className="smp-sidebar-dot" />
+            <div className="smp-sidebar-dot" />
+            <div className="smp-sidebar-dot" />
+          </div>
+          <div className="smp-main">
+            <div className="smp-header">
+              <div className="smp-search" />
+              <div className="smp-sidebar-dot" style={{ width: 10, height: 10, borderRadius: '50%' }} />
+            </div>
+            <div className="smp-hero">
+              <div className="smp-hero-title" />
+              <div className="smp-hero-btn" />
+            </div>
+            <div className="smp-cards-row">
+              <div className="smp-card" />
+              <div className="smp-card" />
+              <div className="smp-card" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Theme Presets */}
+      <div className="settings-aside-card">
+        <h4 className="settings-aside-card-title">Theme Presets</h4>
+        <div className="settings-presets-grid" role="group" aria-label="Theme Presets">
+          {THEME_PRESETS.map((p) => {
+            const isPresetActive = prefs.accent === p.accent
+            return (
+              <button
+                key={p.id}
+                type="button"
+                className={`settings-preset-tile ${isPresetActive ? 'is-active' : ''}`}
+                style={{
+                  background: `linear-gradient(135deg, ${p.accentHex} 0%, #0a0e14 100%)`,
+                }}
+                onClick={() => {
+                  setPref('theme', p.theme)
+                  setPref('accent', p.accent)
+                  if (p.accent === 'custom') setPref('customAccent', p.accentHex)
+                  toast(`Applied ${p.name} preset`)
+                }}
+              >
+                {isPresetActive && (
+                  <span className="settings-preset-check"><Icon name="check" size={13} /></span>
+                )}
+                <span className="settings-preset-name">{p.name}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Typography Card */}
+      <div
+        className="settings-typography-card"
+        onClick={() => {
+          const next = prefs.textSize === 'large' ? 'standard' : 'large'
+          setPref('textSize', next)
+          toast(`Text size set to ${next}`)
+        }}
+        title="Toggle text size"
+        role="button"
+        tabIndex={0}
+      >
+        <div className="settings-typography-info">
+          <span className="settings-typography-icon">Aa</span>
+          <div>
+            <p className="settings-typography-title">Typography</p>
+            <p className="settings-typography-desc">Font, size and text styling ({prefs.textSize})</p>
+          </div>
+        </div>
+        <Icon name="chevronRight" size={16} className="settings-nav-chevron" />
+      </div>
+
+      {/* Interface Density Card */}
+      <div className="settings-aside-card">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Icon name="layers" size={18} style={{ color: '#ffffff' }} />
+          <h4 className="settings-aside-card-title">Interface Density</h4>
+        </div>
+        <div className="settings-density-segmented" role="radiogroup" aria-label="Interface Density">
+          {densityOptions.map((opt) => {
+            const isActive = prefs.density === opt.value
+            return (
+              <button
+                key={opt.label}
+                type="button"
+                className={`settings-density-btn ${isActive ? 'is-active' : ''}`}
+                onClick={() => {
+                  setPref('density', opt.value)
+                  toast(`Density: ${opt.label}`)
+                }}
+                role="radio"
+                aria-checked={isActive}
+              >
+                {opt.label}
+              </button>
+            )
+          })}
         </div>
       </div>
     </>
@@ -314,251 +407,272 @@ export function Settings() {
 function AppearanceSection({
   prefs,
   setPref,
-  toggle,
 }: {
   prefs: Prefs
   setPref: <K extends keyof Prefs>(key: K, value: Prefs[K]) => void
-  toggle: (key: BoolPref, title: string, hint?: string, pending?: boolean) => ReactNode
+  toggle?: (key: BoolPref, title: string, hint?: string, pending?: boolean) => ReactNode
 }) {
-  const toast = useToast()
-  const [cornerRadius, setCornerRadius] = useState<'sharp' | 'standard' | 'pill'>(() => {
-    if (typeof window === 'undefined') return 'standard'
-    return (localStorage.getItem('kinora.corner_radius.v1') as any) || 'standard'
-  })
-  const [cardGlow, setCardGlow] = useState<'subtle' | 'standard' | 'vibrant'>(() => {
-    if (typeof window === 'undefined') return 'standard'
-    return (localStorage.getItem('kinora.card_glow.v1') as any) || 'standard'
-  })
-
-  const applyRadius = (r: 'sharp' | 'standard' | 'pill') => {
-    setCornerRadius(r)
-    localStorage.setItem('kinora.corner_radius.v1', r)
-    const s = r === 'sharp' ? '2px' : r === 'pill' ? '8px' : '4px'
-    const m = r === 'sharp' ? '4px' : r === 'pill' ? '16px' : '8px'
-    const l = r === 'sharp' ? '6px' : r === 'pill' ? '24px' : '14px'
-    document.documentElement.style.setProperty('--r-s', s)
-    document.documentElement.style.setProperty('--r-m', m)
-    document.documentElement.style.setProperty('--r-l', l)
-    toast(`Applied ${r} corner geometry`)
-  }
-
-  const applyGlow = (g: 'subtle' | 'standard' | 'vibrant') => {
-    setCardGlow(g)
-    localStorage.setItem('kinora.card_glow.v1', g)
-    const alpha = g === 'subtle' ? '0.04' : g === 'vibrant' ? '0.22' : '0.12'
-    document.documentElement.style.setProperty('--card-glow-alpha', alpha)
-    toast(`Applied ${g} card glow intensity`)
-  }
-
-  const currentAccentHex = prefs.accent === 'custom' ? prefs.customAccent : ACCENTS[prefs.accent as AccentName] || '#f20d24'
-  const currentBg = THEME_BG[prefs.theme] || '#08090b'
-  const accentBgContrast = Math.round(contrast(currentAccentHex, currentBg) * 10) / 10
-  const textOnAccentContrast = Math.round(contrast('#ffffff', currentAccentHex) * 10) / 10
+  const currentThemeMode = prefs.themeMode ?? (prefs.theme === 'light' ? 'light' : 'dark')
 
   return (
     <>
-      <Group title="Theme Presets">
-        <Row title="Curated visual presets" hint="Switch the entire application palette to a curated style.">
-          <div className="theme-presets-grid" role="group" aria-label="Theme presets">
-            {THEME_PRESETS.map((preset) => {
-              const isActive = prefs.theme === preset.theme && (
-                preset.accent === 'custom'
-                  ? prefs.accent === 'custom' && prefs.customAccent.toLowerCase() === preset.accentHex.toLowerCase()
-                  : prefs.accent === preset.accent
-              )
-              return (
-                <button
-                  key={preset.id}
-                  type="button"
-                  className={`theme-preset-card${isActive ? ' is-active' : ''}`}
-                  aria-pressed={isActive}
-                  onClick={() => {
-                    setPref('theme', preset.theme)
-                    setPref('accent', preset.accent)
-                    if (preset.accent === 'custom') {
-                      setPref('customAccent', preset.accentHex)
-                    }
-                    toast(`Applied preset: ${preset.name}`)
-                  }}
-                >
-                  <div className="preset-swatches-bar" style={{ background: preset.bgHex }}>
-                    <span className="preset-swatch" style={{ background: preset.surfaceHex }} />
-                    <span className="preset-swatch" style={{ background: preset.navHex }} />
-                    <span className="preset-swatch is-accent" style={{ background: preset.accentHex }} />
-                    <span className="preset-swatch is-secondary" style={{ background: preset.secondaryAccentHex }} />
-                  </div>
-                  <div className="preset-meta">
-                    <strong className="preset-name">
-                      {isActive && <Icon name="check" size={13} />}
-                      {preset.name}
-                    </strong>
-                    <p className="preset-desc">{preset.description}</p>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        </Row>
-        <Row title="Master reset" hint="Instantly restore the authoritative Kinora reference styling.">
+      <div className="settings-stage-hero-card">
+        <div className="settings-stage-hero-icon">
+          <Icon name="desktop" size={24} />
+        </div>
+        <div>
+          <h2 className="settings-stage-hero-title">Appearance</h2>
+          <p className="settings-stage-hero-desc">Personalise the look and feel of Kinora across all devices.</p>
+        </div>
+      </div>
+
+      {/* Theme */}
+      <div className="settings-section-card">
+        <h3 className="settings-card-title">Theme</h3>
+        <div className="settings-theme-cards-grid" role="radiogroup" aria-label="Theme mode">
           <button
             type="button"
-            className="btn btn-secondary"
+            className={`settings-theme-option-card ${currentThemeMode === 'dark' ? 'is-active' : ''}`}
             onClick={() => {
+              setPref('themeMode', 'dark')
               setPref('theme', 'dark')
-              setPref('accent', 'red')
-              setPref('customAccent', '#f20d24')
-              toast('Restored Kinora Signature master theme')
             }}
+            aria-checked={currentThemeMode === 'dark'}
+            role="radio"
           >
-            <Icon name="refresh" size={15} />
-            Restore Kinora Signature
+            {currentThemeMode === 'dark' && (
+              <span className="settings-theme-badge"><Icon name="check" size={11} /></span>
+            )}
+            <Icon name="moon" size={24} />
+            <span className="settings-theme-name">Dark</span>
           </button>
-        </Row>
-      </Group>
-      <Group title="Theme">
-        <Row title="Theme" hint="Dark suits a dim room, Dim lifts the surfaces a little, Light is for daytime.">
-          <div className="theme-picks" role="group" aria-label="Theme">
-            {(['dark', 'dim', 'light'] as const).map((t) => (
-              <button key={t} type="button" className="theme-pick" aria-pressed={prefs.theme === t} onClick={() => setPref('theme', t)}>
-                {/* Each preview carries its own data-theme, so it shows that theme's real tokens. */}
-                <span className="theme-preview" data-theme={t} aria-hidden="true">
-                  <span className="tp-nav" /><span className="tp-card" /><span className="tp-card" /><span className="tp-accent" />
-                </span>
-                <span className="theme-name">{prefs.theme === t && <Icon name="check" size={14} />}{t[0]?.toUpperCase() + t.slice(1)}</span>
+
+          <button
+            type="button"
+            className={`settings-theme-option-card ${currentThemeMode === 'light' ? 'is-active' : ''}`}
+            onClick={() => {
+              setPref('themeMode', 'light')
+              setPref('theme', 'light')
+            }}
+            aria-checked={currentThemeMode === 'light'}
+            role="radio"
+          >
+            {currentThemeMode === 'light' && (
+              <span className="settings-theme-badge"><Icon name="check" size={11} /></span>
+            )}
+            <Icon name="sun" size={24} />
+            <span className="settings-theme-name">Light</span>
+          </button>
+
+          <button
+            type="button"
+            className={`settings-theme-option-card ${currentThemeMode === 'system' ? 'is-active' : ''}`}
+            onClick={() => {
+              setPref('themeMode', 'system')
+              const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+              setPref('theme', prefersDark ? 'dark' : 'light')
+            }}
+            aria-checked={currentThemeMode === 'system'}
+            role="radio"
+          >
+            {currentThemeMode === 'system' && (
+              <span className="settings-theme-badge"><Icon name="check" size={11} /></span>
+            )}
+            <Icon name="desktop" size={24} />
+            <span className="settings-theme-name">System</span>
+            <span className="settings-theme-sub">Follow your OS setting</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Accent Colour */}
+      <div className="settings-section-card">
+        <h3 className="settings-card-title">Accent Colour</h3>
+        <div className="settings-swatches-row" role="radiogroup" aria-label="Accent colour">
+          {(Object.entries(ACCENTS) as [AccentName, string][]).map(([name, hex]) => {
+            const isActive = prefs.accent === name
+            return (
+              <button
+                key={name}
+                type="button"
+                className={`settings-swatch-btn ${isActive ? 'is-active' : ''}`}
+                style={{ background: hex }}
+                onClick={() => setPref('accent', name)}
+                aria-label={`Accent ${name}`}
+                aria-checked={isActive}
+                role="radio"
+                title={name[0]!.toUpperCase() + name.slice(1)}
+              >
+                {isActive && <Icon name="check" size={14} />}
               </button>
-            ))}
-          </div>
-        </Row>
-        <Row title="Accent colour" hint="Used for primary buttons, the active page, progress and what is playing. Text in the accent is adjusted automatically to stay readable.">
-          <div className="swatches" role="group" aria-label="Accent colour">
-            {(Object.entries(ACCENTS) as [AccentName, string][]).map(([name, hex]) => (
-              <button key={name} type="button" aria-pressed={prefs.accent === name} onClick={() => setPref('accent', name)}>
-                <span className="swatch" style={{ background: hex }}>{prefs.accent === name && <Icon name="check" size={13} />}</span>
-                {name[0]?.toUpperCase() + name.slice(1)}
-              </button>
-            ))}
-            <label className={`swatch-custom${prefs.accent === 'custom' ? ' is-on' : ''}`}>
+            )
+          })}
+          <label className={`settings-swatch-custom ${prefs.accent === 'custom' ? 'is-active' : ''}`} title="Custom colour picker">
+            <Icon name="colorPicker" size={16} />
+            <input
+              type="color"
+              value={prefs.customAccent}
+              onChange={(e) => {
+                const hex = safeHex(e.target.value)
+                if (hex) {
+                  setPref('customAccent', hex)
+                  setPref('accent', 'custom')
+                }
+              }}
+              aria-label="Custom accent colour"
+            />
+          </label>
+        </div>
+      </div>
+
+      {/* Layout */}
+      <div className="settings-section-card">
+        <h3 className="settings-card-title">Layout</h3>
+        <div className="settings-layout-cards-grid" role="radiogroup" aria-label="Layout mode">
+          <button
+            type="button"
+            className={`settings-layout-option-card ${prefs.layoutMode === 'standard' ? 'is-active' : ''}`}
+            onClick={() => setPref('layoutMode', 'standard')}
+            role="radio"
+            aria-checked={prefs.layoutMode === 'standard'}
+          >
+            {prefs.layoutMode === 'standard' && (
+              <span className="settings-layout-badge"><Icon name="check" size={10} /></span>
+            )}
+            <Icon name="layoutSidebar" size={22} />
+            <span className="settings-layout-title">Standard</span>
+            <span className="settings-layout-sub">Sidebar + Content</span>
+          </button>
+
+          <button
+            type="button"
+            className={`settings-layout-option-card ${prefs.layoutMode === 'compact' ? 'is-active' : ''}`}
+            onClick={() => setPref('layoutMode', 'compact')}
+            role="radio"
+            aria-checked={prefs.layoutMode === 'compact'}
+          >
+            {prefs.layoutMode === 'compact' && (
+              <span className="settings-layout-badge"><Icon name="check" size={10} /></span>
+            )}
+            <Icon name="layoutCompact" size={22} />
+            <span className="settings-layout-title">Compact</span>
+            <span className="settings-layout-sub">More content</span>
+          </button>
+
+          <button
+            type="button"
+            className={`settings-layout-option-card ${prefs.layoutMode === 'wide' ? 'is-active' : ''}`}
+            onClick={() => setPref('layoutMode', 'wide')}
+            role="radio"
+            aria-checked={prefs.layoutMode === 'wide'}
+          >
+            {prefs.layoutMode === 'wide' && (
+              <span className="settings-layout-badge"><Icon name="check" size={10} /></span>
+            )}
+            <Icon name="layoutWide" size={22} />
+            <span className="settings-layout-title">Wide</span>
+            <span className="settings-layout-sub">Expanded content</span>
+          </button>
+
+          <button
+            type="button"
+            className={`settings-layout-option-card ${prefs.layoutMode === 'tv' ? 'is-active' : ''}`}
+            onClick={() => setPref('layoutMode', 'tv')}
+            role="radio"
+            aria-checked={prefs.layoutMode === 'tv'}
+          >
+            {prefs.layoutMode === 'tv' && (
+              <span className="settings-layout-badge"><Icon name="check" size={10} /></span>
+            )}
+            <Icon name="desktop" size={22} />
+            <span className="settings-layout-title">TV Mode</span>
+            <span className="settings-layout-sub">10ft / Remote style</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Display Options */}
+      <div className="settings-section-card">
+        <h3 className="settings-card-title">Display Options</h3>
+        <div className="settings-toggles-list">
+          <div className="settings-toggle-row">
+            <div className="settings-toggle-info">
+              <Icon name="desktop" size={20} className="settings-toggle-icon" />
+              <div>
+                <p className="settings-toggle-title">Show artwork backgrounds on pages</p>
+                <p className="settings-toggle-desc">Display cinematic backgrounds where available</p>
+              </div>
+            </div>
+            <label className="settings-switch-control">
               <input
-                type="color"
-                value={prefs.customAccent}
-                onChange={(e) => { const hex = safeHex(e.target.value); if (hex) { setPref('customAccent', hex); setPref('accent', 'custom') } }}
-                onClick={() => setPref('accent', 'custom')}
-                aria-label="Custom accent colour"
+                type="checkbox"
+                checked={prefs.showArtworkBackgrounds}
+                onChange={(e) => setPref('showArtworkBackgrounds', e.target.checked)}
               />
-              {prefs.accent === 'custom' && <Icon name="check" size={13} />}Custom
+              <span className="settings-switch-slider" />
             </label>
           </div>
-        </Row>
-        <Row title="Accessibility contrast rating" hint="Live calculation of contrast against background and text readability.">
-          <div className="contrast-rating-box">
-            <div className="contrast-item">
-              <span className="contrast-label">Accent on background</span>
-              <span className={`contrast-badge ${accentBgContrast >= 4.5 ? 'pass' : 'warn'}`}>
-                {accentBgContrast}:1 {accentBgContrast >= 4.5 ? '(WCAG AA Pass)' : '(Subtle)'}
-              </span>
+
+          <div className="settings-toggle-row">
+            <div className="settings-toggle-info">
+              <Icon name="playOutline" size={20} className="settings-toggle-icon" />
+              <div>
+                <p className="settings-toggle-title">Animated transitions</p>
+                <p className="settings-toggle-desc">Smooth page and element animations</p>
+              </div>
             </div>
-            <div className="contrast-item">
-              <span className="contrast-label">White text on accent fill</span>
-              <span className={`contrast-badge ${textOnAccentContrast >= 4.5 ? 'pass' : 'fail'}`}>
-                {textOnAccentContrast}:1 {textOnAccentContrast >= 7.0 ? '(WCAG AAA Pass)' : textOnAccentContrast >= 4.5 ? '(WCAG AA Pass)' : '(Low Contrast)'}
-              </span>
-            </div>
+            <label className="settings-switch-control">
+              <input
+                type="checkbox"
+                checked={prefs.animatedTransitions}
+                onChange={(e) => setPref('animatedTransitions', e.target.checked)}
+              />
+              <span className="settings-switch-slider" />
+            </label>
           </div>
-        </Row>
-      </Group>
-      <Group title="Design Tokens & Surface Geometry">
-        <Row title="Corner radius geometry" hint="Adjust the curvature across cards, buttons, dialogs, and navigation panels.">
-          <Segmented
-            label="Corner geometry"
-            value={cornerRadius}
-            onChange={applyRadius}
-            options={[
-              { value: 'sharp', label: 'Crisp / Sharp (2px)' },
-              { value: 'standard', label: 'Balanced (8px)' },
-              { value: 'pill', label: 'Curved (16px)' },
-            ]}
-          />
-        </Row>
-        <Row title="Card glow & border accent" hint="Intensity of subtle perimeter glows and hover highlights.">
-          <Segmented
-            label="Border highlight"
-            value={cardGlow}
-            onChange={applyGlow}
-            options={[
-              { value: 'subtle', label: 'Minimal' },
-              { value: 'standard', label: 'Balanced' },
-              { value: 'vibrant', label: 'Vibrant Glow' },
-            ]}
-          />
-        </Row>
-      </Group>
-      <Group title="Live Theme Preview">
-        <div className="live-theme-preview-canvas" aria-label="Interactive live theme preview">
-          <div className="ltp-sidebar">
-            <div className="ltp-logo">
-              <KPlayMark size={16} className="ltp-logo-mark" idPrefix="ltp" />
-              <span className="ltp-logo-text">KINORA <span style={{ color: 'var(--accent)' }}>TV</span></span>
-            </div>
-            <div className="ltp-nav-group">
-              <span className="ltp-nav-label">WATCH</span>
-              <div className="ltp-nav-item is-active">
-                <span className="ltp-nav-icon" />
-                <span>Home</span>
-              </div>
-              <div className="ltp-nav-item">
-                <span className="ltp-nav-icon" />
-                <span>Live TV</span>
+
+          <div className="settings-toggle-row">
+            <div className="settings-toggle-info">
+              <Icon name="activity" size={20} className="settings-toggle-icon" />
+              <div>
+                <p className="settings-toggle-title">Reduce motion</p>
+                <p className="settings-toggle-desc">Minimise animations and effects</p>
               </div>
             </div>
+            <label className="settings-switch-control">
+              <input
+                type="checkbox"
+                checked={prefs.reduceMotion}
+                onChange={(e) => setPref('reduceMotion', e.target.checked)}
+              />
+              <span className="settings-switch-slider" />
+            </label>
           </div>
-          <div className="ltp-main">
-            <div className="ltp-header">
-              <div className="ltp-search-bar">Search movies, series...</div>
-              <div className="ltp-avatar" />
-            </div>
-            <div className="ltp-hero">
-              <div className="ltp-hero-laser" />
-              <div className="ltp-hero-content">
-                <span className="ltp-tag">FEATURED MOVIE</span>
-                <h4 className="ltp-title">Harbour <span className="ltp-title-red">Lights</span></h4>
-                <p className="ltp-blurb">Every light in the harbour belongs to somebody.</p>
-                <div className="ltp-actions">
-                  <span className="ltp-btn-watch">Watch Now</span>
-                  <span className="ltp-btn-secondary">+ Add to Library</span>
-                  <span className="ltp-rating-badge">18</span>
-                </div>
+
+          <div className="settings-toggle-row">
+            <div className="settings-toggle-info">
+              <Icon name="star" size={20} className="settings-toggle-icon" />
+              <div>
+                <p className="settings-toggle-title">Show media ratings</p>
+                <p className="settings-toggle-desc">Display IMDb, TMDb and other ratings</p>
               </div>
             </div>
-            <div className="ltp-cards-row">
-              <div className="ltp-card">
-                <div className="ltp-card-thumb">
-                  <span className="ltp-play-circle" />
-                  <div className="ltp-card-progress" style={{ width: '65%' }} />
-                </div>
-                <span className="ltp-card-title">Glasshouse</span>
-              </div>
-              <div className="ltp-card">
-                <div className="ltp-card-thumb">
-                  <span className="ltp-badge-4k">4K HDR</span>
-                </div>
-                <span className="ltp-card-title">Neon District</span>
-              </div>
-            </div>
+            <label className="settings-switch-control">
+              <input
+                type="checkbox"
+                checked={prefs.showMediaRatings}
+                onChange={(e) => setPref('showMediaRatings', e.target.checked)}
+              />
+              <span className="settings-switch-slider" />
+            </label>
           </div>
         </div>
-      </Group>
-      <Group title="Layout">
-        <Row title="Density" hint="How much space surrounds cards, rows and guide entries.">
-          <Segmented label="Density" value={prefs.density} onChange={(v) => setPref('density', v)} options={[{ value: 'compact', label: 'Compact' }, { value: 'comfortable', label: 'Comfortable' }, { value: 'spacious', label: 'Spacious' }]} />
-        </Row>
-        <Row title="Text size" hint="Large is easier to read from the sofa.">
-          <Segmented label="Text size" value={prefs.textSize} onChange={(v) => setPref('textSize', v)} options={[{ value: 'standard', label: 'Standard' }, { value: 'large', label: 'Large' }]} />
-        </Row>
-        {toggle('reduceMotion', 'Reduce motion', 'Turns off artwork fades, card lifts and sliding panels. Your system setting is respected either way.')}
-      </Group>
+      </div>
     </>
   )
 }
+
+
 
 function SubtitlesSection({
   prefs,
@@ -833,7 +947,7 @@ function DvrSection() {
 
   return (
     <>
-      <Group title="Recording Storage">
+      <Group title="DVR & Recording">
         <Row title="Storage directory" hint="Local directory where HLS recordings (.m3u8 and .ts segments) are saved.">
           <code style={{ fontSize: '0.82rem' }}>{cfg.storagePath}</code>
         </Row>

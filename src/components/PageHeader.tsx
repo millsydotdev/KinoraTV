@@ -148,29 +148,30 @@ function HeaderProfileMenu() {
       <button
         ref={triggerRef}
         type="button"
-        className="avatar"
-        style={{
-          background: activeProfile.avatarColor,
-          color: '#ffffff',
-          position: 'relative',
-          cursor: 'pointer',
-        }}
+        className="header-profile-pill"
         onClick={() => setOpen(!open)}
         aria-label={`Profile: ${activeProfile.name}${isKidsMode ? ' (Kids Mode)' : ''}`}
         title={`Profile: ${activeProfile.name}`}
       >
-        <Icon name={activeProfile.avatarIcon} size={18} />
+        <span
+          className="header-profile-avatar"
+          style={{
+            background: activeProfile.avatarColor,
+            color: '#ffffff',
+          }}
+        >
+          <Icon name={activeProfile.avatarIcon} size={14} />
+        </span>
+        <span className="header-profile-name">{activeProfile.name || 'My Profile'}</span>
+        <Icon name="down" size={12} className="header-profile-chevron" />
         {isKidsMode && (
           <span
             style={{
-              position: 'absolute',
-              bottom: -4,
-              right: -4,
               fontSize: '8px',
               fontWeight: 800,
-              background: '#e50914',
+              background: '#e50d24',
               color: '#ffffff',
-              padding: '1px 3px',
+              padding: '1px 4px',
               borderRadius: '3px',
               letterSpacing: '0.5px',
             }}
@@ -345,7 +346,7 @@ export function PageHeader({
   title,
   tabs,
   search = true,
-  searchPlaceholder = 'Search movies, TV shows, channels, podcasts...',
+  searchPlaceholder = 'Search movies, series, channels, programmes and more...',
   overlay = false,
   actions,
 }: {
@@ -356,6 +357,7 @@ export function PageHeader({
   overlay?: boolean
   actions?: ReactNode
 }) {
+  const navigate = useNavigate()
   const now = useNow()
   const { prefs } = useStore()
   const openNav = useContext(NavMenuContext)
@@ -373,10 +375,33 @@ export function PageHeader({
   return (
     <header className={`page-header${overlay ? ' is-overlay' : ''}`}>
       <button type="button" className="icon-btn menu-btn" aria-label="Open menu" onClick={openNav}><Icon name="menu" /></button>
+      
+      <div className="header-history-nav">
+        <button
+          type="button"
+          className="header-history-btn"
+          onClick={() => navigate(-1)}
+          aria-label="Go back"
+          title="Back"
+        >
+          <Icon name="left" size={16} />
+        </button>
+        <button
+          type="button"
+          className="header-history-btn"
+          onClick={() => navigate(1)}
+          aria-label="Go forward"
+          title="Forward"
+        >
+          <Icon name="right" size={16} />
+        </button>
+      </div>
+
       <div className="page-header-left">
         {title && <h1 className="page-title">{title}</h1>}
         {tabs}
       </div>
+
       <div className="page-header-right">
         {search && (
           <button
@@ -385,7 +410,7 @@ export function PageHeader({
             aria-label="Search and command palette, shortcut Ctrl+K"
             onClick={openPalette}
           >
-            <Icon name="search" size={18} />
+            <Icon name="search" size={17} />
             <span>{searchPlaceholder}</span>
             <kbd className="search-pill-kbd">Ctrl + K</kbd>
           </button>
@@ -393,6 +418,15 @@ export function PageHeader({
         {actions}
         <BackgroundTaskTrigger />
         <NotificationsAndReminders />
+        <button
+          type="button"
+          className="icon-btn header-grid-btn"
+          aria-label="Apps and quick navigation"
+          title="Command Palette"
+          onClick={openPalette}
+        >
+          <Icon name="grid" size={18} />
+        </button>
         <button
           type="button"
           className={`icon-btn header-cast-btn ${isConnected ? 'is-connected' : ''}`}

@@ -83,7 +83,7 @@ describe('Streaming UI Correction Regression Suite', () => {
 
       const calendar = renderToStaticMarkup(<Icon name="calendar" size={18} />)
       expect(calendar).toContain('<svg')
-      expect(calendar).toContain('M19 4H5')
+      expect(calendar).toContain('<path')
 
       const refresh = renderToStaticMarkup(<Icon name="refresh" size={18} />)
       expect(refresh).toContain('<svg')

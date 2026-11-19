@@ -352,8 +352,8 @@ impl GuideStore {
 
     /// Programmes overlapping `[from, to)` for every id that matches a channel of its guide.
     pub fn query(&self, queries: &[Query], from: i64, to: i64) -> Result<Vec<Answer>, IngestError> {
-        let total: usize = queries.iter().map(|q| q.ids.len()).sum();
-        if queries.len() > MAX_QUERIES || total > MAX_IDS || from >= to || to - from > MAX_WINDOW_MS
+        let any_too_large = queries.iter().any(|q| q.ids.len() > MAX_IDS);
+        if queries.len() > MAX_QUERIES || any_too_large || from >= to || to - from > MAX_WINDOW_MS
         {
             return Err(bad_input());
         }

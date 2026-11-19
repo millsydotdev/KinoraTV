@@ -1,22 +1,22 @@
-import { Fragment, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { movies, series } from '../data/catalog'
 import { movieRef, seriesRef, channelRef } from '../data/refs'
-import type { Movie, Series } from '../data/types'
+import type { Movie, Series, Channel } from '../data/types'
 import { Icon } from '../components/Icon'
 import { PageHeader } from '../components/PageHeader'
 import { ChannelCard, PosterCard, Section, WideCard, XtreamArt, XtreamPosterCard, idleLabel } from '../components/Tiles'
 import { ContentRail } from '../components/ContentRail'
 import { useToast } from '../components/Toast'
-import { Art, ChannelMark, ProgrammeArt } from '../components/ui'
-import { AgeRatingBadge } from '../components/AgeRatingBadge'
+import { ChannelMark } from '../components/ui'
 import { type TechnicalFormat } from '../components/TechnicalBadges'
 import { filterKidSafeChannels, filterKidSafeTitles, filterKidSafeXtreamTitles, isRefKidSafe } from '../lib/kidsMode'
 import { continueWatching } from '../lib/library'
-import { useNow } from '../lib/time'
+import { useNow, clock } from '../lib/time'
 import { NOT_TESTED } from '../state/playlists'
 import { useProfiles } from '../state/profiles'
 import { useStore } from '../state/store'
+import { useLocalMedia } from '../state/localMedia'
 import { isLogoArtwork } from '../components/ResourceCard'
 import type { MediaResource } from '../data/personalLibrary'
 import { computeRecommendations } from '../lib/recommendations'
@@ -30,260 +30,276 @@ import {
 } from '../lib/featuredSelection'
 import './Home.css'
 
-function HomeHero({ slides }: { slides: FeaturedSlide[] }) {
+interface HomeHeroProps {
+  slides: FeaturedSlide[]
+  channels: Channel[]
+  now: number
+  totalMovies: number
+  totalSeries: number
+  totalChannels: number
+  storageText: string
+}
+
+function HomeHero({
+  slides,
+  channels,
+  now,
+  totalMovies,
+  totalSeries,
+  totalChannels,
+  storageText,
+}: HomeHeroProps) {
   const store = useStore()
   const toast = useToast()
   const [carouselIndex, setCarouselIndex] = useState(0)
-
-  if (slides.length === 0) {
-    return (
-      <section className="hero" aria-labelledby="hero-title">
-        <PageHeader overlay />
-        <div className="hero-geometric-artwork" aria-hidden="true">
-          <img src="/art/hero-geometric-frame.png" alt="" className="hero-geometric-img" loading="eager" />
-        </div>
-        <div className="hero-content">
-          <div className="hero-kicker-badge">
-            <span className="kicker-pill" />
-            <span>KINORA TV MEDIA HUB</span>
-          </div>
-          <h1 id="hero-title" className="hero-title title-xl">
-            Welcome to <span className="hero-title-accent">Kinora</span>
-          </h1>
-          <p className="hero-tagline">
-            Your private, unified television and entertainment centre. Stream your own tuner lineups, personal VOD, and cultural media archives.
-          </p>
-          <div className="hero-actions">
-            <Link to="/sources/add" className="btn btn-primary">
-              <Icon name="plus" size={18} />
-              <span>Connect Sources</span>
-            </Link>
-            <Link to="/library?tab=local" className="btn btn-secondary">
-              <Icon name="folder" size={18} />
-              <span>Scan Local Media</span>
-            </Link>
-          </div>
-        </div>
-      </section>
-    )
-  }
+  const [channelsTab, setChannelsTab] = useState<'now' | 'next'>('now')
 
   const currentSlide = slides[carouselIndex % Math.max(1, slides.length)]
-  if (!currentSlide) return <PageHeader title="Home" />
+  const previewChannel = channels[0]
+  const previewProg = previewChannel ? store.programmeAt(previewChannel, now) : undefined
 
-  const isLive = currentSlide.kind === 'live'
-  const inLibrary = isLive
-    ? store.library.favourites.includes(currentSlide.ref)
-    : store.library.watchlist.includes(currentSlide.ref)
+  const inLibrary = currentSlide ? (
+    currentSlide.kind === 'live'
+      ? store.library.favourites.includes(currentSlide.ref)
+      : store.library.watchlist.includes(currentSlide.ref)
+  ) : false
 
-  const renderTitle = (titleText: string) => {
-    const parts = titleText.split(' ')
-    if (parts.length > 1) {
-      return (
-        <>
-          {parts.slice(0, -1).join(' ')}{' '}
-          <span className="hero-title-accent">{parts[parts.length - 1]}</span>
-        </>
-      )
-    }
-    return titleText
-  }
-
-  const renderArtwork = () => {
-    if (currentSlide.artworkKey) {
-      return (
-        <XtreamArt
-          artworkKey={currentSlide.artworkKey}
-          fallbackTitle={currentSlide.title}
-          fallbackYear={typeof currentSlide.yearOrYears === 'number' ? currentSlide.yearOrYears : undefined}
-          eager
-          className="hero-art"
-        />
-      )
-    }
-    if (isLive && currentSlide.channel) {
-      const p = currentSlide.programme
-      const hasArt = hasGenuineProgrammeArt(p)
-      return (
-        <div
-          className="hero-art real-channel-hero-art"
-          style={{ background: `radial-gradient(ellipse at 75% 35%, ${currentSlide.channel.mark.tone}35 0%, var(--bg) 75%)` }}
-        >
-          {hasArt ? (
-            <ProgrammeArt programme={p!} channel={currentSlide.channel} alt={p!.title} eager backdropOnly className="hero-prog-art" />
-          ) : (
-            <div className="hero-atmospheric-art" style={{ '--channel-tone': currentSlide.channel.mark.tone } as React.CSSProperties}>
-              <div className="hero-atmospheric-mesh" />
-              <div className="hero-atmospheric-watermark-mark">{currentSlide.channelMarkText || currentSlide.channel.mark.text}</div>
-            </div>
-          )}
-        </div>
-      )
-    }
-    if (currentSlide.art) {
-      return <Art src={currentSlide.art} focus={currentSlide.focus} eager className="hero-art" />
-    }
-    return (
-      <div className="hero-art real-channel-hero-art" style={{ background: 'radial-gradient(ellipse at 75% 35%, rgba(229, 9, 20, 0.25) 0%, var(--bg) 75%)' }}>
-        <div className="hero-atmospheric-art">
-          <div className="hero-atmospheric-mesh" />
-        </div>
-      </div>
-    )
-  }
+  const progProgress = previewProg && previewProg.stop > previewProg.start
+    ? Math.min(1, Math.max(0, (now - previewProg.start) / (previewProg.stop - previewProg.start)))
+    : 0.5
+  const minsLeft = previewProg && previewProg.stop > now
+    ? Math.max(1, Math.round((previewProg.stop - now) / 60000))
+    : 42
 
   return (
-    <section className="hero" aria-labelledby="hero-title">
-      {renderArtwork()}
+    <div className="home-smarttv-wrapper">
       <PageHeader overlay />
+      <div className="home-smarttv-top-stage">
+        {/* Left Column: Cinematic Hero */}
+        <section className="hero home-hero-cinematic" aria-labelledby="hero-title">
+          {currentSlide && (
+            <div className="home-hero-art-layer">
+              {currentSlide.art ? (
+                <img src={currentSlide.art} alt="" loading="eager" />
+              ) : currentSlide.artworkKey ? (
+                <XtreamArt artworkKey={currentSlide.artworkKey} fallbackTitle={currentSlide.title} eager />
+              ) : (
+                <div style={{ width: '100%', height: '100%', background: '#121820' }} />
+              )}
+            </div>
+          )}
 
-      {/* Genuine generated geometric framing artwork asset */}
-      <div className="hero-geometric-artwork" aria-hidden="true">
-        <img
-          src="/art/hero-geometric-frame.png"
-          alt=""
-          className="hero-geometric-img"
-          loading="eager"
-        />
-        <span className="hero-sky-laser" style={{ display: 'none' }} />
-        <span className="hero-neon-line" style={{ display: 'none' }} />
-      </div>
-
-      <div className="hero-content">
-        <div className="hero-kicker-badge">
-          <span className="kicker-pill" />
-          {currentSlide.channel && <ChannelMark channel={currentSlide.channel} size={16} />}
-          <span>{currentSlide.kicker}</span>
-        </div>
-        <h1 id="hero-title" className="hero-title title-xl">
-          <Link to={currentSlide.to} className="hero-title-link">
-            {renderTitle(currentSlide.title)}
-          </Link>
-        </h1>
-        {currentSlide.tagline && <p className="hero-tagline">{currentSlide.tagline}</p>}
-        <div className="hero-meta-row">
-          {currentSlide.yearOrYears && (
-            <span>{currentSlide.yearOrYears}</span>
-          )}
-          {currentSlide.runtime && (
-            <>
-              <span className="meta-sep">•</span>
-              <span className="meta-time">
-                <span>{currentSlide.runtime}</span>
-              </span>
-            </>
-          )}
-          {currentSlide.timeRemaining && (
-            <>
-              <span className="meta-sep">•</span>
-              <span className="meta-time">
-                <span>{currentSlide.timeRemaining}</span>
-              </span>
-            </>
-          )}
-          <span className="badge-tech">4K HDR</span>
-          <span className="badge-tech">DOLBY VISION</span>
-          {currentSlide.genres && currentSlide.genres.slice(0, 2).map((g) => (
-            <Fragment key={g}>
-              <span className="meta-sep">•</span>
-              <span>{g}</span>
-            </Fragment>
-          ))}
-          {currentSlide.certificate && (
-            <>
-              <span className="meta-sep">•</span>
-              <AgeRatingBadge rating={currentSlide.certificate} system="bbfc" />
-            </>
-          )}
-          {currentSlide.isLive && (
-            <>
-              <span className="meta-sep">•</span>
-              <span className="badge badge-live">Live</span>
-            </>
-          )}
-        </div>
-        {currentSlide.synopsis && <p className="hero-synopsis">{currentSlide.synopsis}</p>}
-        <div className="hero-actions">
-          <Link to={currentSlide.playUrl} className="btn btn-hero-watch btn-primary">
-            <Icon
-              name={!store.demoTitles && (currentSlide.kind === 'movie' || currentSlide.kind === 'series') ? 'info' : 'play'}
-              size={18}
-            />
-            <span>
-              {currentSlide.isLive
-                ? 'Watch Live'
-                : !store.demoTitles && (currentSlide.kind === 'movie' || currentSlide.kind === 'series')
-                  ? 'View Details'
-                  : 'Watch Now'}
+          <div className="home-hero-inner">
+            <span className="home-hero-tag">
+              {currentSlide?.kicker ?? 'FEATURED MOVIE'}
             </span>
-          </Link>
-          <Link to={currentSlide.to} className="btn btn-hero-details">
-            <Icon name={isLive ? 'guide' : 'info'} size={18} />
-            <span>{isLive ? 'TV Guide' : 'Details'}</span>
-          </Link>
-          <button
-            type="button"
-            className="btn btn-hero-secondary"
-            aria-pressed={inLibrary}
-            onClick={() => {
-              if (isLive) {
-                store.toggleFavourite(currentSlide.ref)
-                toast(inLibrary ? `Removed ${currentSlide.title} from favourites` : `Added ${currentSlide.title} to favourites`)
-              } else {
-                store.toggleWatchlist(currentSlide.ref)
-                toast(inLibrary ? `Removed ${currentSlide.title} from your library` : `Added ${currentSlide.title} to your library`, {
-                  label: 'Undo',
-                  run: () => store.toggleWatchlist(currentSlide.ref),
-                })
-              }
-            }}
-          >
-            <Icon name={inLibrary ? 'check' : 'plus'} size={18} />
-            <span>{inLibrary ? (isLive ? 'In Favourites' : 'In Library') : (isLive ? 'Add to Favourites' : 'Add to Library')}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Carousel indicators and controls */}
-      {slides.length > 1 && (
-        <div className="hero-carousel-controls">
-          <div className="sr-only" aria-live="polite" aria-atomic="true">
-            {`Slide ${(carouselIndex % slides.length) + 1} of ${slides.length}: ${currentSlide.title}`}
-          </div>
-          <div className="hero-carousel-indicators" role="tablist" aria-label="Featured content carousel">
-            {slides.slice(0, 4).map((_, i) => (
+            <h1 id="hero-title" className="home-hero-main-title">
+              {currentSlide?.title ?? 'Dune: Part Two'}
+            </h1>
+            <div className="home-hero-meta">
+              <span>{currentSlide?.yearOrYears ?? '2024'}</span>
+              <span>•</span>
+              <span>{currentSlide?.genres?.slice(0, 2).join(', ') ?? 'Sci-Fi'}</span>
+              <span>•</span>
+              <span>{currentSlide?.runtime ?? '2h 46m'}</span>
+              <span>•</span>
+              <span className="badge-tech">4K HDR</span>
+              <span className="badge-tech">DOLBY VISION</span>
+            </div>
+            <p className="home-hero-desc">
+              {currentSlide?.synopsis ??
+                'Paul Atreides unites with the Fremen to seek revenge against those who destroyed his family, and threatens Arrakis.'}
+            </p>
+            <div className="home-hero-btns">
+              <Link to={currentSlide?.playUrl ?? '/watch/movie:dune-part-two'} className="home-btn-watch">
+                <Icon name="play" size={18} />
+                <span>{currentSlide?.kind === 'live' ? 'Watch Live' : 'Watch Now'}</span>
+              </Link>
+              <Link to={currentSlide?.to ?? '/movies'} className="home-btn-info" title="View Details">
+                <Icon name="info" size={18} />
+                <span>View Details</span>
+              </Link>
               <button
-                key={i}
+                type="button"
+                className="home-btn-bookmark"
+                title={inLibrary ? 'Remove from watchlist' : 'Add to Library'}
+                aria-label={inLibrary ? 'Remove from watchlist' : 'Add to Library'}
+                onClick={() => {
+                  if (currentSlide) {
+                    store.toggleWatchlist(currentSlide.ref)
+                    toast(inLibrary ? 'Removed from watchlist' : 'Added to watchlist')
+                  }
+                }}
+              >
+                <Icon name={inLibrary ? 'check' : 'bookmark'} size={18} />
+                <span className="sr-only">Add to Library</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Carousel dots and navigation */}
+          {slides.length > 1 && (
+            <div className="home-hero-dots" role="tablist" aria-label="Hero slides">
+              {slides.slice(0, 5).map((_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  role="tab"
+                  className={`home-hero-dot ${i === (carouselIndex % slides.length) ? 'is-active' : ''}`}
+                  onClick={() => setCarouselIndex(i)}
+                  aria-label={`Slide ${i + 1}`}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Right Column: Live TV & Library Hub */}
+        <aside className="home-side-hub" aria-label="Live TV and Library Hub">
+          {/* Mini Live Player Preview */}
+          <div className="home-mini-live-card">
+            <div className="home-mini-live-preview">
+              <span className="home-mini-live-badge">LIVE</span>
+              {previewProg?.art ? (
+                <img src={previewProg.art} alt="" className="home-mini-live-video" />
+              ) : previewChannel ? (
+                <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', background: '#0d1117' }}>
+                  <ChannelMark channel={previewChannel} size={48} />
+                </div>
+              ) : (
+                <div style={{ width: '100%', height: '100%', background: '#0a0d12' }} />
+              )}
+              <div className="home-mini-live-controls">
+                <div className="home-mini-live-controls-left">
+                  <button type="button" className="home-mini-ctrl-btn" aria-label="Play or pause stream">
+                    <Icon name="play" size={16} />
+                  </button>
+                  <button type="button" className="home-mini-ctrl-btn" aria-label="Mute volume">
+                    <Icon name="volume" size={16} />
+                  </button>
+                </div>
+                <div className="home-mini-live-controls-right">
+                  <button type="button" className="home-mini-ctrl-btn" aria-label="Subtitles">
+                    <Icon name="subtitles" size={16} />
+                  </button>
+                  <button type="button" className="home-mini-ctrl-btn" aria-label="Picture in Picture">
+                    <Icon name="pip" size={16} />
+                  </button>
+                  {previewChannel && (
+                    <Link to={`/watch/${encodeURIComponent(channelRef(previewChannel.id))}`} className="home-mini-ctrl-btn" aria-label="Fullscreen">
+                      <Icon name="fullscreen" size={16} />
+                    </Link>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="home-mini-live-meta">
+              <h3 className="home-mini-live-title">
+                {previewProg?.title ?? (previewChannel ? `${previewChannel.name} Live` : 'BBC News at Six')}
+              </h3>
+              <p className="home-mini-live-sub">
+                <span>{previewChannel?.name ?? 'BBC One'} • {previewProg?.category ?? 'News & Current Affairs'}</span>
+                <span>{previewProg ? `${clock(previewProg.start, store.prefs.timeFormat)} - ${clock(previewProg.stop, store.prefs.timeFormat)}` : '18:00 - 19:00'}</span>
+              </p>
+              <div className="home-mini-live-progress" title={`${minsLeft} min left`}>
+                <div className="home-mini-live-progress-fill" style={{ width: `${Math.round(progProgress * 100)}%` }} />
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Channels Card with On Now / Next Sub-tabs */}
+          <div className="home-channels-box">
+            <div className="home-channels-subtabs" role="tablist">
+              <button
                 type="button"
                 role="tab"
-                aria-selected={i === (carouselIndex % slides.length)}
-                className={`hero-carousel-dot ${i === (carouselIndex % slides.length) ? 'is-active' : ''}`}
-                onClick={() => setCarouselIndex(i)}
-                aria-label={`Go to slide ${i + 1}`}
-              />
-            ))}
+                className={`home-channels-tab-btn ${channelsTab === 'now' ? 'is-active' : ''}`}
+                onClick={() => setChannelsTab('now')}
+                aria-selected={channelsTab === 'now'}
+              >
+                On Now
+              </button>
+              <button
+                type="button"
+                role="tab"
+                className={`home-channels-tab-btn ${channelsTab === 'next' ? 'is-active' : ''}`}
+                onClick={() => setChannelsTab('next')}
+                aria-selected={channelsTab === 'next'}
+              >
+                Next
+              </button>
+            </div>
+            <div className="home-channels-list">
+              {channels.slice(0, 4).map((c) => {
+                const prog = channelsTab === 'now' ? store.programmeAt(c, now) : store.nextProgramme(c, now)
+                return (
+                  <Link
+                    key={c.id}
+                    to={`/live?channel=${encodeURIComponent(c.id)}`}
+                    className="home-quick-channel-row"
+                  >
+                    <span className="home-quick-ch-badge">{c.name.slice(0, 8)}</span>
+                    <div className="home-quick-ch-info">
+                      <span className="home-quick-ch-title">{prog?.title ?? c.name}</span>
+                      <span className="home-quick-ch-time">
+                        {prog ? `${clock(prog.start, store.prefs.timeFormat)} - ${clock(prog.stop, store.prefs.timeFormat)}` : 'Live broadcast'}
+                      </span>
+                    </div>
+                    {channelsTab === 'now' && <span className="home-quick-live-tag">LIVE</span>}
+                  </Link>
+                )
+              })}
+            </div>
           </div>
-          <div className="hero-carousel-nav">
-            <button
-              type="button"
-              className="hero-nav-btn"
-              onClick={() => setCarouselIndex((p) => (p - 1 + slides.length) % slides.length)}
-              aria-label="Previous featured title"
-            >
-              <Icon name="left" size={16} />
-            </button>
-            <button
-              type="button"
-              className="hero-nav-btn"
-              onClick={() => setCarouselIndex((p) => (p + 1) % slides.length)}
-              aria-label="Next featured title"
-            >
-              <Icon name="right" size={16} />
-            </button>
+
+          {/* Quick Actions Row */}
+          <div className="home-quick-actions-bar" role="group" aria-label="Quick Navigation">
+            <Link to="/live" className="home-quick-act-btn">
+              <Icon name="calendar" size={18} />
+              <span>TV Guide</span>
+            </Link>
+            <Link to="/recordings" className="home-quick-act-btn">
+              <Icon name="record" size={18} />
+              <span>Recordings</span>
+            </Link>
+            <Link to="/live?tab=reminders" className="home-quick-act-btn">
+              <Icon name="bell" size={18} />
+              <span>Reminders</span>
+            </Link>
+            <Link to="/library?tab=watchlist" className="home-quick-act-btn">
+              <Icon name="star" size={18} />
+              <span>Favourites</span>
+            </Link>
           </div>
-        </div>
-      )}
-    </section>
+
+          {/* Your Library at a Glance HUD */}
+          <div className="home-library-hud">
+            <Link to="/library" className="home-library-hud-header">
+              <span>Your Library at a Glance</span>
+              <Icon name="chevronRight" size={16} />
+            </Link>
+            <div className="home-library-hud-grid">
+              <div className="home-library-hud-item">
+                <span className="home-library-hud-num">{totalMovies.toLocaleString()}</span>
+                <span className="home-library-hud-label">Movies</span>
+              </div>
+              <div className="home-library-hud-item">
+                <span className="home-library-hud-num">{totalSeries.toLocaleString()}</span>
+                <span className="home-library-hud-label">TV Series</span>
+              </div>
+              <div className="home-library-hud-item">
+                <span className="home-library-hud-num">{totalChannels.toLocaleString()}</span>
+                <span className="home-library-hud-label">Channels</span>
+              </div>
+              <div className="home-library-hud-item">
+                <span className="home-library-hud-num">{storageText}</span>
+                <span className="home-library-hud-label">Local Media</span>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
   )
 }
 
@@ -418,6 +434,7 @@ export function Home() {
   const now = useNow()
   const store = useStore()
   const toast = useToast()
+  const { storageSummary } = useLocalMedia()
   const {
     library,
     prefs,
@@ -1099,7 +1116,15 @@ export function Home() {
 
   return (
     <>
-      <HomeHero slides={featuredSlides} />
+      <HomeHero
+        slides={featuredSlides}
+        channels={safeChannelsList}
+        now={now}
+        totalMovies={(demoTitles ? movies.length : 0) + xtreamCatalogue.movies.length}
+        totalSeries={(demoTitles ? series.length : 0) + xtreamCatalogue.series.length}
+        totalChannels={channels.length || (demoTitles ? 45 : 0)}
+        storageText={storageSummary ? `${(storageSummary.availableDiskBytes / (1024 ** 4)).toFixed(1)} TB` : '2.4 TB'}
+      />
       <div className={`page stack home-body home-density-${cardDensity}`}>
         {!demoTitles && (
           <div className="home-rails-header">

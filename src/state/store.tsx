@@ -87,6 +87,12 @@ export interface Prefs {
   /** Fictional sample content, only when the user asks for it and has no real source. */
   demoMode: boolean
   sidebarCollapsed: boolean
+  layoutMode: 'standard' | 'compact' | 'wide' | 'tv'
+  showArtworkBackgrounds: boolean
+  animatedTransitions: boolean
+  showMediaRatings: boolean
+  /** 'system' follows the OS colour scheme; the resolved theme is stored in `theme`. */
+  themeMode: 'dark' | 'light' | 'dim' | 'system'
 }
 
 /** Source-checking settings removed in D3.1: nothing used them. Stripped from saved prefs so they stop being stored. */
@@ -104,6 +110,7 @@ export const defaultPrefs: Prefs = {
   audioLanguage: 'English',
   subtitles: false, subtitleLanguage: 'English', subtitleSize: 'medium', subtitleStyle: 'shadow',
   timeFormat: '24h', guideZoom: 3, guideArt: true, guideStart: 'now', demoMode: false, sidebarCollapsed: false,
+  layoutMode: 'standard', showArtworkBackgrounds: true, animatedTransitions: true, showMediaRatings: true, themeMode: 'dark',
 }
 
 export const emptyLibrary: Library = {
@@ -187,6 +194,11 @@ export function sanitizePrefs(stored: Prefs & RemovedPrefs): Prefs {
     customAccent: safeHex(p.customAccent) ?? defaultPrefs.customAccent,
     density: pick('density', ['compact', 'comfortable', 'spacious']),
     sidebarCollapsed: Boolean(p.sidebarCollapsed),
+    layoutMode: pick('layoutMode', ['standard', 'compact', 'wide', 'tv']),
+    showArtworkBackgrounds: p.showArtworkBackgrounds !== false,
+    animatedTransitions: p.animatedTransitions !== false,
+    showMediaRatings: p.showMediaRatings !== false,
+    themeMode: pick('themeMode', ['dark', 'light', 'dim', 'system']),
   }
 }
 

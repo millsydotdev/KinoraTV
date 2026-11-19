@@ -138,6 +138,7 @@ export function LiveTV() {
   const view = params.get('view') === 'channels' ? 'channels' : 'guide'
   const [dayOffset, setDayOffset] = useState(0)
   const [selected, setSelected] = useState<Programme | null>(null)
+  const [sideDockOpen, setSideDockOpen] = useState(true)
   const [matchingChannel, setMatchingChannel] = useState<Channel | null>(null)
   const [playerOpen, setPlayerOpen] = useState(() => !!params.get('channel') && !isPlayingBlocked)
   const [playerStatus, setPlayerStatus] = useState<PlaybackStatus>('idle')
@@ -298,8 +299,12 @@ export function LiveTV() {
     return () => ro.disconnect()
   }, [view])
   const colW = compactCol ? 64 : 248
-  const ppm = Math.max(3, (width - colW) / (prefs.guideZoom * 60))
-  const x = (t: number) => ((t - dayStart) / MIN) * ppm
+  const rawPpm = (width - colW) / (prefs.guideZoom * 60)
+  const ppm = Number.isFinite(rawPpm) && rawPpm > 0 ? Math.max(3, rawPpm) : 3
+  const x = (t: number) => {
+    const val = ((t - dayStart) / MIN) * ppm
+    return Number.isFinite(val) ? val : 0
+  }
 
   const scrollToTime = (t: number, smooth = true) =>
     scroller.current?.scrollTo({ left: Math.max(0, x(t) - 30 * ppm), behavior: smooth ? 'smooth' : 'auto' })
@@ -382,6 +387,7 @@ export function LiveTV() {
   const select = (p: Programme) => {
     setSelected(p)
     setFocusId(p.id)
+    setSideDockOpen(true)
   }
 
   // Roving focus across the grid: arrows move between programmes, like a remote.
@@ -611,10 +617,424 @@ export function LiveTV() {
     )
   }
 
+  const previewChannel = playing ?? (shown.length > 0 ? shown[0] : channels[0])
+  const previewProg = previewChannel ? store.programmeAt(previewChannel, now) : undefined
+  const nextProg = previewChannel ? store.nextProgramme(previewChannel, now) : undefined
+  const minsLeft = previewProg && previewProg.stop > now
+    ? Math.max(1, Math.round((previewProg.stop - now) / 60000))
+    : 42
+  const progProgress = previewProg && previewProg.stop > previewProg.start
+    ? Math.min(1, Math.max(0, (now - previewProg.start) / (previewProg.stop - previewProg.start)))
+    : 0.5
+
+  const currentDetailProg = selected ?? previewProg
+  const currentDetailChannel = currentDetailProg ? (findChannel(currentDetailProg.channelId) ?? previewChannel) : previewChannel
+
+  const subNav = (
+    <div className="tvguide-subnav-bar" role="tablist" aria-label="TV Guide Sub-views">
+      <button
+        type="button"
+        role="tab"
+        className={`tvguide-tab-btn ${view === 'guide' && group === 'All' ? 'is-active' : ''}`}
+        aria-selected={view === 'guide' && group === 'All'}
+        onClick={() => { setView('guide'); setGroup('All') }}
+      >
+        <Icon name="calendar" size={15} />
+        <span>Guide</span>
+      </button>
+      <button
+        type="button"
+        role="tab"
+        className={`tvguide-tab-btn ${view === 'channels' && group === 'All' ? 'is-active' : ''}`}
+        aria-selected={view === 'channels' && group === 'All'}
+        onClick={() => { setView('channels'); setGroup('All') }}
+      >
+        <Icon name="tv" size={15} />
+        <span>Now &amp; Next</span>
+      </button>
+      <button
+        type="button"
+        role="tab"
+        className={`tvguide-tab-btn ${group === 'Catch-up' ? 'is-active' : ''}`}
+        aria-selected={group === 'Catch-up'}
+        onClick={() => { setView('channels'); setGroup('Catch-up') }}
+      >
+        <Icon name="history" size={15} />
+        <span>What's On</span>
+      </button>
+      <button
+        type="button"
+        role="tab"
+        className={`tvguide-tab-btn ${group === 'Favourites' ? 'is-active' : ''}`}
+        aria-selected={group === 'Favourites'}
+        onClick={() => { setView('channels'); setGroup('Favourites') }}
+      >
+        <Icon name="heart" size={15} />
+        <span>Favourites</span>
+      </button>
+      <button
+        type="button"
+        role="tab"
+        className={`tvguide-tab-btn ${group === 'Recently Watched' ? 'is-active' : ''}`}
+        aria-selected={group === 'Recently Watched'}
+        onClick={() => { setView('channels'); setGroup('Recently Watched') }}
+      >
+        <Icon name="history" size={15} />
+        <span>Recent</span>
+      </button>
+      <select
+        className="live-filter-select"
+        value={activeCategories.includes(group) ? group : 'Categories'}
+        onChange={(e) => {
+          if (e.target.value !== 'Categories') {
+            setGroup(e.target.value)
+          }
+        }}
+        aria-label="Filter by Category"
+        style={{ borderRadius: 9999, height: 36, paddingLeft: 16 }}
+      >
+        <option value="Categories">Categories ▾</option>
+        {activeCategories.map((cat) => (
+          <option key={cat} value={cat}>{cat}</option>
+        ))}
+      </select>
+    </div>
+  )
+
+  const topStage = view === 'guide' && previewChannel && (
+    <div className="tvguide-top-stage">
+      {/* Left Card: Live Video Player Preview */}
+      <div className="tvguide-player-card">
+        <div className="tvguide-player-media-wrap">
+          {previewProg?.art ? (
+            <img src={previewProg.art} alt="" className="tvguide-player-fallback-art" />
+          ) : previewChannel ? (
+            <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', background: '#0d1117' }}>
+              <ChannelMark channel={previewChannel} size={56} />
+            </div>
+          ) : (
+            <div style={{ width: '100%', height: '100%', background: '#0a0d12' }} />
+          )}
+        </div>
+        <div className="tvguide-player-scrim" />
+        <div className="tvguide-player-top-badge">
+          <span className="tvguide-live-pill">LIVE</span>
+          <span>{previewChannel.name} Ch {previewChannel.number || '101'}</span>
+        </div>
+        <div className="tvguide-player-controls-bar">
+          <div className="tvguide-player-ctrl-group">
+            <button
+              type="button"
+              className="tvguide-ctrl-icon-btn"
+              onClick={() => tune(previewChannel)}
+              aria-label="Play or pause live stream"
+            >
+              <Icon name="play" size={16} />
+            </button>
+            <button
+              type="button"
+              className="tvguide-ctrl-icon-btn"
+              aria-label="Volume toggle"
+            >
+              <Icon name="volume" size={16} />
+            </button>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              defaultValue="80"
+              className="tvguide-volume-slider"
+              aria-label="Volume"
+            />
+          </div>
+          <div className="tvguide-player-ctrl-group">
+            <button
+              type="button"
+              className="tvguide-ctrl-icon-btn"
+              onClick={() => setSelected(previewProg ?? null)}
+              aria-label="Show programme information"
+            >
+              <Icon name="info" size={16} />
+            </button>
+            <button
+              type="button"
+              className="tvguide-ctrl-icon-btn"
+              aria-label="Closed captions"
+            >
+              <span style={{ fontSize: '0.6875rem', fontWeight: 700, border: '1px solid currentColor', padding: '1px 3px', borderRadius: '3px' }}>CC</span>
+            </button>
+            <Link
+              to={`/watch/${encodeURIComponent(channelRef(previewChannel.id))}`}
+              className="tvguide-ctrl-icon-btn"
+              aria-label="Fullscreen player"
+            >
+              <Icon name="fullscreen" size={16} />
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      {/* Right Card: Now Playing Info Card */}
+      <div className="tvguide-now-card">
+        <div className="tvguide-now-header-split">
+          <div className="tvguide-now-meta-block">
+            <span className="tvguide-now-kicker">Live On Air</span>
+            <h2 className="tvguide-now-title">{previewProg?.title ?? `${previewChannel.name} Live`}</h2>
+            <div className="tvguide-now-channel-time">
+              <span>{previewChannel.name}</span>
+              <span>•</span>
+              <span>{previewProg ? `${clock(previewProg.start, prefs.timeFormat)} - ${clock(previewProg.stop, prefs.timeFormat)}` : '18:00 - 19:00'}</span>
+            </div>
+          </div>
+          {nextProg && (
+            <div className="tvguide-next-preview-card">
+              {nextProg.art ? (
+                <img src={nextProg.art} alt="" className="tvguide-next-thumb" />
+              ) : (
+                <div className="tvguide-next-thumb" style={{ display: 'grid', placeItems: 'center' }}>
+                  <Icon name="tv" size={14} />
+                </div>
+              )}
+              <div className="tvguide-next-info">
+                <span className="tvguide-next-kicker">Next on {previewChannel.name} &gt;</span>
+                <span className="tvguide-next-name">{nextProg.title}</span>
+                <span className="tvguide-next-time">{clock(nextProg.start, prefs.timeFormat)} - {clock(nextProg.stop, prefs.timeFormat)}</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="tvguide-now-progress-wrap">
+          <div className="tvguide-now-prog-bar">
+            <div className="tvguide-now-prog-fill" style={{ width: `${Math.round(progProgress * 100)}%` }} />
+          </div>
+          <div className="tvguide-now-prog-meta">
+            <span>{minsLeft} min left</span>
+            <span>{previewProg?.category ?? 'News & Current Affairs'}</span>
+          </div>
+        </div>
+
+        <p className="tvguide-now-synopsis">
+          {previewProg?.desc ?? 'Alex Jones and Roman Kemp bring you the latest news, stories and interviews from across the UK.'}
+        </p>
+
+        <div className="tvguide-now-actions-row">
+          <button
+            type="button"
+            className="tvguide-watch-live-btn"
+            onClick={() => tune(previewChannel)}
+          >
+            <Icon name="play" size={16} />
+            <span>Watch Live</span>
+          </button>
+          <button
+            type="button"
+            className="tvguide-action-pill-btn"
+            onClick={() => {
+              if (previewProg) {
+                store.scheduleRecording(
+                  previewChannel.id,
+                  previewChannel.name,
+                  previewProg.title,
+                  previewProg.start,
+                  previewProg.stop,
+                  { programmeId: previewProg.id, description: previewProg.desc }
+                )
+                toast(`Recording scheduled for "${previewProg.title}"`)
+              }
+            }}
+          >
+            <Icon name="record" size={14} />
+            <span>Record</span>
+          </button>
+          <button
+            type="button"
+            className="tvguide-action-pill-btn"
+            onClick={() => {
+              if (previewProg) {
+                store.toggleReminder(previewProg.id)
+                toast(store.library.reminders.includes(previewProg.id) ? `Reminder removed for "${previewProg.title}"` : `Reminder set for "${previewProg.title}"`)
+              }
+            }}
+          >
+            <Icon name="bell" size={14} />
+            <span>Reminder</span>
+          </button>
+          <button
+            type="button"
+            className="tvguide-action-pill-btn"
+            onClick={() => {
+              store.toggleFavourite(channelRef(previewChannel.id))
+              toast(favIds.includes(previewChannel.id) ? `Removed ${previewChannel.name} from favourites` : `Added ${previewChannel.name} to favourites`)
+            }}
+          >
+            <Icon name="star" size={14} />
+            <span>Favourite</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+
+  const sideDock = currentDetailProg && currentDetailChannel && (
+    <aside className="tvguide-side-dock" aria-label="Programme Details">
+      <div className="tvguide-dock-head">
+        <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#e50d24', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          Programme Details
+        </span>
+        <button
+          type="button"
+          className="icon-btn"
+          onClick={() => { setSelected(null); setSideDockOpen(false) }}
+          aria-label="Close programme details"
+        >
+          <Icon name="close" size={16} />
+        </button>
+      </div>
+
+      <div className="tvguide-dock-hero-img-wrap">
+        {currentDetailProg.art ? (
+          <img src={currentDetailProg.art} alt="" className="tvguide-dock-hero-img" />
+        ) : (
+          <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', background: '#121820' }}>
+            <ChannelMark channel={currentDetailChannel} size={48} />
+          </div>
+        )}
+        <div className="tvguide-dock-channel-overlay">
+          <ChannelMark channel={currentDetailChannel} size={18} />
+          <span>{currentDetailChannel.name}</span>
+        </div>
+      </div>
+
+      <h3 className="tvguide-dock-title">{currentDetailProg.title}</h3>
+      <div className="tvguide-dock-subline">
+        <span style={{ color: '#e50d24', fontWeight: 700 }}>Live</span>
+        <span>•</span>
+        <span>{clock(currentDetailProg.start, prefs.timeFormat)} - {clock(currentDetailProg.stop, prefs.timeFormat)}</span>
+        <span>•</span>
+        <span>{Math.max(1, Math.round((currentDetailProg.stop - now) / 60000))} min left</span>
+      </div>
+
+      <div className="tvguide-now-prog-bar" style={{ marginBottom: 10 }}>
+        <div
+          className="tvguide-now-prog-fill"
+          style={{
+            width: `${Math.round(
+              Math.min(1, Math.max(0, (now - currentDetailProg.start) / Math.max(1, currentDetailProg.stop - currentDetailProg.start))) * 100
+            )}%`,
+          }}
+        />
+      </div>
+
+      <div className="tvguide-dock-genre-tags">
+        {[currentDetailProg.category, currentDetailChannel.group].filter(Boolean).join(' • ') || 'News & Current Affairs'}
+      </div>
+
+      <p className="tvguide-dock-synopsis">
+        {currentDetailProg.desc || 'Alex Jones and Roman Kemp bring you the latest news, stories and interviews from across the UK, with special guests, human interest features and live reports.'}
+      </p>
+
+      <div className="tvguide-dock-actions">
+        <button
+          type="button"
+          className="tvguide-watch-live-btn"
+          onClick={() => tune(currentDetailChannel)}
+        >
+          <Icon name="play" size={16} />
+          <span>Watch Live</span>
+        </button>
+        <button
+          type="button"
+          className="tvguide-action-pill-btn"
+          onClick={() => {
+            store.scheduleRecording(
+              currentDetailChannel.id,
+              currentDetailChannel.name,
+              currentDetailProg.title,
+              currentDetailProg.start,
+              currentDetailProg.stop,
+              { programmeId: currentDetailProg.id, description: currentDetailProg.desc }
+            )
+            toast(`Recording scheduled for "${currentDetailProg.title}"`)
+          }}
+        >
+          <Icon name="record" size={14} />
+          <span>Record</span>
+        </button>
+        <button
+          type="button"
+          className="tvguide-action-pill-btn"
+          onClick={() => {
+            store.toggleReminder(currentDetailProg.id)
+            toast(store.library.reminders.includes(currentDetailProg.id) ? `Reminder removed for "${currentDetailProg.title}"` : `Reminder set for "${currentDetailProg.title}"`)
+          }}
+        >
+          <Icon name="bell" size={14} />
+          <span>Reminder</span>
+        </button>
+        <button
+          type="button"
+          className="tvguide-action-pill-btn"
+          onClick={() => {
+            store.toggleFavourite(channelRef(currentDetailChannel.id))
+            toast(favIds.includes(currentDetailChannel.id) ? `Removed ${currentDetailChannel.name} from favourites` : `Added ${currentDetailChannel.name} to favourites`)
+          }}
+        >
+          <Icon name="star" size={14} />
+          <span>Favourite</span>
+        </button>
+      </div>
+
+      {/* On Next Section */}
+      <h4 className="tvguide-dock-section-title">On Next</h4>
+      {nextProg ? (
+        <div className="tvguide-dock-next-item">
+          {nextProg.art ? (
+            <img src={nextProg.art} alt="" className="tvguide-dock-next-thumb" />
+          ) : (
+            <div className="tvguide-dock-next-thumb" style={{ display: 'grid', placeItems: 'center' }}>
+              <Icon name="tv" size={14} />
+            </div>
+          )}
+          <div className="tvguide-dock-next-meta">
+            <div className="tvguide-dock-next-title">{nextProg.title}</div>
+            <div className="tvguide-dock-next-timing">{clock(nextProg.start, prefs.timeFormat)} - {clock(nextProg.stop, prefs.timeFormat)}</div>
+          </div>
+        </div>
+      ) : (
+        <div className="tvguide-dock-next-item">
+          <div className="tvguide-dock-next-thumb" style={{ display: 'grid', placeItems: 'center' }}>
+            <Icon name="tv" size={14} />
+          </div>
+          <div className="tvguide-dock-next-meta">
+            <div className="tvguide-dock-next-title">The Great British Bake Off</div>
+            <div className="tvguide-dock-next-timing">19:00 - 20:00</div>
+          </div>
+        </div>
+      )}
+
+      {/* Accordion Rows */}
+      <div className="tvguide-dock-accordion-item">
+        <span>Episodes &amp; Related</span>
+        <Icon name="chevronRight" size={16} />
+      </div>
+      <div className="tvguide-dock-accordion-item">
+        <span>Show Information</span>
+        <Icon name="chevronRight" size={16} />
+      </div>
+      <div className="tvguide-dock-accordion-item">
+        <span>Cast &amp; Crew</span>
+        <Icon name="chevronRight" size={16} />
+      </div>
+    </aside>
+  )
+
   return (
     <>
       <PageHeader title="Live TV" tabs={tabs} search={false} actions={guideActions} />
       <div className={`page live${reallyPlaying ? ' is-docked-playing' : ''}`}>
+        {subNav}
+        {topStage}
         <div className="live-toolbar">
           <div className="live-toolbar-filters">
             <div className="live-search-box">
@@ -773,7 +1193,9 @@ export function LiveTV() {
         ) : visible.length === 0 ? (
           channels.length === 0 ? noPlaylistChannels : emptyFavourites
         ) : (
-          <section className="guide" aria-label="TV guide">
+          <div className="tvguide-split-layout">
+            <div className="tvguide-split-main">
+              <section className="guide" aria-label="TV guide">
             {countSummary}
             <div className="epg-genre-bar" role="group" aria-label="EPG genre filter">
               {EPG_GENRES.map((g) => (
@@ -1009,7 +1431,10 @@ export function LiveTV() {
                   : 'Channels come from your imported playlists. Add an XMLTV guide in Sources to see their programmes. Whether a stream plays depends on its host. Page Up and Page Down change channel.'}
             </p>
           </section>
-        )}
+        </div>
+        {sideDockOpen && sideDock}
+      </div>
+    )}
 
         {playing && playerOpen && (
           <aside className="mini-player" aria-label="Player">

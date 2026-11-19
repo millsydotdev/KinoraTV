@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { NavLink, useNavigate, useSearchParams } from 'react-router-dom'
+import { NavLink, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { genresOf, movies } from '../data/catalog'
 import { movieRef, runtimeLabel } from '../data/refs'
 import type { Movie } from '../data/types'
@@ -7,6 +7,7 @@ import { Icon } from '../components/Icon'
 import { PageHeader } from '../components/PageHeader'
 import { PosterCard, XtreamPosterCard } from '../components/Tiles'
 import { StateBlock } from '../components/ui'
+import { useToast } from '../components/Toast'
 import {
   StreamingHero,
   StreamingGenreRow,
@@ -76,11 +77,12 @@ const MOVIE_GENRES: GenreItem[] = [
 ]
 
 const MOVIE_TABS: NavTabItem[] = [
-  { id: 'browse', label: 'Browse', icon: 'grid' },
-  { id: 'collections', label: 'Collections', icon: 'folder' },
-  { id: 'genres', label: 'Genres', icon: 'tag' },
-  { id: 'new-releases', label: 'New Releases', icon: 'calendar' },
+  { id: 'browse', label: 'All Movies', icon: 'grid' },
+  { id: 'popular', label: 'Popular', icon: 'flame' },
   { id: 'top-rated', label: 'Top Rated', icon: 'star' },
+  { id: 'new-releases', label: 'New Releases', icon: 'calendar' },
+  { id: 'genres', label: 'Genres', icon: 'tag' },
+  { id: 'year', label: 'Year', icon: 'calendar' },
   { id: 'a-z', label: 'A-Z', icon: 'sortAsc' },
 ]
 
@@ -95,12 +97,14 @@ type SortKey = keyof typeof sorts
 
 export function Movies() {
   const store = useStore()
+  const toast = useToast()
   const navigate = useNavigate()
   const { isKidsMode } = useProfiles()
   const { prefs, library } = store
   const [params, setParams] = useSearchParams()
 
   const [activeTab, setActiveTab] = useState<string>('browse')
+  const [selectedMovie, setSelectedMovie] = useState<any>(null)
   const [selectedGenre, setSelectedGenre] = useState<string | null>(null)
   const [heroIndex, setHeroIndex] = useState(0)
   const [providerLimit, setProviderLimit] = useState(100)
@@ -233,7 +237,7 @@ export function Movies() {
       }))
     }
     if (hasDemo) {
-      const topMovies = [
+      const demoList = [
         safeMovies.find((m) => m.id === 'low-orbit'),
         safeMovies.find((m) => m.id === 'the-salt-meridian'),
         safeMovies.find((m) => m.id === 'harbour-lights'),
@@ -241,26 +245,45 @@ export function Movies() {
         safeMovies.find((m) => m.id === 'valley-of-ashes'),
       ].filter((m): m is Movie => !!m)
 
-      return topMovies.map((m) => {
-        const hours = Math.floor(m.runtime / 60)
-        const mins = m.runtime % 60
-        return {
-          id: m.id,
-          kicker: 'FEATURED MOVIE',
-          title: m.title,
-          synopsis: m.synopsis,
-          art: m.art,
-          backdropUrl: m.backdropUrl,
-          year: m.year,
-          genre: m.genres[0] || 'Drama',
-          runtime: `${hours}h ${mins}m`,
-          ageRating: m.certificate,
-          badges: getTechnicalBadges(m),
-          playUrl: `/watch/${encodeURIComponent(movieRef(m.id))}`,
-          detailUrl: `/movies/${m.id}`,
-          itemRef: movieRef(m.id),
-        }
-      })
+      const topMovies: HeroSlideData[] = [
+        {
+          id: 'interstellar',
+          kicker: 'TRENDING NOW',
+          title: 'Interstellar',
+          synopsis: 'A team of explorers travel through a wormhole in search of a new home for humanity as Earth faces an environmental collapse.',
+          art: '/art/low-orbit.jpg',
+          backdropUrl: '/art/low-orbit.jpg',
+          year: 2014,
+          genre: 'Sci-Fi',
+          runtime: '2h 49m',
+          ageRating: '12A',
+          badges: ['4K HDR', 'DOLBY VISION'],
+          playUrl: '/watch/movie:interstellar',
+          detailUrl: '/movies',
+          itemRef: 'movie:interstellar',
+        },
+        ...demoList.map((m) => {
+          const hours = Math.floor(m.runtime / 60)
+          const mins = m.runtime % 60
+          return {
+            id: m.id,
+            kicker: 'FEATURED MOVIE',
+            title: m.title,
+            synopsis: m.synopsis,
+            art: m.art,
+            backdropUrl: m.backdropUrl,
+            year: m.year,
+            genre: m.genres[0] || 'Drama',
+            runtime: `${hours}h ${mins}m`,
+            ageRating: m.certificate,
+            badges: getTechnicalBadges(m),
+            playUrl: `/watch/${encodeURIComponent(movieRef(m.id))}`,
+            detailUrl: `/movies/${m.id}`,
+            itemRef: movieRef(m.id),
+          }
+        }),
+      ]
+      return topMovies
     }
     if (publicDiscoveryFilms.length > 0) {
       return publicDiscoveryFilms.slice(0, 5).map((r) => ({
@@ -333,6 +356,135 @@ export function Movies() {
   const isFiltering = category !== 'All' || provider !== 'All' || year !== 'All' || Boolean(normalizedQuery) || Boolean(selectedGenre) || activeTab === 'a-z'
 
   const sourceName = (id: string) => store.xtreamSources.find((s) => s.id === id)?.name ?? 'Provider'
+
+  const defaultSelectedMovie = useMemo(() => {
+    return {
+      id: 'dune-part-two',
+      title: 'Dune: Part Two',
+      year: '2024',
+      genre: 'Sci-Fi, Adventure',
+      runtime: '2h 46m',
+      ageRating: '12A',
+      rating: '8.5',
+      ratingCount: '620K',
+      tomatoRating: '94%',
+      synopsis: 'Paul Atreides unites with the Fremen to seek revenge against those who destroyed his family, and threatens Arrakis.',
+      director: 'Denis Villeneuve',
+      cast: 'Timothée Chalamet, Zendaya, Rebecca Ferguson',
+      language: 'English',
+      subtitles: 'Multiple',
+      art: '/art/the-salt-meridian.jpg',
+      playUrl: '/watch/movie:dune-part-two',
+      similar: [
+        { id: 'dune-2021', title: 'Dune (2021)', year: 2021, art: '/art/ash-and-ivory.jpg', to: '/movies' },
+        { id: 'arrival', title: 'Arrival (2016)', year: 2016, art: '/art/low-orbit.jpg', to: '/movies' },
+        { id: 'blade-runner-2049', title: 'Blade Runner 2049', year: 2017, art: '/art/neon-district.jpg', to: '/movies' },
+        { id: 'ex-machina', title: 'Ex Machina', year: 2014, art: '/art/the-outpost.jpg', to: '/movies' },
+      ],
+    }
+  }, [])
+
+  const activeMovie = selectedMovie ?? defaultSelectedMovie
+
+  const sidePanel = (
+    <aside className="movies-side-panel" aria-label="Movie Details">
+      <div className="movies-side-poster-wrap">
+        <img
+          src={activeMovie.art}
+          alt={activeMovie.title}
+          className="movies-side-poster-img"
+        />
+        <Link to={activeMovie.playUrl} className="movies-side-play-overlay" aria-label={`Play ${activeMovie.title}`}>
+          <div className="movies-side-play-btn">
+            <Icon name="play" size={20} />
+          </div>
+        </Link>
+      </div>
+
+      <h3 className="movies-side-title">{activeMovie.title}</h3>
+      <div className="movies-side-meta">
+        <span>{activeMovie.year}</span>
+        <span>•</span>
+        <span>{activeMovie.genre}</span>
+        <span>•</span>
+        <span>{activeMovie.runtime}</span>
+        <span>•</span>
+        <span>{activeMovie.ageRating}</span>
+      </div>
+
+      <div className="movies-side-ratings-row">
+        <div className="movies-side-rating-item" style={{ color: '#f59e0b' }}>
+          <Icon name="star" size={15} />
+          <span>{activeMovie.rating} <span style={{ color: 'rgba(255, 255, 255, 0.4)', fontWeight: 400 }}>({activeMovie.ratingCount})</span></span>
+        </div>
+        <div className="movies-side-rating-item" style={{ color: '#ef4444' }}>
+          <span className="rt-badge" style={{ fontWeight: 800, fontSize: '0.72rem', letterSpacing: '0.05em', background: '#ef4444', color: '#fff', padding: '1px 4px', borderRadius: '3px', marginRight: '4px' }}>RT</span>
+          <span>{activeMovie.tomatoRating}</span>
+        </div>
+      </div>
+
+      <p className="movies-side-synopsis">{activeMovie.synopsis}</p>
+
+      <div className="movies-side-actions">
+        <Link to={activeMovie.playUrl} className="movies-side-watch-btn">
+          <Icon name="play" size={16} />
+          <span>Watch Now</span>
+        </Link>
+        <button
+          type="button"
+          className="movies-side-icon-btn"
+          aria-label="Mark as watched or add to list"
+          onClick={() => {
+            store.toggleWatchlist(activeMovie.id)
+            toast('Updated watchlist')
+          }}
+        >
+          <Icon name="check" size={18} />
+        </button>
+        <button
+          type="button"
+          className="movies-side-icon-btn"
+          aria-label="Share movie"
+          onClick={() => toast('Link copied to clipboard')}
+        >
+          <Icon name="share" size={18} />
+        </button>
+      </div>
+
+      <div className="movies-side-specs-table">
+        <div className="movies-side-spec-row">
+          <span className="movies-side-spec-label">Director</span>
+          <span className="movies-side-spec-val">{activeMovie.director}</span>
+        </div>
+        <div className="movies-side-spec-row">
+          <span className="movies-side-spec-label">Cast</span>
+          <span className="movies-side-spec-val">{activeMovie.cast}</span>
+        </div>
+        <div className="movies-side-spec-row">
+          <span className="movies-side-spec-label">Genre</span>
+          <span className="movies-side-spec-val">{activeMovie.genre}</span>
+        </div>
+        <div className="movies-side-spec-row">
+          <span className="movies-side-spec-label">Language</span>
+          <span className="movies-side-spec-val">{activeMovie.language}</span>
+        </div>
+        <div className="movies-side-spec-row">
+          <span className="movies-side-spec-label">Subtitles</span>
+          <span className="movies-side-spec-val">{activeMovie.subtitles}</span>
+        </div>
+      </div>
+
+      <h4 className="movies-side-similar-heading">Similar Movies</h4>
+      <div className="movies-side-similar-grid">
+        {activeMovie.similar.map((sim: any) => (
+          <Link key={sim.id} to={sim.to} className="movies-side-similar-card" title={sim.title}>
+            <img src={sim.art} alt={sim.title} className="movies-side-similar-thumb" />
+            <span className="movies-side-similar-title">{sim.title}</span>
+          </Link>
+        ))}
+      </div>
+    </aside>
+  )
 
   return (
     <div className="streaming-page">
@@ -461,15 +613,107 @@ export function Movies() {
 
       {/* Main Streaming Discovery View (Browse Tab) */}
       {activeTab === 'browse' && !isFiltering && (
-        <>
-          {/* Featured Hero Stage */}
-          <StreamingHero
-            slides={heroSlides}
-            activeIndex={heroIndex}
-            onPrev={() => setHeroIndex((i) => (i - 1 + heroSlides.length) % heroSlides.length)}
-            onNext={() => setHeroIndex((i) => (i + 1) % heroSlides.length)}
-            onSelectIndex={setHeroIndex}
-          />
+        <div className="movies-smarttv-layout">
+          <div className="movies-main-col">
+            {/* Featured Hero Stage */}
+            <StreamingHero
+              slides={heroSlides}
+              activeIndex={heroIndex}
+              onPrev={() => setHeroIndex((i) => (i - 1 + heroSlides.length) % heroSlides.length)}
+              onNext={() => setHeroIndex((i) => (i + 1) % heroSlides.length)}
+              onSelectIndex={setHeroIndex}
+            />
+
+            {/* Continue Watching Rail */}
+            <StreamingRail
+              title="Continue Watching"
+              iconName="history"
+              onSeeAll={() => navigate('/library?tab=history')}
+            >
+              {continueWatchingMovies.length > 0 ? (
+                continueWatchingMovies.map((movie) => {
+                  const ref = movieRef(movie.id)
+                  const progress = library.progress[ref]
+                  return (
+                    <StreamingCard
+                      key={movie.id}
+                      to={`/watch/${encodeURIComponent(ref)}`}
+                      title={movie.title}
+                      sub={`${movie.year} · ${movie.genres[0] || 'Film'}`}
+                      art={movie.art}
+                      progress={progress?.dur ? progress.pos / progress.dur : 0.65}
+                      itemRef={ref}
+                    />
+                  )
+                })
+              ) : (
+                [
+                  { id: 'interstellar', title: 'Interstellar', sub: '1h 16m left', art: '/art/low-orbit.jpg', progress: 0.55 },
+                  { id: 'dune-part-two', title: 'Dune: Part Two', sub: '58m left', art: '/art/the-salt-meridian.jpg', progress: 0.65 },
+                  { id: 'oppenheimer', title: 'Oppenheimer', sub: '1h 24m left', art: '/art/harbour-lights.jpg', progress: 0.5 },
+                  { id: 'the-batman', title: 'The Batman', sub: '46m left', art: '/art/undertow.jpg', progress: 0.72 },
+                ].map((item) => (
+                  <StreamingCard
+                    key={item.id}
+                    to={`/watch/movie:${item.id}`}
+                    title={item.title}
+                    sub={item.sub}
+                    art={item.art}
+                    progress={item.progress}
+                    itemRef={`movie:${item.id}`}
+                  />
+                ))
+              )}
+            </StreamingRail>
+
+            {/* Popular Movies Rail */}
+            <StreamingRail
+              title="Popular Movies"
+              iconName="flame"
+              iconColor="var(--accent)"
+              onSeeAll={() => setActiveTab('popular')}
+            >
+              {(hasXtream ? popularXtream : popularDemo).map((movie: any) => {
+                const isXt = Boolean(movie.sourceId)
+                const routeId = isXt ? `xt:${movie.sourceId}:${movie.id}` : movie.id
+                return (
+                  <div
+                    key={routeId}
+                    onClick={() =>
+                      setSelectedMovie({
+                        id: movie.id,
+                        title: movie.name || movie.title,
+                        year: movie.year,
+                        genre: movie.genres?.[0] || 'Film',
+                        runtime: movie.runtime ? `${Math.floor(movie.runtime / 60)}h ${movie.runtime % 60}m` : '2h 15m',
+                        ageRating: movie.certificate || '12A',
+                        rating: '8.4',
+                        ratingCount: '410K',
+                        tomatoRating: '91%',
+                        synopsis: movie.synopsis || movie.plot || 'Stream this feature film directly on Kinora.',
+                        director: movie.director || 'Denis Villeneuve',
+                        cast: Array.isArray(movie.cast) ? movie.cast.join(', ') : 'Lead Ensemble',
+                        language: 'English',
+                        subtitles: 'Multiple',
+                        art: movie.art || '/art/the-salt-meridian.jpg',
+                        playUrl: `/watch/${encodeURIComponent(isXt ? `movie:${routeId}` : movieRef(movie.id))}`,
+                        similar: defaultSelectedMovie.similar,
+                      })
+                    }
+                  >
+                    <StreamingCard
+                      to={`/movies/${encodeURIComponent(routeId)}`}
+                      title={movie.name || movie.title}
+                      sub={[movie.year, isXt ? sourceName(movie.sourceId) : movie.genres?.[0]].filter(Boolean).join(' · ')}
+                      art={movie.art}
+                      artworkKey={movie.artworkKey}
+                      badges={getTechnicalBadges(movie)}
+                      itemRef={isXt ? `movie:${routeId}` : movieRef(movie.id)}
+                    />
+                  </div>
+                )
+              })}
+            </StreamingRail>
 
           <div className="streaming-body">
             {!hasXtream && <StreamingProviderPrompt kind="movies" />}
@@ -731,8 +975,10 @@ export function Movies() {
                     ))}
               </StreamingRail>
             )}
+            </div>
           </div>
-        </>
+          {sidePanel}
+        </div>
       )}
 
       {/* Collections Tab View */}
