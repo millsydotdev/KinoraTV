@@ -957,20 +957,8 @@ fn parse_video_filename(
 
     // Strip technical tags from title
     let tech_tags = [
-        "1080p",
-        "2160p",
-        "720p",
-        "4k",
-        "bluray",
-        "bdrip",
-        "webrip",
-        "web-dl",
-        "dvdrip",
-        "x264",
-        "x265",
-        "hevc",
-        "aac",
-        "dts",
+        "1080p", "2160p", "720p", "4k", "bluray", "bdrip", "webrip", "web-dl", "dvdrip", "x264",
+        "x265", "hevc", "aac", "dts",
     ];
 
     let mut title_parts = Vec::new();
@@ -1079,11 +1067,16 @@ fn parse_tv_episode_name(
         if let Some(x_pos) = lower.find('x') {
             if x_pos > 0 {
                 let before_x = &lower[..x_pos];
-                let s_start = before_x.rfind(|c: char| !c.is_ascii_digit()).map(|i| i + 1).unwrap_or(0);
+                let s_start = before_x
+                    .rfind(|c: char| !c.is_ascii_digit())
+                    .map(|i| i + 1)
+                    .unwrap_or(0);
                 let season_str = &before_x[s_start..];
 
                 let after_x = &lower[x_pos + 1..];
-                let ep_end = after_x.find(|c: char| !c.is_ascii_digit()).unwrap_or(after_x.len());
+                let ep_end = after_x
+                    .find(|c: char| !c.is_ascii_digit())
+                    .unwrap_or(after_x.len());
                 let ep_str = &after_x[..ep_end];
 
                 if let (Ok(s), Ok(e)) = (season_str.parse::<u32>(), ep_str.parse::<u32>()) {
@@ -1102,7 +1095,10 @@ fn parse_tv_episode_name(
                 let p_lower = p_name.to_lowercase();
                 if let Some(pos) = p_lower.find("season") {
                     let num_part = p_lower[pos + 6..].trim();
-                    let digits: String = num_part.chars().take_while(|c| c.is_ascii_digit()).collect();
+                    let digits: String = num_part
+                        .chars()
+                        .take_while(|c| c.is_ascii_digit())
+                        .collect();
                     if let Ok(s) = digits.parse::<u32>() {
                         season = s;
                     }
@@ -1263,10 +1259,8 @@ mod tests {
 
     #[test]
     fn parses_movie_with_directors_cut_and_4k() {
-        let (title, year, edition, res) = parse_video_filename(
-            "Blade.Runner.1982.Director's.Cut.2160p.mkv",
-            None,
-        );
+        let (title, year, edition, res) =
+            parse_video_filename("Blade.Runner.1982.Director's.Cut.2160p.mkv", None);
         assert_eq!(title, "Blade Runner");
         assert_eq!(year, Some(1982));
         assert_eq!(edition, Some("Director's Cut".to_string()));
@@ -1275,8 +1269,10 @@ mod tests {
 
     #[test]
     fn parses_tv_episode_s01e02_format() {
-        let (s, e, title, res) =
-            parse_tv_episode_name("Breaking.Bad.S01E02.Cat's.in.the.Bag - Episode Title.1080p.mkv", None);
+        let (s, e, title, res) = parse_tv_episode_name(
+            "Breaking.Bad.S01E02.Cat's.in.the.Bag - Episode Title.1080p.mkv",
+            None,
+        );
         assert_eq!(s, 1);
         assert_eq!(e, 2);
         assert_eq!(res, Some("1080p".to_string()));
@@ -1285,8 +1281,7 @@ mod tests {
 
     #[test]
     fn parses_tv_episode_1x03_format() {
-        let (s, e, _title, _res) =
-            parse_tv_episode_name("Severance.1x03.In.Perpetuity.mp4", None);
+        let (s, e, _title, _res) = parse_tv_episode_name("Severance.1x03.In.Perpetuity.mp4", None);
         assert_eq!(s, 1);
         assert_eq!(e, 3);
     }

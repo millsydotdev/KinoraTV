@@ -16,6 +16,7 @@ mod fetch;
 mod guides;
 mod hls;
 mod ingest;
+mod local_media;
 mod m3u;
 mod pin;
 mod sources;
@@ -23,7 +24,6 @@ mod stream;
 mod updater;
 mod xmltv;
 mod xtream;
-mod local_media;
 
 use serde::Serialize;
 use tauri::Manager;
@@ -705,7 +705,11 @@ fn select_local_media_folder(
     #[cfg(target_os = "linux")]
     {
         if let Ok(output) = std::process::Command::new("zenity")
-            .args(["--file-selection", "--directory", "--title=Select Media Folder"])
+            .args([
+                "--file-selection",
+                "--directory",
+                "--title=Select Media Folder",
+            ])
             .output()
         {
             if output.status.success() {
@@ -742,10 +746,11 @@ fn open_local_media_stream(
 ) -> Result<stream::Opened, ingest::IngestError> {
     let cat = engine.get_catalogue();
     let is_movie = cat.movies.iter().any(|m| m.id == media_id);
-    let is_ep = cat
-        .series
-        .iter()
-        .any(|s| s.seasons.iter().any(|sn| sn.episodes.iter().any(|e| e.id == media_id)));
+    let is_ep = cat.series.iter().any(|s| {
+        s.seasons
+            .iter()
+            .any(|sn| sn.episodes.iter().any(|e| e.id == media_id))
+    });
     if is_movie || is_ep {
         Ok(stream::Opened {
             url: format!("kstream://localhost/local/{}/playlist.m3u8", media_id),
