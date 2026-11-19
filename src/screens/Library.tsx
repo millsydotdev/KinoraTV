@@ -189,14 +189,6 @@ function Overview({ go, onSelectResource }: { go: (t: TabId) => void; onSelectRe
     return true
   })
 
-  if (!resume.length && !favs.length && !recent.length && !library.watchlist.length && !library.collections.length && !mediaLibrary.mySources.length) {
-    return (
-      <StateBlock icon="library" title="Your library is empty" action={<Link to="/" className="btn btn-primary">Find something to watch</Link>}>
-        Add films and series to your watchlist, heart the channels you return to, and start watching. It all collects here.
-      </StateBlock>
-    )
-  }
-
   return (
     <div className="stack">
       {/* Viewing Analytics HUD */}
@@ -331,6 +323,60 @@ function Overview({ go, onSelectResource }: { go: (t: TabId) => void; onSelectRe
           <CollectionCards collections={library.collections} onOpen={(id) => setParams({ tab: 'collections', c: id })} />
         </section>
       )}
+
+      {!resume.length && !favs.length && !recent.length && (
+        <section className="library-empty-starter" aria-label="Library Starter Guide">
+          <div className="home-setup-banner-card">
+            <div className="home-setup-banner-content">
+              <span className="badge badge-accent">
+                <Icon name="library" size={12} />
+                Personal Media Library
+              </span>
+              <h2 className="home-setup-banner-title">Build Your Personal Entertainment Hub</h2>
+              <p className="home-setup-banner-desc">
+                Everything you bookmark to your watchlist, heart as favourite, or stream gathers here automatically. Connect your local media drives, explore public domain cinema, or tune into live channels.
+              </p>
+              <div className="home-setup-banner-actions">
+                <Link to="/movies" className="btn btn-primary">
+                  <Icon name="film" size={16} />
+                  Explore Movies
+                </Link>
+                <button type="button" className="btn btn-secondary" onClick={() => go('local')}>
+                  <Icon name="folder" size={16} />
+                  Manage Local Folders
+                </button>
+                <Link to="/sources" className="btn btn-ghost">
+                  <Icon name="sources" size={16} />
+                  View Saved Sources
+                </Link>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      <Section icon="folder" title="Library Categories" grid="shortcut-grid">
+        <div role="button" tabIndex={0} className="card shortcut" onClick={() => go('watchlist')} onKeyDown={(e) => { if (e.key === 'Enter') go('watchlist') }}>
+          <span className="shortcut-icon"><Icon name="bookmark" /></span>
+          <span><strong>Watchlist</strong><span className="faint tnum">{library.watchlist.length} items</span></span>
+          <Icon name="right" size={18} />
+        </div>
+        <div role="button" tabIndex={0} className="card shortcut" onClick={() => go('favourites')} onKeyDown={(e) => { if (e.key === 'Enter') go('favourites') }}>
+          <span className="shortcut-icon"><Icon name="heart" /></span>
+          <span><strong>Favourites</strong><span className="faint tnum">{favRefs.length} items</span></span>
+          <Icon name="right" size={18} />
+        </div>
+        <div role="button" tabIndex={0} className="card shortcut" onClick={() => go('local')} onKeyDown={(e) => { if (e.key === 'Enter') go('local') }}>
+          <span className="shortcut-icon"><Icon name="folder" /></span>
+          <span><strong>Local Media</strong><span className="faint">Drives & NAS storage</span></span>
+          <Icon name="right" size={18} />
+        </div>
+        <div role="button" tabIndex={0} className="card shortcut" onClick={() => go('sources')} onKeyDown={(e) => { if (e.key === 'Enter') go('sources') }}>
+          <span className="shortcut-icon"><Icon name="sources" /></span>
+          <span><strong>Saved Sources</strong><span className="faint tnum">{mediaLibrary.mySources.length} sources</span></span>
+          <Icon name="right" size={18} />
+        </div>
+      </Section>
     </div>
   )
 }

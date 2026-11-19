@@ -8,7 +8,7 @@ import { PageHeader } from '../components/PageHeader'
 import { ChannelCard, PosterCard, Section, WideCard, XtreamArt, XtreamPosterCard, idleLabel } from '../components/Tiles'
 import { ContentRail } from '../components/ContentRail'
 import { useToast } from '../components/Toast'
-import { Art, ChannelMark, ProgrammeArt, StateBlock } from '../components/ui'
+import { Art, ChannelMark, ProgrammeArt } from '../components/ui'
 import { AgeRatingBadge } from '../components/AgeRatingBadge'
 import { type TechnicalFormat } from '../components/TechnicalBadges'
 import { filterKidSafeChannels, filterKidSafeTitles, filterKidSafeXtreamTitles, isRefKidSafe } from '../lib/kidsMode'
@@ -35,7 +35,38 @@ function HomeHero({ slides }: { slides: FeaturedSlide[] }) {
   const toast = useToast()
   const [carouselIndex, setCarouselIndex] = useState(0)
 
-  if (slides.length === 0) return <PageHeader title="Home" />
+  if (slides.length === 0) {
+    return (
+      <section className="hero" aria-labelledby="hero-title">
+        <PageHeader overlay />
+        <div className="hero-geometric-artwork" aria-hidden="true">
+          <img src="/art/hero-geometric-frame.png" alt="" className="hero-geometric-img" loading="eager" />
+        </div>
+        <div className="hero-content">
+          <div className="hero-kicker-badge">
+            <span className="kicker-pill" />
+            <span>KINORA TV MEDIA HUB</span>
+          </div>
+          <h1 id="hero-title" className="hero-title title-xl">
+            Welcome to <span className="hero-title-accent">Kinora</span>
+          </h1>
+          <p className="hero-tagline">
+            Your private, unified television and entertainment centre. Stream your own tuner lineups, personal VOD, and cultural media archives.
+          </p>
+          <div className="hero-actions">
+            <Link to="/sources/add" className="btn btn-primary">
+              <Icon name="plus" size={18} />
+              <span>Connect Sources</span>
+            </Link>
+            <Link to="/library?tab=local" className="btn btn-secondary">
+              <Icon name="folder" size={18} />
+              <span>Scan Local Media</span>
+            </Link>
+          </div>
+        </div>
+      </section>
+    )
+  }
 
   const currentSlide = slides[carouselIndex % Math.max(1, slides.length)]
   if (!currentSlide) return <PageHeader title="Home" />
@@ -342,6 +373,47 @@ function HomeAudioCard({
 
 
 
+function HomeLiveTvSetupBanner({ onLookAround }: { onLookAround?: () => void }) {
+  return (
+    <section className="home-setup-banner" aria-label="Connect Live Television">
+      <div className="home-setup-banner-card">
+        <div className="home-setup-banner-content">
+          <span className="badge badge-accent">
+            <Icon name="live" size={12} />
+            Live TV Setup
+          </span>
+          <h2 className="home-setup-banner-title">Nothing to watch yet: Connect Playlists & Tuners</h2>
+          <p className="home-setup-banner-desc">
+            Kinora has no channels or films of its own. It plays the sources you add, such as your own TV tuner lineup or personal M3U playlists.
+          </p>
+          <div className="home-setup-banner-actions">
+            <Link to="/setup" className="btn btn-primary">
+              <Icon name="cog" size={16} />
+              Set up Kinora
+            </Link>
+            <Link to="/sources/add" className="btn btn-secondary">
+              <Icon name="plus" size={16} />
+              Add your own source
+            </Link>
+            {onLookAround && (
+              <button type="button" className="btn btn-ghost" onClick={onLookAround}>
+                Look around with sample data
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="home-setup-banner-visual" aria-hidden="true">
+          <div className="home-setup-timeline-wireframe">
+            <div className="wireframe-row"><span className="wireframe-ch" /><span className="wireframe-prog w-40" /><span className="wireframe-prog w-60" /></div>
+            <div className="wireframe-row"><span className="wireframe-ch" /><span className="wireframe-prog w-70" /><span className="wireframe-prog w-30" /></div>
+            <div className="wireframe-row"><span className="wireframe-ch" /><span className="wireframe-prog w-50" /><span className="wireframe-prog w-50" /></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 export function Home() {
   const now = useNow()
   const store = useStore()
@@ -581,29 +653,6 @@ export function Home() {
     { to: '/library?tab=history', label: 'Recently watched', count: library.history.length, icon: 'history' as const },
   ]
 
-  if (channelMode === 'none') {
-    return (
-      <>
-        <PageHeader title="Home" />
-        <div className="page home-empty">
-          <StateBlock
-            icon="tv"
-            title="Nothing to watch yet"
-            action={(
-              <div className="home-empty-actions">
-                <Link to="/setup" className="btn btn-primary">Set up Kinora</Link>
-                <Link to="/sources/add" className="btn btn-secondary">Add your own source</Link>
-                <button type="button" className="btn btn-ghost" onClick={() => setPref('demoMode', true)}>Look around with sample data</button>
-              </div>
-            )}
-          >
-            Kinora has no channels or films of its own. It plays the sources you add, such as a TV playlist you are allowed to use.
-          </StateBlock>
-        </div>
-      </>
-    )
-  }
-
   const sectionRenderers: Record<string, () => React.ReactNode> = {
     'continue-watching': () => {
       const items = demoTitles ? safeResume.slice(0, 4) : safeResume
@@ -709,6 +758,8 @@ export function Home() {
             />
           ))}
         </ContentRail>
+      ) : !demoTitles ? (
+        <HomeLiveTvSetupBanner key="live-tv-setup" onLookAround={() => setPref('demoMode', true)} />
       ) : null,
 
     'because-you-watched': () =>

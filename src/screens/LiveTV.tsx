@@ -515,15 +515,64 @@ export function LiveTV() {
   )
 
   const noPlaylistChannels = channelMode === 'none' ? (
-    <StateBlock icon="sources" title="No channels yet" action={<Link to="/setup" className="btn btn-primary">Set up Kinora</Link>}>
-      Add a TV playlist you are allowed to use and its channels appear here.
-    </StateBlock>
+    <div className="live-empty-guide-stage" aria-label="No channels connected">
+      <StateBlock
+        icon="sources"
+        title="No channels yet"
+        action={(
+          <div className="live-empty-actions">
+            <Link to="/setup" className="btn btn-primary">
+              <Icon name="cog" size={16} />
+              Set up Kinora
+            </Link>
+            <Link to="/sources/add" className="btn btn-secondary">
+              <Icon name="plus" size={16} />
+              Add M3U Playlist
+            </Link>
+            <Link to="/sources?tab=discovery" className="btn btn-ghost">
+              <Icon name="search" size={16} />
+              Browse Public Discovery
+            </Link>
+          </div>
+        )}
+      >
+        Kinora plays the television sources you supply. Add an M3U playlist you are allowed to use, your own tuner lineup, or an XMLTV guide feed.
+      </StateBlock>
+      <div className="live-empty-specs-grid">
+        <div className="live-spec-card">
+          <Icon name="tv" size={20} />
+          <strong>M3U & M3U8 Lineups</strong>
+          <span className="faint">Standard IPTV channel playlists with #EXTINF metadata and category tagging.</span>
+        </div>
+        <div className="live-spec-card">
+          <Icon name="calendar" size={20} />
+          <strong>XMLTV Programme Guides</strong>
+          <span className="faint">Electronic programme guides in raw XML or compressed .xml.gz formats matched automatically.</span>
+        </div>
+        <div className="live-spec-card">
+          <Icon name="shield" size={20} />
+          <strong>Local-Only Streaming Privacy</strong>
+          <span className="faint">Zero tracking or remote telemetry. Tuner proxying and playback verification run strictly on this machine.</span>
+        </div>
+      </div>
+    </div>
   ) : (
-    <StateBlock icon="sources" title="No channels to show yet" action={<Link to="/sources" className="btn btn-ghost">Open Sources</Link>}>
-      {store.playlists.some((s) => s.status === 'importing')
-        ? 'A playlist is still being imported.'
-        : 'None of your imported playlists has produced any channels. Open Sources to see why, refresh a source or add another.'}
-    </StateBlock>
+    <div className="live-empty-guide-stage">
+      <StateBlock
+        icon="sources"
+        title="No channels to show yet"
+        action={(
+          <div className="live-empty-actions">
+            <Link to="/sources" className="btn btn-primary">Open Sources</Link>
+            <Link to="/sources/add" className="btn btn-secondary">Add Another Source</Link>
+          </div>
+        )}
+      >
+        {store.playlists.some((s) => s.status === 'importing')
+          ? 'A playlist is currently being imported in the background.'
+          : 'None of your imported playlists has produced any channels. Open Sources to see diagnostic status, refresh a source, or verify stream URLs.'}
+      </StateBlock>
+    </div>
   )
 
   const emptyFavourites = (

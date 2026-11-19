@@ -274,8 +274,9 @@ export function selectFeaturedSlides(inputs: FeaturedSelectionInputs): FeaturedS
       return { resource: r, score }
     })
     scoredMedia.sort((a, b) => b.score - a.score)
-    const topMedia = scoredMedia[0]?.resource
-    if (topMedia) {
+    for (const { resource: topMedia } of scoredMedia) {
+      if (slides.length >= 4) break
+      if (slides.some((s) => s.id === topMedia.id)) continue
       const cat = topMedia.category.replace('-', ' ')
       slides.push({
         id: topMedia.id,

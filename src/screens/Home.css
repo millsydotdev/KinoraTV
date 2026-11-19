@@ -475,9 +475,113 @@
   margin: 12px var(--gutter);
 }
 
+/* Home Live TV Setup Banner for empty channel states */
+.home-setup-banner {
+  padding: 0 var(--gutter);
+  margin: 16px 0 24px;
+}
+
+.home-setup-banner-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 28px 36px;
+  background: linear-gradient(135deg, rgba(23, 27, 34, 0.95) 0%, rgba(17, 19, 24, 0.98) 100%);
+  border: 1px solid rgba(229, 9, 20, 0.25);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+
+.home-setup-banner-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: var(--accent, #e50914);
+  box-shadow: 0 0 12px rgba(229, 9, 20, 0.6);
+}
+
+.home-setup-banner-content {
+  flex: 1;
+  max-width: 680px;
+}
+
+.home-setup-banner-title {
+  font-size: clamp(1.25rem, 2vw, 1.5rem);
+  font-weight: 700;
+  color: var(--text, #fff);
+  margin: 10px 0 8px;
+  letter-spacing: -0.01em;
+}
+
+.home-setup-banner-desc {
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--text-2, rgba(255, 255, 255, 0.7));
+  margin: 0 0 20px;
+}
+
+.home-setup-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.home-setup-banner-visual {
+  flex-shrink: 0;
+  width: 260px;
+}
+
+.home-setup-timeline-wireframe {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+.wireframe-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wireframe-ch {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: rgba(229, 9, 20, 0.3);
+  border: 1px solid rgba(229, 9, 20, 0.4);
+  flex-shrink: 0;
+}
+
+.wireframe-prog {
+  height: 20px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.wireframe-prog.w-30 { width: 30%; }
+.wireframe-prog.w-40 { width: 40%; }
+.wireframe-prog.w-50 { width: 50%; }
+.wireframe-prog.w-60 { width: 60%; }
+.wireframe-prog.w-70 { width: 70%; }
+
 @media (max-width: 1100px) {
   .home-pair {
     grid-template-columns: 1fr;
+  }
+  .home-setup-banner-visual {
+    display: none;
   }
 }
 

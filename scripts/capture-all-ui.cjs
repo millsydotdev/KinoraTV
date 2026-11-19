@@ -27,54 +27,14 @@ function hashStr(str) {
   return Math.abs(h);
 }
 
-function getRestoredUserSources() {
+function getRawUserSources() {
   try {
-    const raw = JSON.parse(
+    return JSON.parse(
       fs.readFileSync('/home/millsy/.local/share/io.github.millsydotdev.kinora/sources/sources.json', 'utf8')
     );
-    if (!raw.sources || raw.sources.length === 0) return [];
-
-    return raw.sources.slice(0, 3).map((s) => {
-      const channels = s.channels.map((c, i) => {
-        const name = (c.name || 'Unnamed channel').trim();
-        const group = (c.group || 'General').trim();
-        return {
-          id: `${s.id}~${idSafe(c.key)}`,
-          number: c.chno || i + 1,
-          name,
-          group,
-          categories: [group],
-          logoUrl: c.logo || null,
-          mark: { text: initials(name), tone: TONES[hashStr(c.key) % TONES.length] },
-          streamUrl: `http://example.com/live/${s.id}/${i}.m3u8`,
-          hd: true,
-          sourceId: s.id,
-          tvgId: c.tvgId || null,
-        };
-      });
-
-      return {
-        id: s.id,
-        name: s.name,
-        origin: s.origin,
-        url: s.url,
-        label: s.label,
-        addedAt: s.addedAt,
-        status: 'saved',
-        op: 0,
-        lastAttempt: s.addedAt,
-        lastSuccess: s.lastSuccess || s.addedAt,
-        channels,
-        entries: s.channels,
-        skipped: 0,
-        duplicates: 0,
-        warnings: [],
-        error: null,
-      };
-    });
   } catch (e) {
     console.warn('Could not read user sources.json:', e.message);
-    return [];
+    return { version: 3, sources: [], guides: [], mappings: [], xtreamSources: [] };
   }
 }
 
@@ -124,10 +84,10 @@ async function runCaptureMode(browser, mode) {
   });
 
   const page = await context.newPage();
-  const restoredSources = !isDev ? getRestoredUserSources() : [];
+  const rawUserData = !isDev ? getRawUserSources() : null;
 
-  // Configure localStorage for the mode
-  await page.addInitScript(({ devMode, sourcesJson }) => {
+  // Configure localStorage and runtime for the mode
+  await page.addInitScript(({ devMode, realSourcesData }) => {
     localStorage.setItem('kinora.setup.v1', JSON.stringify({ done: true }));
     localStorage.setItem('kinora.last_session.v1', '/');
     localStorage.setItem('kinora.prefs.v2', JSON.stringify({
@@ -138,10 +98,63 @@ async function runCaptureMode(browser, mode) {
       demoMode: devMode,
     }));
 
-    if (!devMode) {
-      if (sourcesJson) {
-        localStorage.setItem('kinora.browser_playlists.v1', sourcesJson);
-      }
+    if (!devMode && realSourcesData) {
+      // Mock Tauri IPC to load genuine persisted sources and storage metrics
+      window.isTauri = true;
+      window.__TAURI_INTERNALS__ = {
+        invoke: async (cmd, args) => {
+          if (cmd === 'load_sources') {
+            return {
+              sources: realSourcesData.sources || [],
+              guides: realSourcesData.guides || [],
+              mappings: realSourcesData.mappings || [],
+              xtreamSources: realSourcesData.xtreamSources || [],
+              notice: null,
+            };
+          }
+          if (cmd === 'get_storage_volumes_info' || cmd === 'get_storage_metrics') {
+            return {
+              volumes: [
+                {
+                  mountPoint: '/',
+                  totalBytes: 1024 * 1024 * 1024 * 1024,
+                  availableBytes: 620 * 1024 * 1024 * 1024,
+                  usedBytes: 404 * 1024 * 1024 * 1024,
+                  fsType: 'ext4',
+                  isRemovable: false,
+                  isSystemDrive: true,
+                  deviceId: 1,
+                }
+              ],
+              totalDiskBytes: 1024 * 1024 * 1024 * 1024,
+              availableDiskBytes: 620 * 1024 * 1024 * 1024,
+              usedDiskBytes: 404 * 1024 * 1024 * 1024,
+              percentUsed: 39.4,
+              mediaIndexedBytes: 0,
+              mediaItemCount: 0,
+            };
+          }
+          if (cmd === 'app_info') {
+            return {
+              name: 'Kinora',
+              version: '0.5.1',
+              profile: 'release',
+              os: 'linux',
+              arch: 'x86_64',
+              tauriVersion: '2.0.0',
+            };
+          }
+          if (cmd === 'get_local_libraries') return { folders: [], totalFiles: 0, lastScan: Date.now() };
+          if (cmd === 'get_local_media_catalogue') return { movies: [], shows: [], tracks: [] };
+          if (cmd === 'is_xtream_connected') return false;
+          if (cmd === 'load_guide') return null;
+          if (cmd === 'load_xtream_catalogue') return null;
+          if (cmd === 'save_sources') return;
+          if (cmd && cmd.startsWith('dvr_')) return [];
+          return null;
+        }
+      };
+
       // Ensure missing category resources are added to user personal library
       const missingIds = [
         'res-new-reuters', 'res-new-ap-news', 'res-live-aljazeera-en',
@@ -174,7 +187,7 @@ async function runCaptureMode(browser, mode) {
         console.error('Error seeding personal media library:', e);
       }
     }
-  }, { devMode: isDev, sourcesJson: restoredSources.length > 0 ? JSON.stringify(restoredSources) : null });
+  }, { devMode: isDev, realSourcesData: rawUserData });
 
   // 1. Home Top
   await page.goto(`${BASE_URL}/`, { waitUntil: 'networkidle' });
