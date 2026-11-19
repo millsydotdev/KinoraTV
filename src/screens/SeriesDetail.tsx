@@ -20,6 +20,7 @@ import { RatingControls } from '../components/RatingControls'
 import type { MediaResource } from '../data/personalLibrary'
 import { VERIFICATION_STATUS_META } from '../data/personalLibrary'
 import { classifyMediaResource } from '../data/provenance'
+import { OPEN_SERIES } from '../data/openCatalogue'
 import './Detail.css'
 
 export function SeriesDetail() {
@@ -57,7 +58,8 @@ export function SeriesDetail() {
   const isSampleProvider = typeof window !== 'undefined' && window.sessionStorage?.getItem('kinora.sample_provider_view') === '1'
 
   if (!store.demoTitles && !isSampleProvider) {
-    if (s) {
+    const isOpenSeries = s ? OPEN_SERIES.some((item) => item.id === s.id) : false
+    if (s && !isOpenSeries) {
       return (
         <div className="page detail-page">
           <PageHeader title="TV Shows" />
@@ -84,14 +86,16 @@ export function SeriesDetail() {
         </div>
       )
     }
-    return (
-      <div className="page">
-        <PageHeader title="TV Shows" />
-        <StateBlock icon="series" title="TV show not found" action={<Link to="/series" className="btn btn-primary">Browse TV shows</Link>}>
-          There is no TV show at this address in the available catalogue.
-        </StateBlock>
-      </div>
-    )
+    if (!s) {
+      return (
+        <div className="page">
+          <PageHeader title="TV Shows" />
+          <StateBlock icon="series" title="TV show not found" action={<Link to="/series" className="btn btn-primary">Browse TV shows</Link>}>
+            There is no TV show at this address in the available catalogue.
+          </StateBlock>
+        </div>
+      )
+    }
   }
   if (!s) {
     return (

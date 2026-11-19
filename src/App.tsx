@@ -18,6 +18,7 @@ import { Movies } from './screens/Movies'
 import { Player } from './screens/Player'
 import { Search } from './screens/Search'
 import { Setup } from './screens/Setup'
+import { ArtworkLibraryScreen } from './screens/ArtworkLibraryScreen'
 import { SeriesBrowse } from './screens/SeriesBrowse'
 import { SeriesDetail } from './screens/SeriesDetail'
 import { Settings } from './screens/Settings'
@@ -216,6 +217,8 @@ function Shell() {
             <Route path="/archives" element={<ArchivesScreen />} />
             <Route path="/search" element={<Search />} />
             <Route path="/library" element={<Library />} />
+            <Route path="/artwork" element={<ArtworkLibraryScreen />} />
+            <Route path="/manage/artwork" element={<ArtworkLibraryScreen />} />
             <Route path="/sources" element={<Sources />} />
             <Route path="/sources/add" element={<AddSource />} />
             <Route path="/settings" element={<Settings />} />

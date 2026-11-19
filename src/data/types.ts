@@ -50,6 +50,8 @@ export interface Movie {
   posterUrl?: string
   /** Landscape promotional backdrop image (16:9 aspect ratio). */
   backdropUrl?: string
+  /** Verified IMDb title identifier (e.g. tt0063350). */
+  imdbId?: string
   /** Horizontal focal point (0-100) used when the landscape art is cropped to a poster. */
   focus: number
   added: string
@@ -83,6 +85,8 @@ export interface Series {
   posterUrl?: string
   /** Landscape promotional backdrop image (16:9 aspect ratio). */
   backdropUrl?: string
+  /** Verified IMDb title identifier (e.g. tt0055662). */
+  imdbId?: string
   focus: number
   added: string
   seasons: Episode[][]

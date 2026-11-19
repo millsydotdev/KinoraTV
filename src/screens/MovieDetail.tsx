@@ -19,6 +19,7 @@ import { RatingControls } from '../components/RatingControls'
 import type { MediaResource } from '../data/personalLibrary'
 import { VERIFICATION_STATUS_META } from '../data/personalLibrary'
 import { classifyMediaResource } from '../data/provenance'
+import { OPEN_MOVIES } from '../data/openCatalogue'
 import './Detail.css'
 
 export function MovieDetail() {
@@ -57,7 +58,8 @@ export function MovieDetail() {
   const isSampleProvider = typeof window !== 'undefined' && window.sessionStorage?.getItem('kinora.sample_provider_view') === '1'
 
   if (!store.demoTitles && !isSampleProvider) {
-    if (movie) {
+    const isOpenMovie = movie ? OPEN_MOVIES.some((om) => om.id === movie.id) : false
+    if (movie && !isOpenMovie) {
       return (
         <div className="page detail-page">
           <PageHeader title="Movies" />
@@ -84,14 +86,16 @@ export function MovieDetail() {
         </div>
       )
     }
-    return (
-      <div className="page">
-        <PageHeader title="Movies" />
-        <StateBlock icon="film" title="Film not found" action={<Link to="/movies" className="btn btn-primary">Browse films</Link>}>
-          There is no film at this address in the available catalogue.
-        </StateBlock>
-      </div>
-    )
+    if (!movie) {
+      return (
+        <div className="page">
+          <PageHeader title="Movies" />
+          <StateBlock icon="film" title="Film not found" action={<Link to="/movies" className="btn btn-primary">Browse films</Link>}>
+            There is no film at this address in the available catalogue.
+          </StateBlock>
+        </div>
+      )
+    }
   }
   if (!movie) {
     return (

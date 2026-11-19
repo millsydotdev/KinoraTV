@@ -58,7 +58,7 @@ Kinora_COMPLETE_UI_Evidence/
 quality_gate_content = """# Kinora Quality Gate & Verification Results
 
 ## 1. Automated Test Suites
-- Frontend Unit & Integration Tests (Vitest): 459 / 459 PASSED (46 test files)
+- Frontend Unit & Integration Tests (Vitest): 470 / 470 PASSED (48 test files)
 - Backend Native Rust Tests (Cargo): 175 / 175 PASSED (16 modules)
 - TypeScript Typecheck (tsc -b): 0 ERRORS
 - Rust Compiler Check (cargo check): 0 ERRORS
@@ -69,7 +69,7 @@ quality_gate_content = """# Kinora Quality Gate & Verification Results
 - Em-Dash Prohibition: 100% compliant across code, comments, documentation, and UI strings.
 - Network Destination Guardrails: SSRF protection, loopback refusal in production, and token redaction verified.
 - Local Storage Deduplication: Physical disk storage calculated via statvfs device IDs (st_dev) to prevent duplicate volume counting.
-- Data Domain Isolation: Complete separation between DEV MOCK fixtures and REAL USER data verified across all 68 captured screens.
+- Data Domain Isolation: Complete separation between DEV MOCK fixtures and REAL USER data verified across all screens.
 """
 
 dev_all = sorted(os.listdir('docs/ui/dev-mock'))
@@ -218,3 +218,9 @@ with zipfile.ZipFile(zip_target, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
     zf.writestr('Kinora_COMPLETE_UI_Evidence/README.md', readme_content)
 
 print(f"Created {zip_target} successfully. Size: {os.path.getsize(zip_target):,} bytes.")
+
+import shutil
+brain_dir = '/home/millsy/.gemini/antigravity/brain/32d28b12-8eb1-4bd7-af22-6cec9cf8e06b'
+if os.path.exists(brain_dir):
+    shutil.copyfile(zip_target, os.path.join(brain_dir, 'Kinora_COMPLETE_UI_Evidence.zip'))
+    print(f"Copied {zip_target} to brain artifact directory.")

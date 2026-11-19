@@ -31,6 +31,9 @@ COMPARE_SCREENS = [
     'language-resources.png',
     'search-results.png',
     'library.png',
+    'artwork-library.png',
+    'recordings.png',
+    'imdb-share-dialog.png',
     'sources.png',
     'settings.png'
 ]

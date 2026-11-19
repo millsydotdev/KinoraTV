@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Channel, Programme } from '../data/types'
 import { Icon, type IconName } from './Icon'
 import { loadChannelLogo, loadProgrammeArtwork } from '../lib/native'
+import { getCustomArtwork } from '../state/customArtwork'
 import { artworkEngine } from '../data/artworkEngine'
 import { clock } from '../lib/time'
 
@@ -167,11 +168,16 @@ export function ProgrammeArt({
   )
   const iconUrl = isChannelLogo ? null : rawIconUrl
 
+  // Check user-selected custom artwork first (Priority 1)
+  const customRecord = programme?.id
+    ? getCustomArtwork(programme.id, 'epg-programme-artwork')
+    : (programme?.title ? getCustomArtwork(programme.title, 'epg-programme-artwork') : undefined)
+
   // Check if central artwork engine has resolved genuine artwork for this programme
   const enrichedRecord = programme?.title
     ? artworkEngine.findArtwork(programme.title, 'epg-programme-artwork')
     : null
-  const effectiveIconUrl = iconUrl || (enrichedRecord?.sourceUrl ? enrichedRecord.sourceUrl : null)
+  const effectiveIconUrl = customRecord?.dataUrl || iconUrl || (enrichedRecord?.sourceUrl ? enrichedRecord.sourceUrl : null)
 
   // Only use explicit art prop or demo programme art (never silent scenic fallback)
   const explicitArt = directArt !== undefined ? directArt : programme?.art ?? null
@@ -297,6 +303,11 @@ export function ChannelMark({ channel, size = 40 }: { channel: Channel; size?: n
   useEffect(() => {
     let active = true
     setFailed(false)
+    const custom = getCustomArtwork(channel.id, 'channel-logo') || (channel.tvgId ? getCustomArtwork(channel.tvgId, 'channel-logo') : undefined)
+    if (custom?.dataUrl) {
+      setLogo(custom.dataUrl)
+      return () => { active = false }
+    }
     const load = () => {
       void loadChannelLogo(channel.logoUrl, channel.id, channel.tvgId).then((data) => {
         if (active && data) setLogo(data)

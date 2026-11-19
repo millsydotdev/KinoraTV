@@ -1097,6 +1097,15 @@ function StorageSettingsSection() {
         )}
       </Group>
 
+      <Group title="Personal Artwork Library">
+        <Row title="Custom Artwork" hint="Manage user-assigned channel logos, movie posters, backdrops, and episode stills.">
+          <Link to="/library?tab=artwork" className="btn btn-secondary btn-sm">
+            <Icon name="palette" size={14} />
+            Manage Artwork Library
+          </Link>
+        </Row>
+      </Group>
+
       <Group title="Local Media Libraries">
         <Row title="Configured Folders" hint="Directories containing movies and series scanned into Kinora.">
           <Link to="/library?tab=local" className="btn btn-secondary btn-sm">

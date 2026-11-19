@@ -67,6 +67,8 @@ This register tracks every screen, subsystem, capability, and historical milesto
 | **CAP-043** | Release | Multi-Platform Packaging (Windows & macOS) | P3 | Blocked | `tauri.conf.json` bundle targets (`nsis`, `wix`, `dmg`) | Configuration defined | Requires Windows and macOS runners in CI pipeline | GitHub Actions runners | Automated signed `.msi` and `.dmg` installers |
 | **CAP-044** | Release | Application Updater Manifest & Binary Signing | P2 | Partially implemented | `plugins/updater` in `tauri.conf.json` | Configuration defined | Requires private release signing key generation | Tauri updater | In-app update check and background binary swap |
 | **CAP-045** | Evidence | Unified Single ZIP Archive Package | P1 | Verified complete | `scripts/package-unified-evidence.py` | `Kinora_COMPLETE_UI_Evidence.zip`, CRC32 verified | None | Python zipfile | Exactly one complete archive containing all evidence |
+| **CAP-046** | Artwork | Personal Artwork Library & User Image Assignment | P1 | Verified complete | `ArtworkLibraryScreen.tsx`, `customArtwork.ts`, `ui.tsx` | `artwork-library.png`, `ArtworkAndShare.test.tsx` (5/5 pass) | None | Local storage / IPC | Persistent user image picker, custom channel logos, posters, backdrops, and priority-based overrides |
+| **CAP-047** | Sharing | Verified IMDb Deep Linking & Multi-Channel Share Dialog | P1 | Verified complete | `ShareModal.tsx`, `TitleActions.tsx`, `LiveTV.tsx`, `openCatalogue.ts` | `imdb-share-dialog.png`, `ArtworkAndShare.test.tsx` (5/5 pass) | None | Verified IMDb IDs | Verified IMDb URL construction, Kinora deep linking, clipboard copying, and native web share |
 
 ---
 
@@ -103,6 +105,10 @@ The following release-blocking defects identified in the visual verification rev
    - **Resolution:** Eliminated hardcoded fictional titles (Interstellar, Dune: Part Two, Oppenheimer) and fabricated ratings (8.4/10, 91%) in real user mode. Verified honest empty states with direct routes to Sources and Local Library. Reconciled storage metrics using genuine Linux statvfs metrics (995.9 GB total, 245.4 GB free, 0 B indexed).
 7. **Defect 8: Sidebar Navigation Deduplication**
    - **Resolution:** Removed duplicate `Recordings` and `Books` entries under `Discover`. Added explicit breakdown tooltip for Sources (`Sources (X playlists, Y guide feeds)`).
-8. **Evidence Delivery:**
-   - Single unified archive generated: `Kinora_COMPLETE_UI_Evidence.zip` (57.9 MB, 114 files) containing all 34 DEV MOCK screenshots, 34 REAL USER screenshots, 25 side-by-side comparisons, 12 responsive views, and design references.
+8. **Defect 9: Personal Artwork Library & User Image Assignment**
+   - **Resolution:** Created dedicated `ArtworkLibraryScreen.tsx` and persistent store `customArtwork.ts`. Implemented native image file picker with drag-and-drop, format validation (PNG, JPEG, WebP, GIF), 5MB size guard, aspect ratio detection, and direct assignment to channels, movies, and series. Verified Priority 1 resolution across `ChannelMark` and `ProgrammeArt` so user artwork overrides upstream/metadata defaults.
+9. **Defect 10: Verified IMDb Links & Multi-Channel Share Dialog**
+   - **Resolution:** Created `ShareModal.tsx` and `ShareModal.css` providing verified IMDb identifiers, direct official IMDb links, Kinora deep links, clipboard copying feedback, and native platform sharing. Enriched open catalogue works with genuine verified IMDb IDs (`night-of-the-living-dead`, `charade`, `the-general`, `his-girl-friday`, `metropolis`, `nosferatu`, `beverly-hillbillies`, `dragnet`, `bonanza`, `the-lucy-show`). Wired into `TitleActions`, `Movies` side drawer, and `LiveTV` programme details.
+10. **Evidence Delivery:**
+   - Single unified archive generated: `Kinora_COMPLETE_UI_Evidence.zip` containing all DEV MOCK screenshots, REAL USER screenshots, side-by-side comparisons, responsive views, and design references. All 48 test suites passing (470 tests) and 175 native Rust tests.
 

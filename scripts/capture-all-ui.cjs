@@ -447,6 +447,28 @@ async function runCaptureMode(browser, mode) {
   await page.waitForTimeout(1000);
   await captureScreen(page, 'player-controls.png', outDir);
 
+  // 35. Artwork Library
+  await page.goto(`${BASE_URL}/artwork`, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(800);
+  await captureScreen(page, 'artwork-library.png', outDir);
+
+  // 36. Recordings Management
+  await page.goto(`${BASE_URL}/recordings`, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(800);
+  await captureScreen(page, 'recordings.png', outDir);
+
+  // 37. IMDb Share Dialog
+  await page.goto(`${BASE_URL}/movies/night-of-the-living-dead`, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(800);
+  try {
+    await page.waitForSelector('.share-btn', { timeout: 3000 });
+    await page.click('.share-btn');
+    await page.waitForTimeout(600);
+    await captureScreen(page, 'imdb-share-dialog.png', outDir);
+  } catch (e) {
+    console.warn('Notice opening share dialog:', e.message);
+  }
+
   // Also capture key responsive views at 1280x800
   console.log('\nCapturing 1280x800 responsive views...');
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -470,6 +492,7 @@ async function runCaptureMode(browser, mode) {
 }
 
 async function main() {
+  const targetMode = process.argv[2];
   const browser = await chromium.launch({
     headless: true,
     executablePath: '/usr/bin/google-chrome',
@@ -477,8 +500,12 @@ async function main() {
   });
 
   try {
-    await runCaptureMode(browser, 'dev-mock');
-    await runCaptureMode(browser, 'user-sources');
+    if (!targetMode || targetMode === 'dev-mock') {
+      await runCaptureMode(browser, 'dev-mock');
+    }
+    if (!targetMode || targetMode === 'user-sources') {
+      await runCaptureMode(browser, 'user-sources');
+    }
     console.log('\nAll captures successfully finished!');
   } finally {
     await browser.close();

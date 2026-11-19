@@ -22,6 +22,7 @@ import { LIVE_TV_CATEGORIES, classifyChannelCategory, extractChannelLocation, ge
 import { useProfiles } from '../state/profiles'
 import { useStore } from '../state/store'
 import { MediaContextMenu } from '../components/MediaContextMenu'
+import { ShareModal, type ShareItem } from '../components/ShareModal'
 import './LiveTV.css'
 
 // Guide row height per density setting (px), mirrored by --guide-row in global.css.
@@ -227,6 +228,7 @@ export function LiveTV() {
   )
   const [countryFilter, setCountryFilter] = useState<string>('All')
   const [sourceFilter, setSourceFilter] = useState<string>('All')
+  const [shareItem, setShareItem] = useState<ShareItem | null>(null)
 
   const favIds = library.favourites.filter((r) => r.startsWith('channel:')).map((r) => r.slice(8))
   const recentChannelIds = useMemo(
@@ -932,6 +934,23 @@ export function LiveTV() {
             <Icon name="star" size={14} />
             <span>Favourite</span>
           </button>
+          <button
+            type="button"
+            className="tvguide-action-pill-btn"
+            onClick={() => {
+              setShareItem({
+                title: previewProg?.title || previewChannel.name,
+                kind: previewProg ? 'programme' : 'channel',
+                year: previewProg?.episode ? previewProg.episode : undefined,
+                genres: previewProg?.category ? [previewProg.category] : undefined,
+                art: previewProg?.art || previewProg?.icon || undefined,
+                deepLinkPath: `/live?channel=${encodeURIComponent(previewChannel.id)}`,
+              })
+            }}
+          >
+            <Icon name="share" size={14} />
+            <span>Share</span>
+          </button>
         </div>
       </div>
     </div>
@@ -1043,6 +1062,23 @@ export function LiveTV() {
         >
           <Icon name="star" size={14} />
           <span>Favourite</span>
+        </button>
+        <button
+          type="button"
+          className="tvguide-action-pill-btn"
+          onClick={() => {
+            setShareItem({
+              title: currentDetailProg.title,
+              kind: 'programme',
+              year: currentDetailProg.episode ? currentDetailProg.episode : undefined,
+              genres: currentDetailProg.category ? [currentDetailProg.category] : undefined,
+              art: currentDetailProg.art || currentDetailProg.icon || undefined,
+              deepLinkPath: `/live?channel=${encodeURIComponent(currentDetailChannel.id)}`,
+            })
+          }}
+        >
+          <Icon name="share" size={14} />
+          <span>Share</span>
         </button>
       </div>
 
@@ -1660,6 +1696,11 @@ export function LiveTV() {
             </div>
           </div>
         </Dialog>
+        <ShareModal
+          open={Boolean(shareItem)}
+          onClose={() => setShareItem(null)}
+          item={shareItem}
+        />
       </div>
     </>
   )

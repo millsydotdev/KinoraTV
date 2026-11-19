@@ -23,12 +23,14 @@ import { Badge } from '../components/design-system/Badge'
 import { SaveIndicator } from '../components/design-system/Feedback'
 import { movies, series } from '../data/catalog'
 import { LocalMediaTab } from './LocalMediaTab'
+import { ArtworkLibraryScreen } from './ArtworkLibraryScreen'
 import './LocalMediaTab.css'
 import './Library.css'
 
 const tabs = [
   { id: 'overview', label: 'Overview' },
   { id: 'local', label: 'Local Media' },
+  { id: 'artwork', label: 'Artwork' },
   { id: 'watchlist', label: 'Watchlist' },
   { id: 'favourites', label: 'Favourites' },
   { id: 'ratings', label: 'Ratings & Preferences' },
@@ -128,6 +130,7 @@ export function Library() {
       <div id="lib-panel" role="tabpanel" aria-labelledby={`lib-tab-${tab}`} className="lib-panel">
         {tab === 'overview' && <Overview go={go} onSelectResource={setSelectedResource} />}
         {tab === 'local' && <LocalMediaTab />}
+        {tab === 'artwork' && <ArtworkLibraryScreen />}
         {tab === 'watchlist' && <SavedList list="watchlist" />}
         {tab === 'favourites' && <SavedList list="favourites" />}
         {tab === 'ratings' && <RatingsTab />}

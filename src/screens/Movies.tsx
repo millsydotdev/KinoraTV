@@ -8,6 +8,7 @@ import { PageHeader } from '../components/PageHeader'
 import { PosterCard, XtreamPosterCard } from '../components/Tiles'
 import { StateBlock } from '../components/ui'
 import { useToast } from '../components/Toast'
+import { ShareModal } from '../components/ShareModal'
 import {
   StreamingHero,
   StreamingGenreRow,
@@ -375,6 +376,7 @@ export function Movies() {
       subtitles: 'Multiple',
       art: '/art/the-salt-meridian.jpg',
       playUrl: '/watch/movie:dune-part-two',
+      imdbId: 'tt15239678',
       similar: [
         { id: 'dune-2021', title: 'Dune (2021)', year: 2021, art: '/art/ash-and-ivory.jpg', to: '/movies' },
         { id: 'arrival', title: 'Arrival (2016)', year: 2016, art: '/art/low-orbit.jpg', to: '/movies' },
@@ -384,6 +386,7 @@ export function Movies() {
     }
   }, [])
 
+  const [shareModalOpen, setShareModalOpen] = useState(false)
   const activeMovie = selectedMovie ?? (hasDemo ? defaultSelectedMovie : null)
 
   const sidePanel = activeMovie ? (
@@ -451,7 +454,7 @@ export function Movies() {
           type="button"
           className="movies-side-icon-btn"
           aria-label="Share movie"
-          onClick={() => toast('Link copied to clipboard')}
+          onClick={() => setShareModalOpen(true)}
         >
           <Icon name="share" size={18} />
         </button>
@@ -1231,6 +1234,24 @@ export function Movies() {
           )}
         </div>
       )}
+      <ShareModal
+        open={shareModalOpen}
+        onClose={() => setShareModalOpen(false)}
+        item={
+          activeMovie
+            ? {
+                title: activeMovie.title,
+                kind: 'movie',
+                year: activeMovie.year,
+                certificate: activeMovie.ageRating,
+                genres: activeMovie.genre ? [activeMovie.genre] : undefined,
+                art: activeMovie.art,
+                imdbId: (activeMovie as { imdbId?: string }).imdbId,
+                deepLinkPath: activeMovie.playUrl || `/movies/${activeMovie.id}`,
+              }
+            : null
+        }
+      />
     </div>
   )
 }

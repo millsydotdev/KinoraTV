@@ -9,12 +9,14 @@ import { CollectionDialog } from './CollectionDialog'
 import { Icon } from './Icon'
 import { useToast } from './Toast'
 import { RatingControls } from './RatingControls'
+import { ShareModal } from './ShareModal'
 
 /** Primary watch action plus library toggles, shared by the hero and both detail pages. */
 export function TitleActions({ title, compact = false, infoHref }: { title: Title; compact?: boolean; infoHref?: string }) {
   const store = useStore()
   const toast = useToast()
   const [collecting, setCollecting] = useState(false)
+  const [sharing, setSharing] = useState(false)
   const ref = title.kind === 'movie' ? movieRef(title.id) : seriesRef(title.id)
 
   let playRef = ref
@@ -69,18 +71,26 @@ export function TitleActions({ title, compact = false, infoHref }: { title: Titl
           className="icon-btn ringed share-btn"
           aria-label={`Share ${title.title}`}
           title="Share title"
-          onClick={() => {
-            if (typeof navigator !== 'undefined' && navigator.clipboard) {
-              void navigator.clipboard.writeText(window.location.href)
-              toast('Link copied to clipboard')
-            } else {
-              toast('Link copied to clipboard')
-            }
-          }}
+          onClick={() => setSharing(true)}
         >
           <Icon name="share" size={16} />
         </button>
       </div>
+
+      <ShareModal
+        open={sharing}
+        onClose={() => setSharing(false)}
+        item={{
+          title: title.title,
+          kind: title.kind,
+          year: title.kind === 'movie' ? title.year : (title.years || undefined),
+          certificate: title.certificate,
+          genres: title.genres,
+          art: title.art,
+          imdbId: (title as { imdbId?: string }).imdbId,
+          deepLinkPath: `/${title.kind === 'movie' ? 'movies' : 'series'}/${title.id}`,
+        }}
+      />
 
       {!compact && (
         <div className="title-actions-library">
