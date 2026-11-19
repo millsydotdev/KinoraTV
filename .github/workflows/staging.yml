@@ -137,6 +137,7 @@ jobs:
             src-tauri/target/${{ matrix.target }}/release/bundle/**
             !src-tauri/target/${{ matrix.target }}/release/bundle/**/build
           if-no-files-found: error
+          retention-days: 14
 
   publish-staging:
     name: Publish Staging Release

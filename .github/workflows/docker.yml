@@ -1,0 +1,96 @@
+name: Docker Build & GHCR Publish
+
+on:
+  push:
+    branches:
+      - main
+      - v0.6.0
+    paths:
+      - 'Dockerfile'
+      - 'docker/**'
+      - 'docker-compose.yml'
+      - '.dockerignore'
+      - '.github/workflows/docker.yml'
+  workflow_dispatch:
+    inputs:
+      push_images:
+        description: 'Publish images to GitHub Container Registry (GHCR)'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-publish:
+    name: Build & Publish Container Images
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event.inputs.push_images == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Kinora Fixtures image
+        id: meta-fixtures
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/kinora-fixtures
+          tags: |
+            type=raw,value=0.6.0
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+
+      - name: Build and push Kinora Fixtures image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./docker/fixtures
+          push: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event.inputs.push_images == 'true' }}
+          tags: ${{ steps.meta-fixtures.outputs.tags }}
+          labels: ${{ steps.meta-fixtures.outputs.labels }}
+          provenance: true
+          sbom: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract metadata for Kinora Builder image
+        id: meta-builder
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/kinora-builder
+          tags: |
+            type=raw,value=0.6.0
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+
+      - name: Build and push Kinora Builder image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: builder
+          push: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event.inputs.push_images == 'true' }}
+          tags: ${{ steps.meta-builder.outputs.tags }}
+          labels: ${{ steps.meta-builder.outputs.labels }}
+          provenance: true
+          sbom: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

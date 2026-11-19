@@ -1,47 +1,146 @@
 name: CI
+
 on:
   push:
-    branches: [main]
+    branches: [main, v0.6.0]
   pull_request:
+    branches: [main, staging, v0.6.0]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  checks:
+  secret-scan:
+    name: Secret & Credential Scanning
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks Secret Scanner
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: false
+
+  quality-gate:
+    name: Application Quality Gate & Security Audit
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
-      - name: System libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev patchelf
-      - run: cargo install --locked cargo-audit cargo-deny
-      - run: npm ci
-      - run: bash scripts/ci-local.sh
-  package:
-    needs: checks
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+
+      - name: Rust Cache
+        uses: actions/cache@v4
         with:
-          node-version: 22
-          cache: npm
-      - uses: dtolnay/rust-toolchain@stable
-      - name: System libraries
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            src-tauri/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev patchelf rpm
-      - run: npm ci
+
+      - name: Install security audit tools
+        run: cargo install --locked cargo-audit cargo-deny
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Run complete CI validation suite
+        run: bash scripts/ci-local.sh
+
+  docker-validation:
+    name: Docker Environment & Security Validation
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Web Development Container
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: web-dev
+          tags: kinora-web-dev:ci
+          load: true
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Mock Fixture Service
+        uses: docker/build-push-action@v6
+        with:
+          context: ./docker/fixtures
+          tags: kinora-fixtures:ci
+          load: true
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Trivy Container Vulnerability Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: kinora-fixtures:ci
+          format: 'table'
+          exit-code: '0'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+  package:
+    name: Linux Package Compilation
+    needs: [quality-gate, docker-validation]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev patchelf rpm
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Build packages
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -54,8 +153,11 @@ jobs:
           else
             npm run tauri:build -- --no-sign
           fi
-      - uses: actions/upload-artifact@v4
+
+      - name: Upload CI Packages Artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: kinora-packages
+          name: kinora-packages-ci
           path: src-tauri/target/release/bundle/*/*.*
           if-no-files-found: error
+          retention-days: 7

@@ -19,6 +19,12 @@
     "test:gate": "bash scripts/quality-gate.sh",
     "version:check": "node scripts/validate-version.cjs",
     "version:sync": "node scripts/sync-version.cjs",
+    "setup": "bash scripts/onboarding.sh",
+    "sbom": "node scripts/generate-sbom.cjs",
+    "docker:up": "docker compose up -d fixtures",
+    "docker:down": "docker compose down",
+    "docker:web": "docker compose up web",
+    "docker:test": "docker compose run --rm test",
     "ci": "bash scripts/ci-local.sh"
   },
   "dependencies": {

@@ -82,7 +82,7 @@ React 19 + TypeScript (src/)          Rust + Tauri 2 (src-tauri/)
   never contain the path or an address.
 - **What is saved**: each source's name, origin, label, times, counts and, for an address source,
   the address itself, plus each channel's key, `tvg-id`, name, group and number, enough to rebuild
-  the source–channel link so favourites and history keep working. Stream addresses, logos, stream
+  the source-channel link so favourites and history keep working. Stream addresses, logos, stream
   sessions, `kstream` handles, playback state and parser warnings are never saved. Preferences,
   theme, favourites, history and collections stay in the webview's localStorage (`kinora.prefs.v2`,
   `kinora.library.v1`). Library refs to a removed source's channels are dropped with it.
@@ -202,7 +202,12 @@ npm run tauri:build          # native production release binary + packages
 
 Release output: `src-tauri/target/release/kinora` and `src-tauri/target/release/bundle/` (RPM and DEB packages on Linux; NSIS and MSI on Windows; DMG on macOS). Staging releases use an isolated identifier (`io.github.millsydotdev.kinora.staging`) so staging never modifies production data.
 
-For comprehensive architectural standards, environment configuration, and release procedures, see [DEVELOPMENT-AND-RELEASE-WORKFLOW.md](docs/DEVELOPMENT-AND-RELEASE-WORKFLOW.md).
+For comprehensive architectural standards, environment configuration, DevOps pipelines, and release procedures, see:
+- [DEVELOPMENT.md](DEVELOPMENT.md): Developer quickstart, system prerequisites, and local commands.
+- [DOCKER.md](DOCKER.md): Containerized development, mock IPTV/EPG fixtures, and multi-stage builds.
+- [DEVOPS.md](DEVOPS.md): CI/CD architecture, GHCR strategy, observability, and release operations.
+- [STAGING.md](STAGING.md): Staging architecture, data isolation guarantees, and staging deployment.
+- [DEVELOPMENT-AND-RELEASE-WORKFLOW.md](docs/DEVELOPMENT-AND-RELEASE-WORKFLOW.md): Comprehensive lifecycle and release gates.
 
 The native app keeps its own local storage, separate from the browser at localhost:5199, so it starts
 with the default demo library and appearance settings.
