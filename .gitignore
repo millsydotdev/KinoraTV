@@ -11,6 +11,7 @@ skills/
 # Secrets, certificates, and private credentials
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 *.pfx

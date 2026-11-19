@@ -99,6 +99,8 @@ jobs:
           SEC_TAURI_KEY_PASS: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || secrets.TAURI_SIGNING_KEY_PASSWORD }}
 
       - name: Build Tauri application
+        env:
+          VITE_TMDB_API_KEY: ${{ secrets.VITE_TMDB_API_KEY }}
         run: npm run tauri:build -- --target ${{ matrix.target }}
 
       - name: Normalise updater artifacts
