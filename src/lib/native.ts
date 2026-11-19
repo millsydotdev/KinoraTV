@@ -1714,8 +1714,8 @@ export async function checkForUpdates(endpoint?: string | null): Promise<UpdateC
   if (!inNativeShell()) {
     return {
       status: 'upToDate',
-      currentVersion: '0.1.0',
-      latestVersion: '0.1.0',
+      currentVersion: APP_VERSION,
+      latestVersion: APP_VERSION,
       releaseDate: null,
       releaseNotes: 'Web interface preview mode: native updater unavailable.',
       downloadUrl: null,
@@ -1733,7 +1733,7 @@ export async function checkForUpdates(endpoint?: string | null): Promise<UpdateC
     const r = raw as Record<string, unknown>
     return {
       status: (r.status as UpdateCheckResult['status']) ?? 'error',
-      currentVersion: typeof r.currentVersion === 'string' ? r.currentVersion : '0.1.0',
+      currentVersion: typeof r.currentVersion === 'string' ? r.currentVersion : APP_VERSION,
       latestVersion: typeof r.latestVersion === 'string' ? r.latestVersion : null,
       releaseDate: typeof r.releaseDate === 'string' ? r.releaseDate : null,
       releaseNotes: typeof r.releaseNotes === 'string' ? r.releaseNotes : null,
@@ -1746,7 +1746,7 @@ export async function checkForUpdates(endpoint?: string | null): Promise<UpdateC
   } catch (e) {
     return {
       status: 'error',
-      currentVersion: '0.1.0',
+      currentVersion: APP_VERSION,
       latestVersion: null,
       releaseDate: null,
       releaseNotes: null,
@@ -1756,6 +1756,48 @@ export async function checkForUpdates(endpoint?: string | null): Promise<UpdateC
       platformSupported: false,
       error: e instanceof Error ? e.message : 'Could not reach update service',
     }
+  }
+}
+
+export interface UpdateInstallProgress {
+  stage: 'downloading' | 'installing' | 'done'
+  percent?: number
+}
+
+/**
+ * Downloads and applies an application update using Tauri's native updater plugin.
+ * Verifies the Minisign signature against the configured release public key.
+ */
+export async function installUpdate(
+  onProgress?: (progress: UpdateInstallProgress) => void
+): Promise<{ success: boolean; error?: string }> {
+  if (!inNativeShell()) {
+    return { success: false, error: 'Cannot install updates in web preview.' }
+  }
+  try {
+    const { check } = await import('@tauri-apps/plugin-updater')
+    const update = await check()
+    if (!update) {
+      return { success: false, error: 'No update available to install.' }
+    }
+    let totalBytes = 0
+    let downloadedBytes = 0
+    await update.downloadAndInstall((event) => {
+      if (event.event === 'Started') {
+        totalBytes = event.data.contentLength ?? 0
+        onProgress?.({ stage: 'downloading', percent: 0 })
+      } else if (event.event === 'Progress') {
+        downloadedBytes += event.data.chunkLength
+        const percent = totalBytes > 0 ? Math.round((downloadedBytes / totalBytes) * 100) : undefined
+        onProgress?.({ stage: 'downloading', percent })
+      } else if (event.event === 'Finished') {
+        onProgress?.({ stage: 'installing' })
+      }
+    })
+    onProgress?.({ stage: 'done' })
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : 'Update installation failed.' }
   }
 }
 

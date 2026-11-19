@@ -6,7 +6,7 @@ import { Icon, type IconName } from '../components/Icon'
 import { useToast } from '../components/Toast'
 import { PageHeader } from '../components/PageHeader'
 import { Segmented, Switch } from '../components/ui'
-import { getAppInfo, checkForUpdates, type AppInfo, type UpdateCheckResult, APP_VERSION, getVersionChannel, formatChannelName } from '../lib/native'
+import { getAppInfo, checkForUpdates, installUpdate, inNativeShell, type AppInfo, type UpdateCheckResult, APP_VERSION, getVersionChannel, formatChannelName } from '../lib/native'
 import { CODEC_HELP, codecSupport } from '../lib/playback'
 import { ACCENTS, THEME_PRESETS, safeHex, type AccentName } from '../lib/theme'
 import { defaultPrefs, useStore, type Prefs } from '../state/store'
@@ -1994,6 +1994,8 @@ function BuildRow() {
 
 function UpdatesRow({ onOpenWhatsNew }: { onOpenWhatsNew?: () => void }) {
   const [checking, setChecking] = useState(false)
+  const [installing, setInstalling] = useState(false)
+  const [installProgress, setInstallProgress] = useState<string | null>(null)
   const [result, setResult] = useState<UpdateCheckResult | null>(null)
   const toast = useToast()
 
@@ -2023,8 +2025,38 @@ function UpdatesRow({ onOpenWhatsNew }: { onOpenWhatsNew?: () => void }) {
     }
   }
 
+  const onInstall = async () => {
+    setInstalling(true)
+    setInstallProgress('Downloading update...')
+    try {
+      const res = await installUpdate((progress) => {
+        if (progress.stage === 'downloading') {
+          setInstallProgress(progress.percent !== undefined ? `Downloading (${progress.percent}%)` : 'Downloading...')
+        } else if (progress.stage === 'installing') {
+          setInstallProgress('Installing...')
+        } else if (progress.stage === 'done') {
+          setInstallProgress('Complete')
+        }
+      })
+      if (res.success) {
+        toast('Update installed successfully! Restart Kinora to apply.')
+        setInstallProgress('Installed - Restart required')
+      } else {
+        toast(`Update installation failed: ${res.error ?? 'Unknown error'}`)
+        setInstallProgress(null)
+      }
+    } catch (e) {
+      toast(`Update installation failed: ${e instanceof Error ? e.message : 'Unknown error'}`)
+      setInstallProgress(null)
+    } finally {
+      setInstalling(false)
+    }
+  }
+
   let statusText = 'Check for newer releases from official GitHub releases'
-  if (result?.status === 'available') {
+  if (installProgress) {
+    statusText = installProgress
+  } else if (result?.status === 'available') {
     statusText = `Version ${result.latestVersion} available (${result.releaseNotes ?? 'Release update'})`
   } else if (result?.status === 'upToDate') {
     statusText = `Kinora is up to date (current: v${result.currentVersion})`
@@ -2037,7 +2069,17 @@ function UpdatesRow({ onOpenWhatsNew }: { onOpenWhatsNew?: () => void }) {
   return (
     <Row title="Software updates" hint={statusText}>
       <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-        {result?.status === 'available' && result.downloadUrl && (
+        {result?.status === 'available' && inNativeShell() && (
+          <button
+            type="button"
+            className="btn btn-primary btn-small"
+            disabled={installing}
+            onClick={() => void onInstall()}
+          >
+            {installing ? (installProgress ?? 'Installing...') : 'Install now'}
+          </button>
+        )}
+        {result?.status === 'available' && result.downloadUrl && !inNativeShell() && (
           <a href={result.downloadUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-small">
             Download update
           </a>
@@ -2045,7 +2087,7 @@ function UpdatesRow({ onOpenWhatsNew }: { onOpenWhatsNew?: () => void }) {
         <button
           type="button"
           className="btn btn-ghost btn-small"
-          disabled={checking}
+          disabled={checking || installing}
           onClick={() => void onCheck()}
         >
           {checking ? 'Checking...' : 'Check for updates'}
