@@ -469,4 +469,34 @@ mod tests {
         assert!(!res.platform_supported);
         assert!(res.error.is_some());
     }
+
+    #[test]
+    fn v059_validation_release_detects_v060_with_signature() {
+        let mut platforms = HashMap::new();
+        platforms.insert(
+            current_platform_key().to_string(),
+            PlatformAsset {
+                signature: Some("dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk=".into()),
+                url: "https://github.com/millsydotdev/KinoraTV/releases/download/v0.6.0/kinora-0.6.0.AppImage.tar.gz".into(),
+            },
+        );
+
+        let manifest = UpdateManifest {
+            version: "0.6.0".into(),
+            notes: Some("Kinora v0.6.0 Official Release".into()),
+            pub_date: Some("2026-11-19T19:00:00Z".into()),
+            platforms,
+        };
+
+        let res = evaluate_manifest(&manifest, "0.5.9");
+        assert_eq!(res.status, "available");
+        assert_eq!(res.current_version, "0.5.9");
+        assert_eq!(res.latest_version.as_deref(), Some("0.6.0"));
+        assert!(res.has_signature);
+        assert!(res.platform_supported);
+        assert_eq!(
+            res.download_url.as_deref(),
+            Some("https://github.com/millsydotdev/KinoraTV/releases/download/v0.6.0/kinora-0.6.0.AppImage.tar.gz")
+        );
+    }
 }

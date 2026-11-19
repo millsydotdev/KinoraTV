@@ -35,4 +35,9 @@ describe('Centralised Versioning System (Frontend)', () => {
     expect(formatChannelName('alpha')).toBe('Alpha')
     expect(formatChannelName('development')).toBe('Development')
   })
+
+  it('evaluates v0.5.9 validation release to v0.6.0 update compatibility', () => {
+    expect(getVersionChannel('0.5.9', 'release')).toBe('stable')
+    expect(getVersionChannel('0.6.0', 'release')).toBe('stable')
+  })
 })
