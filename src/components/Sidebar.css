@@ -1,4 +1,4 @@
-/* Sidebar CSS: Smart TV Master Visual Parity, Pure Dark Integration */
+/* Sidebar CSS: Pure Black Cinematic Smart TV Integration */
 .sidebar {
   position: sticky;
   top: 0;
@@ -11,9 +11,9 @@
   flex-direction: column;
   gap: 8px;
   padding: 16px 12px 14px;
-  background: var(--sidebar-bg, #080c10);
-  border-right: 1px solid rgba(255, 255, 255, 0.07);
-  transition: width 180ms var(--ease), padding 180ms var(--ease);
+  background: #000000;
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  transition: width 200ms cubic-bezier(0.4, 0, 0.2, 1), padding 200ms cubic-bezier(0.4, 0, 0.2, 1);
   width: var(--side-w, 240px);
 }
 
@@ -24,7 +24,7 @@
 
 .sidebar.is-collapsed {
   width: 72px;
-  padding: 16px 8px 14px;
+  padding: 16px 10px 14px;
 }
 
 .sidebar-top {
@@ -154,7 +154,11 @@
 .sidebar.is-collapsed .sidebar-root-btn {
   justify-content: center;
   padding: 0;
+  width: 44px;
+  height: 44px;
   min-height: 44px;
+  margin: 0 auto;
+  border-radius: 10px;
 }
 
 .sidebar-icon {
@@ -185,7 +189,7 @@
 .sidebar-root-btn.is-active {
   color: #ffffff;
   font-weight: 700;
-  background: #e50d24;
+  background: #E50914;
 }
 
 .sidebar-root-btn.is-active .sidebar-icon,
@@ -199,7 +203,7 @@
   font-weight: 700;
   padding: 2px 8px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.15);
+  background: #E50914;
   color: #ffffff;
   line-height: 1.2;
 }
@@ -210,7 +214,7 @@
 }
 
 .sidebar-badge.is-rec {
-  background: #e50d24;
+  background: #E50914;
   color: #ffffff;
 }
 

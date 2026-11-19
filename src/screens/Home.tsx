@@ -75,7 +75,7 @@ function HomeHero({
 
   return (
     <div className="home-smarttv-wrapper">
-      <PageHeader overlay />
+      <PageHeader />
       <div className="home-smarttv-top-stage">
         {/* Left Column: Cinematic Hero */}
         <section className="hero home-hero-cinematic" aria-labelledby="hero-title">
@@ -141,13 +141,14 @@ function HomeHero({
                 <Icon name="play" size={18} />
                 <span>{currentSlide?.kind === 'live' || !currentSlide ? 'Watch Live' : 'Watch Now'}</span>
               </Link>
-              <Link to={currentSlide?.to ?? '/live'} className="home-btn-info" title="View Details">
+              <Link to={currentSlide?.to ?? '/live'} className="home-btn-info" title="More Info" aria-label="More Info">
                 <Icon name="info" size={18} />
-                <span>View Details</span>
+                <span className="home-btn-info-text">More Info</span>
+                <span className="sr-only">View Details</span>
               </Link>
               <button
                 type="button"
-                className="home-btn-bookmark"
+                className={`home-btn-bookmark${inLibrary ? ' is-active' : ''}`}
                 title={inLibrary ? 'Remove from watchlist' : 'Add to Library'}
                 aria-label={inLibrary ? 'Remove from watchlist' : 'Add to Library'}
                 onClick={() => {
@@ -163,20 +164,40 @@ function HomeHero({
             </div>
           </div>
 
-          {/* Carousel dots and navigation */}
+          {/* Carousel arrow buttons and dots */}
           {slides.length > 1 && (
-            <div className="home-hero-dots" role="tablist" aria-label="Hero slides">
-              {slides.slice(0, 5).map((_, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  role="tab"
-                  className={`home-hero-dot ${i === (carouselIndex % slides.length) ? 'is-active' : ''}`}
-                  onClick={() => setCarouselIndex(i)}
-                  aria-label={`Slide ${i + 1}`}
-                />
-              ))}
-            </div>
+            <>
+              <button
+                type="button"
+                className="home-hero-nav-arrow prev"
+                onClick={() => setCarouselIndex((i) => (i - 1 + slides.length) % slides.length)}
+                aria-label="Previous slide"
+                title="Previous slide"
+              >
+                <Icon name="left" size={18} />
+              </button>
+              <button
+                type="button"
+                className="home-hero-nav-arrow next"
+                onClick={() => setCarouselIndex((i) => (i + 1) % slides.length)}
+                aria-label="Next slide"
+                title="Next slide"
+              >
+                <Icon name="right" size={18} />
+              </button>
+              <div className="home-hero-dots" role="tablist" aria-label="Hero slides">
+                {slides.slice(0, 5).map((_, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    role="tab"
+                    className={`home-hero-dot hero-carousel-dot ${i === (carouselIndex % slides.length) ? 'is-active' : ''}`}
+                    onClick={() => setCarouselIndex(i)}
+                    aria-label={`Slide ${i + 1}`}
+                  />
+                ))}
+              </div>
+            </>
           )}
         </section>
 
@@ -308,18 +329,22 @@ function HomeHero({
             </Link>
             <div className="home-library-hud-grid">
               <div className="home-library-hud-item">
+                <Icon name="film" size={20} className="home-library-hud-icon" />
                 <span className="home-library-hud-num">{totalMovies.toLocaleString()}</span>
                 <span className="home-library-hud-label">Movies</span>
               </div>
               <div className="home-library-hud-item">
+                <Icon name="tv" size={20} className="home-library-hud-icon" />
                 <span className="home-library-hud-num">{totalSeries.toLocaleString()}</span>
                 <span className="home-library-hud-label">TV Series</span>
               </div>
               <div className="home-library-hud-item">
+                <Icon name="live" size={20} className="home-library-hud-icon" />
                 <span className="home-library-hud-num">{totalChannels.toLocaleString()}</span>
                 <span className="home-library-hud-label">Channels</span>
               </div>
               <div className="home-library-hud-item">
+                <Icon name="database" size={20} className="home-library-hud-icon" />
                 <span className="home-library-hud-num">{storageText}</span>
                 <span className="home-library-hud-label">Local Media</span>
               </div>

@@ -612,12 +612,12 @@
   min-height: 480px;
   border-radius: 16px;
   overflow: hidden;
-  background: #080c10;
+  background: #080a0e;
   border: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  padding: 36px 36px 32px;
+  padding: 36px 72px 32px 72px;
   box-sizing: border-box;
 }
 
@@ -639,8 +639,8 @@
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(90deg, rgba(8, 12, 16, 0.96) 0%, rgba(8, 12, 16, 0.8) 35%, rgba(8, 12, 16, 0.3) 70%, transparent 100%),
-    linear-gradient(0deg, #080c10 0%, rgba(8, 12, 16, 0.7) 25%, transparent 55%);
+    linear-gradient(90deg, rgba(5, 5, 7, 0.96) 0%, rgba(5, 5, 7, 0.85) 35%, rgba(5, 5, 7, 0.25) 70%, transparent 100%),
+    linear-gradient(0deg, #050507 0%, rgba(5, 5, 7, 0.75) 25%, transparent 60%);
   pointer-events: none;
 }
 
@@ -758,19 +758,21 @@
 
 .home-hero-dots {
   position: absolute;
-  bottom: 16px;
-  left: 36px;
+  bottom: 20px;
+  left: 0;
+  right: 0;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  z-index: 2;
+  z-index: 4;
 }
 
 .home-hero-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.3);
   border: none;
   cursor: pointer;
   padding: 0;
@@ -780,7 +782,39 @@
 .home-hero-dot.is-active {
   width: 18px;
   border-radius: 999px;
-  background: #e50d24;
+  background: #E50914;
+}
+
+.home-hero-nav-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 5;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: all 140ms var(--ease);
+}
+
+.home-hero-nav-arrow:hover {
+  background: #E50914;
+  border-color: #E50914;
+  transform: translateY(-50%) scale(1.08);
+}
+
+.home-hero-nav-arrow.prev {
+  left: 16px;
+}
+
+.home-hero-nav-arrow.next {
+  right: 16px;
 }
 
 /* Side Live TV & Library Hub */
@@ -1061,6 +1095,12 @@
   text-align: center;
 }
 
+.home-library-hud-icon {
+  color: #E50914;
+  margin-bottom: 4px;
+  flex: none;
+}
+
 .home-library-hud-num {
   font-size: 1rem;
   font-weight: 800;
@@ -1072,6 +1112,49 @@
   font-size: 0.6875rem;
   color: #8c93a3;
   margin-top: 2px;
+}
+
+/* Continue Watching & Rail Empty Card */
+.home-rail-empty-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 24px;
+  border-radius: 12px;
+  background: rgba(18, 22, 28, 0.6);
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  width: 100%;
+  max-width: 540px;
+  box-sizing: border-box;
+}
+
+.home-rail-empty-icon-wrap {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  display: grid;
+  place-items: center;
+  color: #9ca3af;
+  flex: none;
+}
+
+.home-rail-empty-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.home-rail-empty-heading {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.home-rail-empty-sub {
+  font-size: 0.8125rem;
+  color: #8c93a3;
+  line-height: 1.4;
 }
 
 @media (max-width: 1200px) {
