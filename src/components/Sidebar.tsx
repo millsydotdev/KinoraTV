@@ -8,8 +8,11 @@ import './Sidebar.css'
 export function Logo() {
   return (
     <span className="logo">
-      <KPlayMark size={26} className="logo-mark" idPrefix="sb-logo" />
-      <span className="logo-word">KINORA<span className="logo-tv"> TV</span></span>
+      <KPlayMark size={28} className="logo-mark" idPrefix="sb-logo" />
+      <span className="logo-text">
+        <span className="logo-word">KINORA</span>
+        <span className="logo-badge">TV</span>
+      </span>
     </span>
   )
 }
@@ -29,82 +32,103 @@ interface NavSection {
   children?: NavLeaf[]
 }
 
-const navSections: NavSection[] = [
+interface NavGroup {
+  id: string
+  title?: string
+  sections: NavSection[]
+}
+
+const navGroups: NavGroup[] = [
   {
-    id: 'home',
-    label: 'Home',
-    icon: 'home',
-    to: '/',
-  },
-  {
-    id: 'live',
-    label: 'Live TV',
-    icon: 'live',
-    to: '/live',
-    children: [
-      { to: '/live', label: 'TV Guide', icon: 'calendar', exact: true },
-      { to: '/live?view=channels', label: 'Channels', icon: 'grid' },
-      { to: '/recordings', label: 'Recordings', icon: 'record' },
-      { to: '/live?tab=catchup', label: 'Catch-Up', icon: 'rotateCw' },
+    id: 'primary',
+    sections: [
+      {
+        id: 'home',
+        label: 'Home',
+        icon: 'home',
+        to: '/',
+      },
+      {
+        id: 'live',
+        label: 'Live TV',
+        icon: 'live',
+        to: '/live',
+        children: [
+          { to: '/live', label: 'TV Guide', icon: 'calendar', exact: true },
+          { to: '/live?view=channels', label: 'Channels', icon: 'grid' },
+          { to: '/live?tab=catchup', label: 'Catch-Up', icon: 'rotateCw' },
+          { to: '/recordings', label: 'Recordings', icon: 'record' },
+        ],
+      },
+      {
+        id: 'movies-series',
+        label: 'Movies & Series',
+        icon: 'film',
+        to: '/movies',
+        children: [
+          { to: '/movies', label: 'Movies', icon: 'film' },
+          { to: '/series', label: 'TV Shows', icon: 'series' },
+        ],
+      },
+      {
+        id: 'library',
+        label: 'Media Library',
+        icon: 'library',
+        to: '/library',
+      },
+      {
+        id: 'sources',
+        label: 'Sources',
+        icon: 'sources',
+        to: '/sources',
+      },
     ],
   },
   {
-    id: 'movies',
-    label: 'Movies',
-    icon: 'film',
-    to: '/movies',
-  },
-  {
-    id: 'series',
-    label: 'TV Shows',
-    icon: 'series',
-    to: '/series',
-  },
-  {
-    id: 'library',
-    label: 'Media Library',
-    icon: 'library',
-    to: '/library',
-  },
-  {
-    id: 'sources',
-    label: 'Sources',
-    icon: 'sources',
-    to: '/sources',
-  },
-  {
-    id: 'audio',
-    label: 'Audio',
-    icon: 'audio',
-    to: '/radio',
-    children: [
-      { to: '/radio', label: 'Radio', icon: 'radio' },
-      { to: '/music', label: 'Music', icon: 'music' },
-      { to: '/podcasts', label: 'Podcasts', icon: 'podcast' },
-      { to: '/audiobooks', label: 'Audiobooks', icon: 'book' },
+    id: 'audio-reading',
+    title: 'Audio & Books',
+    sections: [
+      {
+        id: 'audio',
+        label: 'Audio',
+        icon: 'audio',
+        to: '/radio',
+        children: [
+          { to: '/radio', label: 'Radio', icon: 'radio' },
+          { to: '/music', label: 'Music', icon: 'music' },
+          { to: '/podcasts', label: 'Podcasts', icon: 'podcast' },
+          { to: '/audiobooks', label: 'Audiobooks', icon: 'book' },
+        ],
+      },
+      {
+        id: 'reading',
+        label: 'Books',
+        icon: 'book',
+        to: '/books',
+      },
     ],
   },
   {
-    id: 'reading',
-    label: 'Books',
-    icon: 'book',
-    to: '/books',
-  },
-  {
-    id: 'discover',
-    label: 'Discover',
-    icon: 'compass',
-    to: '/documentaries',
-    children: [
-      { to: '/documentaries', label: 'Documentaries', icon: 'documentary' },
-      { to: '/news', label: 'News', icon: 'news' },
-      { to: '/sports', label: 'Sports', icon: 'sports' },
-      { to: '/education', label: 'Education', icon: 'education' },
-      { to: '/culture', label: 'Culture & Arts', icon: 'palette' },
-      { to: '/nature-science', label: 'Nature & Space', icon: 'nature' },
-      { to: '/gaming', label: 'Gaming', icon: 'gaming' },
-      { to: '/language', label: 'Languages', icon: 'globe' },
-      { to: '/archives', label: 'Media Archives', icon: 'archive' },
+    id: 'explore-group',
+    title: 'Discover',
+    sections: [
+      {
+        id: 'discover',
+        label: 'Discover',
+        icon: 'compass',
+        to: '/documentaries',
+        children: [
+          { to: '/documentaries', label: 'Documentaries', icon: 'documentary' },
+          { to: '/news', label: 'News', icon: 'news' },
+          { to: '/sports', label: 'Sports', icon: 'sports' },
+          { to: '/education', label: 'Education', icon: 'education' },
+          { to: '/culture', label: 'Culture & Arts', icon: 'palette' },
+          { to: '/nature-science', label: 'Nature & Space', icon: 'nature' },
+          { to: '/gaming', label: 'Gaming', icon: 'gaming' },
+          { to: '/language', label: 'Languages', icon: 'globe' },
+          { to: '/archives', label: 'Media Archives', icon: 'archive' },
+        ],
+      },
     ],
   },
 ]
@@ -166,28 +190,21 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
     document.documentElement.dataset.sidebar = collapsed ? 'collapsed' : 'expanded'
   }, [collapsed])
 
-  // Automatically expand group containing active item
+  // Keyboard shortcut: Ctrl+B or Cmd+B to toggle sidebar collapse
   useEffect(() => {
-    for (const section of navSections) {
-      if (section.children) {
-        const matchesChild = section.children.some((child) => {
-          if (child.to.includes('?')) {
-            const [cPath, cQuery] = child.to.split('?')
-            return pathname === cPath && search === `?${cQuery}`
-          }
-          if (child.exact) return pathname === child.to && !search
-          return pathname === child.to || pathname.startsWith(child.to + '/')
-        })
-        if (matchesChild && !expandedSections[section.id]) {
-          setExpandedSections((prev) => ({ ...prev, [section.id]: true }))
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b' && !e.shiftKey && !e.altKey) {
+        const activeEl = document.activeElement
+        const isInput = activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement
+        if (!isInput) {
+          e.preventDefault()
+          setCollapsed((c) => !c)
         }
       }
     }
-  }, [pathname, search])
-
-  const toggleSection = (id: string) => {
-    setExpandedSections((prev) => ({ ...prev, [id]: !prev[id] }))
-  }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [collapsed])
 
   const isLeafActive = (leaf: NavLeaf) => {
     if (leaf.to.includes('?')) {
@@ -197,19 +214,49 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
     if (leaf.exact) {
       return pathname === leaf.to && !search
     }
+    if (leaf.to === '/series') {
+      return pathname === '/series' || pathname.startsWith('/series/') || pathname.startsWith('/tv-shows')
+    }
     return pathname === leaf.to || pathname.startsWith(leaf.to + '/')
+  }
+
+  // Automatically expand group containing active item
+  useEffect(() => {
+    for (const group of navGroups) {
+      for (const section of group.sections) {
+        if (section.children) {
+          const matchesChild = section.children.some(isLeafActive)
+          if (matchesChild && !expandedSections[section.id]) {
+            setExpandedSections((prev) => ({ ...prev, [section.id]: true }))
+          }
+        }
+      }
+    }
+  }, [pathname, search])
+
+  const toggleSection = (id: string) => {
+    setExpandedSections((prev) => ({ ...prev, [id]: !prev[id] }))
   }
 
   const isSectionActive = (section: NavSection) => {
     if (section.to === '/') return pathname === '/'
-    if (section.to === '/live') {
+    if (section.id === 'live') {
       return pathname === '/live' || pathname.startsWith('/live/') || pathname === '/recordings'
     }
-    if (section.id === 'movies') {
-      return pathname === '/movies' || pathname.startsWith('/movies/')
+    if (section.id === 'movies-series') {
+      return (
+        pathname === '/movies' ||
+        pathname.startsWith('/movies/') ||
+        pathname === '/series' ||
+        pathname.startsWith('/series/') ||
+        pathname.startsWith('/tv-shows')
+      )
     }
-    if (section.id === 'series') {
-      return pathname === '/series' || pathname.startsWith('/series/') || pathname.startsWith('/tv-shows')
+    if (section.id === 'audio') {
+      return pathname === '/radio' || pathname === '/music' || pathname === '/podcasts' || pathname === '/audiobooks'
+    }
+    if (section.id === 'discover') {
+      return section.children?.some(isLeafActive) ?? false
     }
     if (section.to) {
       return pathname === section.to || pathname.startsWith(section.to + '/')
@@ -235,92 +282,112 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             type="button"
             className="sidebar-collapse-btn"
             onClick={() => setCollapsed((c) => !c)}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            title={collapsed ? 'Expand navigation' : 'Collapse navigation'}
+            aria-label={collapsed ? 'Expand sidebar (Ctrl+B)' : 'Collapse sidebar (Ctrl+B)'}
+            title={collapsed ? 'Expand navigation (Ctrl+B)' : 'Collapse navigation (Ctrl+B)'}
           >
-            <Icon name="menu" size={18} />
+            <Icon name="layoutSidebar" size={18} />
           </button>
         </div>
 
         <nav className="sidebar-scrollable" aria-label="Primary navigation">
-          {navSections.map((section) => {
-            const hasChildren = Boolean(section.children && section.children.length > 0)
-            const isExpanded = Boolean(expandedSections[section.id])
-            const active = isSectionActive(section)
+          {navGroups.map((group) => (
+            <div key={group.id} className="sidebar-group-container">
+              {group.title && !collapsed && (
+                <div className="sidebar-group-label">{group.title}</div>
+              )}
+              {group.title && collapsed && (
+                <div className="sidebar-group-divider" aria-hidden="true" />
+              )}
 
-            if (!hasChildren) {
-              return (
-                <div key={section.id} className="sidebar-item-wrap">
-                  <NavLink
-                    to={section.to ?? '/'}
-                    className={({ isActive }) => `sidebar-root-btn ${isActive ? 'is-active' : ''}`}
-                    title={section.id === 'sources' ? `Sources (${playlists.length} playlists, ${guides.length} guide feeds)` : section.label}
-                  >
-                    <Icon name={section.icon} size={20} className="sidebar-icon" />
-                    {!collapsed && <span className="sidebar-label">{section.label}</span>}
-                    {!collapsed && section.id === 'sources' && totalSources > 0 && (
-                      <span className="sidebar-badge">{totalSources}</span>
-                    )}
-                  </NavLink>
-                </div>
-              )
-            }
+              {group.sections.map((section) => {
+                const hasChildren = Boolean(section.children && section.children.length > 0)
+                const isExpanded = Boolean(expandedSections[section.id])
+                const active = isSectionActive(section)
 
-            return (
-              <div key={section.id} className={`sidebar-section-wrap ${active ? 'is-active-parent' : ''}`}>
-                <div className="sidebar-group-header-row">
-                  <button
-                    type="button"
-                    className={`sidebar-root-btn ${active && (!isExpanded || collapsed) ? 'is-active' : ''}`}
-                    onClick={() => {
-                      if (collapsed) {
-                        const target = section.to ?? section.children?.[0]?.to ?? '/'
-                        navigate(target)
-                      } else {
-                        toggleSection(section.id)
-                      }
-                    }}
-                    title={section.label}
-                    aria-expanded={isExpanded}
-                  >
-                    <Icon name={section.icon} size={20} className="sidebar-icon" />
-                    {!collapsed && <span className="sidebar-label">{section.label}</span>}
-                    {!collapsed && section.id === 'live' && isAnyRecording && (
-                      <span className="sidebar-badge is-rec" title="Recording active">REC</span>
-                    )}
-                    {!collapsed && (
-                      <Icon
-                        name="chevronRight"
-                        size={14}
-                        className={`sidebar-chevron ${isExpanded ? 'is-open' : ''}`}
-                      />
-                    )}
-                  </button>
-                </div>
+                if (!hasChildren) {
+                  return (
+                    <div key={section.id} className="sidebar-item-wrap">
+                      <NavLink
+                        to={section.to ?? '/'}
+                        className={({ isActive }) => `sidebar-root-btn ${isActive ? 'is-active' : ''}`}
+                        title={section.id === 'sources' ? `Sources (${playlists.length} playlists, ${guides.length} guide feeds)` : section.label}
+                      >
+                        <span className="sidebar-icon-box">
+                          <Icon name={section.icon} size={20} className="sidebar-icon" />
+                        </span>
+                        {!collapsed && <span className="sidebar-label">{section.label}</span>}
+                        {!collapsed && section.id === 'sources' && totalSources > 0 && (
+                          <span className="sidebar-badge">{totalSources}</span>
+                        )}
+                      </NavLink>
+                    </div>
+                  )
+                }
 
-                {!collapsed && isExpanded && (
-                  <div className={`sidebar-children-list ${section.id === 'discover' ? 'sidebar-nav-explore' : ''}`}>
-                    {section.children!.map((child) => {
-                      const childActive = isLeafActive(child)
-                      return (
-                        <NavLink
-                          key={child.to + child.label}
-                          to={child.to}
-                          className={`sidebar-child-link side-link ${childActive ? 'is-active' : ''}`}
-                        >
-                          <Icon name={child.icon} size={16} className="sidebar-child-icon" />
-                          <span className="sidebar-child-label">{child.label}</span>
-                          {child.to === '/recordings' && isAnyRecording && (
-                            <span className="sidebar-rec-dot" title="Active recording" />
-                          )}
-                        </NavLink>
-                      )
-                    })}
+                // If expanded and not collapsed, the parent button should not look selected when a child is active
+                const isHeaderActive = active && (!isExpanded || collapsed)
+
+                return (
+                  <div key={section.id} className={`sidebar-section-wrap ${active ? 'is-active-parent' : ''}`}>
+                    <div className="sidebar-group-header-row">
+                      <button
+                        type="button"
+                        className={`sidebar-root-btn ${isHeaderActive ? 'is-active' : ''}`}
+                        onClick={() => {
+                          if (collapsed) {
+                            const target = section.to ?? section.children?.[0]?.to ?? '/'
+                            navigate(target)
+                          } else {
+                            toggleSection(section.id)
+                          }
+                        }}
+                        title={section.label}
+                        aria-expanded={isExpanded}
+                      >
+                        <span className="sidebar-icon-box">
+                          <Icon name={section.icon} size={20} className="sidebar-icon" />
+                        </span>
+                        {!collapsed && <span className="sidebar-label">{section.label}</span>}
+                        {!collapsed && section.id === 'live' && isAnyRecording && (
+                          <span className="sidebar-badge is-rec" title="Recording active">
+                            <span className="sidebar-rec-dot" /> REC
+                          </span>
+                        )}
+                        {!collapsed && (
+                          <Icon
+                            name="chevronRight"
+                            size={14}
+                            className={`sidebar-chevron ${isExpanded ? 'is-open' : ''}`}
+                          />
+                        )}
+                      </button>
+                    </div>
+
+                    {!collapsed && isExpanded && (
+                      <div className={`sidebar-children-list ${section.id === 'discover' ? 'sidebar-nav-explore' : ''}`}>
+                        {section.children!.map((child) => {
+                          const childActive = isLeafActive(child)
+                          return (
+                            <NavLink
+                              key={child.to + child.label}
+                              to={child.to}
+                              className={`sidebar-child-link side-link ${childActive ? 'is-active' : ''}`}
+                            >
+                              <Icon name={child.icon} size={16} className="sidebar-child-icon" />
+                              <span className="sidebar-child-label">{child.label}</span>
+                              {child.to === '/recordings' && isAnyRecording && (
+                                <span className="sidebar-rec-dot" title="Active recording" />
+                              )}
+                            </NavLink>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            )
-          })}
+                )
+              })}
+            </div>
+          ))}
         </nav>
 
         <div className="sidebar-bottom">
@@ -329,7 +396,9 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             className={`sidebar-root-btn settings-root-btn ${isSettingsActive ? 'is-active' : ''}`}
             title="Settings"
           >
-            <Icon name="settings" size={20} className="sidebar-icon" />
+            <span className="sidebar-icon-box">
+              <Icon name="settings" size={20} className="sidebar-icon" />
+            </span>
             {!collapsed && <span className="sidebar-label">Settings</span>}
           </NavLink>
         </div>
