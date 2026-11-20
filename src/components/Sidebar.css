@@ -185,16 +185,16 @@
   transform: rotate(90deg);
 }
 
-/* Active Navigation Item: Solid Red Capsule matching Reference Mockups */
+/* Active Navigation Item: Solid Accent Capsule matching Theme */
 .sidebar-root-btn.is-active {
-  color: #ffffff;
+  color: var(--accent-ink, #ffffff);
   font-weight: 700;
-  background: #E50914;
+  background: var(--accent, #e50914);
 }
 
 .sidebar-root-btn.is-active .sidebar-icon,
 .sidebar-root-btn.is-active .sidebar-chevron {
-  color: #ffffff;
+  color: var(--accent-ink, #ffffff);
 }
 
 .sidebar-badge {
@@ -203,8 +203,8 @@
   font-weight: 700;
   padding: 2px 8px;
   border-radius: 999px;
-  background: #E50914;
-  color: #ffffff;
+  background: var(--accent, #e50914);
+  color: var(--accent-ink, #ffffff);
   line-height: 1.2;
 }
 
@@ -214,8 +214,8 @@
 }
 
 .sidebar-badge.is-rec {
-  background: #E50914;
-  color: #ffffff;
+  background: var(--accent, #e50914);
+  color: var(--accent-ink, #ffffff);
 }
 
 /* Nested Child Links */
@@ -267,18 +267,18 @@
 .sidebar-child-link.is-active {
   color: #ffffff;
   font-weight: 600;
-  background: rgba(229, 13, 36, 0.15);
+  background: var(--accent-soft, rgba(229, 9, 20, 0.15));
 }
 
 .sidebar-child-link.is-active .sidebar-child-icon {
-  color: #e50d24;
+  color: var(--accent, #e50914);
 }
 
 .sidebar-rec-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #e50d24;
+  background: var(--accent, #e50914);
   animation: rec-badge-pulse 1.5s infinite ease-in-out;
 }
 

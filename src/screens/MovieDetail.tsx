@@ -303,7 +303,7 @@ export function MovieDetail() {
                 type="button"
                 className="btn btn-primary"
                 onClick={() => setTrailerOpen(true)}
-                style={{ zIndex: 2, borderRadius: 9999, padding: '12px 28px', background: '#E50914' }}
+                style={{ zIndex: 2, borderRadius: 9999, padding: '12px 28px', background: 'var(--accent, #e50914)' }}
               >
                 <Icon name="play" size={20} />
                 <span>Play Official Trailer</span>

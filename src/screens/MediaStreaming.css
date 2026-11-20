@@ -101,10 +101,10 @@
 }
 
 .streaming-nav-pill.is-active {
-  background: #e50914;
-  color: #ffffff;
-  border-color: #e50914;
-  box-shadow: 0 2px 14px rgba(229, 9, 20, 0.55);
+  background: var(--accent, #e50914);
+  color: var(--accent-ink, #ffffff);
+  border-color: var(--accent, #e50914);
+  box-shadow: 0 2px 14px var(--accent-glow, rgba(229, 9, 20, 0.55));
 }
 
 /* Featured Hero Stage */
@@ -259,12 +259,12 @@
   height: 44px;
   box-sizing: border-box;
   border-radius: 999px;
-  background: #e50914;
-  color: #ffffff !important;
+  background: var(--accent, #e50914);
+  color: var(--accent-ink, #ffffff) !important;
   font-weight: 700;
   font-size: 0.9375rem;
   text-decoration: none;
-  box-shadow: 0 4px 18px rgba(229, 9, 20, 0.55);
+  box-shadow: 0 4px 18px var(--accent-glow, rgba(229, 9, 20, 0.55));
   border: 1px solid rgba(255, 255, 255, 0.15);
   transition: transform 140ms ease, box-shadow 140ms ease;
   cursor: pointer;
@@ -333,8 +333,8 @@
   width: 22px;
   height: 5px;
   border-radius: 999px;
-  background: #e50914;
-  box-shadow: 0 0 8px rgba(229, 9, 20, 0.7);
+  background: var(--accent, #e50914);
+  box-shadow: 0 0 8px var(--accent-glow, rgba(229, 9, 20, 0.7));
 }
 
 .streaming-carousel-nav {
@@ -573,8 +573,8 @@
 }
 
 .streaming-rail-btn:hover:not(:disabled) {
-  background: rgba(229, 9, 20, 0.9);
-  border-color: #e50914;
+  background: var(--accent-hover, rgba(229, 9, 20, 0.9));
+  border-color: var(--accent, #e50914);
   transform: translateY(-60%) scale(1.04);
 }
 
@@ -1094,8 +1094,8 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: #e50d24;
-  color: #ffffff;
+  background: var(--accent, #e50d24);
+  color: var(--accent-ink, #ffffff);
   border: none;
   border-radius: 8px;
   padding: 10px 16px;

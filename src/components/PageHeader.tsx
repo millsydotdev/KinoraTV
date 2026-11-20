@@ -169,8 +169,8 @@ function HeaderProfileMenu() {
             style={{
               fontSize: '8px',
               fontWeight: 800,
-              background: '#e50d24',
-              color: '#ffffff',
+              background: 'var(--accent, #e50914)',
+              color: 'var(--accent-ink, #ffffff)',
               padding: '1px 4px',
               borderRadius: '3px',
               letterSpacing: '0.5px',
@@ -407,12 +407,13 @@ export function PageHeader({
           <button
             type="button"
             className="search-pill"
-            aria-label="Search and command palette, shortcut Ctrl+K"
-            onClick={openPalette}
+            aria-label="Search movies, series, channels and more (shortcut /)"
+            title="Search movies, series, channels (/)"
+            onClick={() => navigate('/search')}
           >
-            <Icon name="search" size={17} />
-            <span>{searchPlaceholder}</span>
-            <kbd className="search-pill-kbd">Ctrl + K</kbd>
+            <Icon name="search" size={16} />
+            <span className="search-pill-label">{searchPlaceholder}</span>
+            <kbd className="search-pill-kbd">/</kbd>
           </button>
         )}
         {actions}
@@ -421,8 +422,8 @@ export function PageHeader({
         <button
           type="button"
           className="icon-btn header-grid-btn"
-          aria-label="Apps and quick navigation"
-          title="Command Palette"
+          aria-label="Command Palette (Ctrl+K)"
+          title="Command Palette (Ctrl+K)"
           onClick={openPalette}
         >
           <Icon name="grid" size={18} />
@@ -439,7 +440,7 @@ export function PageHeader({
         <button
           type="button"
           className="icon-btn header-help-btn"
-          aria-label="Keyboard shortcuts (press ?)"
+          aria-label="Keyboard shortcuts (?)"
           title="Keyboard shortcuts (?)"
           onClick={openShortcuts}
         >

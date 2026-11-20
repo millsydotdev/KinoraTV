@@ -148,7 +148,7 @@ export function Player() {
     return (
       <div className="player-restricted-barrier" style={{ display: 'grid', placeItems: 'center', height: '100vh', background: 'var(--bg, #0b0d10)', color: '#fff', padding: '24px' }}>
         <div style={{ maxWidth: '440px', textAlign: 'center', background: 'var(--card-bg, #1a1e24)', border: '1px solid var(--line)', borderRadius: '16px', padding: '32px' }}>
-          <div style={{ display: 'grid', placeItems: 'center', marginBottom: '16px', color: '#e50914' }}>
+          <div style={{ display: 'grid', placeItems: 'center', marginBottom: '16px', color: 'var(--accent, #e50914)' }}>
             <Icon name="lock" size={48} />
           </div>
           <h2 style={{ fontSize: '1.4rem', marginBottom: '8px' }}>Restricted in Kids Mode</h2>

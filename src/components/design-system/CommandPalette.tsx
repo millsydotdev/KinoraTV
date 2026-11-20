@@ -110,7 +110,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
 
   // Filter commands
   const cleanQ = query.trim().toLowerCase()
-  const filtered = cleanQ
+  const matching = cleanQ
     ? commands.filter(
         (c) =>
           c.title.toLowerCase().includes(cleanQ) ||
@@ -118,6 +118,19 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
           c.category.toLowerCase().includes(cleanQ),
       )
     : commands
+
+  const searchAction: CommandItem | null = cleanQ
+    ? {
+        id: 'cmd-media-search',
+        title: `Search Kinora for "${query.trim()}"`,
+        sub: 'Find movies, series, episodes, channels and programmes',
+        icon: 'search',
+        category: 'Explore',
+        run: () => navigate(`/search?q=${encodeURIComponent(query.trim())}`),
+      }
+    : null
+
+  const filtered = searchAction ? [searchAction, ...matching] : matching
 
   const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {

@@ -159,8 +159,8 @@
 }
 
 .header-cast-btn.is-connected {
-  color: #e50d24;
-  filter: drop-shadow(0 0 8px rgba(229, 13, 36, 0.6));
+  color: var(--accent, #e50914);
+  filter: drop-shadow(0 0 8px var(--accent-glow, rgba(229, 9, 20, 0.6)));
 }
 
 .header-help-btn {
@@ -230,8 +230,8 @@
   height: 15px;
   padding: 0 3px;
   border-radius: 8px;
-  background: var(--accent, #e50d24);
-  color: #ffffff;
+  background: var(--accent, #e50914);
+  color: var(--accent-ink, #ffffff);
   font-size: 0.6rem;
   font-weight: 700;
   display: inline-flex;
@@ -243,7 +243,7 @@
 
 @media (max-width: 1440px) {
   .search-pill {
-    width: clamp(140px, 15vw, 240px);
+    width: clamp(160px, 16vw, 240px);
   }
   .header-clock {
     display: none;
@@ -251,20 +251,42 @@
 }
 
 @media (max-width: 1280px) {
-  .search-pill {
-    width: 38px;
-    padding: 0;
-    justify-content: center;
+  .page-header {
+    gap: 10px;
+    padding: 10px var(--gutter, 16px);
   }
-  .search-pill span,
+  .page-header-right {
+    gap: 8px;
+  }
+  .search-pill {
+    width: clamp(130px, 14vw, 190px);
+    padding: 0 10px;
+    gap: 6px;
+    font-size: 0.8rem;
+  }
   .search-pill-kbd {
     display: none;
   }
-  .header-cast-btn,
-  .header-grid-btn {
+  .header-profile-name {
     display: none;
   }
-  .header-history-nav {
+  .header-profile-pill {
+    padding: 0 4px;
+  }
+  .header-profile-chevron {
+    display: none;
+  }
+}
+
+@media (max-width: 960px) {
+  .search-pill {
+    width: 36px;
+    padding: 0;
+    justify-content: center;
+  }
+  .search-pill .search-pill-label,
+  .search-pill span,
+  .search-pill-kbd {
     display: none;
   }
 }

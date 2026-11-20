@@ -229,6 +229,7 @@ export function LiveTV() {
   const [countryFilter, setCountryFilter] = useState<string>('All')
   const [sourceFilter, setSourceFilter] = useState<string>('All')
   const [shareItem, setShareItem] = useState<ShareItem | null>(null)
+  const [previewExpanded, setPreviewExpanded] = useState(false)
 
   const favIds = library.favourites.filter((r) => r.startsWith('channel:')).map((r) => r.slice(8))
   const recentChannelIds = useMemo(
@@ -718,7 +719,7 @@ export function LiveTV() {
         <PageHeader title="Live TV" />
         <div className="page live" style={{ display: 'grid', placeItems: 'center', minHeight: '60vh', padding: '24px' }}>
           <div style={{ maxWidth: '440px', textAlign: 'center', background: 'var(--card-bg, #1a1e24)', border: '1px solid var(--line)', borderRadius: '16px', padding: '32px' }}>
-            <div style={{ display: 'grid', placeItems: 'center', marginBottom: '16px', color: '#e50914' }}>
+            <div style={{ display: 'grid', placeItems: 'center', marginBottom: '16px', color: 'var(--accent, #e50914)' }}>
               <Icon name="lock" size={48} />
             </div>
             <h2 style={{ fontSize: '1.4rem', marginBottom: '8px' }}>Restricted in Kids Mode</h2>
@@ -752,199 +753,174 @@ export function LiveTV() {
     ? Math.min(1, Math.max(0, (now - previewProg.start) / (previewProg.stop - previewProg.start)))
     : 0.5
 
-  const subNav = (
-    <div className="tvguide-subnav-bar" role="tablist" aria-label="TV Guide Sub-views">
-      <button
-        type="button"
-        role="tab"
-        className={`tvguide-tab-btn ${view === 'guide' && group === 'All' ? 'is-active' : ''}`}
-        aria-selected={view === 'guide' && group === 'All'}
-        onClick={() => { setView('guide'); setGroup('All') }}
-      >
-        <Icon name="calendar" size={15} />
-        <span>Guide</span>
-      </button>
-      <button
-        type="button"
-        role="tab"
-        className={`tvguide-tab-btn ${view === 'channels' && group === 'All' ? 'is-active' : ''}`}
-        aria-selected={view === 'channels' && group === 'All'}
-        onClick={() => { setView('channels'); setGroup('All') }}
-      >
-        <Icon name="tv" size={15} />
-        <span>Now &amp; Next</span>
-      </button>
-      <button
-        type="button"
-        role="tab"
-        className={`tvguide-tab-btn ${group === 'Catch-up' ? 'is-active' : ''}`}
-        aria-selected={group === 'Catch-up'}
-        onClick={() => { setView('channels'); setGroup('Catch-up') }}
-      >
-        <Icon name="history" size={15} />
-        <span>What's On</span>
-      </button>
-      <button
-        type="button"
-        role="tab"
-        className={`tvguide-tab-btn ${group === 'Favourites' ? 'is-active' : ''}`}
-        aria-selected={group === 'Favourites'}
-        onClick={() => { setView('channels'); setGroup('Favourites') }}
-      >
-        <Icon name="heart" size={15} />
-        <span>Favourites</span>
-      </button>
-      <button
-        type="button"
-        role="tab"
-        className={`tvguide-tab-btn ${group === 'Recently Watched' ? 'is-active' : ''}`}
-        aria-selected={group === 'Recently Watched'}
-        onClick={() => { setView('channels'); setGroup('Recently Watched') }}
-      >
-        <Icon name="history" size={15} />
-        <span>Recent</span>
-      </button>
-      <select
-        className="live-filter-select"
-        value={activeCategories.includes(group) ? group : 'Categories'}
-        onChange={(e) => {
-          if (e.target.value !== 'Categories') {
-            setGroup(e.target.value)
-          }
-        }}
-        aria-label="Filter by Category"
-        style={{ borderRadius: 9999, height: 36, paddingLeft: 16 }}
-      >
-        <option value="Categories">Categories ▾</option>
-        {activeCategories.map((cat) => (
-          <option key={cat} value={cat}>{cat}</option>
-        ))}
-      </select>
-    </div>
-  )
-
   const topStage = view === 'guide' && previewChannel && (
-    <div className="tvguide-top-stage">
-      {/* Left Card: Live Video Player Preview */}
-      <GuidePreviewPlayer
-        channel={previewChannel}
-        onInfo={() => setSelected(previewProg ?? null)}
-        onTune={() => tune(previewChannel)}
-      />
-
-      {/* Right Card: Now Playing Info Card */}
-      <div className="tvguide-now-card">
-        <div className="tvguide-now-header-split">
-          <div className="tvguide-now-meta-block">
-            <span className="tvguide-now-kicker">Live On Air</span>
-            <h2 className="tvguide-now-title">{previewProg?.title ?? `${previewChannel.name} Live`}</h2>
-            <div className="tvguide-now-channel-time">
-              <span>{previewChannel.name}</span>
-              <span>•</span>
-              <span>{previewProg ? `${clock(previewProg.start, prefs.timeFormat)} - ${clock(previewProg.stop, prefs.timeFormat)}` : 'On air'}</span>
-            </div>
-          </div>
-          {nextProg && (
-            <div className="tvguide-next-preview-card">
-              <Art
-                src={nextProg.art || ''}
-                alt={nextProg.title}
-                className="tvguide-next-thumb"
-                fallbackIcon="tv"
-              />
-              <div className="tvguide-next-info">
-                <span className="tvguide-next-kicker">Next on {previewChannel.name} &gt;</span>
-                <span className="tvguide-next-name">{nextProg.title}</span>
-                <span className="tvguide-next-time">{clock(nextProg.start, prefs.timeFormat)} - {clock(nextProg.stop, prefs.timeFormat)}</span>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="tvguide-now-progress-wrap">
-          <div className="tvguide-now-prog-bar">
-            <div className="tvguide-now-prog-fill" style={{ width: `${Math.round(progProgress * 100)}%` }} />
-          </div>
-          <div className="tvguide-now-prog-meta">
-            <span>{minsLeft > 0 ? `${minsLeft} min left` : 'Live'}</span>
-            <span>{previewProg?.category ?? previewChannel.group ?? 'General'}</span>
+    <div className="tvguide-preview-wrapper">
+      <div className="tvguide-compact-bar">
+        <div className="tvguide-compact-channel-info">
+          <ChannelMark channel={previewChannel} size={30} />
+          <div className="tvguide-compact-titles">
+            <span className="tvguide-compact-channel-name">{previewChannel.name}</span>
+            <span className="tvguide-compact-prog-title">{previewProg?.title ?? `${previewChannel.name} Live`}</span>
+            <span className="tvguide-compact-prog-time">
+              {previewProg ? `${clock(previewProg.start, prefs.timeFormat)} - ${clock(previewProg.stop, prefs.timeFormat)}` : 'On air'}
+            </span>
           </div>
         </div>
 
-        <p className="tvguide-now-synopsis">
-          {previewProg?.desc ?? (previewChannel ? `Live broadcast on ${previewChannel.name}.` : 'Select a channel to browse live programming.')}
-        </p>
+        {previewProg && (
+          <div className="tvguide-compact-prog-bar-wrap">
+            <div className="tvguide-compact-prog-bar">
+              <div className="tvguide-compact-prog-fill" style={{ width: `${Math.round(progProgress * 100)}%` }} />
+            </div>
+            <span className="tvguide-compact-mins">{minsLeft > 0 ? `${minsLeft}m left` : 'Live'}</span>
+          </div>
+        )}
 
-        <div className="tvguide-now-actions-row">
+        <div className="tvguide-compact-actions">
           <button
             type="button"
-            className="tvguide-watch-live-btn"
+            className="btn btn-primary btn-small tvguide-watch-live-btn"
             onClick={() => tune(previewChannel)}
           >
-            <Icon name="play" size={16} />
+            <Icon name="play" size={14} />
             <span>Watch Live</span>
           </button>
           <button
             type="button"
-            className="tvguide-action-pill-btn"
-            onClick={() => {
-              if (previewProg) {
-                store.scheduleRecording(
-                  previewChannel.id,
-                  previewChannel.name,
-                  previewProg.title,
-                  previewProg.start,
-                  previewProg.stop,
-                  { programmeId: previewProg.id, description: previewProg.desc }
-                )
-                toast(`Recording scheduled for "${previewProg.title}"`)
-              }
-            }}
+            className={`btn btn-small btn-ghost tvguide-preview-toggle-btn ${previewExpanded ? 'is-expanded' : ''}`}
+            onClick={() => setPreviewExpanded(!previewExpanded)}
+            aria-label={previewExpanded ? 'Collapse video preview' : 'Expand video preview'}
+            title={previewExpanded ? 'Hide player preview' : 'Show player preview'}
           >
-            <Icon name="record" size={14} />
-            <span>Record</span>
+            <Icon name="tv" size={14} />
+            <span>{previewExpanded ? 'Hide Preview' : 'Show Preview'}</span>
+            <Icon name={previewExpanded ? 'up' : 'down'} size={12} />
           </button>
-          <button
-            type="button"
-            className="tvguide-action-pill-btn"
-            onClick={() => {
-              if (previewProg) {
-                store.toggleReminder(previewProg.id)
-                toast(store.library.reminders.includes(previewProg.id) ? `Reminder removed for "${previewProg.title}"` : `Reminder set for "${previewProg.title}"`)
-              }
-            }}
-          >
-            <Icon name="bell" size={14} />
-            <span>Reminder</span>
-          </button>
-          <button
-            type="button"
-            className="tvguide-action-pill-btn"
-            onClick={() => {
-              store.toggleFavourite(channelRef(previewChannel.id))
-              toast(favIds.includes(previewChannel.id) ? `Removed ${previewChannel.name} from favourites` : `Added ${previewChannel.name} to favourites`)
-            }}
-          >
-            <Icon name="star" size={14} />
-            <span>Favourite</span>
-          </button>
-          <button
-            type="button"
-            className="tvguide-action-pill-btn"
-            onClick={() => {
-              setShareItem({
-                title: previewProg?.title || previewChannel.name,
-                kind: previewProg ? 'programme' : 'channel',
-                year: previewProg?.episode ? previewProg.episode : undefined,
-                genres: previewProg?.category ? [previewProg.category] : undefined,
-                art: previewProg?.art || previewProg?.icon || undefined,
-                deepLinkPath: `/live?channel=${encodeURIComponent(previewChannel.id)}`,
-              })
-            }}
-          >
-            <Icon name="share" size={14} />
-            <span>Share</span>
-          </button>
+        </div>
+      </div>
+
+      <div className={`tvguide-top-stage ${previewExpanded ? 'is-expanded' : 'is-collapsed'}`}>
+        {/* Left Card: Live Video Player Preview */}
+        <GuidePreviewPlayer
+          channel={previewChannel}
+          onInfo={() => setSelected(previewProg ?? null)}
+          onTune={() => tune(previewChannel)}
+        />
+
+        {/* Right Card: Now Playing Info Card */}
+        <div className="tvguide-now-card">
+          <div className="tvguide-now-header-split">
+            <div className="tvguide-now-meta-block">
+              <span className="tvguide-now-kicker">Live On Air</span>
+              <h2 className="tvguide-now-title">{previewProg?.title ?? `${previewChannel.name} Live`}</h2>
+              <div className="tvguide-now-channel-time">
+                <span>{previewChannel.name}</span>
+                <span>•</span>
+                <span>{previewProg ? `${clock(previewProg.start, prefs.timeFormat)} - ${clock(previewProg.stop, prefs.timeFormat)}` : 'On air'}</span>
+              </div>
+            </div>
+            {nextProg && (
+              <div className="tvguide-next-preview-card">
+                <Art
+                  src={nextProg.art || ''}
+                  alt={nextProg.title}
+                  className="tvguide-next-thumb"
+                  fallbackIcon="tv"
+                />
+                <div className="tvguide-next-info">
+                  <span className="tvguide-next-kicker">Next on {previewChannel.name} &gt;</span>
+                  <span className="tvguide-next-name">{nextProg.title}</span>
+                  <span className="tvguide-next-time">{clock(nextProg.start, prefs.timeFormat)} - {clock(nextProg.stop, prefs.timeFormat)}</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="tvguide-now-progress-wrap">
+            <div className="tvguide-now-prog-bar">
+              <div className="tvguide-now-prog-fill" style={{ width: `${Math.round(progProgress * 100)}%` }} />
+            </div>
+            <div className="tvguide-now-prog-meta">
+              <span>{minsLeft > 0 ? `${minsLeft} min left` : 'Live'}</span>
+              <span>{previewProg?.category ?? previewChannel.group ?? 'General'}</span>
+            </div>
+          </div>
+
+          <p className="tvguide-now-synopsis">
+            {previewProg?.desc ?? (previewChannel ? `Live broadcast on ${previewChannel.name}.` : 'Select a channel to browse live programming.')}
+          </p>
+
+          <div className="tvguide-now-actions-row">
+            <button
+              type="button"
+              className="tvguide-watch-live-btn"
+              onClick={() => tune(previewChannel)}
+            >
+              <Icon name="play" size={16} />
+              <span>Watch Live</span>
+            </button>
+            <button
+              type="button"
+              className="tvguide-action-pill-btn"
+              onClick={() => {
+                if (previewProg) {
+                  store.scheduleRecording(
+                    previewChannel.id,
+                    previewChannel.name,
+                    previewProg.title,
+                    previewProg.start,
+                    previewProg.stop,
+                    { programmeId: previewProg.id, description: previewProg.desc }
+                  )
+                  toast(`Recording scheduled for "${previewProg.title}"`)
+                }
+              }}
+            >
+              <Icon name="record" size={14} />
+              <span>Record</span>
+            </button>
+            <button
+              type="button"
+              className="tvguide-action-pill-btn"
+              onClick={() => {
+                if (previewProg) {
+                  store.toggleReminder(previewProg.id)
+                  toast(store.library.reminders.includes(previewProg.id) ? `Reminder removed for "${previewProg.title}"` : `Reminder set for "${previewProg.title}"`)
+                }
+              }}
+            >
+              <Icon name="bell" size={14} />
+              <span>Reminder</span>
+            </button>
+            <button
+              type="button"
+              className="tvguide-action-pill-btn"
+              onClick={() => {
+                store.toggleFavourite(channelRef(previewChannel.id))
+                toast(favIds.includes(previewChannel.id) ? `Removed ${previewChannel.name} from favourites` : `Added ${previewChannel.name} to favourites`)
+              }}
+            >
+              <Icon name="star" size={14} />
+              <span>Favourite</span>
+            </button>
+            <button
+              type="button"
+              className="tvguide-action-pill-btn"
+              onClick={() => {
+                setShareItem({
+                  title: previewProg?.title || previewChannel.name,
+                  kind: previewProg ? 'programme' : 'channel',
+                  year: previewProg?.episode ? previewProg.episode : undefined,
+                  genres: previewProg?.category ? [previewProg.category] : undefined,
+                  art: previewProg?.art || previewProg?.icon || undefined,
+                  deepLinkPath: `/live?channel=${encodeURIComponent(previewChannel.id)}`,
+                })
+              }}
+            >
+              <Icon name="share" size={14} />
+              <span>Share</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -952,11 +928,11 @@ export function LiveTV() {
 
   return (
     <>
-      <PageHeader title="Live TV" tabs={tabs} search={false} actions={guideActions} />
+      <PageHeader title="Live TV" tabs={tabs} search={false} />
       <div className={`page live${reallyPlaying ? ' is-docked-playing' : ''}`}>
-        {subNav}
         {topStage}
         <div className="live-toolbar">
+          {guideActions}
           <div className="live-toolbar-filters">
             <div className="live-search-box">
               <Icon name="search" size={16} />

@@ -412,24 +412,24 @@
 }
 .prog-playing { display: inline; vertical-align: -1px; margin-right: 6px; color: var(--text); }
 .prog.is-playing .prog-time { color: var(--text-2); }
-/* Selected programme - glowing red neon box matching TV reference */
+/* Selected programme - glowing accent neon box matching TV reference */
 .prog.is-selected {
   background: var(--surface-3);
-  border: 2px solid #E50914 !important;
-  box-shadow: 0 0 14px rgba(229, 9, 20, 0.55), inset 0 0 6px rgba(229, 9, 20, 0.25) !important;
+  border: 2px solid var(--accent, #e50914) !important;
+  box-shadow: 0 0 14px var(--accent-glow, rgba(229, 9, 20, 0.55)), inset 0 0 6px var(--accent-soft, rgba(229, 9, 20, 0.25)) !important;
   border-radius: 4px;
   z-index: 5;
 }
 .prog:focus-visible {
   outline: none;
-  border: 2px solid #E50914 !important;
-  box-shadow: 0 0 14px rgba(229, 9, 20, 0.55), inset 0 0 6px rgba(229, 9, 20, 0.25) !important;
+  border: 2px solid var(--accent, #e50914) !important;
+  box-shadow: 0 0 14px var(--accent-glow, rgba(229, 9, 20, 0.55)), inset 0 0 6px var(--accent-soft, rgba(229, 9, 20, 0.25)) !important;
   border-radius: 4px;
   z-index: 5;
 }
 .prog.is-selected:focus-visible {
-  border: 2px solid #FF253B !important;
-  box-shadow: 0 0 18px rgba(229, 9, 20, 0.75), inset 0 0 8px rgba(229, 9, 20, 0.35) !important;
+  border: 2px solid var(--accent-hover, #ff253b) !important;
+  box-shadow: 0 0 18px var(--accent-glow, rgba(229, 9, 20, 0.75)), inset 0 0 8px var(--accent-soft, rgba(229, 9, 20, 0.35)) !important;
 }
 .prog-bell { position: absolute; top: 6px; right: 6px; color: var(--accent-text); }
 .now-line {
@@ -438,10 +438,10 @@
   bottom: 0;
   width: 2px;
   margin-left: -1px;
-  background: #E50914;
+  background: var(--accent, #e50914);
   z-index: 6;
   pointer-events: none;
-  box-shadow: 0 0 8px rgba(229, 9, 20, 0.8), 0 0 16px rgba(229, 9, 20, 0.4);
+  box-shadow: 0 0 8px var(--accent-glow, rgba(229, 9, 20, 0.8)), 0 0 16px rgba(0, 0, 0, 0.4);
 }
 .now-line::before {
   content: 'Now';
@@ -449,15 +449,15 @@
   top: -24px;
   left: 50%;
   transform: translateX(-50%);
-  background: #e50d24;
-  color: #ffffff;
+  background: var(--accent, #e50914);
+  color: var(--accent-ink, #ffffff);
   font-size: 0.625rem;
   font-weight: 700;
   padding: 2px 7px;
   border-radius: 4px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  box-shadow: 0 2px 6px rgba(229, 13, 36, 0.6);
+  box-shadow: 0 2px 6px var(--accent-glow, rgba(229, 13, 36, 0.6));
   pointer-events: none;
   white-space: nowrap;
 }
@@ -906,20 +906,114 @@
   color: var(--text, #fff);
 }
 .tvguide-tab-btn.is-active {
-  background: #e50d24 !important;
-  border-color: #e50d24 !important;
-  color: #ffffff !important;
+  background: var(--accent, #e50914) !important;
+  border-color: var(--accent, #e50914) !important;
+  color: var(--accent-ink, #ffffff) !important;
 }
 
-/* Top Stage */
-.tvguide-top-stage {
+/* Compact Preview Dock & Collapsible Top Stage */
+.tvguide-preview-wrapper {
+  margin-bottom: 14px;
+}
+
+.tvguide-compact-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 14px;
+  border-radius: var(--r-m, 10px);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.tvguide-compact-channel-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.tvguide-compact-titles {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tvguide-compact-channel-name {
+  font-weight: 700;
+  font-size: 0.875rem;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.tvguide-compact-prog-title {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+
+.tvguide-compact-prog-time {
+  font-size: 0.75rem;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.tvguide-compact-prog-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  max-width: 200px;
+}
+
+.tvguide-compact-prog-bar {
+  flex: 1;
+  height: 4px;
+  background: var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.tvguide-compact-prog-fill {
+  height: 100%;
+  background: var(--accent, #e50914);
+  border-radius: 999px;
+}
+
+.tvguide-compact-mins {
+  font-size: 0.75rem;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.tvguide-compact-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.tvguide-top-stage.is-collapsed {
+  display: none;
+}
+
+.tvguide-top-stage.is-expanded {
   display: grid;
   grid-template-columns: minmax(360px, 1.15fr) minmax(360px, 1fr);
   gap: 16px;
-  margin-bottom: 20px;
+  margin-top: 14px;
+  margin-bottom: 14px;
 }
+
 @media (max-width: 1024px) {
-  .tvguide-top-stage {
+  .tvguide-top-stage.is-expanded {
     grid-template-columns: 1fr;
   }
 }
@@ -973,8 +1067,8 @@
   color: #ffffff;
 }
 .tvguide-live-pill {
-  background: #e50d24;
-  color: #ffffff;
+  background: var(--accent, #e50914);
+  color: var(--accent-ink, #ffffff);
   font-size: 0.625rem;
   font-weight: 800;
   padding: 2px 6px;
@@ -1017,7 +1111,7 @@
 .tvguide-volume-slider {
   width: 60px;
   height: 4px;
-  accent-color: #e50d24;
+  accent-color: var(--accent, #e50914);
   cursor: pointer;
 }
 
@@ -1047,7 +1141,7 @@
 .tvguide-now-kicker {
   font-size: 0.6875rem;
   font-weight: 800;
-  color: #e50d24;
+  color: var(--accent, #e50914);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   margin-bottom: 2px;
@@ -1124,7 +1218,7 @@
 }
 .tvguide-now-prog-fill {
   height: 100%;
-  background: #e50d24;
+  background: var(--accent, #e50914);
 }
 .tvguide-now-prog-meta {
   display: flex;
@@ -1155,8 +1249,8 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: #e50d24;
-  color: #ffffff;
+  background: var(--accent, #e50914);
+  color: var(--accent-ink, #ffffff);
   border: none;
   border-radius: 9999px;
   padding: 6px 16px;
@@ -1229,8 +1323,8 @@
   color: #ffffff;
 }
 .tvguide-tool-pill-btn.is-active {
-  color: #e50d24;
-  border-color: rgba(229, 13, 36, 0.4);
+  color: var(--accent, #e50914);
+  border-color: var(--accent-glow, rgba(229, 9, 20, 0.4));
 }
 
 .tvguide-player-overlay-state {

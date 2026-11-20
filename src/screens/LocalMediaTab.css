@@ -36,8 +36,8 @@
   width: 44px;
   height: 44px;
   border-radius: 10px;
-  background: rgba(229, 9, 20, 0.12);
-  color: var(--accent-red-primary, #E50914);
+  background: var(--accent-soft, rgba(229, 9, 20, 0.12));
+  color: var(--accent, #E50914);
   display: grid;
   place-items: center;
   flex-shrink: 0;
@@ -86,7 +86,7 @@
 
 .storage-bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--accent-red-primary, #E50914), var(--accent-red-hover, #FF253B));
+  background: linear-gradient(90deg, var(--accent, #E50914), var(--accent-hover, #FF253B));
   border-radius: 4px;
   transition: width 300ms ease;
 }
@@ -315,8 +315,8 @@
 
 .local-movie-card:hover {
   transform: translateY(-4px);
-  border-color: var(--accent-red-primary, #E50914);
-  box-shadow: 0 8px 24px rgba(229, 9, 20, 0.25);
+  border-color: var(--accent, #E50914);
+  box-shadow: 0 8px 24px var(--accent-glow, rgba(229, 9, 20, 0.25));
 }
 
 .movie-poster-wrap {
@@ -373,7 +373,7 @@
   position: absolute;
   top: 8px;
   right: 8px;
-  background: var(--accent-red-primary, #E50914);
+  background: var(--accent, #E50914);
   color: #fff;
   font-size: 0.68rem;
   font-weight: 700;
@@ -554,10 +554,10 @@
 }
 
 .pill-btn.is-selected {
-  border-color: var(--accent-red-primary, #E50914);
-  background: rgba(229, 9, 20, 0.15);
+  border-color: var(--accent, #E50914);
+  background: var(--accent-soft, rgba(229, 9, 20, 0.15));
   color: #fff;
-  box-shadow: 0 0 12px rgba(229, 9, 20, 0.3);
+  box-shadow: 0 0 12px var(--accent-glow, rgba(229, 9, 20, 0.3));
 }
 
 .input-group {

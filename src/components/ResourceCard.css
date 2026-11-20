@@ -13,15 +13,15 @@
 
 .res-card:hover {
   transform: translateY(-4px);
-  border-color: #E50914;
-  box-shadow: 0 0 14px rgba(229, 9, 20, 0.45), 0 10px 26px rgba(0, 0, 0, 0.6);
+  border-color: var(--accent, #e50914);
+  box-shadow: 0 0 14px var(--accent-glow, rgba(229, 9, 20, 0.45)), 0 10px 26px rgba(0, 0, 0, 0.6);
 }
 
 .res-card:focus-visible {
-  outline: 2px solid #E50914;
+  outline: 2px solid var(--accent, #e50914);
   outline-offset: 1px;
-  border-color: #E50914;
-  box-shadow: 0 0 18px rgba(229, 9, 20, 0.65), 0 12px 28px rgba(0, 0, 0, 0.7);
+  border-color: var(--accent, #e50914);
+  box-shadow: 0 0 18px var(--accent-glow, rgba(229, 9, 20, 0.65)), 0 12px 28px rgba(0, 0, 0, 0.7);
   z-index: 4;
 }
 

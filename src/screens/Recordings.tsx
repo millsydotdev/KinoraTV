@@ -623,8 +623,7 @@ export function Recordings() {
               </button>
               <button
                 type="button"
-                className="btn btn-primary"
-                style={{ background: '#e50914' }}
+                className="btn btn-danger"
                 onClick={() => executeDelete(deleteTarget)}
               >
                 Delete Permanently

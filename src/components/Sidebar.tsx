@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useStore } from '../state/store'
 import { Icon, type IconName } from './Icon'
 import { KPlayMark } from './KPlayMark'
@@ -44,23 +44,21 @@ const navSections: NavSection[] = [
     children: [
       { to: '/live', label: 'TV Guide', icon: 'calendar', exact: true },
       { to: '/live?view=channels', label: 'Channels', icon: 'grid' },
-      { to: '/live?filter=favourites', label: 'Favourites', icon: 'star' },
-      { to: '/live?filter=recent', label: 'Recent Channels', icon: 'history' },
       { to: '/recordings', label: 'Recordings', icon: 'record' },
-      { to: '/live?tab=reminders', label: 'Reminders', icon: 'bell' },
       { to: '/live?tab=catchup', label: 'Catch-Up', icon: 'rotateCw' },
     ],
   },
   {
-    id: 'movies-series',
-    label: 'Movies & Series',
-    icon: 'clapperboard',
-    children: [
-      { to: '/movies', label: 'Movies', icon: 'film' },
-      { to: '/series', label: 'TV Shows', icon: 'series' },
-      { to: '/library?tab=watchlist', label: 'My List', icon: 'bookmark' },
-      { to: '/library?tab=collections', label: 'Collections', icon: 'layers' },
-    ],
+    id: 'movies',
+    label: 'Movies',
+    icon: 'film',
+    to: '/movies',
+  },
+  {
+    id: 'series',
+    label: 'TV Shows',
+    icon: 'series',
+    to: '/series',
   },
   {
     id: 'library',
@@ -78,6 +76,7 @@ const navSections: NavSection[] = [
     id: 'audio',
     label: 'Audio',
     icon: 'audio',
+    to: '/radio',
     children: [
       { to: '/radio', label: 'Radio', icon: 'radio' },
       { to: '/music', label: 'Music', icon: 'music' },
@@ -87,16 +86,15 @@ const navSections: NavSection[] = [
   },
   {
     id: 'reading',
-    label: 'Reading',
+    label: 'Books',
     icon: 'book',
-    children: [
-      { to: '/books', label: 'Books', icon: 'book' },
-    ],
+    to: '/books',
   },
   {
     id: 'discover',
     label: 'Discover',
     icon: 'compass',
+    to: '/documentaries',
     children: [
       { to: '/documentaries', label: 'Documentaries', icon: 'documentary' },
       { to: '/news', label: 'News', icon: 'news' },
@@ -142,6 +140,7 @@ if (typeof document !== 'undefined') {
 }
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const navigate = useNavigate()
   const { playlists, prefs, setPref, recordings = [], xtreamSources = [], guides = [] } = useStore()
   const location = useLocation()
   const { pathname, search } = location
@@ -206,8 +205,11 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
     if (section.to === '/live') {
       return pathname === '/live' || pathname.startsWith('/live/') || pathname === '/recordings'
     }
-    if (section.id === 'movies-series') {
-      return pathname === '/movies' || pathname.startsWith('/movies/') || pathname === '/series' || pathname.startsWith('/series/') || pathname.startsWith('/tv-shows')
+    if (section.id === 'movies') {
+      return pathname === '/movies' || pathname.startsWith('/movies/')
+    }
+    if (section.id === 'series') {
+      return pathname === '/series' || pathname.startsWith('/series/') || pathname.startsWith('/tv-shows')
     }
     if (section.to) {
       return pathname === section.to || pathname.startsWith(section.to + '/')
@@ -272,8 +274,8 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                     className={`sidebar-root-btn ${active && (!isExpanded || collapsed) ? 'is-active' : ''}`}
                     onClick={() => {
                       if (collapsed) {
-                        setCollapsed(false)
-                        setExpandedSections((prev) => ({ ...prev, [section.id]: true }))
+                        const target = section.to ?? section.children?.[0]?.to ?? '/'
+                        navigate(target)
                       } else {
                         toggleSection(section.id)
                       }
