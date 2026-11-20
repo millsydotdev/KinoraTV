@@ -1,4 +1,4 @@
-/* Kinora Premium Sidebar: Elevated Cinematic Charcoal Panel */
+/* Kinora Modern Floating Sidebar: Distinct Navigation Groups & Layered Surface Depth */
 .sidebar {
   position: sticky;
   top: 12px;
@@ -7,16 +7,16 @@
   margin: 12px 6px 12px 14px;
   width: calc(var(--side-w, 256px) - 20px);
   border-radius: 20px;
-  background: linear-gradient(180deg, #12151c 0%, #0a0c10 100%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  background: linear-gradient(180deg, #11141c 0%, #080a0e 100%);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   box-sizing: border-box;
   overflow: hidden;
   z-index: 40;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 14px 10px 12px;
+  gap: 0;
+  padding: 10px;
   transition: width 220ms cubic-bezier(0.2, 0, 0, 1), margin 220ms ease, padding 220ms ease;
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
@@ -29,25 +29,29 @@
 .sidebar.is-collapsed {
   width: calc(var(--side-w, 80px) - 14px);
   margin: 12px 4px 12px 10px;
-  padding: 14px 6px 12px;
+  padding: 10px 6px;
 }
 
-/* Header & Branding Area */
+/* 1. Dedicated Rounded Branding / Header Area */
 .sidebar-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 4px 6px 14px 6px;
-  margin-bottom: 4px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 8px 8px 8px 12px;
+  margin-bottom: 8px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
   flex: none;
 }
 
 .sidebar.is-collapsed .sidebar-top {
   flex-direction: column;
-  gap: 12px;
-  padding: 4px 0 14px 0;
+  gap: 10px;
+  padding: 8px 4px 12px;
+  border-radius: 14px;
 }
 
 .sidebar-brand {
@@ -134,18 +138,18 @@
   margin: 0 auto;
 }
 
-/* Scrollable Navigation Body */
+/* 2. Scrollable Navigation Body */
 .sidebar-scrollable {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
   flex: 1 1 0%;
   min-height: 0;
-  padding-right: 2px;
+  padding-right: 1px;
 }
 
 .sidebar-scrollable::-webkit-scrollbar {
@@ -157,11 +161,28 @@
   border-radius: 999px;
 }
 
-/* Group Containers & Separators */
-.sidebar-group-container {
+/* 3. Group Blocks, Surfaces & Stylish Gradient Dividers */
+.sidebar-group-block {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+}
+
+.sidebar-section-divider {
+  height: 1px;
+  margin: 8px 6px;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.08) 20%, rgba(255, 255, 255, 0.08) 80%, transparent 100%);
+  flex: none;
+}
+
+.sidebar.is-collapsed .sidebar-section-divider {
+  width: 28px;
+  margin: 8px auto;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.12) 50%, transparent 100%);
+}
+
+.sidebar-group-header {
+  padding: 6px 10px 4px;
+  user-select: none;
 }
 
 .sidebar-group-label {
@@ -170,15 +191,26 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #6b7280;
-  padding: 12px 12px 4px;
-  user-select: none;
 }
 
-.sidebar-group-divider {
-  width: 24px;
-  height: 1px;
-  margin: 8px auto;
-  background: rgba(255, 255, 255, 0.08);
+/* Distinct Rounded Surface for Each Group */
+.sidebar-group-surface {
+  background: rgba(255, 255, 255, 0.015);
+  border: 1px solid rgba(255, 255, 255, 0.035);
+  border-radius: 16px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.sidebar.is-collapsed .sidebar-group-surface {
+  background: rgba(255, 255, 255, 0.015);
+  border: 1px solid rgba(255, 255, 255, 0.035);
+  border-radius: 14px;
+  padding: 4px 2px;
+  gap: 3px;
 }
 
 .sidebar-item-wrap,
@@ -194,16 +226,16 @@
   width: 100%;
 }
 
-/* Master Root Navigation Item Styling */
+/* 4. Master Root Navigation Item Styling */
 .sidebar-root-btn {
   position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
-  min-height: 42px;
-  padding: 0 12px;
-  border-radius: 12px;
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: 10px;
   background: transparent;
   border: 1px solid transparent;
   color: #9ca3af;
@@ -266,12 +298,12 @@
   color: #9ca3af;
 }
 
-/* Active Navigation Item: Sophisticated Soft Accent with Left Luminescent Pill */
+/* 5. Active Navigation Item: Selective Restrained Kinora Red with Left Luminescent Pill */
 .sidebar-root-btn.is-active {
   color: #ffffff;
   font-weight: 600;
-  background: linear-gradient(90deg, color-mix(in oklab, var(--accent, #e50914) 18%, transparent) 0%, color-mix(in oklab, var(--accent, #e50914) 6%, transparent) 100%);
-  border-color: color-mix(in oklab, var(--accent, #e50914) 30%, transparent);
+  background: linear-gradient(90deg, color-mix(in oklab, var(--accent, #e50914) 16%, transparent) 0%, color-mix(in oklab, var(--accent, #e50914) 4%, transparent) 100%);
+  border-color: color-mix(in oklab, var(--accent, #e50914) 28%, transparent);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
 
@@ -296,7 +328,7 @@
   color: var(--accent, #e50914);
 }
 
-/* Collapsed Navigation Item Styling */
+/* 6. Collapsed Navigation Item Styling */
 .sidebar.is-collapsed .sidebar-root-btn {
   justify-content: center;
   padding: 0;
@@ -324,7 +356,7 @@
   width: 3px;
 }
 
-/* Badges: Sources count & REC status */
+/* 7. Badges: Sources count & REC status */
 .sidebar-badge {
   flex: none;
   font-size: 0.72rem;
@@ -369,18 +401,18 @@
   50% { opacity: 0.35; transform: scale(0.8); }
 }
 
-/* Nested Child Links */
+/* 8. Nested Child Links */
 .sidebar-children-list {
   display: flex;
   flex-direction: column;
   gap: 2px;
   padding-left: 14px;
   margin-top: 2px;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   position: relative;
 }
 
-/* Subtle group guide line */
+/* Subtle tree line connector */
 .sidebar-children-list::before {
   content: '';
   position: absolute;
@@ -397,8 +429,8 @@
   align-items: center;
   gap: 10px;
   min-height: 34px;
-  padding: 0 10px 0 16px;
-  border-radius: 9px;
+  padding: 0 10px 0 14px;
+  border-radius: 8px;
   color: #8c93a3;
   font-size: 0.85rem;
   font-weight: 500;
@@ -441,7 +473,7 @@
 .sidebar-child-link.is-active::before {
   content: '';
   position: absolute;
-  left: 6px;
+  left: 5px;
   top: 50%;
   transform: translateY(-50%);
   width: 4px;
@@ -455,16 +487,27 @@
   color: var(--accent, #e50914);
 }
 
-/* Sidebar Bottom: Pinned Settings */
+/* 9. Visually Separate Settings Area Anchored at Bottom */
 .sidebar-bottom {
   flex: none;
-  padding-top: 10px;
+  padding-top: 4px;
   margin-top: auto;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-.sidebar.is-collapsed .sidebar-bottom {
-  padding-top: 10px;
+.sidebar-bottom-divider {
+  margin-bottom: 8px;
+}
+
+.sidebar-settings-card {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 14px;
+  padding: 3px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.sidebar.is-collapsed .sidebar-settings-card {
+  padding: 3px 2px;
 }
 
 /* Mobile Drawer Backdrop */
