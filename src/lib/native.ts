@@ -1075,7 +1075,7 @@ export interface OpenedStream {
   /** `kstream://localhost/<handle>`: the only address the page ever gets for a stream. */
   url: string
   session: number
-  format?: 'hls' | 'dash'
+  format?: 'hls' | 'dash' | 'direct'
 }
 
 const STREAM_ADDRESS = /^kstream:\/\/localhost\/[0-9a-f]{32}$/
@@ -1085,7 +1085,7 @@ export function parseOpenedStream(raw: unknown): OpenedStream {
   if (typeof v !== 'object' || v === null || typeof v.url !== 'string' || !STREAM_ADDRESS.test(v.url) || !isCount(v.session, Number.MAX_SAFE_INTEGER) || v.session < 1) {
     throw new Error('The native shell returned a stream session in an unexpected shape.')
   }
-  const format = v.format === 'dash' ? 'dash' as const : v.format === 'hls' ? 'hls' as const : undefined
+  const format = v.format === 'dash' ? 'dash' as const : v.format === 'direct' ? 'direct' as const : v.format === 'hls' ? 'hls' as const : undefined
   return format ? { url: v.url, session: v.session, format } : { url: v.url, session: v.session }
 }
 

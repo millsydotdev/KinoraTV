@@ -11,28 +11,36 @@ export const curatedMovies: Movie[] = [
     genres: ['Thriller', 'Crime'], certificate: '18', focus: 50, added: '2026-10-18',
     tagline: 'Every light in the harbour belongs to somebody.',
     synopsis: 'A disgraced customs officer is pulled back to the docks he once policed when a container arrives carrying a name he buried twenty years ago. Over one rain-soaked night he has to decide who in the city he still trusts.',
-    art: art('harbour-lights'), audio: ['English 5.1', 'English Audio Description'], subtitles: SUBS,
+    art: art('harbour-lights'),
+    trailerUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
+    audio: ['English 5.1', 'English Audio Description'], subtitles: SUBS,
   },
   {
     kind: 'movie', id: 'northern-trace', title: 'Northern Trace', year: 2024, runtime: 114,
     genres: ['Thriller', 'Mystery'], certificate: '15', focus: 50, added: '2026-10-22',
     tagline: 'Some tracks are never meant to be followed.',
     synopsis: 'A wildlife warden patrolling a remote Scandinavian highway uncovers an abandoned convoy carrying encrypted government telemetry deep into the frozen wilderness.',
-    art: art('northern-trace'), audio: ['English 5.1', 'Swedish'], subtitles: SUBS,
+    art: art('northern-trace'),
+    trailerUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
+    audio: ['English 5.1', 'Swedish'], subtitles: SUBS,
   },
   {
     kind: 'movie', id: 'the-outpost', title: 'The Outpost', year: 2024, runtime: 122,
     genres: ['Action', 'Thriller'], certificate: '15', focus: 50, added: '2026-10-23',
     tagline: 'High above the storm, vigilance is the only defense.',
     synopsis: 'A remote mountain observatory team detects an unauthorized signal crossing international borders just as an unseasonal blizzard cuts all communication lines.',
-    art: art('the-outpost'), audio: ['English 5.1', 'English Atmos'], subtitles: SUBS,
+    art: art('the-outpost'),
+    trailerUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+    audio: ['English 5.1', 'English Atmos'], subtitles: SUBS,
   },
   {
     kind: 'movie', id: 'neon-district', title: 'Neon District', year: 2024, runtime: 118,
     genres: ['Science fiction', 'Action'], certificate: '15', focus: 50, added: '2026-10-24',
     tagline: 'Under the neon canopy, memory is the most dangerous contraband.',
     synopsis: 'In a rain-drenched megacity running on biometric currency, a freelance memory courier races against the dawn to deliver an uncorrupted childhood recording.',
-    art: art('neon-district'), audio: ['English Atmos', 'Japanese'], subtitles: SUBS,
+    art: art('neon-district'),
+    trailerUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
+    audio: ['English Atmos', 'Japanese'], subtitles: SUBS,
   },
   {
     kind: 'movie', id: 'silent-tide', title: 'Silent Tide', year: 2024, runtime: 108,
@@ -179,6 +187,7 @@ export const curatedSeries: Series[] = [
     tagline: 'Every case leads back under the tracks.',
     synopsis: 'Detective Ines Calloway works the precinct nobody asks for, where the elevated line runs past every window and every crime seems to trace back to the same three blocks.',
     art: art('ninth-ward'),
+    trailerUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
     seasons: buildSeasons('ninth-ward', stills('ninth-ward'), [
       [
         ['Under the Line', 'A body under the elevated tracks pulls Calloway into a precinct she was meant to pass through.', 52],
@@ -212,6 +221,7 @@ export const curatedSeries: Series[] = [
     tagline: 'Four kilometres down, nobody hears the surface.',
     synopsis: 'The eleven-person crew of a deep-sea research habitat lose contact with the surface the same day their sonar picks up something moving in the trench below.',
     art: art('fathom'),
+    trailerUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
     seasons: buildSeasons('fathom', stills('fathom'), [
       [
         ['Pressure', 'A routine supply drop never arrives, and the habitat goes quiet.', 47],

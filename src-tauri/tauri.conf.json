@@ -26,10 +26,10 @@
         "default-src": "'self'",
         "script-src": "'self'",
         "style-src": "'self'",
-        "img-src": "'self' data:",
+        "img-src": "'self' data: blob:",
         "font-src": "'self'",
         "connect-src": "ipc: http://ipc.localhost kstream://localhost",
-        "media-src": "blob:",
+        "media-src": "blob: kstream://localhost",
         "object-src": "'none'",
         "base-uri": "'self'",
         "form-action": "'none'"

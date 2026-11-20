@@ -146,12 +146,14 @@ export function EpisodeDetailModal({
               alt={episode.title}
               className="episode-detail-hero-media"
               fallbackTitle={episode.title}
+              fallbackIcon="series"
             />
           ) : (
             <Art
               src={displayStill}
               alt={episode.title}
               eager
+              fallbackIcon="series"
               className="episode-detail-hero-media"
             />
           )}

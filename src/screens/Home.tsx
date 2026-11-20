@@ -229,30 +229,46 @@ function HomeHero({
                   </div>
                 </div>
               ) : (
-                <div style={{ width: '100%', height: '100%', background: '#0a0d12' }} />
+                <div className="home-mini-live-stage is-empty">
+                  <div className="home-mini-live-center">
+                    <Icon name="live" size={40} />
+                    <div className="home-mini-live-status-pill">
+                      <span>NO LIVE FEED</span>
+                    </div>
+                  </div>
+                </div>
               )}
               <div className="home-mini-live-controls">
-                <div className="home-mini-live-controls-left">
-                  <button type="button" className="home-mini-ctrl-btn" aria-label="Play or pause stream">
-                    <Icon name="play" size={16} />
-                  </button>
-                  <button type="button" className="home-mini-ctrl-btn" aria-label="Mute volume">
-                    <Icon name="volume" size={16} />
-                  </button>
-                </div>
-                <div className="home-mini-live-controls-right">
-                  <button type="button" className="home-mini-ctrl-btn" aria-label="Subtitles">
-                    <Icon name="subtitles" size={16} />
-                  </button>
-                  <button type="button" className="home-mini-ctrl-btn" aria-label="Picture in Picture">
-                    <Icon name="pip" size={16} />
-                  </button>
-                  {previewChannel && (
-                    <Link to={`/watch/${encodeURIComponent(channelRef(previewChannel.id))}`} className="home-mini-ctrl-btn" aria-label="Fullscreen">
-                      <Icon name="fullscreen" size={16} />
+                {previewChannel ? (
+                  <>
+                    <div className="home-mini-live-controls-left">
+                      <button type="button" className="home-mini-ctrl-btn" aria-label="Play or pause stream">
+                        <Icon name="play" size={16} />
+                      </button>
+                      <button type="button" className="home-mini-ctrl-btn" aria-label="Mute volume">
+                        <Icon name="volume" size={16} />
+                      </button>
+                    </div>
+                    <div className="home-mini-live-controls-right">
+                      <button type="button" className="home-mini-ctrl-btn" aria-label="Subtitles">
+                        <Icon name="subtitles" size={16} />
+                      </button>
+                      <button type="button" className="home-mini-ctrl-btn" aria-label="Picture in Picture">
+                        <Icon name="pip" size={16} />
+                      </button>
+                      <Link to={`/watch/${encodeURIComponent(channelRef(previewChannel.id))}`} className="home-mini-ctrl-btn" aria-label="Fullscreen">
+                        <Icon name="fullscreen" size={16} />
+                      </Link>
+                    </div>
+                  </>
+                ) : (
+                  <div className="home-mini-live-controls-left">
+                    <Link to="/sources" className="home-mini-ctrl-btn" aria-label="Add source" title="Add live TV source">
+                      <Icon name="plus" size={14} />
+                      <span style={{ fontSize: '0.75rem', paddingLeft: 4 }}>Add Source</span>
                     </Link>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
             <div className="home-mini-live-meta">
@@ -260,8 +276,8 @@ function HomeHero({
                 {previewProg?.title ?? (previewChannel ? `${previewChannel.name} Live` : 'Live Broadcast')}
               </h3>
               <p className="home-mini-live-sub">
-                <span>{previewChannel?.name ?? 'Live Channel'}{previewProg?.category ? ` • ${previewProg.category}` : ''}</span>
-                <span>{previewProg ? `${clock(previewProg.start, store.prefs.timeFormat)} - ${clock(previewProg.stop, store.prefs.timeFormat)}` : 'On air'}</span>
+                <span>{previewChannel?.name ?? 'No Channels Active'}{previewProg?.category ? ` • ${previewProg.category}` : ''}</span>
+                <span>{previewProg ? `${clock(previewProg.start, store.prefs.timeFormat)} - ${clock(previewProg.stop, store.prefs.timeFormat)}` : previewChannel ? 'On air' : 'Connect source'}</span>
               </p>
               {previewProg && (
                 <div className="home-mini-live-progress" title={`${minsLeft} min left`}>
@@ -294,25 +310,31 @@ function HomeHero({
               </button>
             </div>
             <div className="home-channels-list">
-              {channels.slice(0, 4).map((c) => {
-                const prog = channelsTab === 'now' ? store.programmeAt(c, now) : store.nextProgramme(c, now)
-                return (
-                  <Link
-                    key={c.id}
-                    to={`/live?channel=${encodeURIComponent(c.id)}`}
-                    className="home-quick-channel-row"
-                  >
-                    <span className="home-quick-ch-badge">{c.name.slice(0, 8)}</span>
-                    <div className="home-quick-ch-info">
-                      <span className="home-quick-ch-title">{prog?.title ?? c.name}</span>
-                      <span className="home-quick-ch-time">
-                        {prog ? `${clock(prog.start, store.prefs.timeFormat)} - ${clock(prog.stop, store.prefs.timeFormat)}` : 'Live broadcast'}
-                      </span>
-                    </div>
-                    {channelsTab === 'now' && <span className="home-quick-live-tag">LIVE</span>}
-                  </Link>
-                )
-              })}
+              {channels.length > 0 ? (
+                channels.slice(0, 4).map((c) => {
+                  const prog = channelsTab === 'now' ? store.programmeAt(c, now) : store.nextProgramme(c, now)
+                  return (
+                    <Link
+                      key={c.id}
+                      to={`/live?channel=${encodeURIComponent(c.id)}`}
+                      className="home-quick-channel-row"
+                    >
+                      <span className="home-quick-ch-badge">{c.name.slice(0, 8)}</span>
+                      <div className="home-quick-ch-info">
+                        <span className="home-quick-ch-title">{prog?.title ?? c.name}</span>
+                        <span className="home-quick-ch-time">
+                          {prog ? `${clock(prog.start, store.prefs.timeFormat)} - ${clock(prog.stop, store.prefs.timeFormat)}` : 'Live broadcast'}
+                        </span>
+                      </div>
+                      {channelsTab === 'now' && <span className="home-quick-live-tag">LIVE</span>}
+                    </Link>
+                  )
+                })
+              ) : (
+                <div style={{ padding: '24px 12px', textAlign: 'center', color: '#8c93a3', fontSize: '0.8125rem' }}>
+                  No channels available yet.
+                </div>
+              )}
             </div>
           </div>
 

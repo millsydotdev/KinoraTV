@@ -9,6 +9,10 @@ import {
 } from '../state/customArtwork'
 import { ShareModal } from '../components/ShareModal'
 import { ToastProvider } from '../components/Toast'
+import { TrailerPlayerModal } from '../components/TrailerPlayerModal'
+import { XtreamArt, EpisodeCard } from '../components/Tiles'
+import { MemoryRouter } from 'react-router-dom'
+import { StoreProvider } from '../state/store'
 
 describe('Personal Artwork Library and Share Dialog', () => {
   beforeEach(() => {
@@ -152,5 +156,143 @@ describe('Personal Artwork Library and Share Dialog', () => {
     expect(html).toContain('No verified IMDb identifier associated with this item.')
     expect(html).not.toContain('https://www.imdb.com/title/')
     expect(html).toContain('Kinora Deep Link')
+  })
+
+  it('SHARE-03: formats canonical public https://kinora.tv link even on dev server localhost', () => {
+    const originalWindow = globalThis.window
+    try {
+      (globalThis as any).window = {
+        location: {
+          hostname: 'localhost',
+          protocol: 'http:',
+          origin: 'http://localhost:5199',
+          pathname: '/movies/interstellar',
+          search: '',
+        },
+      }
+
+      const html = renderToStaticMarkup(
+        <ToastProvider>
+          <ShareModal
+            open={true}
+            onClose={() => {}}
+            item={{
+              title: 'Interstellar',
+              kind: 'movie',
+              year: 2014,
+              deepLinkPath: '/movies/interstellar',
+            }}
+          />
+        </ToastProvider>,
+      )
+
+      expect(html).toContain('https://kinora.tv/movies/interstellar')
+      expect(html).not.toContain('localhost:5199')
+    } finally {
+      if (originalWindow) {
+        globalThis.window = originalWindow
+      } else {
+        delete (globalThis as any).window
+      }
+    }
+  })
+
+  it('TRAILER-01: renders direct video player with transport controls for direct stream URLs', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <TrailerPlayerModal
+          open={true}
+          onClose={() => {}}
+          title="Harbour Lights"
+          trailerUrl="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4"
+          posterUrl="/art/harbour-lights.jpg"
+          playFullUrl="/watch/movie:harbour-lights"
+        />
+      </MemoryRouter>,
+    )
+
+    expect(html).toContain('Official Trailer: Harbour Lights')
+    expect(html).toContain('trailer-html5-video')
+    expect(html).toContain('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4')
+    expect(html).toContain('trailer-transport-bar')
+    expect(html).toContain('trailer-scrub-slider')
+    expect(html).toContain('trailer-volume-slider')
+  })
+
+  it('TRAILER-02: formats YouTube watch URL into privacy-enhanced embed iframe', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <TrailerPlayerModal
+          open={true}
+          onClose={() => {}}
+          title="Night of the Living Dead"
+          trailerUrl="https://www.youtube.com/watch?v=5gUKZco3hKA"
+          playFullUrl="/watch/movie:night-of-the-living-dead"
+        />
+      </MemoryRouter>,
+    )
+
+    expect(html).toContain('trailer-iframe-player')
+    expect(html).toContain('https://www.youtube-nocookie.com/embed/5gUKZco3hKA?autoplay=1&amp;rel=0&amp;modestbranding=1')
+  })
+
+  it('TRAILER-03: displays honest fallback stage with Watch Full Feature when trailer unavailable', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <TrailerPlayerModal
+          open={true}
+          onClose={() => {}}
+          title="Silent Tide"
+          trailerUrl=""
+          playFullUrl="/watch/movie:silent-tide"
+        />
+      </MemoryRouter>,
+    )
+
+    expect(html).toContain('Trailer Preview Unavailable')
+    expect(html).toContain('An official promotional video trailer is not available in the metadata catalogue for Silent Tide.')
+    expect(html).toContain('Watch Full Feature')
+    expect(html).toContain('/watch/movie:silent-tide')
+  })
+
+  it('SERIES-ART-01: renders XtreamArt with series fallback icon and fallback title', () => {
+    const html = renderToStaticMarkup(
+      <XtreamArt
+        artworkKey={null}
+        alt="The Ninth Ward"
+        fallbackTitle="The Ninth Ward"
+        fallbackYear={2023}
+        fallbackIcon="series"
+      />,
+    )
+
+    expect(html).toContain('xtream-art-fallback')
+    expect(html).toContain('The Ninth Ward')
+    expect(html).toContain('2023')
+  })
+
+  it('SERIES-ART-02: renders EpisodeCard with series fallback tag when episode still is absent', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <ToastProvider>
+          <StoreProvider>
+            <EpisodeCard
+              to="/watch/episode:beverly-hillbillies/s1e1"
+              seriesId="beverly-hillbillies"
+              seriesTitle="The Beverly Hillbillies"
+              episodeId="s1e1"
+              episodeTitle="The Clampetts Strike Oil"
+              seasonNumber={1}
+              episodeNumber={1}
+              seriesBackdropUrl="/art/kingsmoor.jpg"
+            />
+          </StoreProvider>
+        </ToastProvider>
+      </MemoryRouter>,
+    )
+
+    expect(html).toContain('S01 E01')
+    expect(html).toContain('The Clampetts Strike Oil')
+    expect(html).toContain('Still unavailable')
   })
 })

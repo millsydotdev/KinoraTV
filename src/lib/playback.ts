@@ -222,6 +222,27 @@ export function useStreamPlayback(streamUrl: string | null, video: RefObject<HTM
       if (!opened) { disarm(); return set(state('unsupported', 'Playback needs the Kinora desktop app.')) }
       if (!live) return void closeStream(opened.session) // left or switched while Rust was opening
       session = opened.session
+      if (opened.format === 'direct') {
+        el.src = opened.url
+        const tryPlay = () => el.play().catch((e: unknown) => {
+          if (!live) return
+          if (e instanceof DOMException && e.name === 'AbortError') el.addEventListener('canplay', () => void tryPlay(), { once: true })
+          else { disarm(); set(state('paused', 'Press Play to start.')) }
+        })
+        const onCanPlay = () => {
+          if (!live) return
+          void tryPlay()
+        }
+        const onError = () => {
+          if (!live) return
+          disarm()
+          set(state('error', 'Direct stream playback could not be decoded or was interrupted.', true))
+        }
+        el.addEventListener('canplay', onCanPlay, { once: true })
+        el.addEventListener('error', onError, { once: true })
+        el.load()
+        return
+      }
       const { default: Hls } = await import('hls.js')
       if (!live) return
       if (!Hls.isSupported()) { disarm(); return set(state('unsupported', 'This system cannot play HLS: Media Source Extensions are unavailable.')) }

@@ -46,6 +46,7 @@ export interface MediaResource {
   tags: string[]
   artworkUrl?: string
   artworkFallbackIcon?: IconName
+  trailerUrl?: string
   accentHue?: number
   channelCount?: number
   epgAvailable?: boolean

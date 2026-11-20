@@ -23,6 +23,8 @@ pub enum Kind {
     Manifest,
     /// A DASH base directory: what follows the handle in the request is resolved under it.
     Prefix,
+    /// A direct media stream container (.mp4, .ts, .mkv, etc.).
+    Direct,
 }
 
 /// Why a reference could not be given a handle.

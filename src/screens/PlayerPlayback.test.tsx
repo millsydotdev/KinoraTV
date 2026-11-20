@@ -416,3 +416,19 @@ describe('language and quality choices', () => {
     expect(levelCap([{ height: 1080 }], '480p')).toBe(-1)
   })
 })
+
+describe('direct media playback', () => {
+  it('attaches direct stream url directly to video element without loading hls.js', async () => {
+    native.openStream.mockResolvedValueOnce({
+      url: 'kstream://localhost/0123456789abcdef0123456789abcdef',
+      session: 42,
+      format: 'direct',
+    })
+    await mount(watch(one.id))
+    await settle()
+    const v = video()
+    expect(v).not.toBeNull()
+    expect(v?.src).toBe('kstream://localhost/0123456789abcdef0123456789abcdef')
+    expect(FakeHls.instances).toHaveLength(0)
+  })
+})

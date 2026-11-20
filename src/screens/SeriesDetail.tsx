@@ -17,6 +17,7 @@ import { AgeRatingBadge } from '../components/AgeRatingBadge'
 import { Breadcrumbs } from '../components/Breadcrumbs'
 import { CollectionDialog } from '../components/CollectionDialog'
 import { RatingControls } from '../components/RatingControls'
+import { TrailerPlayerModal } from '../components/TrailerPlayerModal'
 import type { MediaResource } from '../data/personalLibrary'
 import { VERIFICATION_STATUS_META } from '../data/personalLibrary'
 import { classifyMediaResource } from '../data/provenance'
@@ -29,6 +30,7 @@ export function SeriesDetail() {
   const store = useStore()
   const toast = useToast()
   const tabs = useRef<(HTMLButtonElement | null)[]>([])
+  const [trailerOpen, setTrailerOpen] = useState(false)
   const s = seriesById(id)
 
   if (s && store.isKidsMode && !isTitleKidSafe(s)) {
@@ -154,6 +156,17 @@ export function SeriesDetail() {
             <span>{totalEps} episodes</span>
             <span className="badge-tech">4K HDR</span>
             <AgeRatingBadge rating={s.certificate} system="bbfc" />
+            {s.trailerUrl && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-small"
+                onClick={() => setTrailerOpen(true)}
+                title="Watch series preview"
+              >
+                <Icon name="play" size={14} />
+                <span>Trailer</span>
+              </button>
+            )}
           </div>
           <p className="detail-synopsis">{s.synopsis}</p>
           {watchedEps > 0 && (
@@ -261,6 +274,17 @@ export function SeriesDetail() {
         onSelectEpisode={(id) => setSelectedEpisodeId(id)}
         onSelectSeason={(n) => pickSeason(n)}
       />
+
+      {trailerOpen && (
+        <TrailerPlayerModal
+          open={trailerOpen}
+          onClose={() => setTrailerOpen(false)}
+          title={s.title}
+          trailerUrl={s.trailerUrl}
+          posterUrl={s.backdropUrl || s.art}
+          playFullUrl={`/watch/${encodeURIComponent(episodeRef(s.id, up.episode.id))}`}
+        />
+      )}
     </article>
   )
 }
@@ -274,6 +298,7 @@ function XtreamSeriesDetail({ show, initialEpisodeId }: { show: XtreamTitle; ini
   const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | null>(initialEpisodeId || params.get('episode') || null)
   const [error, setError] = useState('')
   const [retry, setRetry] = useState(0)
+  const [trailerOpen, setTrailerOpen] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -352,6 +377,15 @@ function XtreamSeriesDetail({ show, initialEpisodeId }: { show: XtreamTitle; ini
             {seasons.length > 0 && <span>{seasons.length} season{seasons.length > 1 ? 's' : ''}</span>}
             {totalEps > 0 && <span>{totalEps} episodes</span>}
             <span>Provider catalogue</span>
+            <button
+              type="button"
+              className="btn btn-ghost btn-small"
+              onClick={() => setTrailerOpen(true)}
+              title="Watch series preview"
+            >
+              <Icon name="play" size={14} />
+              <span>Trailer</span>
+            </button>
           </div>
           {(details?.plot || show.plot) && (
             <p className="detail-synopsis">{details?.plot || show.plot}</p>
@@ -547,6 +581,15 @@ function XtreamSeriesDetail({ show, initialEpisodeId }: { show: XtreamTitle; ini
         onSelectEpisode={(id) => setSelectedEpisodeId(id)}
         onSelectSeason={(n) => pickSeason(n)}
       />
+
+      {trailerOpen && (
+        <TrailerPlayerModal
+          open={trailerOpen}
+          onClose={() => setTrailerOpen(false)}
+          title={show.name}
+          playFullUrl={allEpisodes[0] ? `/watch/${encodeURIComponent(`episode:xt:${show.sourceId}:${show.id}/${allEpisodes[0].id}`)}` : undefined}
+        />
+      )}
     </article>
   )
 }
@@ -569,6 +612,8 @@ function PublicDiscoverySeriesDetail({ resource, initialEpisodeId }: { resource:
     )
   }, [resource.id, resource.name])
   const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | null>(initialEpisodeId || null)
+  const [trailerOpen, setTrailerOpen] = useState(false)
+  const trailerUrl = resource.trailerUrl || matchingOpenSeries?.trailerUrl || null
   const openEpisodes = matchingOpenSeries?.seasons[0] ?? []
 
   const similarSeries = useMemo(() => {
@@ -602,11 +647,13 @@ function PublicDiscoverySeriesDetail({ resource, initialEpisodeId }: { resource:
   return (
     <article className="detail">
       <header className="detail-hero">
-        {resource.artworkUrl ? (
-          <img src={resource.artworkUrl} alt="" className="detail-backdrop" style={{ objectFit: 'cover' }} />
-        ) : (
-          <div className="detail-backdrop" style={{ background: 'linear-gradient(135deg, #111827 0%, #030712 100%)' }} />
-        )}
+        <Art
+          src={resource.artworkUrl || ''}
+          alt={resource.name}
+          className="detail-backdrop"
+          fallbackIcon="series"
+          eager
+        />
         <PageHeader overlay />
         <div className="detail-hero-content">
           <Breadcrumbs crumbs={[{ label: 'Home', to: '/' }, { label: 'TV Shows', to: '/series' }, { label: resource.name }]} />
@@ -632,6 +679,17 @@ function PublicDiscoverySeriesDetail({ resource, initialEpisodeId }: { resource:
             </span>
             {resource.country && <span>{resource.country}</span>}
             {resource.language && <span>{resource.language}</span>}
+            {trailerUrl && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-small"
+                onClick={() => setTrailerOpen(true)}
+                title="Watch series trailer"
+              >
+                <Icon name="play" size={14} />
+                <span>Trailer</span>
+              </button>
+            )}
           </div>
 
           <p className="detail-synopsis">{resource.description}</p>
@@ -646,6 +704,16 @@ function PublicDiscoverySeriesDetail({ resource, initialEpisodeId }: { resource:
                 <Icon name="link" size={16} />
                 <span>Explore Series Archive</span>
               </button>
+              {trailerUrl && (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setTrailerOpen(true)}
+                >
+                  <Icon name="film" size={16} />
+                  <span>Preview Trailer</span>
+                </button>
+              )}
             </div>
 
             <div className="title-actions-feedback">
@@ -773,6 +841,17 @@ function PublicDiscoverySeriesDetail({ resource, initialEpisodeId }: { resource:
           }))}
           currentEpisodeId={selectedEpisodeId || openEpisodes[0]?.id || ''}
           onSelectEpisode={(id) => setSelectedEpisodeId(id)}
+        />
+      )}
+
+      {trailerOpen && (
+        <TrailerPlayerModal
+          open={trailerOpen}
+          onClose={() => setTrailerOpen(false)}
+          title={resource.name}
+          trailerUrl={trailerUrl}
+          posterUrl={resource.artworkUrl}
+          playFullUrl={openEpisodes[0] ? `/watch/${encodeURIComponent(episodeRef(matchingOpenSeries!.id, openEpisodes[0].id))}` : undefined}
         />
       )}
     </article>

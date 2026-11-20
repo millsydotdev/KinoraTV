@@ -52,6 +52,8 @@ export interface Movie {
   backdropUrl?: string
   /** Verified IMDb title identifier (e.g. tt0063350). */
   imdbId?: string
+  /** Video trailer stream or embed URL (e.g. mp4 stream, YouTube or Vimeo preview). */
+  trailerUrl?: string
   /** Horizontal focal point (0-100) used when the landscape art is cropped to a poster. */
   focus: number
   added: string
@@ -87,6 +89,8 @@ export interface Series {
   backdropUrl?: string
   /** Verified IMDb title identifier (e.g. tt0055662). */
   imdbId?: string
+  /** Video trailer stream or embed URL (e.g. mp4 stream, YouTube or Vimeo preview). */
+  trailerUrl?: string
   focus: number
   added: string
   seasons: Episode[][]

@@ -169,6 +169,9 @@ describe('stream session boundary', () => {
 
   it('accepts only an opaque kstream address and a positive session id', () => {
     expect(parseOpenedStream({ ...ok, extra: 'https://cdn.example/a.m3u8' })).toEqual(ok)
+    expect(parseOpenedStream({ ...ok, format: 'direct' })).toEqual({ ...ok, format: 'direct' })
+    expect(parseOpenedStream({ ...ok, format: 'dash' })).toEqual({ ...ok, format: 'dash' })
+    expect(parseOpenedStream({ ...ok, format: 'hls' })).toEqual({ ...ok, format: 'hls' })
     for (const bad of [
       null, { ...ok, url: 'https://cdn.example/a.m3u8' }, { ...ok, url: 'kstream://localhost/abc' },
       { ...ok, url: `kstream://localhost/${'A'.repeat(32)}` }, { ...ok, url: `kstream://evil.example/${'0'.repeat(32)}` },

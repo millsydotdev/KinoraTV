@@ -111,9 +111,9 @@
 .streaming-hero {
   position: relative;
   width: 100%;
-  min-height: 440px;
-  max-height: 480px;
-  height: clamp(420px, 46vh, 480px);
+  min-height: clamp(480px, 54vh, 620px);
+  max-height: 640px;
+  height: clamp(480px, 54vh, 620px);
   overflow: hidden;
   background: #08090b;
   display: flex;
@@ -132,6 +132,7 @@
   height: 100%;
   object-fit: cover;
   object-position: center top;
+  animation: streamingHeroFade 400ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .streaming-hero-scrim {
@@ -148,8 +149,8 @@
 .streaming-hero-content {
   position: relative;
   z-index: 3;
-  padding: 0 48px 48px;
-  max-width: 640px;
+  padding: 0 clamp(24px, 3.5vw, 48px) clamp(28px, 4vh, 48px);
+  max-width: 720px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -176,7 +177,7 @@
 }
 
 .streaming-hero-title-movie {
-  font-size: clamp(2.2rem, 3.2vw, 3.2rem);
+  font-size: clamp(2.2rem, 3.6vw, 3.4rem);
   font-weight: 800;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -198,11 +199,11 @@
 }
 
 .streaming-hero-synopsis {
-  font-size: 0.9375rem;
-  line-height: 1.5;
+  font-size: 0.975rem;
+  line-height: 1.55;
   color: #cbd5e1;
-  max-width: 52ch;
-  margin: 0 0 14px;
+  max-width: 60ch;
+  margin: 0 0 16px;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
 }
 
@@ -364,8 +365,8 @@
 .streaming-body {
   display: flex;
   flex-direction: column;
-  gap: 28px;
-  padding: 24px var(--gutter, 24px) 0;
+  gap: 36px;
+  padding: 32px var(--gutter, 28px) 0;
 }
 
 /* Browse by Genre Row */
@@ -592,7 +593,7 @@
 
 /* 16:9 Landscape Cinematic Cards */
 .streaming-card-wide {
-  width: 258px;
+  width: clamp(260px, 19vw, 320px);
   flex: none;
   aspect-ratio: 16 / 9;
   border-radius: 10px;
@@ -606,18 +607,19 @@
   justify-content: flex-end;
   padding: 12px 14px;
   box-sizing: border-box;
-  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  will-change: transform;
+  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1), border-color 220ms ease, box-shadow 220ms ease;
 }
 
 .streaming-card-wide:hover {
-  transform: translateY(-4px);
+  transform: translateY(-5px) scale(1.02);
   border-color: rgba(242, 13, 36, 0.65);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.75), 0 0 16px rgba(242, 13, 36, 0.3);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.8), 0 0 18px rgba(242, 13, 36, 0.35);
 }
 
 /* 2:3 Portrait Theatrical Poster Cards */
 .streaming-card-poster {
-  width: clamp(140px, 11vw, 185px);
+  width: clamp(155px, 12.5vw, 205px);
   flex: none;
   aspect-ratio: 2 / 3;
   border-radius: 10px;
@@ -631,13 +633,14 @@
   justify-content: flex-end;
   padding: 12px 14px;
   box-sizing: border-box;
-  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  will-change: transform;
+  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1), border-color 220ms ease, box-shadow 220ms ease;
 }
 
 .streaming-card-poster:hover {
-  transform: translateY(-4px);
+  transform: translateY(-5px) scale(1.02);
   border-color: rgba(242, 13, 36, 0.65);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.75), 0 0 16px rgba(242, 13, 36, 0.3);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.8), 0 0 18px rgba(242, 13, 36, 0.35);
 }
 
 .streaming-card-poster .streaming-card-art {
@@ -957,7 +960,8 @@
   right: 0;
   bottom: 0;
   width: 380px;
-  max-width: 90vw;
+  max-width: calc(100vw - 32px);
+  max-height: 100vh;
   background: rgba(12, 16, 23, 0.98);
   backdrop-filter: blur(16px);
   border-left: 1px solid rgba(255, 255, 255, 0.1);
@@ -966,6 +970,7 @@
   padding: 24px;
   box-sizing: border-box;
   overflow-y: auto;
+  overscroll-behavior: contain;
   transform: translateX(100%);
   transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
   display: flex;
@@ -1175,4 +1180,67 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.movies-side-poster-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #171b22;
+  color: #9ca3af;
+}
+
+.movies-side-similar-fallback {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: #171b22;
+  color: #9ca3af;
+}
+
+@keyframes streamingHeroFade {
+  from {
+    opacity: 0.2;
+    transform: scale(1.02);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Reduced motion accessibility overrides */
+@media (prefers-reduced-motion: reduce) {
+  .streaming-hero-art img,
+  .streaming-card-wide,
+  .streaming-card-poster,
+  .streaming-genre-tile,
+  .streaming-btn-watch,
+  .streaming-btn-pill,
+  .streaming-dot,
+  .streaming-rail-btn,
+  .movies-side-panel {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}
+
+[data-motion="reduce"] .streaming-hero-art img,
+[data-motion="reduce"] .streaming-card-wide,
+[data-motion="reduce"] .streaming-card-poster,
+[data-motion="reduce"] .streaming-genre-tile,
+[data-motion="reduce"] .streaming-btn-watch,
+[data-motion="reduce"] .streaming-btn-pill,
+[data-motion="reduce"] .streaming-dot,
+[data-motion="reduce"] .streaming-rail-btn,
+[data-motion="reduce"] .movies-side-panel {
+  animation: none !important;
+  transition: none !important;
+  transform: none !important;
 }

@@ -16,6 +16,7 @@ import { Breadcrumbs } from '../components/Breadcrumbs'
 import { ArtworkLightboxModal } from '../components/ArtworkLightboxModal'
 import { CollectionDialog } from '../components/CollectionDialog'
 import { RatingControls } from '../components/RatingControls'
+import { TrailerPlayerModal } from '../components/TrailerPlayerModal'
 import type { MediaResource } from '../data/personalLibrary'
 import { VERIFICATION_STATUS_META } from '../data/personalLibrary'
 import { classifyMediaResource } from '../data/provenance'
@@ -334,10 +335,13 @@ export function MovieDetail() {
       )}
 
       {trailerOpen && (
-        <TrailerModal
+        <TrailerPlayerModal
           open={trailerOpen}
           onClose={() => setTrailerOpen(false)}
           title={movie.title}
+          trailerUrl={movie.trailerUrl}
+          posterUrl={movie.art || movie.backdropUrl}
+          playFullUrl={`/watch/${encodeURIComponent(ref)}`}
         />
       )}
     </article>
@@ -556,74 +560,20 @@ function XtreamMovieDetail({ movie }: { movie: XtreamTitle }) {
   )
 }
 
-function TrailerModal({
-  open,
-  onClose,
-  title,
-  trailerUrl,
-}: {
-  open: boolean
-  onClose: () => void
-  title: string
-  trailerUrl?: string | null
-}) {
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose])
-
-  if (!open) return null
-
-  return (
-    <div className="lightbox-backdrop" role="dialog" aria-modal="true" aria-label={`Trailer for ${title}`} onClick={onClose}>
-      <div className="lightbox-content" style={{ maxWidth: 840 }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700 }}>
-            {title} - Official Trailer Preview
-          </h3>
-          <button type="button" className="btn btn-ghost btn-small" onClick={onClose} aria-label="Close trailer">
-            <Icon name="close" size={16} />
-          </button>
-        </div>
-        <div style={{ position: 'relative', width: '100%', aspectRatio: '16 / 9', background: '#000', borderRadius: 'var(--r-m)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {trailerUrl ? (
-            <iframe
-              src={trailerUrl}
-              title={`${title} Trailer`}
-              allow="autoplay; encrypted-media; picture-in-picture"
-              allowFullScreen
-              style={{ width: '100%', height: '100%', border: 'none' }}
-            />
-          ) : (
-            <div style={{ textAlign: 'center', padding: 24, color: 'var(--text-2)' }}>
-              <span style={{ opacity: 0.6, marginBottom: 12, display: 'inline-block' }}>
-                <Icon name="film" size={48} />
-              </span>
-              <p style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 600 }}>
-                No trailer preview available
-              </p>
-              <p className="faint" style={{ marginTop: 6, fontSize: '0.8125rem' }}>
-                An official video trailer stream was not found in the metadata for {title}.
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function PublicDiscoveryFilmDetail({ resource }: { resource: MediaResource }) {
   const store = useStore()
   const toast = useToast()
+  const [trailerOpen, setTrailerOpen] = useState(false)
   const inLibrary = store.mediaLibrary.isInPersonalLibrary(resource.id)
   const isFav = store.mediaLibrary.isResourceFavourite(resource.id)
   const { provenance, capability } = classifyMediaResource(resource, inLibrary)
   const statusMeta = VERIFICATION_STATUS_META[resource.verificationStatus] ?? VERIFICATION_STATUS_META.discovered
+
+  const matchingOpenMovie = useMemo(
+    () => OPEN_MOVIES.find((m) => m.id === resource.id || m.title.toLowerCase() === resource.name.toLowerCase()),
+    [resource],
+  )
+  const trailerUrl = resource.trailerUrl || matchingOpenMovie?.trailerUrl || null
 
   const similarFilms = useMemo(() => {
     return store.mediaLibrary.allResources
@@ -656,11 +606,13 @@ function PublicDiscoveryFilmDetail({ resource }: { resource: MediaResource }) {
   return (
     <article className="detail">
       <header className="detail-hero">
-        {resource.artworkUrl ? (
-          <img src={resource.artworkUrl} alt="" className="detail-backdrop" style={{ objectFit: 'cover' }} />
-        ) : (
-          <div className="detail-backdrop" style={{ background: 'linear-gradient(135deg, #111827 0%, #030712 100%)' }} />
-        )}
+        <Art
+          src={resource.artworkUrl || ''}
+          alt={resource.name}
+          className="detail-backdrop"
+          fallbackIcon="film"
+          eager
+        />
         <PageHeader overlay />
         <div className="detail-hero-content">
           <Breadcrumbs crumbs={[{ label: 'Home', to: '/' }, { label: 'Movies', to: '/movies' }, { label: resource.name }]} />
@@ -686,6 +638,17 @@ function PublicDiscoveryFilmDetail({ resource }: { resource: MediaResource }) {
             </span>
             {resource.country && <span>{resource.country}</span>}
             {resource.language && <span>{resource.language}</span>}
+            {trailerUrl && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-small"
+                onClick={() => setTrailerOpen(true)}
+                title="Watch trailer preview"
+              >
+                <Icon name="play" size={14} />
+                <span>Trailer</span>
+              </button>
+            )}
           </div>
 
           <p className="detail-synopsis">{resource.description}</p>
@@ -700,6 +663,16 @@ function PublicDiscoveryFilmDetail({ resource }: { resource: MediaResource }) {
                 <Icon name="link" size={16} />
                 <span>Explore Archive Portal</span>
               </button>
+              {trailerUrl && (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setTrailerOpen(true)}
+                >
+                  <Icon name="film" size={16} />
+                  <span>Preview Trailer</span>
+                </button>
+              )}
             </div>
 
             <div className="title-actions-feedback">
@@ -769,6 +742,17 @@ function PublicDiscoveryFilmDetail({ resource }: { resource: MediaResource }) {
             ))}
           </Section>
         </section>
+      )}
+
+      {trailerOpen && (
+        <TrailerPlayerModal
+          open={trailerOpen}
+          onClose={() => setTrailerOpen(false)}
+          title={resource.name}
+          trailerUrl={trailerUrl}
+          posterUrl={resource.artworkUrl}
+          playFullUrl={matchingOpenMovie ? `/watch/${encodeURIComponent(`movie:${matchingOpenMovie.id}`)}` : undefined}
+        />
       )}
     </article>
   )

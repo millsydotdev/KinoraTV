@@ -598,18 +598,20 @@
   }
 }
 
-/* Smart TV Home Stage: 2-Column Split matching Reference Mockup */
+/* Smart TV Home Stage: Full-Width Cinematic Hero + Balanced Responsive Hub Deck */
 .home-smarttv-top-stage {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(340px, 26vw, 420px);
+  display: flex;
+  flex-direction: column;
   gap: 24px;
   padding: 12px var(--gutter, 24px) 24px;
   box-sizing: border-box;
+  width: 100%;
 }
 
 .home-hero-cinematic {
   position: relative;
-  min-height: 480px;
+  width: 100%;
+  min-height: clamp(420px, 46vh, 540px);
   border-radius: 16px;
   overflow: hidden;
   background: #080a0e;
@@ -819,9 +821,12 @@
 
 /* Side Live TV & Library Hub */
 .home-side-hub {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 16px;
+  width: 100%;
+  box-sizing: border-box;
+  align-items: stretch;
 }
 
 .home-mini-live-card {
@@ -1023,11 +1028,16 @@
   flex: none;
 }
 
-/* Quick Action Buttons Row */
+/* Quick Action Buttons Deck */
 .home-quick-actions-bar {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 8px;
+  background: rgba(18, 22, 28, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 12px;
+  box-sizing: border-box;
 }
 
 .home-quick-act-btn {
@@ -1035,14 +1045,15 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  height: 58px;
+  gap: 6px;
+  min-height: 58px;
+  height: 100%;
   border-radius: 10px;
-  background: rgba(18, 22, 28, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   color: #9ca3af;
   text-decoration: none;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   font-weight: 600;
   transition: all 120ms var(--ease);
 }
@@ -1158,7 +1169,16 @@
 }
 
 @media (max-width: 1200px) {
-  .home-smarttv-top-stage {
+  .home-hero-cinematic {
+    padding: 28px 48px 24px;
+  }
+}
+@media (max-width: 760px) {
+  .home-hero-cinematic {
+    padding: 24px 20px;
+    min-height: 380px;
+  }
+  .home-side-hub {
     grid-template-columns: 1fr;
   }
 }
@@ -1172,7 +1192,7 @@
   background: radial-gradient(ellipse at 78% 42%, rgba(229, 9, 20, 0.08) 0%, rgba(18, 22, 30, 0.85) 50%, #05070a 100%);
   display: flex;
   align-items: center;
-  justifyContent: flex-end;
+  justify-content: flex-end;
   padding-right: 12%;
   overflow: hidden;
 }

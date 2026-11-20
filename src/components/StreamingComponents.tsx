@@ -83,6 +83,7 @@ export interface HeroSlideData {
   playUrl: string
   detailUrl: string
   itemRef: string
+  trailerUrl?: string
 }
 
 export function StreamingHero({
@@ -92,6 +93,7 @@ export function StreamingHero({
   onNext,
   onSelectIndex,
   isTv = false,
+  onPlayTrailer,
 }: {
   slides: HeroSlideData[]
   activeIndex: number
@@ -99,6 +101,7 @@ export function StreamingHero({
   onNext: () => void
   onSelectIndex: (idx: number) => void
   isTv?: boolean
+  onPlayTrailer?: (slide: HeroSlideData) => void
 }) {
   const store = useStore()
   const toast = useToast()
@@ -203,6 +206,17 @@ export function StreamingHero({
             <Icon name={inWatchlist ? 'check' : 'plus'} size={17} />
             <span>{inWatchlist ? 'In My List' : 'Add to My List'}</span>
           </button>
+          {onPlayTrailer && (
+            <button
+              type="button"
+              className="streaming-btn-pill"
+              onClick={() => onPlayTrailer(current)}
+              aria-label={`Watch trailer for ${current.title}`}
+            >
+              <Icon name="film" size={17} />
+              <span>Trailer</span>
+            </button>
+          )}
         </div>
       </div>
 

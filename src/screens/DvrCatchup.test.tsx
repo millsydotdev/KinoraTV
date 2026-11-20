@@ -301,4 +301,21 @@ describe('DVR, Live TV Recording, Catch-up TV & Timeshift', () => {
 
     unmount()
   })
+
+  it('renders DVR storage readout with zero NaN MB formatting errors', async () => {
+    const { host, unmount } = mount('/recordings')
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50))
+    })
+
+    const banner = host.querySelector('[data-testid="dvr-storage-banner"]')
+    expect(banner).not.toBeNull()
+    const text = banner?.textContent || ''
+    expect(text).toContain('DVR Storage:')
+    expect(text).not.toContain('NaN')
+    expect(text).not.toContain('NaN MB')
+    expect(text).not.toContain('undefined')
+
+    unmount()
+  })
 })

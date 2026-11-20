@@ -3,10 +3,11 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { genresOf, series } from '../data/catalog'
 import { episodeCode, episodeRef, seriesRef } from '../data/refs'
 import type { Series } from '../data/types'
+import { OPEN_SERIES } from '../data/openCatalogue'
 import { Icon } from '../components/Icon'
 import { PageHeader } from '../components/PageHeader'
 import { PosterCard, XtreamPosterCard } from '../components/Tiles'
-import { StateBlock } from '../components/ui'
+import { Art, StateBlock } from '../components/ui'
 import {
   StreamingHero,
   StreamingGenreRow,
@@ -23,6 +24,7 @@ import { seriesNextUp } from '../lib/library'
 import { useProfiles } from '../state/profiles'
 import { useStore } from '../state/store'
 import { useLocalMedia } from '../state/localMedia'
+import { TrailerPlayerModal } from '../components/TrailerPlayerModal'
 import './Browse.css'
 import './MediaStreaming.css'
 
@@ -68,6 +70,13 @@ export function SeriesBrowse() {
   const [activeTab, setActiveTab] = useState<string>('browse')
   const [selectedGenre, setSelectedGenre] = useState<string | null>(null)
   const [heroIndex, setHeroIndex] = useState(0)
+  const [trailerModal, setTrailerModal] = useState<{
+    open: boolean
+    title: string
+    trailerUrl?: string | null
+    posterUrl?: string
+    playFullUrl?: string
+  }>({ open: false, title: '' })
   const [providerLimit, setProviderLimit] = useState(100)
   const [providerQuery, setProviderQuery] = useState('')
 
@@ -212,23 +221,28 @@ export function SeriesBrowse() {
         playUrl: `/series/${s.id}`,
         detailUrl: `/series/${s.id}`,
         itemRef: seriesRef(s.id),
+        trailerUrl: s.trailerUrl,
       }))
     }
     if (publicDiscoverySeries.length > 0) {
-      return publicDiscoverySeries.slice(0, 5).map((s) => ({
-        id: s.id,
-        kicker: 'FEATURED TELEVISION ARCHIVE',
-        title: s.name,
-        synopsis: s.description,
-        art: s.artworkUrl,
-        year: 'Public Archive',
-        genre: s.subcategory.replace(/-/g, ' ').toUpperCase(),
-        runtime: 'Broadcast Series',
-        badges: ['ARCHIVE', 'EPISODIC'],
-        playUrl: `/series/${encodeURIComponent(s.id)}`,
-        detailUrl: `/series/${encodeURIComponent(s.id)}`,
-        itemRef: `res:${s.id}`,
-      }))
+      return publicDiscoverySeries.slice(0, 5).map((s) => {
+        const matchingOpen = OPEN_SERIES.find((os) => os.id === s.id || os.title.toLowerCase() === s.name.toLowerCase())
+        return {
+          id: s.id,
+          kicker: 'FEATURED TELEVISION ARCHIVE',
+          title: s.name,
+          synopsis: s.description,
+          art: s.artworkUrl,
+          year: 'Public Archive',
+          genre: s.subcategory.replace(/-/g, ' ').toUpperCase(),
+          runtime: 'Broadcast Series',
+          badges: ['ARCHIVE', 'EPISODIC'],
+          playUrl: `/series/${encodeURIComponent(s.id)}`,
+          detailUrl: `/series/${encodeURIComponent(s.id)}`,
+          itemRef: `res:${s.id}`,
+          trailerUrl: s.trailerUrl || matchingOpen?.trailerUrl,
+        }
+      })
     }
     return []
   }, [hasXtream, hasDemo, publicDiscoverySeries, safeXtreamSeries, safeSeries])
@@ -328,6 +342,18 @@ export function SeriesBrowse() {
     return []
   }, [hasDemo, safeSeries, library])
 
+  const availableCategories = useMemo(() => {
+    if (hasXtream) return seriesCategories.map((c) => ({ id: c.id, name: c.name }))
+    if (hasDemo) return genresOf(safeSeries).map((g) => ({ id: g, name: g }))
+    const set = new Set<string>()
+    for (const r of publicDiscoverySeries) {
+      if (r.tags) {
+        for (const t of r.tags) set.add(t)
+      }
+    }
+    return Array.from(set).sort().map((t) => ({ id: t, name: t }))
+  }, [hasXtream, seriesCategories, hasDemo, safeSeries, publicDiscoverySeries])
+
   const isFiltering = category !== 'All' || provider !== 'All' || Boolean(normalizedQuery) || Boolean(selectedGenre) || activeTab === 'a-z'
   const sourceName = (id: string) => store.xtreamSources.find((s) => s.id === id)?.name ?? 'Provider'
 
@@ -402,11 +428,8 @@ export function SeriesBrowse() {
             aria-label="Category"
           >
             <option value="All">All Categories</option>
-            {hasXtream && seriesCategories.map((c) => (
+            {availableCategories.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-            {!hasXtream && genresOf(safeSeries).map((g) => (
-              <option key={g} value={g}>{g}</option>
             ))}
           </select>
 
@@ -467,6 +490,15 @@ export function SeriesBrowse() {
             onNext={() => setHeroIndex((i) => (i + 1) % heroSlides.length)}
             onSelectIndex={setHeroIndex}
             isTv
+            onPlayTrailer={(slide) =>
+              setTrailerModal({
+                open: true,
+                title: slide.title,
+                trailerUrl: slide.trailerUrl,
+                posterUrl: slide.backdropUrl || slide.art,
+                playFullUrl: slide.playUrl,
+              })
+            }
           />
 
           <div className="streaming-body">
@@ -768,7 +800,7 @@ export function SeriesBrowse() {
                 className="streaming-genre-tile"
                 onClick={() => setSelectedGenre(g.name)}
               >
-                <img src={g.art} alt="" className="streaming-genre-art" />
+                <Art src={g.art} alt={g.name} className="streaming-genre-art" fallbackIcon="series" />
                 <span className="streaming-genre-label">{g.name}</span>
               </button>
             ))}
@@ -913,6 +945,16 @@ export function SeriesBrowse() {
             </div>
           )}
         </div>
+      )}
+      {trailerModal.open && (
+        <TrailerPlayerModal
+          open={trailerModal.open}
+          onClose={() => setTrailerModal((prev) => ({ ...prev, open: false }))}
+          title={trailerModal.title}
+          trailerUrl={trailerModal.trailerUrl}
+          posterUrl={trailerModal.posterUrl}
+          playFullUrl={trailerModal.playFullUrl}
+        />
       )}
     </div>
   )

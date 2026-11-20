@@ -225,8 +225,22 @@ export function PosterCard({ to, title, art, posterUrl, artworkKey, focus = 50, 
 }
 
 /** Provider art is fetched by Rust only when the poster nears the viewport; the remote URL stays native-side. */
-export function XtreamArt({ artworkKey, alt = '', className = '', eager = false, fallbackTitle, fallbackYear }: {
-  artworkKey?: string | null; alt?: string; className?: string; eager?: boolean; fallbackTitle?: string; fallbackYear?: number | null
+export function XtreamArt({
+  artworkKey,
+  alt = '',
+  className = '',
+  eager = false,
+  fallbackTitle,
+  fallbackYear,
+  fallbackIcon = 'film',
+}: {
+  artworkKey?: string | null
+  alt?: string
+  className?: string
+  eager?: boolean
+  fallbackTitle?: string
+  fallbackYear?: number | null
+  fallbackIcon?: IconName
 }) {
   const artRef = useRef<HTMLDivElement>(null)
   const [art, setArt] = useState('')
@@ -262,6 +276,7 @@ export function XtreamArt({ artworkKey, alt = '', className = '', eager = false,
           src={art}
           alt={alt}
           eager={eager}
+          fallbackIcon={fallbackIcon}
           onLoad={(e) => {
             const img = e.currentTarget
             setIsPortrait(img.naturalHeight > img.naturalWidth * 1.05)
@@ -271,7 +286,7 @@ export function XtreamArt({ artworkKey, alt = '', className = '', eager = false,
         <div className="xtream-art-fallback" role="img" aria-label={alt ? `${alt}, artwork unavailable` : 'Artwork unavailable'}>
           <div className="xtream-fallback-gradient" />
           <div className="xtream-fallback-content">
-            <span className="xtream-fallback-icon"><Icon name="film" size={28} /></span>
+            <span className="xtream-fallback-icon"><Icon name={fallbackIcon} size={28} /></span>
             {fallbackTitle && <strong className="xtream-fallback-title">{fallbackTitle}</strong>}
             {fallbackYear != null && <span className="xtream-fallback-year">{fallbackYear}</span>}
           </div>
@@ -370,6 +385,7 @@ export function EpisodeCard({
                 alt={episodeTitle}
                 className="card-media episode-card-art"
                 fallbackTitle={`Episode ${episodeNumber}`}
+                fallbackIcon="series"
               />
             ) : (
               <Art

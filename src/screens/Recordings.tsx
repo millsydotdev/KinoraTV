@@ -27,12 +27,15 @@ function EmptyState({ icon, title, body, action }: { icon: IconName; title: stri
 
 type TabKind = 'all' | 'recording' | 'scheduled' | 'completed' | 'failed' | 'rules'
 
-function formatBytes(bytes: number): string {
-  if (bytes <= 0) return '0 MB'
+function formatBytes(bytes: number | null | undefined): string {
+  if (bytes == null || !Number.isFinite(bytes) || bytes <= 0) return '0 B'
   const gb = bytes / (1024 * 1024 * 1024)
   if (gb >= 1) return `${gb.toFixed(1)} GB`
   const mb = bytes / (1024 * 1024)
-  return `${Math.max(0.1, mb).toFixed(1)} MB`
+  if (mb >= 1) return `${mb.toFixed(1)} MB`
+  const kb = bytes / 1024
+  if (kb >= 1) return `${kb.toFixed(1)} KB`
+  return `${Math.round(bytes)} B`
 }
 
 function formatDuration(secs: number): string {
@@ -207,11 +210,13 @@ export function Recordings() {
     }
   }
 
-  const maxCap = config?.maxStorageBytes && config.maxStorageBytes > 0
+  const rawCap = config?.maxStorageBytes && config.maxStorageBytes > 0
     ? config.maxStorageBytes
     : storage?.totalDiskBytes ?? (100 * 1024 * 1024 * 1024)
-  const usedBytes = storage?.usedByRecordingsBytes ?? 0
-  const usagePct = Math.min(100, Math.round((usedBytes / Math.max(1, maxCap)) * 100))
+  const maxCap = Number.isFinite(rawCap) && rawCap > 0 ? rawCap : (100 * 1024 * 1024 * 1024)
+  const rawUsed = storage?.usedByRecordingsBytes ?? 0
+  const usedBytes = Number.isFinite(rawUsed) && rawUsed > 0 ? rawUsed : 0
+  const usagePct = Math.min(100, Math.max(0, Math.round((usedBytes / Math.max(1, maxCap)) * 100)))
 
   return (
     <div className="screen recordings-screen">

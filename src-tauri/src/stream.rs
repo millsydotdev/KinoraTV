@@ -57,8 +57,8 @@ impl Default for Limits {
             playlist_bytes: 4 * MIB,
             segment_bytes: 32 * MIB,
             key_bytes: 1024, // an AES-128 key is 16 bytes
-            budget_bytes: 64 * MIB,
-            concurrent: 4,
+            budget_bytes: 128 * MIB,
+            concurrent: 6,
             handles: 20_000,
             uris_per_playlist: 20_000,
             variants: 32,
@@ -116,19 +116,25 @@ pub struct Streams {
     origin: String,
 }
 
-/// Paths that are clearly not HLS. Anything else is tried as HLS and refused with 415 if it is not.
-const NOT_HLS: &[&str] = &[
+/// Direct media containers that play as direct streams rather than HLS playlists.
+const DIRECT_MEDIA: &[&str] = &[
     ".ts", ".mp4", ".m4v", ".mkv", ".webm", ".avi", ".mov", ".flv", ".mp3", ".aac", ".m4a",
 ];
 const PLAYLIST_TYPE: &str = "application/vnd.apple.mpegurl";
-/// Upstream content types passed through for segments; anything else becomes octet-stream.
+/// Upstream content types passed through for segments and direct media; anything else becomes octet-stream.
 const MEDIA_TYPES: &[&str] = &[
     "video/mp2t",
     "video/mp4",
+    "video/webm",
+    "video/x-matroska",
+    "video/quicktime",
+    "video/x-msvideo",
     "audio/mp4",
-    "video/iso.segment",
     "audio/aac",
     "audio/mpeg",
+    "audio/ogg",
+    "audio/wav",
+    "video/iso.segment",
     "application/octet-stream",
 ];
 
@@ -231,13 +237,10 @@ impl Streams {
             }
         })?;
         let path = url.path().to_ascii_lowercase();
-        if NOT_HLS.iter().any(|ext| path.ends_with(ext)) {
-            return Err(unsupported(
-                "This is a direct video file. Kinora plays HLS and DASH streams, not video files.",
-            ));
-        }
         let root_kind = if path.ends_with(".mpd") {
             Kind::Manifest
+        } else if DIRECT_MEDIA.iter().any(|ext| path.ends_with(ext)) {
+            Kind::Direct
         } else {
             Kind::Playlist { depth: 0 }
         };
@@ -280,10 +283,10 @@ impl Streams {
         Ok(Opened {
             url: format!("{HANDLE_BASE}{root}"),
             session: id,
-            format: if root_kind == Kind::Manifest {
-                "dash"
-            } else {
-                "hls"
+            format: match root_kind {
+                Kind::Manifest => "dash",
+                Kind::Direct => "direct",
+                _ => "hls",
             },
         })
     }
@@ -425,16 +428,24 @@ impl Streams {
                 (self.limits.playlist_total, self.limits.playlist_bytes)
             }
             Kind::Key => (self.limits.playlist_total, self.limits.key_bytes),
-            Kind::Segment | Kind::Init | Kind::Prefix => {
+            Kind::Segment | Kind::Init | Kind::Prefix | Kind::Direct => {
                 (self.limits.segment_total, self.limits.segment_bytes)
             }
         };
-        if range.is_some() && !matches!(kind, Kind::Segment | Kind::Init | Kind::Prefix) {
+        if range.is_some()
+            && !matches!(
+                kind,
+                Kind::Segment | Kind::Init | Kind::Prefix | Kind::Direct
+            )
+        {
             return self.fail(416, "Byte ranges apply to media segments only.");
         }
         let range_header = range.map(|(s, e)| match e {
             Some(e) => format!("bytes={s}-{e}"),
-            None => format!("bytes={s}-"),
+            None => {
+                let max_end = s + (cap as u64).saturating_sub(1);
+                format!("bytes={s}-{max_end}")
+            }
         });
         let work = async {
             // Waiting for a request slot counts towards the request's own time limit.
@@ -474,7 +485,7 @@ impl Streams {
                 r
             }
             Kind::Manifest => self.manifest(session, fetched),
-            Kind::Segment | Kind::Init | Kind::Prefix => self.media(range, fetched),
+            Kind::Segment | Kind::Init | Kind::Prefix | Kind::Direct => self.media(range, fetched),
         }
     }
 
@@ -575,7 +586,7 @@ impl Streams {
             })
             .filter(|t| MEDIA_TYPES.contains(&t.as_str()))
             .unwrap_or_else(|| "application/octet-stream".into());
-        let mut headers = vec![("Content-Type", ctype)];
+        let mut headers = vec![("Content-Type", ctype), ("Accept-Ranges", "bytes".into())];
         let (status, body) = match (range, status) {
             // The server honoured the range: pass its Content-Range on if it is well formed.
             (Some(_), 206) => match content_range.filter(|c| valid_content_range(c)) {
@@ -751,11 +762,7 @@ mod tests {
                 ErrorCode::UnsupportedStream,
             ),
             (
-                "http://provider.example/live/user/pass/123.ts",
-                ErrorCode::UnsupportedStream,
-            ),
-            (
-                "https://cdn.example/movie.mp4",
+                "rtsp://provider.example/live/user/pass/123.ts",
                 ErrorCode::UnsupportedStream,
             ),
             ("http://192.168.1.10/live.m3u8", ErrorCode::Blocked),
@@ -772,6 +779,10 @@ mod tests {
                 );
             }
         }
+        let direct_mp4 = s.open("https://cdn.example/movie.mp4").unwrap();
+        assert_eq!(direct_mp4.format, "direct");
+        let direct_ts = s.open("http://provider.example/live/123.ts").unwrap();
+        assert_eq!(direct_ts.format, "direct");
     }
 
     #[test]
@@ -810,6 +821,7 @@ mod tests {
                 names.iter().all(|n| [
                     "Content-Type",
                     "Content-Range",
+                    "Accept-Ranges",
                     "Access-Control-Allow-Origin",
                     "Vary",
                     "Cache-Control",

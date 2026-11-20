@@ -115,7 +115,7 @@
   box-shadow: 0 2px 12px rgba(229, 9, 20, 0.45);
 }
 
-.detail-body { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(300px, 1fr); gap: clamp(24px, 3.5vw, 56px); padding: 16px var(--gutter) 0; }
+.detail-body { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(300px, 1fr); gap: clamp(28px, 4vw, 64px); padding: 24px var(--gutter) 0; }
 .detail-story { display: grid; gap: 16px; justify-items: start; align-content: start; }
 .detail-story p { color: var(--text-2); font-size: 1rem; max-width: 64ch; line-height: 1.7; margin: 0; }
 .detail-facts { margin: 0; display: grid; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--r-l); background: rgba(255, 255, 255, 0.02); padding: 6px 20px; }
@@ -167,12 +167,14 @@
   border: 1px solid var(--line);
   border-radius: var(--r-l);
   background: var(--surface);
-  transition: all 150ms var(--ease);
+  will-change: transform;
+  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1), border-color 200ms ease, background 200ms ease, box-shadow 200ms ease;
 }
 .episode-card:hover {
+  transform: translateY(-2px);
   border-color: var(--line-strong);
   background: var(--surface-2);
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 .episode-card.is-next {
   border-color: var(--accent);
@@ -414,4 +416,24 @@
   .detail-backdrop::after { background: linear-gradient(0deg, var(--bg) 0%, rgb(var(--bg-rgb) / 0.9) 50%, rgb(var(--bg-rgb) / 0.4) 85%, rgb(var(--bg-rgb) / 0.6) 100%); }
   .episode { grid-template-columns: 110px 1fr auto; align-items: start; gap: 12px; }
   .episode .muted { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .episode-card,
+  .detail-tab-pill,
+  .episodes-head .tab,
+  .title-actions-primary .btn-primary {
+    transition: none !important;
+    animation: none !important;
+    transform: none !important;
+  }
+}
+
+[data-motion="reduce"] .episode-card,
+[data-motion="reduce"] .detail-tab-pill,
+[data-motion="reduce"] .episodes-head .tab,
+[data-motion="reduce"] .title-actions-primary .btn-primary {
+  transition: none !important;
+  animation: none !important;
+  transform: none !important;
 }

@@ -6,10 +6,10 @@ import { Dialog } from '../components/Dialog'
 import { useToast } from '../components/Toast'
 import type { LocalLibrary } from '../lib/native'
 
-function formatBytes(bytes: number): string {
-  if (!bytes || bytes <= 0) return '0 B'
+function formatBytes(bytes: number | null | undefined): string {
+  if (bytes == null || !Number.isFinite(bytes) || bytes <= 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
-  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)))
   const val = bytes / Math.pow(1024, i)
   return `${val >= 10 || i === 0 ? val.toFixed(1) : val.toFixed(2)} ${units[i]}`
 }

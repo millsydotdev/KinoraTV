@@ -6,7 +6,7 @@ import type { Movie } from '../data/types'
 import { Icon } from '../components/Icon'
 import { PageHeader } from '../components/PageHeader'
 import { PosterCard, XtreamPosterCard } from '../components/Tiles'
-import { StateBlock } from '../components/ui'
+import { Art, StateBlock } from '../components/ui'
 import { useToast } from '../components/Toast'
 import { ShareModal } from '../components/ShareModal'
 import {
@@ -25,6 +25,7 @@ import { filterKidSafeResources, filterKidSafeTitles, filterKidSafeXtreamTitles 
 import { useProfiles } from '../state/profiles'
 import { useStore } from '../state/store'
 import { useLocalMedia } from '../state/localMedia'
+import { TrailerPlayerModal } from '../components/TrailerPlayerModal'
 import './Browse.css'
 import './MediaStreaming.css'
 
@@ -108,6 +109,13 @@ export function Movies() {
   const [selectedMovie, setSelectedMovie] = useState<any>(null)
   const [selectedGenre, setSelectedGenre] = useState<string | null>(null)
   const [heroIndex, setHeroIndex] = useState(0)
+  const [trailerModal, setTrailerModal] = useState<{
+    open: boolean
+    title: string
+    trailerUrl?: string | null
+    posterUrl?: string
+    playFullUrl?: string
+  }>({ open: false, title: '' })
   const [providerLimit, setProviderLimit] = useState(100)
   const [providerQuery, setProviderQuery] = useState('')
 
@@ -281,6 +289,7 @@ export function Movies() {
             playUrl: `/watch/${encodeURIComponent(movieRef(m.id))}`,
             detailUrl: `/movies/${m.id}`,
             itemRef: movieRef(m.id),
+            trailerUrl: m.trailerUrl,
           }
         }),
       ]
@@ -354,6 +363,18 @@ export function Movies() {
     return []
   }, [hasXtream, hasDemo, publicDiscoveryFilms, store.mediaLibrary, library.watchlist])
 
+  const availableCategories = useMemo(() => {
+    if (hasXtream) return vodCategories.map((c) => ({ id: c.id, name: c.name }))
+    if (hasDemo) return genresOf(safeMovies).map((g) => ({ id: g, name: g }))
+    const set = new Set<string>()
+    for (const r of publicDiscoveryFilms) {
+      if (r.tags) {
+        for (const t of r.tags) set.add(t)
+      }
+    }
+    return Array.from(set).sort().map((t) => ({ id: t, name: t }))
+  }, [hasXtream, vodCategories, hasDemo, safeMovies, publicDiscoveryFilms])
+
   const isFiltering = category !== 'All' || provider !== 'All' || year !== 'All' || Boolean(normalizedQuery) || Boolean(selectedGenre) || activeTab === 'a-z'
 
   const sourceName = (id: string) => store.xtreamSources.find((s) => s.id === id)?.name ?? 'Provider'
@@ -409,11 +430,19 @@ export function Movies() {
           </div>
 
           <div className="movies-side-poster-wrap">
-            <img
-              src={activeMovie.art}
-              alt={activeMovie.title}
-              className="movies-side-poster-img"
-            />
+            {activeMovie.art ? (
+              <Art
+                src={activeMovie.art}
+                alt={activeMovie.title}
+                contentId={activeMovie.id}
+                fallbackIcon="film"
+                className="movies-side-poster-img"
+              />
+            ) : (
+              <div className="movies-side-poster-fallback">
+                <Icon name="film" size={40} />
+              </div>
+            )}
             <Link to={activeMovie.playUrl} className="movies-side-play-overlay" aria-label={`Play ${activeMovie.title}`}>
               <div className="movies-side-play-btn">
                 <Icon name="play" size={20} />
@@ -475,6 +504,23 @@ export function Movies() {
             >
               <Icon name="share" size={18} />
             </button>
+            <button
+              type="button"
+              className="movies-side-icon-btn"
+              aria-label="Watch trailer preview"
+              title="Watch trailer preview"
+              onClick={() =>
+                setTrailerModal({
+                  open: true,
+                  title: activeMovie.title,
+                  trailerUrl: activeMovie.trailerUrl,
+                  posterUrl: activeMovie.art,
+                  playFullUrl: activeMovie.playUrl,
+                })
+              }
+            >
+              <Icon name="film" size={18} />
+            </button>
           </div>
 
           <div className="movies-side-specs-table">
@@ -510,7 +556,13 @@ export function Movies() {
               <div className="movies-side-similar-grid">
                 {activeMovie.similar.map((sim: any) => (
                   <Link key={sim.id} to={sim.to} className="movies-side-similar-card" title={sim.title}>
-                    <img src={sim.art} alt={sim.title} className="movies-side-similar-thumb" />
+                    {sim.art ? (
+                      <Art src={sim.art} alt={sim.title} contentId={sim.id} fallbackIcon="film" className="movies-side-similar-thumb" />
+                    ) : (
+                      <div className="movies-side-similar-fallback">
+                        <Icon name="film" size={20} />
+                      </div>
+                    )}
                     <span className="movies-side-similar-title">{sim.title}</span>
                   </Link>
                 ))}
@@ -601,11 +653,8 @@ export function Movies() {
             aria-label="Category"
           >
             <option value="All">All Categories</option>
-            {hasXtream && vodCategories.map((c) => (
+            {availableCategories.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-            {!hasXtream && genresOf(safeMovies).map((g) => (
-              <option key={g} value={g}>{g}</option>
             ))}
           </select>
 
@@ -666,6 +715,15 @@ export function Movies() {
               onPrev={() => setHeroIndex((i) => (i - 1 + heroSlides.length) % heroSlides.length)}
               onNext={() => setHeroIndex((i) => (i + 1) % heroSlides.length)}
               onSelectIndex={setHeroIndex}
+              onPlayTrailer={(slide) =>
+                setTrailerModal({
+                  open: true,
+                  title: slide.title,
+                  trailerUrl: slide.trailerUrl,
+                  posterUrl: slide.backdropUrl || slide.art,
+                  playFullUrl: slide.playUrl,
+                })
+              }
             />
 
             {/* Continue Watching Rail */}
@@ -714,12 +772,12 @@ export function Movies() {
 
             {/* Popular Movies Rail */}
             <StreamingRail
-              title="Popular Movies"
+              title={hasXtream ? "Popular Movies" : hasDemo ? "Popular Movies" : "Documentary & Cultural Archives"}
               iconName="flame"
               iconColor="var(--accent)"
               onSeeAll={() => setActiveTab('popular')}
             >
-              {(hasXtream ? popularXtream : popularDemo).map((movie: any) => {
+              {(hasXtream ? popularXtream : hasDemo ? popularDemo : popularPublicDiscovery).map((movie: any) => {
                 const isXt = Boolean(movie.sourceId)
                 const routeId = isXt ? `xt:${movie.sourceId}:${movie.id}` : movie.id
                 return (
@@ -1128,7 +1186,7 @@ export function Movies() {
                 className="streaming-genre-tile"
                 onClick={() => setSelectedGenre(g.name)}
               >
-                <img src={g.art} alt="" className="streaming-genre-art" />
+                <Art src={g.art} alt={g.name} className="streaming-genre-art" fallbackIcon="film" />
                 <span className="streaming-genre-label">{g.name}</span>
               </button>
             ))}
@@ -1290,6 +1348,16 @@ export function Movies() {
             : null
         }
       />
+      {trailerModal.open && (
+        <TrailerPlayerModal
+          open={trailerModal.open}
+          onClose={() => setTrailerModal((prev) => ({ ...prev, open: false }))}
+          title={trailerModal.title}
+          trailerUrl={trailerModal.trailerUrl}
+          posterUrl={trailerModal.posterUrl}
+          playFullUrl={trailerModal.playFullUrl}
+        />
+      )}
     </div>
   )
 }

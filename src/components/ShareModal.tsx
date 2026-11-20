@@ -20,6 +20,23 @@ interface ShareModalProps {
   item: ShareItem | null
 }
 
+function getCanonicalOrigin(): string {
+  if (typeof window === 'undefined') return 'https://kinora.tv'
+  const hostname = window.location.hostname
+  const protocol = window.location.protocol
+  if (
+    protocol === 'tauri:' ||
+    protocol === 'asset:' ||
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '[::1]' ||
+    hostname.endsWith('.localhost')
+  ) {
+    return 'https://kinora.tv'
+  }
+  return window.location.origin
+}
+
 export function ShareModal({ open, onClose, item }: ShareModalProps) {
   const toast = useToast()
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -43,10 +60,12 @@ export function ShareModal({ open, onClose, item }: ShareModalProps) {
 
   if (!open || !item) return null
 
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://kinora.tv'
+  const origin = getCanonicalOrigin()
   const kinoraUrl = item.deepLinkPath
     ? `${origin}${item.deepLinkPath.startsWith('/') ? '' : '/'}${item.deepLinkPath}`
-    : typeof window !== 'undefined' ? window.location.href : origin
+    : typeof window !== 'undefined'
+      ? `${origin}${window.location.pathname}${window.location.search}`
+      : origin
   const imdbUrl = item.imdbId ? `https://www.imdb.com/title/${item.imdbId}/` : null
   const canNativeShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function'
 

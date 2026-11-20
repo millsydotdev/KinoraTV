@@ -152,25 +152,50 @@ export function AudioPlayerBar({
   }, [eqPreset, isPlaying])
 
   useEffect(() => {
-    if (!audioRef.current || !track) return
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current.removeAttribute('src')
+        audioRef.current.load()
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!audioRef.current) return
+    if (!track) {
+      setError(null)
+      setLoading(false)
+      audioRef.current.pause()
+      audioRef.current.removeAttribute('src')
+      audioRef.current.load()
+      return
+    }
     setError(null)
     setLoading(true)
 
     audioRef.current.src = track.streamUrl
     audioRef.current.volume = volume
 
+    let active = true
     if (isPlaying) {
       audioRef.current.play().then(() => {
-        setLoading(false)
+        if (active) setLoading(false)
       }).catch(() => {
-        setLoading(false)
-        setError('Stream playback unavailable or blocked by network.')
+        if (active) {
+          setLoading(false)
+          setError('Stream playback unavailable or blocked by network.')
+        }
       })
     } else {
       audioRef.current.pause()
       setLoading(false)
     }
-  }, [track, isPlaying])
+
+    return () => {
+      active = false
+    }
+  }, [track, isPlaying, volume])
 
   useEffect(() => {
     if (audioRef.current) {
