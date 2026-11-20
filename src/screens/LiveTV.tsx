@@ -1115,6 +1115,18 @@ export function LiveTV() {
           channels.length === 0 ? noPlaylistChannels : emptyFavourites
         ) : (
           <section className="guide" aria-label="TV guide">
+            {channelMode !== 'demo' && store.guides.length === 0 && (
+              <div className="live-no-guide-banner" role="status">
+                <div className="live-no-guide-info">
+                  <Icon name="info" size={16} />
+                  <span>No XMLTV guide connected. Programme schedule slots will display "No listings" until an XMLTV guide is added.</span>
+                </div>
+                <Link to="/sources" className="btn btn-secondary btn-small">
+                  <Icon name="plus" size={14} />
+                  <span>Add XMLTV Guide</span>
+                </Link>
+              </div>
+            )}
             {countSummary}
             <div className="epg-genre-bar" role="group" aria-label="EPG genre filter">
               {EPG_GENRES.map((g) => (

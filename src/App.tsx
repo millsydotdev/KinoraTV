@@ -205,7 +205,7 @@ function Shell() {
     <NavMenuContext.Provider value={openNav}>
       <a href="#main" className="skip-link">Skip to content</a>
       <OfflineBanner />
-      <div className={inPlayer ? '' : 'shell'}>
+      <div className={inPlayer ? '' : `shell${mediaLibrary.currentAudio ? ' has-audio-bar' : ''}`}>
       {!inPlayer && <Sidebar open={navOpen} onClose={closeNav} />}
       <main id="main" className="main" tabIndex={-1}>
         <ErrorBoundary key={pathname}>

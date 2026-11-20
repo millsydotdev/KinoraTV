@@ -208,6 +208,7 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 
 /* ---------- Shell ---------- */
 .shell { display: grid; grid-template-columns: var(--side-w) minmax(0, 1fr); min-height: 100vh; }
+.shell.has-audio-bar .main { padding-bottom: 72px; }
 .main { min-width: 0; position: relative; }
 
 /* ---------- Type ---------- */

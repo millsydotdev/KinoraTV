@@ -1251,3 +1251,25 @@
 .tvguide-player-overlay-state.is-error {
   color: #ff5555;
 }
+
+/* Live TV No Guide Guidance Banner */
+.live-no-guide-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 10px 16px;
+  margin-bottom: 12px;
+  border-radius: var(--r-m, 8px);
+  background: rgba(35, 40, 52, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.8125rem;
+  color: var(--text-2, #b4b7bd);
+}
+
+.live-no-guide-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
