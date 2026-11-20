@@ -32,39 +32,178 @@ import './Home.css'
 
 interface HomeHeroProps {
   slides: FeaturedSlide[]
-  channels: Channel[]
-  now: number
-  totalMovies: number
-  totalSeries: number
-  totalChannels: number
-  storageText: string
+  previewChannel?: Channel
 }
 
 function HomeHero({
   slides,
-  channels,
-  now,
-  totalMovies,
-  totalSeries,
-  totalChannels,
-  storageText,
+  previewChannel,
 }: HomeHeroProps) {
   const store = useStore()
   const toast = useToast()
   const [carouselIndex, setCarouselIndex] = useState(0)
-  const [channelsTab, setChannelsTab] = useState<'now' | 'next'>('now')
 
   const currentSlide = slides[carouselIndex % Math.max(1, slides.length)]
-  const previewChannel = useMemo(() => {
-    return channels.find((c) => Boolean(store.programmeAt(c, now))) ?? channels[0]
-  }, [channels, store, now])
-  const previewProg = previewChannel ? store.programmeAt(previewChannel, now) : undefined
 
   const inLibrary = currentSlide ? (
     currentSlide.kind === 'live'
       ? store.library.favourites.includes(currentSlide.ref)
       : store.library.watchlist.includes(currentSlide.ref)
   ) : false
+
+  return (
+    <section className="hero home-hero-cinematic" aria-labelledby="hero-title">
+      {currentSlide && (
+        <div className="home-hero-art-layer">
+          {currentSlide.art ? (
+            <Art src={currentSlide.art} alt={currentSlide.title} contentId={currentSlide.ref} eager className="home-hero-art" />
+          ) : currentSlide.artworkKey ? (
+            <XtreamArt artworkKey={currentSlide.artworkKey} fallbackTitle={currentSlide.title} eager />
+          ) : (
+            <div className="home-hero-cinematic-stage">
+              <div className="home-hero-stage-glow" />
+              <div className="home-hero-stage-grid" />
+              <div className="home-hero-stage-watermark" aria-hidden="true">
+                {currentSlide.channel?.name ? currentSlide.channel.name.toUpperCase() : 'KINORA BROADCAST'}
+              </div>
+              <div className="home-hero-stage-medallion">
+                <div className="home-hero-stage-radar" />
+                {currentSlide.channel && <ChannelMark channel={currentSlide.channel} size={96} />}
+                <div className="home-hero-stage-status">
+                  <span className="home-hero-stage-live-dot" />
+                  <span>LIVE BROADCAST</span>
+                </div>
+                <span className="home-hero-stage-caption">
+                  {currentSlide.channel?.name || 'Kinora Direct Feed'}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="home-hero-inner">
+        <span className="home-hero-tag">
+          {currentSlide?.kicker ?? 'Featured'}
+        </span>
+        <h1 id="hero-title" className="home-hero-main-title">
+          {currentSlide?.title ?? (previewChannel?.name ? `${previewChannel.name} Live` : 'Kinora')}
+        </h1>
+        <div className="home-hero-meta">
+          {currentSlide?.yearOrYears && <span>{currentSlide.yearOrYears}</span>}
+          {currentSlide?.genres?.length ? (
+            <>
+              {currentSlide.yearOrYears && <span>•</span>}
+              <span>{currentSlide.genres.slice(0, 2).join(', ')}</span>
+            </>
+          ) : null}
+          {currentSlide?.runtime && (
+            <>
+              <span>•</span>
+              <span>{currentSlide.runtime}</span>
+            </>
+          )}
+          {currentSlide?.certificate && (
+            <span className="badge-tech">{currentSlide.certificate}</span>
+          )}
+          {currentSlide?.isLive && (
+            <span className="badge-live">LIVE</span>
+          )}
+        </div>
+        <p className="home-hero-desc">
+          {currentSlide?.synopsis ??
+            'Stream live television, browse guides and discover curated media.'}
+        </p>
+        <div className="home-hero-btns">
+          <Link to={currentSlide?.playUrl ?? (previewChannel ? `/live?channel=${previewChannel.id}` : '/live')} className="home-btn-watch">
+            <Icon name="play" size={18} />
+            <span>{currentSlide?.kind === 'live' || !currentSlide ? 'Watch Live' : 'Watch Now'}</span>
+          </Link>
+          <Link to={currentSlide?.to ?? '/live'} className="home-btn-info" title="More Info" aria-label="More Info">
+            <Icon name="info" size={18} />
+            <span className="home-btn-info-text">More Info</span>
+            <span className="sr-only">View Details</span>
+          </Link>
+          <button
+            type="button"
+            className={`home-btn-bookmark${inLibrary ? ' is-active' : ''}`}
+            title={inLibrary ? 'Remove from watchlist' : 'Add to Library'}
+            aria-label={inLibrary ? 'Remove from watchlist' : 'Add to Library'}
+            onClick={() => {
+              if (currentSlide) {
+                store.toggleWatchlist(currentSlide.ref)
+                toast(inLibrary ? 'Removed from watchlist' : 'Added to watchlist')
+              }
+            }}
+          >
+            <Icon name={inLibrary ? 'check' : 'bookmark'} size={18} />
+            <span className="sr-only">Add to Library</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Carousel arrow buttons and dots */}
+      {slides.length > 1 && (
+        <>
+          <button
+            type="button"
+            className="home-hero-nav-arrow prev"
+            onClick={() => setCarouselIndex((i) => (i - 1 + slides.length) % slides.length)}
+            aria-label="Previous slide"
+            title="Previous slide"
+          >
+            <Icon name="left" size={18} />
+          </button>
+          <button
+            type="button"
+            className="home-hero-nav-arrow next"
+            onClick={() => setCarouselIndex((i) => (i + 1) % slides.length)}
+            aria-label="Next slide"
+            title="Next slide"
+          >
+            <Icon name="right" size={18} />
+          </button>
+          <div className="home-hero-dots" role="tablist" aria-label="Hero slides">
+            {slides.slice(0, 5).map((_, i) => (
+              <button
+                key={i}
+                type="button"
+                role="tab"
+                className={`home-hero-dot hero-carousel-dot ${i === (carouselIndex % slides.length) ? 'is-active' : ''}`}
+                onClick={() => setCarouselIndex(i)}
+                aria-label={`Slide ${i + 1}`}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  )
+}
+
+interface HomeSideHubProps {
+  channels: Channel[]
+  now: number
+  previewChannel?: Channel
+  totalMovies: number
+  totalSeries: number
+  totalChannels: number
+  storageText: string
+}
+
+function HomeSideHub({
+  channels,
+  now,
+  previewChannel,
+  totalMovies,
+  totalSeries,
+  totalChannels,
+  storageText,
+}: HomeSideHubProps) {
+  const store = useStore()
+  const [channelsTab, setChannelsTab] = useState<'now' | 'next'>('now')
+
+  const previewProg = previewChannel ? store.programmeAt(previewChannel, now) : undefined
 
   const progProgress = previewProg && previewProg.stop > previewProg.start
     ? Math.min(1, Math.max(0, (now - previewProg.start) / (previewProg.stop - previewProg.start)))
@@ -74,322 +213,188 @@ function HomeHero({
     : 0
 
   return (
-    <div className="home-smarttv-wrapper">
-      <PageHeader />
-      <div className="home-smarttv-top-stage">
-        {/* Left Column: Cinematic Hero */}
-        <section className="hero home-hero-cinematic" aria-labelledby="hero-title">
-          {currentSlide && (
-            <div className="home-hero-art-layer">
-              {currentSlide.art ? (
-                <Art src={currentSlide.art} alt={currentSlide.title} contentId={currentSlide.ref} eager className="home-hero-art" />
-              ) : currentSlide.artworkKey ? (
-                <XtreamArt artworkKey={currentSlide.artworkKey} fallbackTitle={currentSlide.title} eager />
-              ) : (
-                <div className="home-hero-cinematic-stage">
-                  <div className="home-hero-stage-glow" />
-                  <div className="home-hero-stage-grid" />
-                  <div className="home-hero-stage-watermark" aria-hidden="true">
-                    {currentSlide.channel?.name ? currentSlide.channel.name.toUpperCase() : 'KINORA BROADCAST'}
-                  </div>
-                  <div className="home-hero-stage-medallion">
-                    <div className="home-hero-stage-radar" />
-                    {currentSlide.channel && <ChannelMark channel={currentSlide.channel} size={96} />}
-                    <div className="home-hero-stage-status">
-                      <span className="home-hero-stage-live-dot" />
-                      <span>LIVE BROADCAST</span>
-                    </div>
-                    <span className="home-hero-stage-caption">
-                      {currentSlide.channel?.name || 'Kinora Direct Feed'}
+    <aside className="home-side-hub" aria-label="Live TV and Library Hub">
+      {/* Mini Live Player Preview */}
+      <div className="home-mini-live-card">
+        <div className="home-mini-live-preview">
+          <span className="home-mini-live-badge">LIVE</span>
+          {previewProg?.art ? (
+            <Art src={previewProg.art} alt={previewProg.title} className="home-mini-live-video" />
+          ) : previewChannel ? (
+            <div className="home-mini-live-stage">
+              <div className="home-mini-live-stage-crt" />
+              <span className="home-mini-live-corner-tag">HD 1080p</span>
+              <div className="home-mini-live-center">
+                <ChannelMark channel={previewChannel} size={54} />
+                <div className="home-mini-live-status-pill">
+                  <span className="home-mini-live-dot" />
+                  <span>BROADCAST ON AIR</span>
+                </div>
+                <div className="home-mini-signal-bars" aria-hidden="true">
+                  <span className="bar b1" /><span className="bar b2" /><span className="bar b3" /><span className="bar b4" />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="home-mini-live-stage is-empty">
+              <div className="home-mini-live-center">
+                <Icon name="live" size={40} />
+                <div className="home-mini-live-status-pill">
+                  <span>NO LIVE FEED</span>
+                </div>
+              </div>
+            </div>
+          )}
+          <div className="home-mini-live-controls">
+            {previewChannel ? (
+              <>
+                <div className="home-mini-live-controls-left">
+                  <button type="button" className="home-mini-ctrl-btn" aria-label="Play or pause stream">
+                    <Icon name="play" size={16} />
+                  </button>
+                  <button type="button" className="home-mini-ctrl-btn" aria-label="Mute volume">
+                    <Icon name="volume" size={16} />
+                  </button>
+                </div>
+                <div className="home-mini-live-controls-right">
+                  <button type="button" className="home-mini-ctrl-btn" aria-label="Subtitles">
+                    <Icon name="subtitles" size={16} />
+                  </button>
+                  <button type="button" className="home-mini-ctrl-btn" aria-label="Picture in Picture">
+                    <Icon name="pip" size={16} />
+                  </button>
+                  <Link to={`/watch/${encodeURIComponent(channelRef(previewChannel.id))}`} className="home-mini-ctrl-btn" aria-label="Fullscreen">
+                    <Icon name="fullscreen" size={16} />
+                  </Link>
+                </div>
+              </>
+            ) : (
+              <div className="home-mini-live-controls-left">
+                <Link to="/sources" className="home-mini-ctrl-btn" aria-label="Add source" title="Add live TV source">
+                  <Icon name="plus" size={14} />
+                  <span style={{ fontSize: '0.75rem', paddingLeft: 4 }}>Add Source</span>
+                </Link>
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="home-mini-live-meta">
+          <h3 className="home-mini-live-title">
+            {previewProg?.title ?? (previewChannel ? `${previewChannel.name} Live` : 'Live Broadcast')}
+          </h3>
+          <p className="home-mini-live-sub">
+            <span>{previewChannel?.name ?? 'No Channels Active'}{previewProg?.category ? ` • ${previewProg.category}` : ''}</span>
+            <span>{previewProg ? `${clock(previewProg.start, store.prefs.timeFormat)} - ${clock(previewProg.stop, store.prefs.timeFormat)}` : previewChannel ? 'On air' : 'Connect source'}</span>
+          </p>
+          {previewProg && (
+            <div className="home-mini-live-progress" title={`${minsLeft} min left`}>
+              <div className="home-mini-live-progress-fill" style={{ width: `${Math.round(progProgress * 100)}%` }} />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Quick Channels Card with On Now / Next Sub-tabs */}
+      <div className="home-channels-box">
+        <div className="home-channels-subtabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            className={`home-channels-tab-btn ${channelsTab === 'now' ? 'is-active' : ''}`}
+            onClick={() => setChannelsTab('now')}
+            aria-selected={channelsTab === 'now'}
+          >
+            On Now
+          </button>
+          <button
+            type="button"
+            role="tab"
+            className={`home-channels-tab-btn ${channelsTab === 'next' ? 'is-active' : ''}`}
+            onClick={() => setChannelsTab('next')}
+            aria-selected={channelsTab === 'next'}
+          >
+            Next
+          </button>
+        </div>
+        <div className="home-channels-list">
+          {channels.length > 0 ? (
+            channels.slice(0, 4).map((c) => {
+              const prog = channelsTab === 'now' ? store.programmeAt(c, now) : store.nextProgramme(c, now)
+              return (
+                <Link
+                  key={c.id}
+                  to={`/live?channel=${encodeURIComponent(c.id)}`}
+                  className="home-quick-channel-row"
+                >
+                  <span className="home-quick-ch-badge">{c.name.slice(0, 8)}</span>
+                  <div className="home-quick-ch-info">
+                    <span className="home-quick-ch-title">{prog?.title ?? c.name}</span>
+                    <span className="home-quick-ch-time">
+                      {prog ? `${clock(prog.start, store.prefs.timeFormat)} - ${clock(prog.stop, store.prefs.timeFormat)}` : 'Live broadcast'}
                     </span>
                   </div>
-                </div>
-              )}
+                  {channelsTab === 'now' && <span className="home-quick-live-tag">LIVE</span>}
+                </Link>
+              )
+            })
+          ) : (
+            <div style={{ padding: '24px 12px', textAlign: 'center', color: '#8c93a3', fontSize: '0.8125rem' }}>
+              No channels available yet.
             </div>
           )}
-
-          <div className="home-hero-inner">
-            <span className="home-hero-tag">
-              {currentSlide?.kicker ?? 'Featured'}
-            </span>
-            <h1 id="hero-title" className="home-hero-main-title">
-              {currentSlide?.title ?? (previewChannel?.name ? `${previewChannel.name} Live` : 'Kinora')}
-            </h1>
-            <div className="home-hero-meta">
-              {currentSlide?.yearOrYears && <span>{currentSlide.yearOrYears}</span>}
-              {currentSlide?.genres?.length ? (
-                <>
-                  {currentSlide.yearOrYears && <span>•</span>}
-                  <span>{currentSlide.genres.slice(0, 2).join(', ')}</span>
-                </>
-              ) : null}
-              {currentSlide?.runtime && (
-                <>
-                  <span>•</span>
-                  <span>{currentSlide.runtime}</span>
-                </>
-              )}
-              {currentSlide?.certificate && (
-                <span className="badge-tech">{currentSlide.certificate}</span>
-              )}
-              {currentSlide?.isLive && (
-                <span className="badge-live">LIVE</span>
-              )}
-            </div>
-            <p className="home-hero-desc">
-              {currentSlide?.synopsis ??
-                'Stream live television, browse guides and discover curated media.'}
-            </p>
-            <div className="home-hero-btns">
-              <Link to={currentSlide?.playUrl ?? (previewChannel ? `/live?channel=${previewChannel.id}` : '/live')} className="home-btn-watch">
-                <Icon name="play" size={18} />
-                <span>{currentSlide?.kind === 'live' || !currentSlide ? 'Watch Live' : 'Watch Now'}</span>
-              </Link>
-              <Link to={currentSlide?.to ?? '/live'} className="home-btn-info" title="More Info" aria-label="More Info">
-                <Icon name="info" size={18} />
-                <span className="home-btn-info-text">More Info</span>
-                <span className="sr-only">View Details</span>
-              </Link>
-              <button
-                type="button"
-                className={`home-btn-bookmark${inLibrary ? ' is-active' : ''}`}
-                title={inLibrary ? 'Remove from watchlist' : 'Add to Library'}
-                aria-label={inLibrary ? 'Remove from watchlist' : 'Add to Library'}
-                onClick={() => {
-                  if (currentSlide) {
-                    store.toggleWatchlist(currentSlide.ref)
-                    toast(inLibrary ? 'Removed from watchlist' : 'Added to watchlist')
-                  }
-                }}
-              >
-                <Icon name={inLibrary ? 'check' : 'bookmark'} size={18} />
-                <span className="sr-only">Add to Library</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Carousel arrow buttons and dots */}
-          {slides.length > 1 && (
-            <>
-              <button
-                type="button"
-                className="home-hero-nav-arrow prev"
-                onClick={() => setCarouselIndex((i) => (i - 1 + slides.length) % slides.length)}
-                aria-label="Previous slide"
-                title="Previous slide"
-              >
-                <Icon name="left" size={18} />
-              </button>
-              <button
-                type="button"
-                className="home-hero-nav-arrow next"
-                onClick={() => setCarouselIndex((i) => (i + 1) % slides.length)}
-                aria-label="Next slide"
-                title="Next slide"
-              >
-                <Icon name="right" size={18} />
-              </button>
-              <div className="home-hero-dots" role="tablist" aria-label="Hero slides">
-                {slides.slice(0, 5).map((_, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    role="tab"
-                    className={`home-hero-dot hero-carousel-dot ${i === (carouselIndex % slides.length) ? 'is-active' : ''}`}
-                    onClick={() => setCarouselIndex(i)}
-                    aria-label={`Slide ${i + 1}`}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-        </section>
-
-        {/* Right Column: Live TV & Library Hub */}
-        <aside className="home-side-hub" aria-label="Live TV and Library Hub">
-          {/* Mini Live Player Preview */}
-          <div className="home-mini-live-card">
-            <div className="home-mini-live-preview">
-              <span className="home-mini-live-badge">LIVE</span>
-              {previewProg?.art ? (
-                <Art src={previewProg.art} alt={previewProg.title} className="home-mini-live-video" />
-              ) : previewChannel ? (
-                <div className="home-mini-live-stage">
-                  <div className="home-mini-live-stage-crt" />
-                  <span className="home-mini-live-corner-tag">HD 1080p</span>
-                  <div className="home-mini-live-center">
-                    <ChannelMark channel={previewChannel} size={54} />
-                    <div className="home-mini-live-status-pill">
-                      <span className="home-mini-live-dot" />
-                      <span>BROADCAST ON AIR</span>
-                    </div>
-                    <div className="home-mini-signal-bars" aria-hidden="true">
-                      <span className="bar b1" /><span className="bar b2" /><span className="bar b3" /><span className="bar b4" />
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="home-mini-live-stage is-empty">
-                  <div className="home-mini-live-center">
-                    <Icon name="live" size={40} />
-                    <div className="home-mini-live-status-pill">
-                      <span>NO LIVE FEED</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div className="home-mini-live-controls">
-                {previewChannel ? (
-                  <>
-                    <div className="home-mini-live-controls-left">
-                      <button type="button" className="home-mini-ctrl-btn" aria-label="Play or pause stream">
-                        <Icon name="play" size={16} />
-                      </button>
-                      <button type="button" className="home-mini-ctrl-btn" aria-label="Mute volume">
-                        <Icon name="volume" size={16} />
-                      </button>
-                    </div>
-                    <div className="home-mini-live-controls-right">
-                      <button type="button" className="home-mini-ctrl-btn" aria-label="Subtitles">
-                        <Icon name="subtitles" size={16} />
-                      </button>
-                      <button type="button" className="home-mini-ctrl-btn" aria-label="Picture in Picture">
-                        <Icon name="pip" size={16} />
-                      </button>
-                      <Link to={`/watch/${encodeURIComponent(channelRef(previewChannel.id))}`} className="home-mini-ctrl-btn" aria-label="Fullscreen">
-                        <Icon name="fullscreen" size={16} />
-                      </Link>
-                    </div>
-                  </>
-                ) : (
-                  <div className="home-mini-live-controls-left">
-                    <Link to="/sources" className="home-mini-ctrl-btn" aria-label="Add source" title="Add live TV source">
-                      <Icon name="plus" size={14} />
-                      <span style={{ fontSize: '0.75rem', paddingLeft: 4 }}>Add Source</span>
-                    </Link>
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="home-mini-live-meta">
-              <h3 className="home-mini-live-title">
-                {previewProg?.title ?? (previewChannel ? `${previewChannel.name} Live` : 'Live Broadcast')}
-              </h3>
-              <p className="home-mini-live-sub">
-                <span>{previewChannel?.name ?? 'No Channels Active'}{previewProg?.category ? ` • ${previewProg.category}` : ''}</span>
-                <span>{previewProg ? `${clock(previewProg.start, store.prefs.timeFormat)} - ${clock(previewProg.stop, store.prefs.timeFormat)}` : previewChannel ? 'On air' : 'Connect source'}</span>
-              </p>
-              {previewProg && (
-                <div className="home-mini-live-progress" title={`${minsLeft} min left`}>
-                  <div className="home-mini-live-progress-fill" style={{ width: `${Math.round(progProgress * 100)}%` }} />
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Quick Channels Card with On Now / Next Sub-tabs */}
-          <div className="home-channels-box">
-            <div className="home-channels-subtabs" role="tablist">
-              <button
-                type="button"
-                role="tab"
-                className={`home-channels-tab-btn ${channelsTab === 'now' ? 'is-active' : ''}`}
-                onClick={() => setChannelsTab('now')}
-                aria-selected={channelsTab === 'now'}
-              >
-                On Now
-              </button>
-              <button
-                type="button"
-                role="tab"
-                className={`home-channels-tab-btn ${channelsTab === 'next' ? 'is-active' : ''}`}
-                onClick={() => setChannelsTab('next')}
-                aria-selected={channelsTab === 'next'}
-              >
-                Next
-              </button>
-            </div>
-            <div className="home-channels-list">
-              {channels.length > 0 ? (
-                channels.slice(0, 4).map((c) => {
-                  const prog = channelsTab === 'now' ? store.programmeAt(c, now) : store.nextProgramme(c, now)
-                  return (
-                    <Link
-                      key={c.id}
-                      to={`/live?channel=${encodeURIComponent(c.id)}`}
-                      className="home-quick-channel-row"
-                    >
-                      <span className="home-quick-ch-badge">{c.name.slice(0, 8)}</span>
-                      <div className="home-quick-ch-info">
-                        <span className="home-quick-ch-title">{prog?.title ?? c.name}</span>
-                        <span className="home-quick-ch-time">
-                          {prog ? `${clock(prog.start, store.prefs.timeFormat)} - ${clock(prog.stop, store.prefs.timeFormat)}` : 'Live broadcast'}
-                        </span>
-                      </div>
-                      {channelsTab === 'now' && <span className="home-quick-live-tag">LIVE</span>}
-                    </Link>
-                  )
-                })
-              ) : (
-                <div style={{ padding: '24px 12px', textAlign: 'center', color: '#8c93a3', fontSize: '0.8125rem' }}>
-                  No channels available yet.
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Quick Actions Row */}
-          <div className="home-quick-actions-bar" role="group" aria-label="Quick Navigation">
-            <Link to="/live" className="home-quick-act-btn">
-              <Icon name="calendar" size={18} />
-              <span>TV Guide</span>
-            </Link>
-            <Link to="/recordings" className="home-quick-act-btn">
-              <Icon name="record" size={18} />
-              <span>Recordings</span>
-            </Link>
-            <Link to="/live?tab=reminders" className="home-quick-act-btn">
-              <Icon name="bell" size={18} />
-              <span>Reminders</span>
-            </Link>
-            <Link to="/library?tab=watchlist" className="home-quick-act-btn">
-              <Icon name="star" size={18} />
-              <span>Favourites</span>
-            </Link>
-          </div>
-
-          {/* Your Library at a Glance HUD */}
-          <div className="home-library-hud">
-            <Link to="/library" className="home-library-hud-header">
-              <span>Your Library at a Glance</span>
-              <Icon name="chevronRight" size={16} />
-            </Link>
-            <div className="home-library-hud-grid">
-              <div className="home-library-hud-item">
-                <Icon name="film" size={20} className="home-library-hud-icon" />
-                <span className="home-library-hud-num">{totalMovies.toLocaleString()}</span>
-                <span className="home-library-hud-label">Movies</span>
-              </div>
-              <div className="home-library-hud-item">
-                <Icon name="tv" size={20} className="home-library-hud-icon" />
-                <span className="home-library-hud-num">{totalSeries.toLocaleString()}</span>
-                <span className="home-library-hud-label">TV Series</span>
-              </div>
-              <div className="home-library-hud-item">
-                <Icon name="live" size={20} className="home-library-hud-icon" />
-                <span className="home-library-hud-num">{totalChannels.toLocaleString()}</span>
-                <span className="home-library-hud-label">Channels</span>
-              </div>
-              <div className="home-library-hud-item">
-                <Icon name="database" size={20} className="home-library-hud-icon" />
-                <span className="home-library-hud-num">{storageText}</span>
-                <span className="home-library-hud-label">Local Media</span>
-              </div>
-            </div>
-          </div>
-        </aside>
+        </div>
       </div>
-    </div>
+
+      {/* Quick Actions Row */}
+      <div className="home-quick-actions-bar" role="group" aria-label="Quick Navigation">
+        <Link to="/live" className="home-quick-act-btn">
+          <Icon name="calendar" size={18} />
+          <span>TV Guide</span>
+        </Link>
+        <Link to="/recordings" className="home-quick-act-btn">
+          <Icon name="record" size={18} />
+          <span>Recordings</span>
+        </Link>
+        <Link to="/live?tab=reminders" className="home-quick-act-btn">
+          <Icon name="bell" size={18} />
+          <span>Reminders</span>
+        </Link>
+        <Link to="/library?tab=watchlist" className="home-quick-act-btn">
+          <Icon name="star" size={18} />
+          <span>Favourites</span>
+        </Link>
+      </div>
+
+      {/* Your Library at a Glance HUD */}
+      <div className="home-library-hud">
+        <Link to="/library" className="home-library-hud-header">
+          <span>Your Library at a Glance</span>
+          <Icon name="chevronRight" size={16} />
+        </Link>
+        <div className="home-library-hud-grid">
+          <div className="home-library-hud-item">
+            <Icon name="film" size={20} className="home-library-hud-icon" />
+            <span className="home-library-hud-num">{totalMovies.toLocaleString()}</span>
+            <span className="home-library-hud-label">Movies</span>
+          </div>
+          <div className="home-library-hud-item">
+            <Icon name="tv" size={20} className="home-library-hud-icon" />
+            <span className="home-library-hud-num">{totalSeries.toLocaleString()}</span>
+            <span className="home-library-hud-label">TV Series</span>
+          </div>
+          <div className="home-library-hud-item">
+            <Icon name="live" size={20} className="home-library-hud-icon" />
+            <span className="home-library-hud-num">{totalChannels.toLocaleString()}</span>
+            <span className="home-library-hud-label">Channels</span>
+          </div>
+          <div className="home-library-hud-item">
+            <Icon name="database" size={20} className="home-library-hud-icon" />
+            <span className="home-library-hud-num">{storageText}</span>
+            <span className="home-library-hud-label">Local Media</span>
+          </div>
+        </div>
+      </div>
+    </aside>
   )
 }
 
@@ -1420,75 +1425,89 @@ export function Home() {
     .map((s) => sectionRenderers[s.id]?.())
     .filter(Boolean)
 
+  const previewChannel = useMemo(() => {
+    return safeChannelsList.find((c) => Boolean(store.programmeAt(c, now))) ?? safeChannelsList[0]
+  }, [safeChannelsList, store, now])
+
   return (
-    <>
-      <HomeHero
-        slides={featuredSlides}
-        channels={safeChannelsList}
-        now={now}
-        totalMovies={(demoTitles ? movies.length : 0) + xtreamCatalogue.movies.length + (localCatalogue?.movies?.length || 0)}
-        totalSeries={(demoTitles ? series.length : 0) + xtreamCatalogue.series.length + (localCatalogue?.series?.length || 0)}
-        totalChannels={channels.length || (demoTitles ? 45 : 0)}
-        storageText={
-          storageSummary
-            ? storageSummary.availableDiskBytes >= 1024 ** 4
-              ? `${(storageSummary.availableDiskBytes / 1024 ** 4).toFixed(1)} TB Free`
-              : `${Math.round(storageSummary.availableDiskBytes / 1024 ** 3)} GB Free`
-            : '0 B Indexed'
-        }
-      />
-      <div className={`page stack home-body home-density-${cardDensity}`}>
-        {!demoTitles && (
-          <div className="home-rails-header">
-            <span className="home-rails-kicker">Curated For You</span>
-            <button
-              type="button"
-              className="home-customise-btn"
-              onClick={() => setCustomizeOpen(true)}
-              title="Personalise Discovery Rails and Display Density"
-            >
-              <Icon name="cog" size={13} />
-              Personalise Home
-            </button>
-          </div>
-        )}
+    <div className="home-smarttv-wrapper">
+      <PageHeader />
+      <div className="home-layout-container">
+        <div className="home-main-flow">
+          <HomeHero
+            slides={featuredSlides}
+            previewChannel={previewChannel}
+          />
+          <div className={`page stack home-body home-density-${cardDensity}`}>
+            {!demoTitles && (
+              <div className="home-rails-header">
+                <span className="home-rails-kicker">Curated For You</span>
+                <button
+                  type="button"
+                  className="home-customise-btn"
+                  onClick={() => setCustomizeOpen(true)}
+                  title="Personalise Discovery Rails and Display Density"
+                >
+                  <Icon name="cog" size={13} />
+                  Personalise Home
+                </button>
+              </div>
+            )}
 
-        {renderedSections}
-        {realSeriesRail}
+            {renderedSections}
+            {realSeriesRail}
 
-        <div className="home-pair">
-          {favChannels.length > 0 && (
-            <Section icon="heart" title="Your Channels" viewAll="/live?group=Favourites" grid="channel-chips">
-              {favChannels.map((c) => {
-                const p = programmeAt(c, now)
-                return (
-                  <Link key={c.id} to={`/live?channel=${c.id}`} className="card channel-chip">
-                    <ChannelMark channel={c} size={40} />
-                    <span><strong>{c.name}</strong><span className="faint">{p ? p.title : idleLabel(c)}</span></span>
+            <div className="home-pair">
+              {favChannels.length > 0 && (
+                <Section icon="heart" title="Your Channels" viewAll="/live?group=Favourites" grid="channel-chips">
+                  {favChannels.map((c) => {
+                    const p = programmeAt(c, now)
+                    return (
+                      <Link key={c.id} to={`/live?channel=${c.id}`} className="card channel-chip">
+                        <ChannelMark channel={c} size={40} />
+                        <span><strong>{c.name}</strong><span className="faint">{p ? p.title : idleLabel(c)}</span></span>
+                      </Link>
+                    )
+                  })}
+                </Section>
+              )}
+              <Section icon="library" title="Your Library" viewAll="/library" grid="shortcut-grid">
+                {shortcuts.map((s) => (
+                  <Link key={s.label} to={s.to} className="card shortcut">
+                    <span className="shortcut-icon"><Icon name={s.icon} /></span>
+                    <span><strong>{s.label}</strong><span className="faint tnum">{s.count} {s.count === 1 ? 'item' : 'items'}</span></span>
+                    <Icon name="right" size={18} />
                   </Link>
-                )
-              })}
-            </Section>
-          )}
-          <Section icon="library" title="Your Library" viewAll="/library" grid="shortcut-grid">
-            {shortcuts.map((s) => (
-              <Link key={s.label} to={s.to} className="card shortcut">
-                <span className="shortcut-icon"><Icon name={s.icon} /></span>
-                <span><strong>{s.label}</strong><span className="faint tnum">{s.count} {s.count === 1 ? 'item' : 'items'}</span></span>
-                <Icon name="right" size={18} />
-              </Link>
-            ))}
-          </Section>
+                ))}
+              </Section>
+            </div>
+
+            <p className="footer-note faint">
+              {channelMode === 'playlists'
+                ? `Channels come from your imported playlists (${NOT_TESTED.toLowerCase()}). ${xtreamSources.length > 0 ? 'Films and series come from your provider.' : 'Kinora has no source for films and series yet.'}`
+                : 'Sample mode: movies, series, channels and the guide are fictional, and nothing is streamed. Add a source, or turn sample mode off in Settings › Data.'}
+            </p>
+
+            <HomeCustomizeModal open={customizeOpen} onClose={() => setCustomizeOpen(false)} />
+          </div>
         </div>
 
-        <p className="footer-note faint">
-          {channelMode === 'playlists'
-            ? `Channels come from your imported playlists (${NOT_TESTED.toLowerCase()}). ${xtreamSources.length > 0 ? 'Films and series come from your provider.' : 'Kinora has no source for films and series yet.'}`
-            : 'Sample mode: movies, series, channels and the guide are fictional, and nothing is streamed. Add a source, or turn sample mode off in Settings › Data.'}
-        </p>
-
-        <HomeCustomizeModal open={customizeOpen} onClose={() => setCustomizeOpen(false)} />
+        <HomeSideHub
+          channels={safeChannelsList}
+          now={now}
+          previewChannel={previewChannel}
+          totalMovies={(demoTitles ? movies.length : 0) + xtreamCatalogue.movies.length + (localCatalogue?.movies?.length || 0)}
+          totalSeries={(demoTitles ? series.length : 0) + xtreamCatalogue.series.length + (localCatalogue?.series?.length || 0)}
+          totalChannels={channels.length || (demoTitles ? 45 : 0)}
+          storageText={
+            storageSummary
+              ? storageSummary.availableDiskBytes >= 1024 ** 4
+                ? `${(storageSummary.availableDiskBytes / 1024 ** 4).toFixed(1)} TB Free`
+                : `${Math.round(storageSummary.availableDiskBytes / 1024 ** 3)} GB Free`
+              : '0 B Indexed'
+          }
+        />
       </div>
-    </>
+    </div>
   )
 }
