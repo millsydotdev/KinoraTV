@@ -257,10 +257,16 @@ export function EpisodeDetailModal({
               <h3 className="episode-section-heading">Cast & Characters</h3>
               <div className="episode-cast-tags">
                 {cast.map((actor) => (
-                  <span key={actor} className="episode-cast-pill">
+                  <Link
+                    key={actor}
+                    to={`/search?q=${encodeURIComponent(actor)}`}
+                    className="episode-cast-pill"
+                    onClick={onClose}
+                    title={`Search for titles involving ${actor}`}
+                  >
                     <Icon name="user" size={14} />
                     <span>{actor}</span>
-                  </span>
+                  </Link>
                 ))}
               </div>
             </div>

@@ -87,9 +87,10 @@ function Shell() {
     el.dataset.theme = prefs.theme
     el.dataset.density = prefs.density
     el.dataset.text = prefs.textSize
+    el.dataset.layout = prefs.layoutMode || 'standard'
     el.dataset.motion = prefs.reduceMotion ? 'reduce' : 'full'
     applyThemeTokensToElement(el, prefs.theme, prefs.accent, prefs.customAccent)
-  }, [prefs.theme, prefs.density, prefs.accent, prefs.customAccent, prefs.textSize, prefs.reduceMotion])
+  }, [prefs.theme, prefs.density, prefs.accent, prefs.customAccent, prefs.textSize, prefs.layoutMode, prefs.reduceMotion])
 
   useEffect(() => {
     window.scrollTo(0, 0)

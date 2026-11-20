@@ -88,6 +88,8 @@ export function TitleActions({ title, compact = false, infoHref }: { title: Titl
           genres: title.genres,
           art: title.art,
           imdbId: (title as { imdbId?: string }).imdbId,
+          tmdbId: (title as { tmdbId?: number | string }).tmdbId,
+          synopsis: title.synopsis,
           deepLinkPath: `/${title.kind === 'movie' ? 'movies' : 'series'}/${title.id}`,
         }}
       />

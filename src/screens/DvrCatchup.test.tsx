@@ -261,8 +261,20 @@ describe('DVR, Live TV Recording, Catch-up TV & Timeshift', () => {
     })
 
     // Find an upcoming programme cell in the EPG grid (one that is not past and not on now)
-    const cells = Array.from(host.querySelectorAll('button.prog')) as HTMLButtonElement[]
-    const futureCell = cells.find((c) => !c.classList.contains('is-past') && !c.classList.contains('is-now'))
+    let cells = Array.from(host.querySelectorAll('button.prog')) as HTMLButtonElement[]
+    let futureCell = cells.find((c) => !c.classList.contains('is-past') && !c.classList.contains('is-now'))
+    if (!futureCell) {
+      // If running late in the day when all programmes have started, advance to next day
+      const nextDayBtn = host.querySelector('button[aria-label="Next day"]') as HTMLButtonElement | null
+      if (nextDayBtn) {
+        await act(async () => {
+          nextDayBtn.click()
+          await new Promise((r) => setTimeout(r, 50))
+        })
+        cells = Array.from(host.querySelectorAll('button.prog')) as HTMLButtonElement[]
+        futureCell = cells.find((c) => !c.classList.contains('is-past') && !c.classList.contains('is-now'))
+      }
+    }
     expect(futureCell).toBeDefined()
 
     // Select future programme to open detail sheet

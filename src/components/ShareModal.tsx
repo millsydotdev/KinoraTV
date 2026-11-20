@@ -11,6 +11,8 @@ export interface ShareItem {
   genres?: string[]
   art?: string
   imdbId?: string
+  tmdbId?: number | string
+  synopsis?: string
   deepLinkPath?: string
 }
 
@@ -153,8 +155,40 @@ export function ShareModal({ open, onClose, item }: ShareModalProps) {
               {item.certificate && <span className="share-cert-badge">{item.certificate}</span>}
               {item.genres && item.genres.length > 0 && <span>{item.genres.slice(0, 2).join(', ')}</span>}
             </div>
+            {item.synopsis && (
+              <p className="share-media-synopsis" style={{ fontSize: '0.8125rem', color: 'var(--text-2)', marginTop: '8px', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                {item.synopsis}
+              </p>
+            )}
           </div>
         </div>
+
+        {/* TMDB & IMDb Metadata Integration */}
+        {item.tmdbId && (
+          <div className="share-section">
+            <h5 className="share-section-title">The Movie Database (TMDB)</h5>
+            <div className="share-imdb-card">
+              <div className="share-imdb-info">
+                <span className="share-imdb-badge" style={{ background: '#01b4e4' }}>TMDB</span>
+                <span className="share-imdb-id">#{item.tmdbId}</span>
+                <span className="share-verified-tag">
+                  <Icon name="check" size={12} /> Enriched
+                </span>
+              </div>
+              <div className="share-imdb-actions">
+                <a
+                  href={`https://www.themoviedb.org/${item.kind === 'series' ? 'tv' : 'movie'}/${item.tmdbId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-secondary btn-sm"
+                  title="Open official TMDB page"
+                >
+                  <Icon name="externalLink" size={14} /> Open TMDB
+                </a>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Verified IMDb Integration */}
         <div className="share-section">

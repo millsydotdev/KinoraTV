@@ -260,22 +260,35 @@ export function MovieDetail() {
               Cast & Crew Information
             </h2>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16, width: '100%', marginTop: 8 }}>
-              <div style={{ background: 'var(--surface-2)', padding: '16px 18px', borderRadius: 'var(--r-m)', border: '1px solid var(--border-subtle)' }}>
-                <strong style={{ display: 'block', color: 'var(--text-1)', fontSize: '1rem' }}>Elena Rostova</strong>
-                <span className="faint" style={{ fontSize: '0.8125rem' }}>Director & Screenplay</span>
-              </div>
-              <div style={{ background: 'var(--surface-2)', padding: '16px 18px', borderRadius: 'var(--r-m)', border: '1px solid var(--border-subtle)' }}>
-                <strong style={{ display: 'block', color: 'var(--text-1)', fontSize: '1rem' }}>Ines Calloway</strong>
-                <span className="faint" style={{ fontSize: '0.8125rem' }}>Lead Role</span>
-              </div>
-              <div style={{ background: 'var(--surface-2)', padding: '16px 18px', borderRadius: 'var(--r-m)', border: '1px solid var(--border-subtle)' }}>
-                <strong style={{ display: 'block', color: 'var(--text-1)', fontSize: '1rem' }}>Arthur Pendelton</strong>
-                <span className="faint" style={{ fontSize: '0.8125rem' }}>Cinematography</span>
-              </div>
-              <div style={{ background: 'var(--surface-2)', padding: '16px 18px', borderRadius: 'var(--r-m)', border: '1px solid var(--border-subtle)' }}>
-                <strong style={{ display: 'block', color: 'var(--text-1)', fontSize: '1rem' }}>Kinora Motion Pictures</strong>
-                <span className="faint" style={{ fontSize: '0.8125rem' }}>Production Studio</span>
-              </div>
+              {[
+                { name: 'Elena Rostova', role: 'Director & Screenplay' },
+                { name: 'Ines Calloway', role: 'Lead Role' },
+                { name: 'Arthur Pendelton', role: 'Cinematography' },
+                { name: 'Kinora Motion Pictures', role: 'Production Studio' },
+              ].map((person) => (
+                <Link
+                  key={person.name}
+                  to={`/search?q=${encodeURIComponent(person.name)}`}
+                  className="card"
+                  style={{
+                    background: 'var(--surface-2)',
+                    padding: '16px 18px',
+                    borderRadius: 'var(--r-m)',
+                    border: '1px solid var(--border-subtle)',
+                    textDecoration: 'none',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 4,
+                  }}
+                  title={`Search for titles involving ${person.name}`}
+                >
+                  <strong style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'var(--text-1)', fontSize: '1rem' }}>
+                    <span>{person.name}</span>
+                    <Icon name="search" size={14} style={{ opacity: 0.6 }} />
+                  </strong>
+                  <span className="faint" style={{ fontSize: '0.8125rem' }}>{person.role}</span>
+                </Link>
+              ))}
             </div>
           </section>
         </div>

@@ -178,6 +178,33 @@
 [data-density='spacious'] { --gutter: clamp(20px, 3.4vw, 60px); --gap: 22px; --section-gap: 56px; --guide-row: 76px; --head-h: 84px; }
 [data-text='large'] { font-size: 112.5%; }
 
+/* Layout Modes: Standard, Compact, Wide, TV Mode (10ft Living Room) */
+[data-layout='tv'] {
+  font-size: 106.25%;
+  --gutter: clamp(32px, 3.5vw, 64px);
+  --gap: 20px;
+  --section-gap: 48px;
+  --guide-row: 76px;
+  --focus-ring: 0 0 0 3px var(--focus);
+}
+[data-layout='tv'] .btn {
+  min-height: 48px;
+  padding: 0 24px;
+  font-size: 1rem;
+}
+[data-layout='tv'] .sidebar-label {
+  font-size: 0.9375rem;
+}
+[data-layout='compact'] {
+  --gutter: clamp(16px, 1.8vw, 28px);
+  --gap: 12px;
+  --section-gap: 28px;
+}
+[data-layout='wide'] {
+  --gutter: clamp(32px, 3vw, 56px);
+  --page-max-w: 1920px;
+}
+
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body {

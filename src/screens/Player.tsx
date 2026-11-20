@@ -82,6 +82,7 @@ export function Player() {
   const [inAppPip, setInAppPip] = useState(false)
   const [rippleFeedback, setRippleFeedback] = useState<{ side: 'left' | 'right'; text: string } | null>(null)
   const rippleTimer = useRef<number>(0)
+  const [scrubHover, setScrubHover] = useState<{ time: number; percent: number } | null>(null)
 
   // Drawer states
   const [activeDrawer, setActiveDrawer] = useState<'none' | 'servers' | 'diagnostics' | 'epg'>('none')
@@ -131,6 +132,13 @@ export function Player() {
       if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current)
     }
   }, [showControls])
+
+  // Stop background audio playback when video player mounts
+  useEffect(() => {
+    if (store.mediaLibrary?.isAudioPlaying) {
+      store.mediaLibrary.stopAudio()
+    }
+  }, [store.mediaLibrary])
 
   const leave = () => (window.history.length > 1 ? navigate(-1) : navigate(item?.href ?? '/'))
 
@@ -605,6 +613,10 @@ export function Player() {
 
   const handleVideoCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
     showControls()
+    if (activeDrawer !== 'none') {
+      setActiveDrawer('none')
+      return
+    }
     if (e.detail === 2) {
       const rect = e.currentTarget.getBoundingClientRect()
       const clickX = e.clientX - rect.left
@@ -847,7 +859,20 @@ export function Player() {
       {/* Bottom Controls Bar */}
       <div className="player-bottom">
         {durationSec > 0 && (
-          <div className="scrub">
+          <div
+            className="scrub"
+            onMouseMove={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect()
+              const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+              setScrubHover({ time: Math.round(pct * durationSec), percent: pct * 100 })
+            }}
+            onMouseLeave={() => setScrubHover(null)}
+          >
+            {scrubHover && (
+              <span className="scrub-hover-tip tnum" style={{ left: `${scrubHover.percent}%` }}>
+                {timecode(scrubHover.time)}
+              </span>
+            )}
             <input
               type="range"
               className="range"
@@ -1072,23 +1097,11 @@ export function Player() {
               </>
             )}
 
-            <Menu icon="aspect" label="Aspect ratio">
+            {/* Playback Options: Speed, Aspect, Sleep Timer, Stats & Diagnostics */}
+            <Menu icon="settings" label="Playback options">
               {(close) => (
                 <>
-                  <p className="menu-label">Aspect ratio</p>
-                  <MenuOption selected={aspectRatio === 'auto'} onSelect={() => { setAspectRatio('auto'); close() }}>Auto</MenuOption>
-                  <MenuOption selected={aspectRatio === '16:9'} onSelect={() => { setAspectRatio('16:9'); close() }}>16:9 Widescreen</MenuOption>
-                  <MenuOption selected={aspectRatio === '4:3'} onSelect={() => { setAspectRatio('4:3'); close() }}>4:3 Standard</MenuOption>
-                  <MenuOption selected={aspectRatio === 'fill'} onSelect={() => { setAspectRatio('fill'); close() }}>Fill / Zoom</MenuOption>
-                </>
-              )}
-            </Menu>
-
-            {/* Playback Speed Control */}
-            <Menu icon="history" label={`Playback speed: ${playbackSpeed}x`}>
-              {(close) => (
-                <>
-                  <p className="menu-label">Playback speed</p>
+                  <p className="menu-label">Playback Speed</p>
                   {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((s) => (
                     <MenuOption
                       key={s}
@@ -1105,15 +1118,16 @@ export function Player() {
                       {s === 1.0 ? '1.0x (Normal)' : `${s}x`}
                     </MenuOption>
                   ))}
-                </>
-              )}
-            </Menu>
 
-            {/* Sleep Timer */}
-            <Menu icon="clock" label={sleepTimerRemaining ? `Sleep in ${Math.ceil(sleepTimerRemaining / 60)}m` : 'Sleep timer'}>
-              {(close) => (
-                <>
-                  <p className="menu-label">Sleep timer</p>
+                  <div className="menu-divider" />
+                  <p className="menu-label">Aspect Ratio</p>
+                  <MenuOption selected={aspectRatio === 'auto'} onSelect={() => { setAspectRatio('auto'); close() }}>Auto</MenuOption>
+                  <MenuOption selected={aspectRatio === '16:9'} onSelect={() => { setAspectRatio('16:9'); close() }}>16:9 Widescreen</MenuOption>
+                  <MenuOption selected={aspectRatio === '4:3'} onSelect={() => { setAspectRatio('4:3'); close() }}>4:3 Standard</MenuOption>
+                  <MenuOption selected={aspectRatio === 'fill'} onSelect={() => { setAspectRatio('fill'); close() }}>Fill / Zoom</MenuOption>
+
+                  <div className="menu-divider" />
+                  <p className="menu-label">Sleep Timer</p>
                   <MenuOption
                     selected={!sleepTimerMinutes}
                     onSelect={() => {
@@ -1139,21 +1153,30 @@ export function Player() {
                       {m} minutes
                     </MenuOption>
                   ))}
+
+                  <div className="menu-divider" />
+                  <p className="menu-label">Diagnostics & HUD</p>
+                  <MenuOption
+                    selected={statsHudOpen}
+                    onSelect={() => {
+                      setStatsHudOpen(!statsHudOpen)
+                      close()
+                    }}
+                  >
+                    Stats for Nerds (Shift+D)
+                  </MenuOption>
+                  <MenuOption
+                    selected={activeDrawer === 'diagnostics'}
+                    onSelect={() => {
+                      setActiveDrawer((d) => (d === 'diagnostics' ? 'none' : 'diagnostics'))
+                      close()
+                    }}
+                  >
+                    Technical Diagnostics (I/D)
+                  </MenuOption>
                 </>
               )}
             </Menu>
-
-            {/* Stats for Nerds HUD Toggle */}
-            <button
-              type="button"
-              className={`icon-btn ${statsHudOpen ? 'is-active' : ''}`}
-              onClick={() => setStatsHudOpen(!statsHudOpen)}
-              aria-pressed={statsHudOpen}
-              aria-label="Toggle Stats for Nerds HUD overlay (Shift+D)"
-              data-tip="Stats HUD (Shift+D)"
-            >
-              <Icon name="radar" />
-            </button>
 
             {hasRealStream && (
               <button
@@ -1167,17 +1190,6 @@ export function Player() {
                 <Icon name="pip" />
               </button>
             )}
-
-            {/* Information & Diagnostics Trigger */}
-            <button
-              type="button"
-              className={`icon-btn ${activeDrawer === 'diagnostics' ? 'is-active' : ''}`}
-              onClick={() => setActiveDrawer((d) => (d === 'diagnostics' ? 'none' : 'diagnostics'))}
-              aria-label="Playback diagnostics and technical info"
-              data-tip="Technical Info (I/D)"
-            >
-              <Icon name="activity" />
-            </button>
 
             <button type="button" className="icon-btn" onClick={toggleFullscreen} aria-pressed={fullscreen} aria-label={fullscreen ? 'Exit full screen' : 'Full screen'} data-tip="Full screen (F)">
               <Icon name="fullscreen" />

@@ -324,6 +324,14 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   padding: 4px 12px;
   border-radius: 999px;
+  text-decoration: none;
+  transition: all 140ms var(--ease);
+}
+
+.episode-cast-pill:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: var(--accent);
+  color: #fff;
 }
 
 .episode-season-tabs {

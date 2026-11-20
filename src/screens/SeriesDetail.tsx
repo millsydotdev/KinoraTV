@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { seriesById } from '../data/catalog'
+import { series, seriesById } from '../data/catalog'
 import { episodeRef } from '../data/refs'
 import { Icon } from '../components/Icon'
 import { PageHeader } from '../components/PageHeader'
@@ -118,6 +118,19 @@ export function SeriesDetail() {
   const seasonWatched = seasonRefs.every((r) => store.library.watched.includes(r))
   const totalEps = s.seasons.flat().length
   const watchedEps = s.seasons.flat().filter((e) => store.library.watched.includes(episodeRef(s.id, e.id))).length
+
+  const relatedSeries = useMemo(() => {
+    return series.filter((item) => item.id !== s.id && item.genres.some((g) => s.genres.includes(g)))
+  }, [s.id, s.genres])
+
+  const seriesCast = useMemo(() => {
+    if (s.id === 'ninth-ward') return ['Ines Calloway', 'Elena Rostova', 'Arthur Pendelton']
+    if (s.id === 'fathom') return ['Marcus Vance', 'Dr. Lena Chen', 'Jonas Ray']
+    if (s.id === 'beverly-hillbillies') return ['Buddy Ebsen', 'Irene Ryan', 'Donna Douglas', 'Max Baer Jr.']
+    if (s.id === 'dragnet-1951') return ['Jack Webb', 'Ben Alexander', 'Harry Morgan']
+    if (s.id === 'one-step-beyond') return ['John Newland']
+    return ['Elena Rostova', 'Ines Calloway']
+  }, [s.id])
 
   const pickSeason = (n: number) => setParams({ season: String(n) }, { replace: true })
   const onTabKey = (e: KeyboardEvent) => {
@@ -252,6 +265,16 @@ export function SeriesDetail() {
         </ol>
       </section>
 
+      {relatedSeries.length > 0 && (
+        <div className="detail-more">
+          <Section icon="series" title="More Like This" viewAll={`/series?genre=${encodeURIComponent(s.genres[0] ?? '')}`} grid="grid-posters">
+            {relatedSeries.slice(0, 7).map((item) => (
+              <PosterCard key={item.id} to={`/series/${item.id}`} title={item.title} art={item.art || item.backdropUrl} focus={item.focus} line={`${item.years} · ${item.genres[0]}`} />
+            ))}
+          </Section>
+        </div>
+      )}
+
       <EpisodeDetailModal
         open={Boolean(selectedEpisodeId)}
         onClose={() => setSelectedEpisodeId(null)}
@@ -260,6 +283,7 @@ export function SeriesDetail() {
         seriesBackdropUrl={s.backdropUrl || s.art}
         seriesCertificate={s.certificate}
         seriesGenres={s.genres}
+        cast={seriesCast}
         seasonNumber={seasonNo}
         totalSeasons={s.seasons.length}
         episodesInSeason={episodes.map((e) => ({
@@ -351,6 +375,10 @@ function XtreamSeriesDetail({ show, initialEpisodeId }: { show: XtreamTitle; ini
   const inWatchlist = store.library.watchlist.includes(ref)
   const inFav = store.library.favourites.includes(ref)
   const [collecting, setCollecting] = useState(false)
+
+  const relatedSeries = useMemo(() => {
+    return store.xtreamCatalogue.series.filter((item) => item.id !== show.id && item.categoryId === show.categoryId).slice(0, 7)
+  }, [store.xtreamCatalogue.series, show.id, show.categoryId])
 
   return (
     <article className="detail">
@@ -561,6 +589,23 @@ function XtreamSeriesDetail({ show, initialEpisodeId }: { show: XtreamTitle; ini
           </StateBlock>
         )}
       </section>
+
+      {relatedSeries.length > 0 && (
+        <div className="detail-more">
+          <Section icon="series" title="More In This Category" grid="grid-posters">
+            {relatedSeries.map((item) => (
+              <PosterCard
+                key={item.id}
+                to={`/series/xt:${item.sourceId}:${item.id}`}
+                title={item.name}
+                art=""
+                artworkKey={item.artworkKey || undefined}
+                line={item.year != null ? String(item.year) : undefined}
+              />
+            ))}
+          </Section>
+        </div>
+      )}
 
       <EpisodeDetailModal
         open={Boolean(selectedEpisodeId)}
