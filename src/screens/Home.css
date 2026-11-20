@@ -845,7 +845,7 @@
   width: 100%;
   box-sizing: border-box;
   position: sticky;
-  top: 16px;
+  top: min(16px, calc(100vh - 930px));
 }
 
 .home-mini-live-card {

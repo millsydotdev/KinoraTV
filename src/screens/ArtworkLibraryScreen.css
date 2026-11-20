@@ -1,10 +1,15 @@
 /* ArtworkLibraryScreen.css - Smart TV Personal Artwork Library */
 
 .artwork-library-page {
-  padding: 24px 36px 64px;
+  padding: 0 var(--gutter, 24px) 64px;
   display: flex;
   flex-direction: column;
   gap: 24px;
+}
+
+.artwork-library-page .page-header {
+  padding-left: 0;
+  padding-right: 0;
 }
 
 .artwork-lib-header-title {
@@ -37,6 +42,12 @@
   font-size: 0.85rem;
   color: var(--text-muted, #8b949e);
   margin-top: 2px;
+}
+
+@media (max-width: 1400px) {
+  .artwork-lib-subtitle {
+    display: none;
+  }
 }
 
 /* Metrics HUD */

@@ -1273,3 +1273,28 @@
   align-items: center;
   gap: 10px;
 }
+
+/* Responsive guide action controls in header */
+@media (max-width: 1440px) {
+  .guide-zoom-group.timeline-zoom-controls .zoom-btn {
+    display: none;
+  }
+}
+
+@media (max-width: 1280px) {
+  .guide-zoom-group.timeline-zoom-controls {
+    display: none;
+  }
+  .now-btn span:not(.live-dot) {
+    display: none;
+  }
+  .guide-actions {
+    gap: 6px;
+  }
+}
+
+@media (max-width: 960px) {
+  .guide-actions {
+    display: none;
+  }
+}

@@ -88,7 +88,9 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  justify-content: flex-end;
 }
 
 /* Universal Search Pill */
@@ -97,7 +99,7 @@
   align-items: center;
   gap: 10px;
   height: 38px;
-  width: clamp(320px, 30vw, 500px);
+  width: clamp(200px, 20vw, 420px);
   padding: 0 14px;
   border-radius: 999px;
   background: rgba(18, 22, 28, 0.9);
@@ -106,7 +108,7 @@
   color: #8c93a3;
   font-size: 0.865rem;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
-  transition: border-color 150ms var(--ease), background 150ms var(--ease), color 150ms var(--ease);
+  transition: border-color 150ms var(--ease), background 150ms var(--ease), color 150ms var(--ease), width 150ms var(--ease);
   cursor: pointer;
 }
 
@@ -239,14 +241,30 @@
   border: 1px solid var(--surface);
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1440px) {
   .search-pill {
-    width: 40px;
+    width: clamp(140px, 15vw, 240px);
+  }
+  .header-clock {
+    display: none;
+  }
+}
+
+@media (max-width: 1280px) {
+  .search-pill {
+    width: 38px;
     padding: 0;
     justify-content: center;
   }
   .search-pill span,
   .search-pill-kbd {
+    display: none;
+  }
+  .header-cast-btn,
+  .header-grid-btn {
+    display: none;
+  }
+  .header-history-nav {
     display: none;
   }
 }

@@ -414,8 +414,11 @@
 @media (max-width: 640px) {
   .detail-hero { min-height: 600px; }
   .detail-backdrop::after { background: linear-gradient(0deg, var(--bg) 0%, rgb(var(--bg-rgb) / 0.9) 50%, rgb(var(--bg-rgb) / 0.4) 85%, rgb(var(--bg-rgb) / 0.6) 100%); }
-  .episode { grid-template-columns: 110px 1fr auto; align-items: start; gap: 12px; }
-  .episode .muted { display: none; }
+  .episode-card {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .episode-card .episode-card-plot { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
