@@ -44,6 +44,7 @@ import { OfflineBanner } from './components/OfflineBanner'
 import { WhatsNewModal, hasSeenWhatsNew } from './components/WhatsNewModal'
 import { PersistentPlayerDock } from './components/PersistentPlayerDock'
 import { registerCommandHandler } from './lib/commands'
+import { initGlobalRemoteNav, restoreRouteFocus, saveRouteFocus } from './lib/remoteNav'
 import { applyThemeTokensToElement } from './lib/theme'
 import { APP_VERSION } from './lib/native'
 import { ProfileProvider } from './state/profiles'
@@ -97,7 +98,19 @@ function Shell() {
   }, [prefs.theme, prefs.density, prefs.accent, prefs.customAccent, prefs.textSize, prefs.layoutMode, prefs.viewMode, prefs.reduceMotion])
 
   useEffect(() => {
+    const unregRemote = initGlobalRemoteNav()
+    return () => unregRemote()
+  }, [])
+
+  useEffect(() => {
     window.scrollTo(0, 0)
+    const timer = setTimeout(() => {
+      restoreRouteFocus(pathname)
+    }, 80)
+    return () => {
+      saveRouteFocus(pathname)
+      clearTimeout(timer)
+    }
   }, [pathname])
 
   // A new profile opens on setup, once per launch; it can be skipped and run again from Settings › Data.
