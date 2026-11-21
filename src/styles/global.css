@@ -179,21 +179,30 @@
 [data-text='large'] { font-size: 112.5%; }
 
 /* Layout Modes: Standard, Compact, Wide, TV Mode (10ft Living Room) */
-[data-layout='tv'] {
-  font-size: 106.25%;
+[data-layout='tv'],
+[data-mode='tv'] {
+  font-size: 110%;
   --gutter: clamp(32px, 3.5vw, 64px);
   --gap: 20px;
   --section-gap: 48px;
   --guide-row: 76px;
-  --focus-ring: 0 0 0 3px var(--focus);
+  --focus-ring: 0 0 0 3.5px #E50914, 0 0 20px rgba(229, 9, 20, 0.5);
 }
-[data-layout='tv'] .btn {
+[data-layout='tv'] .btn,
+[data-mode='tv'] .btn {
   min-height: 48px;
   padding: 0 24px;
   font-size: 1rem;
 }
-[data-layout='tv'] .sidebar-label {
+[data-layout='tv'] .sidebar-label,
+[data-mode='tv'] .sidebar-label {
   font-size: 0.9375rem;
+}
+[data-mode='tv'] :focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3.5px #E50914, 0 0 22px rgba(229, 9, 20, 0.55);
+  border-radius: inherit;
+  z-index: 10;
 }
 [data-layout='compact'] {
   --gutter: clamp(16px, 1.8vw, 28px);

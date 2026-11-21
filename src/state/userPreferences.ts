@@ -34,6 +34,7 @@ export interface UserPreferencesData {
   preferredServers?: Record<string, string>
   autoFallbackEnabled?: boolean
   liveTvGroupingMode?: 'canonical' | 'provider'
+  viewMode?: 'desktop' | 'tv'
 }
 
 const STORAGE_KEY = 'kinora.userPreferences.v1'

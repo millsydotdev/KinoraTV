@@ -42,14 +42,17 @@ const ArchivesScreen = lazy(() => import('./screens/ArchivesScreen').then((m) =>
 import { AudioPlayerBar } from './components/AudioPlayerBar'
 import { OfflineBanner } from './components/OfflineBanner'
 import { WhatsNewModal, hasSeenWhatsNew } from './components/WhatsNewModal'
+import { PersistentPlayerDock } from './components/PersistentPlayerDock'
+import { registerCommandHandler } from './lib/commands'
 import { applyThemeTokensToElement } from './lib/theme'
 import { APP_VERSION } from './lib/native'
 import { ProfileProvider } from './state/profiles'
 import { StoreProvider, useStore } from './state/store'
+import { PlaybackProvider } from './state/playbackContext'
 import { LocalMediaProvider } from './state/localMedia'
 
 function Shell() {
-  const { prefs, setupDone, mediaLibrary } = useStore()
+  const { prefs, setPref, setupDone, mediaLibrary } = useStore()
   const navigate = useNavigate()
   useEffect(() => {
     ;(window as unknown as { __kinora_navigate?: (to: string) => void }).__kinora_navigate = (to: string) => navigate(to)
@@ -88,9 +91,10 @@ function Shell() {
     el.dataset.density = prefs.density
     el.dataset.text = prefs.textSize
     el.dataset.layout = prefs.layoutMode || 'standard'
+    el.dataset.mode = prefs.viewMode || (prefs.layoutMode === 'tv' ? 'tv' : 'desktop')
     el.dataset.motion = prefs.reduceMotion ? 'reduce' : 'full'
     applyThemeTokensToElement(el, prefs.theme, prefs.accent, prefs.customAccent)
-  }, [prefs.theme, prefs.density, prefs.accent, prefs.customAccent, prefs.textSize, prefs.layoutMode, prefs.reduceMotion])
+  }, [prefs.theme, prefs.density, prefs.accent, prefs.customAccent, prefs.textSize, prefs.layoutMode, prefs.viewMode, prefs.reduceMotion])
 
   useEffect(() => {
     window.scrollTo(0, 0)
@@ -139,9 +143,18 @@ function Shell() {
       )
 
       // Command palette: Ctrl+K or Cmd+K
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K') && !e.shiftKey) {
         e.preventDefault()
         setPaletteOpen((prev) => !prev)
+        return
+      }
+
+      // View mode toggle: Ctrl+Shift+T or Cmd+Shift+T
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 't' || e.key === 'T')) {
+        e.preventDefault()
+        const nextMode = prefs.viewMode === 'tv' ? 'desktop' : 'tv'
+        setPref('viewMode', nextMode)
+        setPref('layoutMode', nextMode === 'tv' ? 'tv' : 'standard')
         return
       }
 
@@ -194,13 +207,37 @@ function Shell() {
     window.addEventListener('kinora:command-palette', openPalette)
     window.addEventListener('kinora:shortcuts', openShortcuts)
     window.addEventListener('online', onOnline)
+
+    const unregNav = registerCommandHandler('navigate', (cmd) => {
+      if (cmd.payload?.to) {
+        navigate(cmd.payload.to, { replace: cmd.payload.replace })
+      }
+    })
+    const unregSearch = registerCommandHandler('searchMedia', (cmd) => {
+      if (cmd.payload?.query) {
+        navigate(`/search?q=${encodeURIComponent(cmd.payload.query)}`)
+      }
+    })
+    const unregMode = registerCommandHandler('toggleViewMode', (cmd) => {
+      const nextMode = cmd.payload?.mode ?? (prefs.viewMode === 'tv' ? 'desktop' : 'tv')
+      setPref('viewMode', nextMode)
+      setPref('layoutMode', nextMode === 'tv' ? 'tv' : 'standard')
+    })
+    const unregSettings = registerCommandHandler('openSettings', () => {
+      navigate('/settings')
+    })
+
     return () => {
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('kinora:command-palette', openPalette)
       window.removeEventListener('kinora:shortcuts', openShortcuts)
       window.removeEventListener('online', onOnline)
+      unregNav()
+      unregSearch()
+      unregMode()
+      unregSettings()
     }
-  }, [navigate])
+  }, [navigate, prefs.viewMode, setPref])
 
   return (
     <NavMenuContext.Provider value={openNav}>
@@ -270,6 +307,7 @@ function Shell() {
           onSetSleepTimer={mediaLibrary.setSleepTimer}
         />
       )}
+      <PersistentPlayerDock />
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <WhatsNewModal open={whatsNewOpen} onClose={() => setWhatsNewOpen(false)} />
@@ -293,15 +331,17 @@ export function App() {
     <BrowserRouter>
       <ProfileProvider>
         <StoreProvider>
-          <LocalMediaProvider>
-            <NotificationProvider>
-              <BackgroundTaskProvider>
-                <ToastProvider>
-                  <Shell />
-                </ToastProvider>
-              </BackgroundTaskProvider>
-            </NotificationProvider>
-          </LocalMediaProvider>
+          <PlaybackProvider>
+            <LocalMediaProvider>
+              <NotificationProvider>
+                <BackgroundTaskProvider>
+                  <ToastProvider>
+                    <Shell />
+                  </ToastProvider>
+                </BackgroundTaskProvider>
+              </NotificationProvider>
+            </LocalMediaProvider>
+          </PlaybackProvider>
         </StoreProvider>
       </ProfileProvider>
     </BrowserRouter>

@@ -88,6 +88,7 @@ export interface Prefs {
   demoMode: boolean
   sidebarCollapsed: boolean
   layoutMode: 'standard' | 'compact' | 'wide' | 'tv'
+  viewMode: 'desktop' | 'tv'
   showArtworkBackgrounds: boolean
   animatedTransitions: boolean
   showMediaRatings: boolean
@@ -110,7 +111,7 @@ export const defaultPrefs: Prefs = {
   audioLanguage: 'English',
   subtitles: false, subtitleLanguage: 'English', subtitleSize: 'medium', subtitleStyle: 'shadow',
   timeFormat: '24h', guideZoom: 3, guideArt: true, guideStart: 'now', demoMode: false, sidebarCollapsed: false,
-  layoutMode: 'standard', showArtworkBackgrounds: true, animatedTransitions: true, showMediaRatings: true, themeMode: 'dark',
+  layoutMode: 'standard', viewMode: 'desktop', showArtworkBackgrounds: true, animatedTransitions: true, showMediaRatings: true, themeMode: 'dark',
 }
 
 export const emptyLibrary: Library = {
@@ -195,6 +196,7 @@ export function sanitizePrefs(stored: Prefs & RemovedPrefs): Prefs {
     density: pick('density', ['compact', 'comfortable', 'spacious']),
     sidebarCollapsed: Boolean(p.sidebarCollapsed),
     layoutMode: pick('layoutMode', ['standard', 'compact', 'wide', 'tv']),
+    viewMode: (p.viewMode === 'tv' || p.layoutMode === 'tv') ? 'tv' : pick('viewMode', ['desktop', 'tv']),
     showArtworkBackgrounds: p.showArtworkBackgrounds !== false,
     animatedTransitions: p.animatedTransitions !== false,
     showMediaRatings: p.showMediaRatings !== false,

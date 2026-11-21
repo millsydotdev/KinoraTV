@@ -153,6 +153,16 @@
   place-items: center;
 }
 
+.header-view-mode-btn {
+  position: relative;
+  transition: color 140ms var(--ease);
+}
+
+.header-view-mode-btn.is-tv-mode {
+  color: var(--accent, #e50914);
+  filter: drop-shadow(0 0 8px var(--accent-glow, rgba(229, 9, 20, 0.6)));
+}
+
 .header-cast-btn {
   position: relative;
   transition: color 140ms var(--ease);

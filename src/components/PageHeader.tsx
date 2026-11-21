@@ -359,7 +359,7 @@ export function PageHeader({
 }) {
   const navigate = useNavigate()
   const now = useNow()
-  const { prefs } = useStore()
+  const { prefs, setPref } = useStore()
   const openNav = useContext(NavMenuContext)
   const [castOpen, setCastOpen] = useState(false)
   const { isConnected, session } = useCasting()
@@ -419,6 +419,19 @@ export function PageHeader({
         {actions}
         <BackgroundTaskTrigger />
         <NotificationsAndReminders />
+        <button
+          type="button"
+          className={`icon-btn header-view-mode-btn ${prefs.viewMode === 'tv' ? 'is-tv-mode' : ''}`}
+          aria-label={prefs.viewMode === 'tv' ? 'Switch to Desktop Mode (Ctrl+Shift+T)' : 'Switch to TV Box Mode (Ctrl+Shift+T)'}
+          title={prefs.viewMode === 'tv' ? 'Switch to Desktop Mode (Ctrl+Shift+T)' : 'Switch to TV Box Mode (Ctrl+Shift+T)'}
+          onClick={() => {
+            const nextMode = prefs.viewMode === 'tv' ? 'desktop' : 'tv'
+            setPref('viewMode', nextMode)
+            setPref('layoutMode', nextMode === 'tv' ? 'tv' : 'standard')
+          }}
+        >
+          <Icon name="desktop" size={18} />
+        </button>
         <button
           type="button"
           className="icon-btn header-grid-btn"

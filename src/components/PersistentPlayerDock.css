@@ -1,0 +1,211 @@
+/* PersistentPlayerDock.css - Television floating PiP player dock.
+   Supports docked (320x180), minimized pill, and fullscreen modes.
+   Strictly adheres to zero em-dash typography standard. */
+
+.pip-dock-container {
+  position: fixed;
+  z-index: 85;
+  transition: all 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  isolation: isolate;
+}
+
+/* Docked 16:9 Mode (Floating bottom-right) */
+.pip-dock-container.is-docked {
+  right: var(--gutter, 28px);
+  bottom: calc(24px + var(--audio-bar-height, 0px));
+  width: 320px;
+  height: 180px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #000000;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+
+/* Minimized Pill Mode */
+.pip-dock-container.is-minimized {
+  right: var(--gutter, 28px);
+  bottom: calc(24px + var(--audio-bar-height, 0px));
+  width: auto;
+  min-width: 240px;
+  height: 46px;
+  border-radius: 9999px;
+  background: rgba(15, 18, 24, 0.95);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+}
+
+/* Fullscreen Mode */
+.pip-dock-container.is-fullscreen {
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  background: #000000;
+  border-radius: 0;
+  border: none;
+}
+
+/* Hidden Mode */
+.pip-dock-container.is-hidden {
+  display: none;
+}
+
+/* The Native Video Element */
+.pip-video-element {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000000;
+}
+
+.pip-dock-container.is-minimized .pip-video-element {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Docked Overlay Controls */
+.pip-dock-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.7) 0%, transparent 40%, rgba(0, 0, 0, 0.8) 100%);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 10px 12px;
+  opacity: 0;
+  transition: opacity 160ms ease;
+  pointer-events: none;
+}
+
+.pip-dock-container.is-docked:hover .pip-dock-overlay,
+.pip-dock-container.is-docked:focus-within .pip-dock-overlay {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.pip-dock-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pip-title-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pip-live-dot {
+  font-size: 10px;
+  font-weight: 700;
+  color: #FFFFFF;
+  background: #E50914;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  box-shadow: 0 0 8px rgba(229, 9, 20, 0.6);
+}
+
+.pip-title-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: #FFFFFF;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pip-actions-cluster {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pip-btn {
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #FFFFFF;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: all 140ms ease;
+}
+
+.pip-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.35);
+  transform: scale(1.05);
+}
+
+.pip-center-play-btn {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(229, 9, 20, 0.9);
+  color: #FFFFFF;
+  border: none;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(229, 9, 20, 0.5);
+  transition: all 140ms ease;
+  pointer-events: auto;
+}
+
+.pip-center-play-btn:hover {
+  background: #F40612;
+  transform: translate(-50%, -50%) scale(1.1);
+  box-shadow: 0 6px 20px rgba(229, 9, 20, 0.7);
+}
+
+.pip-dock-bottom-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Minimized Mode Content */
+.pip-minimized-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 10px;
+}
+
+.pip-min-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.pip-min-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #FFFFFF;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

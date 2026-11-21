@@ -527,7 +527,7 @@ function AppearanceSection({
           <button
             type="button"
             className={`settings-layout-option-card ${prefs.layoutMode === 'standard' ? 'is-active' : ''}`}
-            onClick={() => setPref('layoutMode', 'standard')}
+            onClick={() => { setPref('layoutMode', 'standard'); setPref('viewMode', 'desktop') }}
             role="radio"
             aria-checked={prefs.layoutMode === 'standard'}
           >
@@ -542,7 +542,7 @@ function AppearanceSection({
           <button
             type="button"
             className={`settings-layout-option-card ${prefs.layoutMode === 'compact' ? 'is-active' : ''}`}
-            onClick={() => setPref('layoutMode', 'compact')}
+            onClick={() => { setPref('layoutMode', 'compact'); setPref('viewMode', 'desktop') }}
             role="radio"
             aria-checked={prefs.layoutMode === 'compact'}
           >
@@ -557,7 +557,7 @@ function AppearanceSection({
           <button
             type="button"
             className={`settings-layout-option-card ${prefs.layoutMode === 'wide' ? 'is-active' : ''}`}
-            onClick={() => setPref('layoutMode', 'wide')}
+            onClick={() => { setPref('layoutMode', 'wide'); setPref('viewMode', 'desktop') }}
             role="radio"
             aria-checked={prefs.layoutMode === 'wide'}
           >
@@ -572,7 +572,7 @@ function AppearanceSection({
           <button
             type="button"
             className={`settings-layout-option-card ${prefs.layoutMode === 'tv' ? 'is-active' : ''}`}
-            onClick={() => setPref('layoutMode', 'tv')}
+            onClick={() => { setPref('layoutMode', 'tv'); setPref('viewMode', 'tv') }}
             role="radio"
             aria-checked={prefs.layoutMode === 'tv'}
           >
