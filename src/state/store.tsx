@@ -21,6 +21,7 @@ import { usePersonalMediaLibrary } from './mediaLibrary'
 import { useUserPreferencesStore } from './userPreferences'
 import { useProfiles } from './profiles'
 import { filterKidSafeChannels, filterKidSafeProgrammes, filterKidSafeXtreamTitles, isProgrammeKidSafe } from '../lib/kidsMode'
+import { PlaybackProvider } from './playbackContext'
 
 export type { Collection, Library, Progress, Ref, XtreamTitle }
 
@@ -1092,7 +1093,11 @@ export function StoreProvider({
     }
   }, [store])
   // Wait for the saved sources (a local file) so an empty Home never flashes before real channels.
-  return <StoreContext.Provider value={store}>{store.restored ? children : null}</StoreContext.Provider>
+  return (
+    <StoreContext.Provider value={store}>
+      {store.restored ? <PlaybackProvider>{children}</PlaybackProvider> : null}
+    </StoreContext.Provider>
+  )
 }
 
 export function useStore(): Store {

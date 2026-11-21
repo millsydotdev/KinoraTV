@@ -299,13 +299,19 @@ describe('switching and leaving', () => {
     expect(text()).not.toContain('not HLS')
   })
 
-  it('leaving the player destroys hls.js and closes the session', async () => {
+  it('leaving the player preserves playback in the dock; explicit stop destroys hls.js and closes the session', async () => {
     await mount(watch(one.id))
     const player = latest()
     await act(async () => { go('/elsewhere') })
+    expect(player.destroyed).toBe(false)
+    expect(native.closeStream).not.toHaveBeenCalled()
+    expect(text()).toContain('elsewhere')
+    expect(document.querySelector('.pip-dock-container.is-docked')).not.toBeNull()
+
+    const closeBtn = document.querySelector<HTMLButtonElement>('button[aria-label="Close player"]')!
+    await click(closeBtn)
     expect(player.destroyed).toBe(true)
     expect(native.closeStream).toHaveBeenCalledWith(1)
-    expect(text()).toContain('elsewhere')
   })
 })
 

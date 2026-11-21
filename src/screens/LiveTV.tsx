@@ -14,7 +14,8 @@ import { ChannelCard } from '../components/Tiles'
 import { Art, ChannelMark, ProgressBar, ProgrammeArt, StateBlock } from '../components/ui'
 import { filterKidSafeChannels, filterKidSafeProgrammes, isChannelKidSafe } from '../lib/kidsMode'
 import { guideChannels, type GuideChannel } from '../lib/native'
-import { useStreamPlayback, playbackText, type PlaybackStatus } from '../lib/playback'
+import { playbackText, type PlaybackStatus } from '../lib/playback'
+import { useUniversalPlayback } from '../state/playbackContext'
 import { clock, dayLabel, useNow } from '../lib/time'
 import { noListingsText } from '../state/guides'
 import { categoryLabel, channelGroups, inCategory, unavailableReason, cleanChannelTitle } from '../state/playlists'
@@ -90,53 +91,45 @@ function GuidePreviewPlayer({
   onInfo: () => void
   onTune: () => void
 }) {
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const store = useStore()
-  const playback = useStreamPlayback(channel.streamUrl, videoRef, {
-    quality: 'auto',
-    audioLanguage: store.prefs.audioLanguage,
-    subtitles: store.prefs.subtitles,
-    subtitleLanguage: store.prefs.subtitleLanguage,
-  })
-  const isPlaying = playback.ready && playback.state.status === 'playing'
-  const isLoading = playback.state.status === 'loading' || playback.state.status === 'buffering'
-  const isError = playback.state.status === 'error' || playback.state.status === 'unsupported'
+  const { activeStream, togglePlay, toggleMute, setVolume, muted, volume, playbackState } = useUniversalPlayback()
+  const hasActivePrimary = activeStream !== null
+  const isPlayingThisChannel = activeStream?.channel?.id === channel.id || activeStream?.ref === channelRef(channel.id)
+  const isPlaying = isPlayingThisChannel && playbackState.status === 'playing'
+
+  const playback = {
+    togglePlay: isPlayingThisChannel ? togglePlay : onTune,
+    toggleMute,
+    setVolume,
+    muted,
+    volume,
+  }
 
   return (
     <div className="tvguide-player-card">
       <div className="tvguide-player-media-wrap">
-        {channel.streamUrl ? (
-          <video
-            ref={videoRef}
-            playsInline
-            autoPlay
-            muted={playback.muted}
-            className="tvguide-player-video"
-            aria-label={`${channel.name} live preview`}
-          />
-        ) : (
-          <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#0d1117', gap: 12, padding: 16, textAlign: 'center' }}>
-            <ChannelMark channel={channel} size={56} />
+        <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#0d1117', gap: 12, padding: 16, textAlign: 'center' }}>
+          <ChannelMark channel={channel} size={56} />
+          <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text, #ffffff)' }}>
+            {channel.number} {channel.name}
+          </div>
+          {isPlayingThisChannel ? (
+            <div style={{ fontSize: '0.8125rem', color: 'var(--accent, #3b82f6)' }}>
+              Currently playing in primary player
+            </div>
+          ) : hasActivePrimary ? (
+            <div style={{ fontSize: '0.8125rem', color: 'rgba(255,255,255,0.6)' }}>
+              Preview paused: primary playback active on {activeStream.title}
+            </div>
+          ) : !channel.streamUrl ? (
             <div style={{ fontSize: '0.8125rem', color: 'rgba(255,255,255,0.6)' }}>
               No direct stream address configured for this channel
             </div>
-          </div>
-        )}
-
-        {isLoading && (
-          <div className="tvguide-player-overlay-state">
-            <span className="spinner" />
-            <span>Connecting stream...</span>
-          </div>
-        )}
-
-        {isError && (
-          <div className="tvguide-player-overlay-state is-error">
-            <Icon name="warning" size={20} />
-            <span>Stream unavailable</span>
-            <button type="button" className="btn btn-small" onClick={playback.retry}>Retry</button>
-          </div>
-        )}
+          ) : (
+            <div style={{ fontSize: '0.8125rem', color: 'rgba(255,255,255,0.6)' }}>
+              Ready to watch
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="tvguide-player-scrim" />
@@ -1518,7 +1511,13 @@ function LivePlayer({ channel, programme, now, onStep, onClose, onStatus }: {
 }) {
   const store = useStore()
   const { prefs } = store
-  const video = useRef<HTMLVideoElement>(null)
+  const {
+    playbackState,
+    playStream,
+    selectServer,
+    retry,
+  } = useUniversalPlayback()
+
   const options = channel.streamOptions?.length
     ? channel.streamOptions
     : channel.sourceId
@@ -1538,19 +1537,36 @@ function LivePlayer({ channel, programme, now, onStep, onClose, onStatus }: {
     ? selection.optionId
     : defaultOptionId
   const chosen = options.find((option) => option.id === optionId) ?? options[0]
-  const playback = useStreamPlayback(chosen?.streamUrl ?? null, video)
-  const status = playback.state.status
+
+  useEffect(() => {
+    if (chosen?.streamUrl) {
+      playStream({
+        ref: channelRef(channel.id),
+        streamUrl: chosen.streamUrl,
+        title: channel.name,
+        subtitle: programme?.title,
+        channel,
+        isLive: true,
+        sourceId: channel.sourceId ?? undefined,
+        streamOptions: options,
+        selectedServerId: optionId,
+      })
+    }
+  }, [channel.id, chosen?.streamUrl, playStream])
+
+  const status = playbackState.status
   useEffect(() => {
     onStatus(status)
     return () => onStatus('idle')
   }, [status, onStatus])
+
   const noAddress = channel.sourceId && chosen?.streamUrl === null
     ? unavailableReason(store.playlists.find((s) => s.id === chosen.sourceId)) ?? 'This channel cannot play yet.'
     : null
+
   return (
     <div className="live-player force-dark">
       {(programme?.art || programme?.icon) && <ProgrammeArt key={programme?.id ?? programme?.art} programme={programme} alt="" eager />}
-      {channel.sourceId && <video ref={video} className="live-player-video" playsInline aria-label={`${channel.name} video`} />}
       <div className="live-player-shade" />
       <div className="live-player-bug">
         <ChannelMark channel={channel} size={30} />
@@ -1563,7 +1579,7 @@ function LivePlayer({ channel, programme, now, onStep, onClose, onStatus }: {
         <div className="live-player-status" role="status">
           <Icon name="sources" size={18} />
           {channel.sourceId
-            ? <span>{noAddress ?? playbackText(playback.state)}{playback.state.canRetry && <>{' '}<button type="button" className="text-link" onClick={playback.retry}>Retry</button></>}</span>
+            ? <span>{noAddress ?? playbackText(playbackState)}{playbackState.canRetry && <>{' '}<button type="button" className="text-link" onClick={retry}>Retry</button></>}</span>
             : <span>No stream connected: sample channel. <Link to="/sources" className="text-link">Add a source</Link></span>}
         </div>
       )}
@@ -1584,6 +1600,7 @@ function LivePlayer({ channel, programme, now, onStep, onClose, onStatus }: {
                 onChange={(event) => {
                   setSelection({ channelId: channel.id, optionId: event.target.value })
                   store.setPreferredServer(channel.id, event.target.value)
+                  selectServer(event.target.value)
                 }}
                 aria-label="Stream source"
               >

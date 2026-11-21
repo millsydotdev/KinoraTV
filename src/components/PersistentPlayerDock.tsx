@@ -2,29 +2,62 @@
 // Preserves stream playback across navigation with docked, minimized, and expand controls.
 // Strictly adheres to zero em-dash typography standard.
 
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Icon } from './Icon'
 import { useUniversalPlayback } from '../state/playbackContext'
+import { useStore } from '../state/store'
+import { channelRef, resolve } from '../data/refs'
 import './PersistentPlayerDock.css'
 
 export function PersistentPlayerDock() {
-  const navigate = useNavigate()
+  let navigate: (to: string) => void = () => {}
+  let pathname = ''
+  try {
+    navigate = useNavigate()
+  } catch {
+    // Graceful fallback when rendered outside a router context
+  }
+
+  try {
+    pathname = useLocation().pathname
+  } catch {
+    if (typeof window !== 'undefined' && window.location) {
+      pathname = window.location.pathname
+    }
+  }
+
   const {
     activeStream,
     playbackState,
     pipMode,
     videoRef,
+    aspectRatio,
     togglePlay,
     stopPlayback,
     setPipMode,
   } = useUniversalPlayback()
 
-  if (!activeStream && pipMode === 'hidden') {
-    return (
-      <div className="pip-dock-container is-hidden" aria-hidden="true">
-        <video ref={videoRef} className="pip-video-element" playsInline />
-      </div>
-    )
+  const store = useStore()
+  const prefs = store?.prefs
+
+  let hasStreamOnRoute = false
+  if (pathname.startsWith('/watch/')) {
+    const rawRef = pathname.slice('/watch/'.length)
+    const watchRef = decodeURIComponent(rawRef)
+    const chId = watchRef.startsWith('channel:') ? watchRef.slice('channel:'.length) : watchRef
+    const ch = store?.findChannel ? store.findChannel(chId) : undefined
+    if (ch?.streamUrl) {
+      hasStreamOnRoute = true
+    } else if (store?.channels) {
+      const resolved = resolve(watchRef, Date.now(), store.findChannel)
+      if (resolved && 'streamUrl' in resolved && resolved.streamUrl) {
+        hasStreamOnRoute = true
+      }
+    }
+  }
+
+  if (!activeStream && !hasStreamOnRoute) {
+    return null
   }
 
   const isPlaying = playbackState.status === 'playing'
@@ -32,10 +65,10 @@ export function PersistentPlayerDock() {
   const handleExpand = () => {
     if (activeStream?.ref) {
       navigate(`/watch/${encodeURIComponent(activeStream.ref)}`)
-      setPipMode('hidden')
+      setPipMode('fullscreen')
     } else if (activeStream?.channel) {
-      navigate('/live')
-      setPipMode('docked')
+      navigate(`/watch/${encodeURIComponent(channelRef(activeStream.channel.id))}`)
+      setPipMode('fullscreen')
     } else {
       setPipMode('fullscreen')
     }
@@ -48,9 +81,13 @@ export function PersistentPlayerDock() {
     >
       <video
         ref={videoRef}
-        className="pip-video-element"
+        className={`player-video pip-video-element cue-${prefs?.subtitleSize ?? 'medium'} cue-${prefs?.subtitleStyle ?? 'shadow'}`}
         playsInline
         aria-label={activeStream?.title ? `${activeStream.title} video` : 'Player video'}
+        style={{
+          objectFit: aspectRatio === 'fill' ? 'cover' : aspectRatio === 'auto' ? 'contain' : 'contain',
+          aspectRatio: aspectRatio === '16:9' ? '16/9' : aspectRatio === '4:3' ? '4/3' : undefined,
+        }}
       />
 
       {pipMode === 'docked' && (

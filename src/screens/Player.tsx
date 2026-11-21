@@ -8,7 +8,8 @@ import { Art, ChannelMark, ProgrammeArt, StateBlock } from '../components/ui'
 import { XtreamArt } from '../components/Tiles'
 import { startOfDay } from '../data/channels'
 import { clock, timecode, useNow } from '../lib/time'
-import { playbackText, useStreamPlayback } from '../lib/playback'
+import { playbackText } from '../lib/playback'
+import { useUniversalPlayback } from '../state/playbackContext'
 import { categoryLabel, unavailableReason } from '../state/playlists'
 import { useStore } from '../state/store'
 import { isChannelKidSafe, isTitleKidSafe } from '../lib/kidsMode'
@@ -79,7 +80,7 @@ export function Player() {
   const [fullscreen, setFullscreen] = useState(false)
   const [aspectRatio, setAspectRatio] = useState<'auto' | '16:9' | '4:3' | 'fill'>('auto')
   const [pip, setPip] = useState(false)
-  const [inAppPip, setInAppPip] = useState(false)
+  const [inAppPip] = useState(false)
   const [rippleFeedback, setRippleFeedback] = useState<{ side: 'left' | 'right'; text: string } | null>(null)
   const rippleTimer = useRef<number>(0)
   const [scrubHover, setScrubHover] = useState<{ time: number; percent: number } | null>(null)
@@ -205,37 +206,46 @@ export function Player() {
   const fromPlaylist = channelItem !== null && channelItem.sourceId !== null
   const itemStreamUrl = item && 'streamUrl' in item ? item.streamUrl : null
   const hasRealStream = fromPlaylist || Boolean(itemStreamUrl)
-  const videoRef = useRef<HTMLVideoElement>(null)
 
-  // Timeshift & Live Recording state
-  const [timeshiftOffsetSecs, setTimeshiftOffsetSecs] = useState(0)
-  const isTimeshiftDelayed = timeshiftOffsetSecs > 0
-  const maxTimeshiftSecs = (store.dvrConfig?.timeshiftBufferMins ?? 60) * 60
+  const playbackCtx = useUniversalPlayback()
+  const {
+    activeStream,
+    playbackState,
+    tracks,
+    muted: contextMuted,
+    volume: contextVolume,
+    ready: playbackReady,
+    timeshiftOffsetSecs,
+    isTimeshiftDelayed,
+    videoRef,
+    playStream,
+    togglePlay: contextTogglePlay,
+    toggleMute: contextToggleMute,
+    setVolume: contextSetVolume,
+    setAudioTrack,
+    setSubtitleTrack,
+    setLevel,
+    seek: contextSeek,
+    seekTimeshift,
+    jumpToLiveEdge,
+    selectServer,
+    setPipMode,
+    retry: contextRetry,
+  } = playbackCtx
 
-  const seekTimeshift = (deltaSecs: number) => {
-    setTimeshiftOffsetSecs((prev) => Math.max(0, Math.min(maxTimeshiftSecs, prev - deltaSecs)))
-    if (videoRef.current) {
-      try {
-        const bufferedStart = videoRef.current.buffered.length > 0 ? videoRef.current.buffered.start(0) : 0
-        const minTime = bufferedStart + 0.5
-        const target = Math.max(minTime, videoRef.current.currentTime + deltaSecs)
-        videoRef.current.currentTime = target
-      } catch {
-        // Ignore if video not seekable yet
-      }
-    }
-  }
-
-  const jumpToLiveEdge = () => {
-    setTimeshiftOffsetSecs(0)
-    if (videoRef.current && videoRef.current.buffered.length > 0) {
-      try {
-        const end = videoRef.current.buffered.end(videoRef.current.buffered.length - 1)
-        videoRef.current.currentTime = Math.max(0, end - 0.5)
-      } catch {
-        // Ignore
-      }
-    }
+  const playback = {
+    state: playbackState,
+    ready: playbackReady,
+    tracks,
+    muted: contextMuted,
+    volume: contextVolume,
+    togglePlay: contextTogglePlay,
+    toggleMute: contextToggleMute,
+    setVolume: contextSetVolume,
+    setAudioTrack,
+    setSubtitleTrack,
+    setLevel,
+    retry: contextRetry,
   }
 
   const activeChannelRecording = channelItem
@@ -285,7 +295,38 @@ export function Player() {
   const streamOption = streamOptions.find((option) => option.id === streamOptionId) ?? streamOptions[0]
   const realStreamUrl = fromPlaylist ? (streamOption?.streamUrl ?? null) : itemStreamUrl
 
-  const playback = useStreamPlayback(hasRealStream ? (realStreamUrl ?? null) : null, videoRef, prefs)
+  useEffect(() => {
+    if (!item || !hasRealStream) return
+    setPipMode('fullscreen')
+
+    if (hasRealStream && realStreamUrl) {
+      if (
+        activeStream &&
+        activeStream.ref === item.ref &&
+        activeStream.streamUrl === realStreamUrl
+      ) {
+        return
+      }
+
+      playStream({
+        ref: item.ref,
+        streamUrl: realStreamUrl,
+        title: item.title,
+        subtitle: channelItem ? (programme?.title ?? undefined) : ('series' in item && item.series ? ('title' in item.series ? item.series.title : item.series.name) : undefined),
+        channel: channelItem ?? undefined,
+        isLive: channelItem !== null,
+        duration: durationSec,
+        position: pos,
+        sourceId: channelItem?.sourceId ?? undefined,
+        streamOptions,
+        selectedServerId: streamOption?.id,
+      })
+    }
+
+    return () => {
+      setPipMode('docked')
+    }
+  }, [item?.ref, realStreamUrl, hasRealStream])
 
   // Automatic fallback on stream playback failure
   useEffect(() => {
@@ -299,6 +340,7 @@ export function Player() {
           if (nextCandidate && item) {
             setFallbackNotice(`Server "${streamOption.name ?? 'current'}" failed. Trying "${nextCandidate.name}"...`)
             setStreamSelection({ ref: item.ref, id: nextCandidate.id })
+            selectServer(nextCandidate.id)
           } else if (nextSet.size >= streamOptions.length) {
             setFallbackNotice('All available servers for this channel have been attempted.')
           }
@@ -306,7 +348,7 @@ export function Player() {
         })
       }
     }
-  }, [playback.state.status, fromPlaylist, channelItem, streamOptions, streamOption, item?.ref, store.autoFallbackEnabled])
+  }, [playback.state.status, fromPlaylist, channelItem, streamOptions, streamOption, item?.ref, store.autoFallbackEnabled, selectServer])
 
   // Automated exponential backoff auto-retry for stream errors (Audit #46)
   useEffect(() => {
@@ -403,7 +445,9 @@ export function Player() {
   const pos = saved?.pos ?? 0
   const seek = (to: number) => {
     if (!durationSec) return
-    store.setProgress(ref, Math.min(durationSec - 1, Math.max(0, to)), durationSec)
+    const target = Math.min(durationSec - 1, Math.max(0, to))
+    store.setProgress(ref, target, durationSec)
+    contextSeek(target)
   }
 
   // Playback rate sync
@@ -436,7 +480,7 @@ export function Player() {
 
   const toggleFullscreen = () => {
     if (document.fullscreenElement) void document.exitFullscreen()
-    else void shell.current?.requestFullscreen().catch(() => toast('Full screen is not available in this browser window'))
+    else void (document.documentElement?.requestFullscreen?.() ?? shell.current?.requestFullscreen?.())?.catch(() => toast('Full screen is not available in this browser window'))
   }
 
   useEffect(() => {
@@ -462,8 +506,9 @@ export function Player() {
         throw new Error('Native Picture-in-Picture unavailable')
       }
     } catch {
-      setInAppPip((prev) => !prev)
-      toast('Picture-in-Picture fallback: using in-app floating player')
+      setPipMode('docked')
+      leave()
+      toast('Minimised to floating dock')
     }
   }
 
@@ -592,6 +637,7 @@ export function Player() {
   const handleSelectServer = (variant: StreamVariant) => {
     setStreamSelection({ ref: item.ref, id: variant.id })
     store.setPreferredServer(channelItem?.id ?? '', variant.id)
+    selectServer(variant.id)
     toast(`Switched to ${variant.name || variant.sourceName}`)
   }
 
@@ -646,35 +692,26 @@ export function Player() {
     <div
       className={`player force-dark${fullscreen ? ' is-fullscreen' : ''}${inAppPip ? ' is-in-app-pip' : ''}${!controlsVisible && activeDrawer === 'none' ? ' controls-hidden' : ''}`}
       ref={shell}
+      style={{ background: hasRealStream ? 'transparent' : '#000' }}
       onMouseMove={showControls}
       onClick={handleVideoCanvasClick}
     >
-      {/* Background artwork when video has not yet rendered */}
-      {item.kind === 'channel' ? (
-        (programme?.art || programme?.icon) ? (
-          <ProgrammeArt programme={programme} focus={item.focus} eager className="player-art" />
+      {/* Background artwork when video has not yet rendered or playing demo */}
+      {(!hasRealStream || playback.state.status !== 'playing') && (
+        item.kind === 'channel' ? (
+          (programme?.art || programme?.icon) ? (
+            <ProgrammeArt programme={programme} focus={item.focus} eager className="player-art" />
+          ) : (
+            <div className="player-art player-channel-ambient" style={{ background: `radial-gradient(ellipse at 50% 35%, ${item.item.mark.tone}33 0%, rgba(10,12,18,0.95) 75%)` }} />
+          )
+        ) : 'artworkKey' in item && item.artworkKey ? (
+          <XtreamArt artworkKey={item.artworkKey} alt={item.title} eager className="player-art" />
         ) : (
-          <div className="player-art player-channel-ambient" style={{ background: `radial-gradient(ellipse at 50% 35%, ${item.item.mark.tone}33 0%, rgba(10,12,18,0.95) 75%)` }} />
+          <Art src={item.art} focus={item.focus} eager className="player-art" />
         )
-      ) : 'artworkKey' in item && item.artworkKey ? (
-        <XtreamArt artworkKey={item.artworkKey} alt={item.title} eager className="player-art" />
-      ) : (
-        <Art src={item.art} focus={item.focus} eager className="player-art" />
       )}
 
-      {/* Primary Video Element */}
-      {hasRealStream && (
-        <video
-          ref={videoRef}
-          className={`player-video cue-${prefs.subtitleSize} cue-${prefs.subtitleStyle}`}
-          playsInline
-          aria-label={`${item.title} video`}
-          style={{
-            objectFit: aspectRatio === 'fill' ? 'cover' : 'contain',
-            aspectRatio: aspectRatio === '16:9' ? '16 / 9' : aspectRatio === '4:3' ? '4 / 3' : undefined,
-          }}
-        />
-      )}
+      {/* Primary Video Element shade */}
       {hasRealStream && <div className="player-video-shade" aria-hidden="true" />}
 
       {/* Double-Click Fast Forward / Rewind Ripple (Audit #51) */}

@@ -41,12 +41,15 @@
 
 /* Fullscreen Mode */
 .pip-dock-container.is-fullscreen {
+  position: fixed;
   inset: 0;
   width: 100vw;
   height: 100vh;
+  z-index: 55;
   background: #000000;
   border-radius: 0;
   border: none;
+  pointer-events: none;
 }
 
 /* Hidden Mode */

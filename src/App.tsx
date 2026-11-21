@@ -42,14 +42,12 @@ const ArchivesScreen = lazy(() => import('./screens/ArchivesScreen').then((m) =>
 import { AudioPlayerBar } from './components/AudioPlayerBar'
 import { OfflineBanner } from './components/OfflineBanner'
 import { WhatsNewModal, hasSeenWhatsNew } from './components/WhatsNewModal'
-import { PersistentPlayerDock } from './components/PersistentPlayerDock'
 import { registerCommandHandler } from './lib/commands'
 import { initGlobalRemoteNav, restoreRouteFocus, saveRouteFocus } from './lib/remoteNav'
 import { applyThemeTokensToElement } from './lib/theme'
 import { APP_VERSION } from './lib/native'
 import { ProfileProvider } from './state/profiles'
 import { StoreProvider, useStore } from './state/store'
-import { PlaybackProvider } from './state/playbackContext'
 import { LocalMediaProvider } from './state/localMedia'
 
 function Shell() {
@@ -320,7 +318,6 @@ function Shell() {
           onSetSleepTimer={mediaLibrary.setSleepTimer}
         />
       )}
-      <PersistentPlayerDock />
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <WhatsNewModal open={whatsNewOpen} onClose={() => setWhatsNewOpen(false)} />
@@ -344,17 +341,15 @@ export function App() {
     <BrowserRouter>
       <ProfileProvider>
         <StoreProvider>
-          <PlaybackProvider>
-            <LocalMediaProvider>
-              <NotificationProvider>
-                <BackgroundTaskProvider>
-                  <ToastProvider>
-                    <Shell />
-                  </ToastProvider>
-                </BackgroundTaskProvider>
-              </NotificationProvider>
-            </LocalMediaProvider>
-          </PlaybackProvider>
+          <LocalMediaProvider>
+            <NotificationProvider>
+              <BackgroundTaskProvider>
+                <ToastProvider>
+                  <Shell />
+                </ToastProvider>
+              </BackgroundTaskProvider>
+            </NotificationProvider>
+          </LocalMediaProvider>
         </StoreProvider>
       </ProfileProvider>
     </BrowserRouter>
