@@ -1442,3 +1442,203 @@
   color: var(--accent, #e50914);
   margin-bottom: 8px;
 }
+
+/* ==========================================================================
+   Kinora TV Mode: Television Launcher & Home Screen Experience
+   ========================================================================== */
+
+/* Quick Jump Navigation Ribbon */
+.home-quick-jump {
+  display: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+[data-mode="tv"] .home-quick-jump {
+  display: flex;
+  margin-top: -8px;
+  margin-bottom: 4px;
+}
+
+.home-quick-jump-track {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 6px 2px;
+}
+
+.home-quick-jump-track::-webkit-scrollbar {
+  display: none;
+}
+
+.home-quick-jump-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 22px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--fg, #f1f5f9);
+  text-decoration: none;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              background 0.2s ease,
+              border-color 0.2s ease,
+              box-shadow 0.2s ease,
+              color 0.2s ease;
+  cursor: pointer;
+  outline: none;
+}
+
+.home-quick-jump-pill:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.22);
+  transform: translateY(-2px);
+  color: #ffffff;
+}
+
+.home-quick-jump-pill:focus-visible,
+.home-quick-jump-pill.is-focused {
+  background: rgba(229, 9, 20, 0.2) !important;
+  border-color: var(--accent, #e50914) !important;
+  color: #ffffff !important;
+  transform: scale(1.05) !important;
+  outline: 3px solid var(--accent, #e50914) !important;
+  outline-offset: 3px !important;
+  box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.8), 0 8px 24px var(--accent-glow, rgba(229, 9, 20, 0.6)) !important;
+  z-index: 10 !important;
+}
+
+.home-quick-jump-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-muted, #94a3b8);
+  transition: color 0.2s ease;
+}
+
+.home-quick-jump-pill:hover .home-quick-jump-icon,
+.home-quick-jump-pill:focus-visible .home-quick-jump-icon,
+.home-quick-jump-pill.is-focused .home-quick-jump-icon {
+  color: var(--accent, #e50914);
+}
+
+.home-quick-jump-label {
+  line-height: 1;
+}
+
+.home-quick-jump-badge {
+  font-size: 0.6875rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  background: var(--accent, #e50914);
+  color: #ffffff;
+  box-shadow: 0 0 8px var(--accent-glow, rgba(229, 9, 20, 0.6));
+}
+
+/* TV Mode Layout Overrides */
+[data-mode="tv"] .home-layout-container {
+  display: flex;
+  flex-direction: column;
+  grid-template-columns: 1fr;
+  width: 100%;
+  padding: 20px 48px 64px;
+  gap: 28px;
+}
+
+[data-mode="tv"] .home-side-hub {
+  display: none !important;
+}
+
+[data-mode="tv"] .home-main-flow {
+  width: 100%;
+  gap: 28px;
+}
+
+/* TV Mode Hero Spotlight */
+[data-mode="tv"] .home-hero-cinematic {
+  min-height: clamp(340px, 42vh, 480px);
+  max-height: 480px;
+  border-radius: 20px;
+  padding: 32px 52px 28px 52px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+}
+
+[data-mode="tv"] .home-hero-inner {
+  max-width: 640px;
+  gap: 10px;
+}
+
+[data-mode="tv"] .home-hero-main-title {
+  font-size: clamp(2rem, 3.6vw, 2.75rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+[data-mode="tv"] .home-hero-desc {
+  font-size: 1rem;
+  line-height: 1.5;
+  max-width: 600px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+[data-mode="tv"] .home-hero-btns {
+  gap: 14px;
+  margin-top: 6px;
+}
+
+[data-mode="tv"] .home-btn-watch {
+  height: 48px;
+  padding: 0 28px;
+  font-size: 1rem;
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(229, 9, 20, 0.45);
+}
+
+[data-mode="tv"] .home-btn-info {
+  height: 48px;
+  padding: 0 24px;
+  font-size: 1rem;
+  border-radius: 12px;
+}
+
+[data-mode="tv"] .home-btn-bookmark {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+}
+
+/* TV Mode Content Rails */
+[data-mode="tv"] .content-rail {
+  margin-bottom: 24px;
+}
+
+[data-mode="tv"] .content-rail-header {
+  margin-bottom: 16px;
+}
+
+[data-mode="tv"] .content-rail-title {
+  font-size: 1.375rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+[data-mode="tv"] .content-rail-sub {
+  font-size: 0.875rem;
+  color: var(--fg-muted, #94a3b8);
+}

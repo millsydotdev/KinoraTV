@@ -398,6 +398,41 @@ function HomeSideHub({
   )
 }
 
+interface HomeQuickJumpProps {
+  className?: string
+}
+
+const QUICK_JUMP_DESTINATIONS = [
+  { to: '/live', label: 'Live TV', icon: 'live' as const, badge: 'On Air' },
+  { to: '/movies', label: 'Movies', icon: 'film' as const },
+  { to: '/series', label: 'Series', icon: 'series' as const },
+  { to: '/recordings', label: 'Recordings', icon: 'record' as const },
+  { to: '/library', label: 'Library', icon: 'library' as const },
+  { to: '/sources', label: 'Sources', icon: 'sources' as const },
+]
+
+export function HomeQuickJump({ className = '' }: HomeQuickJumpProps) {
+  return (
+    <nav className={`home-quick-jump ${className}`.trim()} aria-label="Quick Jump Navigation">
+      <div className="home-quick-jump-track">
+        {QUICK_JUMP_DESTINATIONS.map((dest) => (
+          <Link
+            key={dest.to}
+            to={dest.to}
+            className="home-quick-jump-pill"
+            aria-label={dest.label}
+          >
+            <span className="home-quick-jump-icon">
+              <Icon name={dest.icon} size={20} />
+            </span>
+            <span className="home-quick-jump-label">{dest.label}</span>
+            {dest.badge && <span className="home-quick-jump-badge">{dest.badge}</span>}
+          </Link>
+        ))}
+      </div>
+    </nav>
+  )
+}
 
 function formatRemainingTime(seconds: number): string {
   const totalMins = Math.max(1, Math.round(seconds / 60))
@@ -768,7 +803,7 @@ export function Home() {
 
   const sectionRenderers: Record<string, () => React.ReactNode> = {
     'continue-watching': () => {
-      const items = demoTitles ? safeResume.slice(0, 4) : safeResume
+      const items = demoTitles ? safeResume.slice(0, isTvMode ? 10 : 4) : safeResume
       if (items.length > 0) {
         return (
           <ContentRail
@@ -1419,9 +1454,38 @@ export function Home() {
     </ContentRail>
   ) : null
 
-  const renderedSections = [...homeSections]
-    .sort((a, b) => a.order - b.order)
-    .filter((s) => s.visible !== false)
+  const isTvMode = store.prefs.viewMode === 'tv' || userPreferences?.preferences.viewMode === 'tv'
+
+  const activeSections = useMemo(() => {
+    const visibleSections = [...homeSections].filter((s) => s.visible !== false)
+
+    if (isTvMode) {
+      // In TV Mode, enforce television launcher hierarchy:
+      // 1. Continue Watching
+      // 2. Live On Air
+      // 3. Trending & Popular
+      // Followed by remaining enabled sections in their configured order
+      const tvPriorityOrder = ['continue-watching', 'live-tv-right-now', 'trending-popular']
+      const prioritized: typeof homeSections = []
+
+      for (const id of tvPriorityOrder) {
+        const found = visibleSections.find((s) => s.id === id)
+        if (found) {
+          prioritized.push(found)
+        }
+      }
+
+      const remaining = visibleSections
+        .filter((s) => !tvPriorityOrder.includes(s.id))
+        .sort((a, b) => a.order - b.order)
+
+      return [...prioritized, ...remaining]
+    }
+
+    return visibleSections.sort((a, b) => a.order - b.order)
+  }, [homeSections, isTvMode])
+
+  const renderedSections = activeSections
     .map((s) => sectionRenderers[s.id]?.())
     .filter(Boolean)
 
@@ -1438,6 +1502,7 @@ export function Home() {
             slides={featuredSlides}
             previewChannel={previewChannel}
           />
+          <HomeQuickJump />
           <div className={`page stack home-body home-density-${cardDensity}`}>
             {!demoTitles && (
               <div className="home-rails-header">
