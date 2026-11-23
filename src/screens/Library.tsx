@@ -24,6 +24,7 @@ import { SaveIndicator } from '../components/design-system/Feedback'
 import { movies, series } from '../data/catalog'
 import { LocalMediaTab } from './LocalMediaTab'
 import { ArtworkLibraryScreen } from './ArtworkLibraryScreen'
+import { ViewingHabitsTab } from './ViewingHabitsTab'
 import './LocalMediaTab.css'
 import './Library.css'
 
@@ -37,6 +38,7 @@ const tabs = [
   { id: 'sources', label: 'Saved Sources' },
   { id: 'collections', label: 'Collections' },
   { id: 'history', label: 'Recently watched' },
+  { id: 'insights', label: 'Viewing Habits' },
   { id: 'hidden', label: 'Hidden Items' },
 ] as const
 type TabId = (typeof tabs)[number]['id']
@@ -137,6 +139,7 @@ export function Library() {
         {tab === 'sources' && <SourcesPersonalTab />}
         {tab === 'collections' && <Collections />}
         {tab === 'history' && <History />}
+        {tab === 'insights' && <ViewingHabitsTab />}
         {tab === 'hidden' && <HiddenTab />}
       </div>
     </div>
@@ -359,26 +362,26 @@ function Overview({ go, onSelectResource }: { go: (t: TabId) => void; onSelectRe
       )}
 
       <Section icon="folder" title="Library Categories" grid="shortcut-grid">
-        <div role="button" tabIndex={0} className="card shortcut" onClick={() => go('watchlist')} onKeyDown={(e) => { if (e.key === 'Enter') go('watchlist') }}>
+        <button type="button" className="card shortcut" onClick={() => go('watchlist')}>
           <span className="shortcut-icon"><Icon name="bookmark" /></span>
           <span><strong>Watchlist</strong><span className="faint tnum">{library.watchlist.length} items</span></span>
           <Icon name="right" size={18} />
-        </div>
-        <div role="button" tabIndex={0} className="card shortcut" onClick={() => go('favourites')} onKeyDown={(e) => { if (e.key === 'Enter') go('favourites') }}>
+        </button>
+        <button type="button" className="card shortcut" onClick={() => go('favourites')}>
           <span className="shortcut-icon"><Icon name="heart" /></span>
           <span><strong>Favourites</strong><span className="faint tnum">{favRefs.length} items</span></span>
           <Icon name="right" size={18} />
-        </div>
-        <div role="button" tabIndex={0} className="card shortcut" onClick={() => go('local')} onKeyDown={(e) => { if (e.key === 'Enter') go('local') }}>
+        </button>
+        <button type="button" className="card shortcut" onClick={() => go('local')}>
           <span className="shortcut-icon"><Icon name="folder" /></span>
           <span><strong>Local Media</strong><span className="faint">Drives & NAS storage</span></span>
           <Icon name="right" size={18} />
-        </div>
-        <div role="button" tabIndex={0} className="card shortcut" onClick={() => go('sources')} onKeyDown={(e) => { if (e.key === 'Enter') go('sources') }}>
+        </button>
+        <button type="button" className="card shortcut" onClick={() => go('sources')}>
           <span className="shortcut-icon"><Icon name="sources" /></span>
           <span><strong>Saved Sources</strong><span className="faint tnum">{mediaLibrary.mySources.length} sources</span></span>
           <Icon name="right" size={18} />
-        </div>
+        </button>
       </Section>
     </div>
   )

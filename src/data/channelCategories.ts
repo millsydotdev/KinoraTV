@@ -212,6 +212,8 @@ export function getCategoryIcon(categoryName: string): IconName {
   if (norm === 'all' || norm === 'channels') return 'grid'
   if (norm === 'favourites' || norm === 'favorites') return 'heart'
   if (norm === 'recently watched' || norm === 'recent' || norm === 'history') return 'history'
+  if (norm.includes('catchup') || norm.includes('catch-up')) return 'rotateCw'
+  if (norm.includes('reminder')) return 'bell'
   const direct = CATEGORY_MAP.get(norm)
   if (direct) return direct.icon
 

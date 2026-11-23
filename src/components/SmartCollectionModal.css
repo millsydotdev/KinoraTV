@@ -1,0 +1,308 @@
+.sc-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.sc-modal-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.sc-modal-desc {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+  max-width: 580px;
+  line-height: 1.4;
+}
+
+.sc-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 0.85rem;
+}
+
+.sc-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm, 8px);
+  transition: all 0.15s ease;
+}
+
+.sc-card:hover {
+  background: var(--surface-hover);
+  border-color: var(--border);
+}
+
+.sc-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.sc-card-title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.sc-card-icon {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.sc-card-title {
+  font-size: 0.95rem;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.sc-badge-count {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border-subtle);
+  color: var(--muted);
+}
+
+.sc-card-desc {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.sc-card-rules-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.sc-rule-pill {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border-subtle);
+}
+
+.sc-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 0.65rem;
+}
+
+/* Editor Form */
+.sc-editor-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.sc-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 0.65rem;
+}
+
+.sc-editor-header h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--text);
+}
+
+.sc-editor-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.sc-live-preview-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(var(--accent-rgb, 99, 102, 241), 0.12);
+  color: var(--accent);
+  border: 1px solid rgba(var(--accent-rgb, 99, 102, 241), 0.3);
+}
+
+.sc-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.85rem;
+}
+
+.sc-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.sc-form-field label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.sc-text-input {
+  padding: 0.5rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  color: var(--text);
+  font-size: 0.875rem;
+  outline: none;
+}
+
+.sc-text-input:focus {
+  border-color: var(--accent);
+}
+
+.sc-icon-selector {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.sc-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sc-icon-btn:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.sc-icon-btn.is-active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb, 99, 102, 241), 0.12);
+}
+
+.sc-match-mode-selector {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.sc-mode-btn {
+  flex: 1;
+  padding: 0.45rem 0.5rem;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sc-mode-btn:hover {
+  color: var(--text);
+}
+
+.sc-mode-btn.is-active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb, 99, 102, 241), 0.12);
+}
+
+/* Rules Builder */
+.sc-rules-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-top: 0.5rem;
+}
+
+.sc-rules-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sc-rules-head label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.sc-rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.sc-rule-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  padding: 0.45rem 0.65rem;
+  border-radius: var(--radius-sm, 6px);
+}
+
+.sc-rule-field-select,
+.sc-rule-value-select {
+  padding: 0.4rem 0.6rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 4px);
+  color: var(--text);
+  font-size: 0.8rem;
+  outline: none;
+}
+
+.sc-rule-value-input {
+  flex: 1;
+  padding: 0.4rem 0.6rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 4px);
+  color: var(--text);
+  font-size: 0.8rem;
+  outline: none;
+}
+
+.sc-rule-value-input:focus {
+  border-color: var(--accent);
+}

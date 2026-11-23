@@ -18,8 +18,14 @@ export function regionalFeed(id: string | null | undefined): string {
   const raw = id?.trim() ?? ''
   if (!raw) return ''
   const [, feed = ''] = raw.split('@')
-  const feedClean = feed.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+  let feedClean = feed.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
   if (!feedClean || /^(sd|hd|fhd|uhd|4k|ukhd|uksd|ushd|ussd)$/.test(feedClean)) return ''
+  for (const q of ['fhd', 'uhd', 'hd', 'sd', '4k']) {
+    if (feedClean.endsWith(q) && feedClean.length > q.length) {
+      feedClean = feedClean.slice(0, -q.length)
+      break
+    }
+  }
   return feedClean
 }
 

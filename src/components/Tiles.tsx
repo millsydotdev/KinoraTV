@@ -13,7 +13,8 @@ import { ContextMenu, type ContextMenuItem } from './design-system/ContextMenu'
 import { CollectionDialog } from './CollectionDialog'
 import { artworkEngine, type ArtworkType } from '../data/artworkEngine'
 import { TechnicalBadge, type TechnicalFormat } from './TechnicalBadges'
-import { resolveArtwork } from '../lib/artworkResolver'
+import { useArtwork } from '../lib/useArtwork'
+import { loadMetadataConfig } from '../data/metadataProviders'
 
 export function useCardContextMenu(to: string, title: string, itemRef?: string) {
   const store = useStore()
@@ -174,17 +175,19 @@ export function useCardContextMenu(to: string, title: string, itemRef?: string) 
 }
 
 /** Poster card: clean 2:3 artwork with optional caption underneath. */
-export function PosterCard({ to, title, art, posterUrl, artworkKey, focus = 50, line, flag, badges, year, itemRef, hideCaption = false }: {
-  to: string; title: string; art?: string; posterUrl?: string; artworkKey?: string; focus?: number; line?: string; flag?: ReactNode; badges?: TechnicalFormat[]; year?: number | null; itemRef?: string; hideCaption?: boolean
+export function PosterCard({ to, title, art, posterUrl, artworkKey, focus = 50, line, flag, badges, year, imdbId, itemRef, hideCaption = false }: {
+  to: string; title: string; art?: string; posterUrl?: string; artworkKey?: string; focus?: number; line?: string; flag?: ReactNode; badges?: TechnicalFormat[]; year?: number | null; imdbId?: string | null; itemRef?: string; hideCaption?: boolean
 }) {
   const { onContextMenu, menu } = useCardContextMenu(to, title, itemRef)
   const isSeries = to.startsWith('/series') || (itemRef && itemRef.startsWith('series:'))
   const artType: ArtworkType = isSeries ? 'series-poster' : 'movie-poster'
-  const resolved = resolveArtwork({
-    contentId: itemRef || (to.startsWith('/movies/') ? `movie:${to.slice(8)}` : to.startsWith('/series/') ? `series:${to.slice(8)}` : undefined),
+  const resolvedId = itemRef || (to.startsWith('/movies/') ? `movie:${to.slice(8)}` : to.startsWith('/series/') ? `series:${to.slice(8)}` : undefined)
+  const resolved = useArtwork({
+    contentId: resolvedId,
     title,
     type: artType,
     providerArt: posterUrl || art,
+    imdbId,
     year,
   })
   const effectiveArt = resolved.src || ''
@@ -200,12 +203,12 @@ export function PosterCard({ to, title, art, posterUrl, artworkKey, focus = 50, 
           </span>
         )}
         {artworkKey ? (
-          <XtreamArt artworkKey={artworkKey} alt={title} className="card-media" fallbackTitle={title} fallbackYear={year} />
+          <XtreamArt artworkKey={artworkKey} alt={title} contentId={resolvedId} artType={artType} className="card-media" fallbackTitle={title} fallbackYear={year} fallbackIcon={isSeries ? 'series' : 'film'} />
         ) : (
           <Art
             src={effectiveArt}
             alt={title}
-            contentId={itemRef || to}
+            contentId={resolvedId || to}
             focus={focus}
             className="card-media"
             fallbackIcon={isSeries ? 'series' : 'film'}
@@ -224,7 +227,7 @@ export function PosterCard({ to, title, art, posterUrl, artworkKey, focus = 50, 
   )
 }
 
-/** Provider art is fetched by Rust only when the poster nears the viewport; the remote URL stays native-side. */
+/** Provider art is fetched by Rust only when the poster nears the viewport; falls back to custom/metadata artwork when missing or preferred. */
 export function XtreamArt({
   artworkKey,
   alt = '',
@@ -233,6 +236,8 @@ export function XtreamArt({
   fallbackTitle,
   fallbackYear,
   fallbackIcon = 'film',
+  contentId,
+  artType,
 }: {
   artworkKey?: string | null
   alt?: string
@@ -241,16 +246,32 @@ export function XtreamArt({
   fallbackTitle?: string
   fallbackYear?: number | null
   fallbackIcon?: IconName
+  contentId?: string
+  artType?: ArtworkType
 }) {
   const artRef = useRef<HTMLDivElement>(null)
   const [art, setArt] = useState('')
   const [failed, setFailed] = useState(false)
   const [isPortrait, setIsPortrait] = useState(false)
+  const effectiveTitle = fallbackTitle || alt
+  const resolvedType: ArtworkType = artType ?? (fallbackIcon === 'series' ? 'series-poster' : 'movie-poster')
+  const enriched = useArtwork({
+    contentId: contentId || (artworkKey ? `xt:${artworkKey}` : undefined),
+    title: effectiveTitle,
+    type: resolvedType,
+    year: fallbackYear,
+    autoEnrich: true,
+  })
+  const preferMetadata = loadMetadataConfig().artworkSourcePreference === 'metadata-first'
+
   useEffect(() => {
     let active = true
     setFailed(false)
     setIsPortrait(false)
-    if (!artworkKey) return () => { active = false }
+    if (!artworkKey) {
+      setFailed(true)
+      return () => { active = false }
+    }
     const load = () => {
       void loadXtreamArtwork(artworkKey).then((image) => {
         if (active) {
@@ -269,14 +290,30 @@ export function XtreamArt({
     }
     return () => { active = false }
   }, [artworkKey, eager])
+
+  // Priority: custom artwork always wins; genuine external metadata (TMDB/TVmaze/TVDB) used when preferred or when Xtream art fails (never demo bundled art)
+  const isGenuineExternal = enriched.provider === 'metadata' && Boolean(enriched.src)
+  const overrideSrc =
+    enriched.provider === 'custom'
+      ? enriched.src
+      : preferMetadata && isGenuineExternal
+        ? enriched.src
+        : (!art || failed) && isGenuineExternal
+          ? enriched.src
+          : null
+
+  const displaySrc = overrideSrc || (art && !failed ? art : '')
+
   return (
     <div ref={artRef} className={`xtream-art ${isPortrait ? 'is-portrait' : 'is-landscape'} ${className}`}>
-      {art && !failed ? (
+      {displaySrc ? (
         <Art
-          src={art}
+          src={displaySrc}
           alt={alt}
+          contentId={contentId || (artworkKey ? `xt:${artworkKey}` : undefined)}
           eager={eager}
           fallbackIcon={fallbackIcon}
+          fallbackYear={fallbackYear}
           onLoad={(e) => {
             const img = e.currentTarget
             setIsPortrait(img.naturalHeight > img.naturalWidth * 1.05)
@@ -296,11 +333,72 @@ export function XtreamArt({
   )
 }
 
+/** Local media artwork loaded safely through Rust IPC (never raw filesystem paths in <img>), with external enrichment fallback. */
+export function LocalMediaArt({
+  mediaId,
+  title,
+  year,
+  kind = 'movie',
+  variant = 'poster',
+  localArtPath,
+  className = '',
+  eager = false,
+}: {
+  mediaId: string
+  title: string
+  year?: number | null
+  kind?: 'movie' | 'series' | 'episode'
+  variant?: 'poster' | 'backdrop' | 'still'
+  localArtPath?: string | null
+  className?: string
+  eager?: boolean
+}) {
+  const artType: ArtworkType =
+    variant === 'still'
+      ? 'episode-still'
+      : variant === 'backdrop'
+        ? kind === 'series'
+          ? 'series-backdrop'
+          : 'movie-backdrop'
+        : kind === 'series'
+          ? 'series-poster'
+          : 'movie-poster'
+  const resolved = useArtwork({
+    contentId: `local-${kind}:${mediaId}`,
+    localMediaId: mediaId,
+    localArt: localArtPath,
+    title,
+    year,
+    type: artType,
+  })
+  return (
+    <Art
+      src={resolved.src || ''}
+      alt={title}
+      contentId={`local-${kind}:${mediaId}`}
+      eager={eager}
+      className={className}
+      fallbackIcon={kind === 'series' || kind === 'episode' ? 'series' : 'film'}
+      fallbackYear={year}
+    />
+  )
+}
+
 export function XtreamPosterCard({ to, title, artworkKey, line, year, flag }: { to: string; title: string; artworkKey?: string | null; line?: string; year?: number | null; flag?: ReactNode }) {
+  const isSeries = to.startsWith('/series')
   return (
     <Link to={to} className="card card-poster" aria-label={line ? `${title}, ${line}` : title}>
       {flag && <span className="card-flag">{flag}</span>}
-      <XtreamArt artworkKey={artworkKey} alt={title} className="card-media" fallbackTitle={title} fallbackYear={year} />
+      <XtreamArt
+        artworkKey={artworkKey}
+        alt={title}
+        contentId={artworkKey ? `xt:${artworkKey}` : undefined}
+        artType={isSeries ? 'series-poster' : 'movie-poster'}
+        fallbackIcon={isSeries ? 'series' : 'film'}
+        className="card-media"
+        fallbackTitle={title}
+        fallbackYear={year}
+      />
       <span className="card-caption"><strong>{title}</strong>{line && <span>{line}</span>}</span>
     </Link>
   )
@@ -356,12 +454,16 @@ export function EpisodeCard({
   const ref = itemRef || `episode:${seriesId}/${episodeId}`
   const { onContextMenu, menu } = useCardContextMenu(to, episodeTitle, ref)
 
-  let resolvedStill = stillUrl
-  if (!resolvedStill && !artworkKey) {
-    const engineStill = artworkEngine.getArtwork(`episode:still:${seriesId}:${seasonNumber}:${episodeNumber}`)?.sourceUrl
-      || artworkEngine.findArtwork(`${seriesTitle} S${seasonNumber}E${episodeNumber}`, 'episode-still')?.sourceUrl
-    if (engineStill) resolvedStill = engineStill
-  }
+  const resolvedEp = useArtwork({
+    contentId: seriesId,
+    title: `${seriesTitle} S${seasonNumber}E${episodeNumber}`,
+    type: 'episode-still',
+    providerArt: stillUrl,
+    seasonNumber,
+    episodeNumber,
+    autoEnrich: false,
+  })
+  const resolvedStill = resolvedEp.src || undefined
 
   const isFallback = !resolvedStill && !artworkKey && Boolean(seriesBackdropUrl)
   const displayStill = resolvedStill || seriesBackdropUrl || ''
@@ -493,8 +595,9 @@ export function WideCard({ to, title, sub, art, backdropUrl, artworkKey, focus =
   const { onContextMenu, menu } = useCardContextMenu(to, title, itemRef)
   const isSeries = to.startsWith('/series') || (itemRef && itemRef.startsWith('series:'))
   const artType: ArtworkType = isSeries ? 'series-backdrop' : 'movie-backdrop'
-  const resolved = resolveArtwork({
-    contentId: itemRef || (to.startsWith('/movies/') ? `movie:${to.slice(8)}` : to.startsWith('/series/') ? `series:${to.slice(8)}` : undefined),
+  const resolvedId = itemRef || (to.startsWith('/movies/') ? `movie:${to.slice(8)}` : to.startsWith('/series/') ? `series:${to.slice(8)}` : undefined)
+  const resolved = useArtwork({
+    contentId: resolvedId,
     title,
     type: artType,
     providerArt: backdropUrl || art,
@@ -532,7 +635,17 @@ export function WideCard({ to, title, sub, art, backdropUrl, artworkKey, focus =
           <Icon name="more" size={16} />
         </button>
         {artworkKey ? (
-          <XtreamArt artworkKey={artworkKey} alt={title} className={`card-media${captionBelow ? '' : ' card-shade'}`} fallbackTitle={title} />
+          <div className={`card-media${captionBelow ? '' : ' card-shade'}`}>
+            <XtreamArt artworkKey={artworkKey} alt={title} className="card-media" fallbackTitle={title} />
+            {playable && <span className="card-play" aria-hidden="true"><Icon name="play" size={18} /></span>}
+            {!captionBelow && (
+              <span className={`card-overlay${progress != null ? ' has-progress' : ''}`} aria-hidden="true">
+                <strong>{title}</strong>
+                {sub && <span>{sub}</span>}
+              </span>
+            )}
+            {progress != null && <ProgressBar value={progress} label={`${Math.round(progress * 100)}% watched`} />}
+          </div>
         ) : (
           <Art
             src={effectiveArt}
@@ -575,6 +688,7 @@ export function ChannelCard({ channel, now, next, to, format, selected, at }: {
   const isPlayable = Boolean(channel.streamUrl)
   const itemRef = channel.id ? `channel:${channel.id}` : undefined
   const { onContextMenu, menu } = useCardContextMenu(to, displayName, itemRef)
+  const remainingMins = now && now.stop > at ? Math.max(1, Math.round((now.stop - at) / 60000)) : undefined
   return (
     <>
       <Link
@@ -587,11 +701,16 @@ export function ChannelCard({ channel, now, next, to, format, selected, at }: {
           {now?.art || now?.icon || (now?.title && artworkEngine.findArtwork(now.title, 'epg-programme-artwork')?.sourceUrl) ? (
             <ProgrammeArt programme={now} channel={channel} alt={now.title} backdropOnly className="channel-card-art" />
           ) : (
-            <div className="channel-card-ambient" />
+            <div className="channel-card-ambient">
+              <div className="channel-card-ambient-logo">
+                <ChannelMark channel={channel} size={52} />
+              </div>
+            </div>
           )}
           <span className="card-top">
             <ChannelMark channel={channel} size={32} />
             <span className="channel-wordmark">{displayName}</span>
+            {channel.name !== displayName && <span className="sr-only">{channel.name}</span>}
             <span className="card-top-badges">
               {channel.hd && <span className="badge badge-hd">HD</span>}
               {(channel.streamOptions?.length ?? 0) > 1 && <span className="badge badge-hd" title={`${channel.streamOptions?.length} stream servers available`}>{channel.streamOptions?.length} servers</span>}
@@ -600,8 +719,13 @@ export function ChannelCard({ channel, now, next, to, format, selected, at }: {
             </span>
           </span>
           <span className="card-overlay has-progress" aria-hidden="true">
-            <strong>{now?.title ?? idleLabel(channel)}</strong>
-            {next && <span className="tnum">Next {clock(next.start, format)} · {next.title}</span>}
+            <span className="channel-card-prog-row">
+              <strong className="channel-prog-title">{now?.title ?? idleLabel(channel)}</strong>
+              {remainingMins != null && (
+                <span className="channel-card-time-left">{remainingMins} min left</span>
+              )}
+            </span>
+            {next && <span className="tnum channel-next-info">Next {clock(next.start, format)} · {next.title}</span>}
           </span>
           {now && <ProgressBar value={(at - now.start) / (now.stop - now.start)} label="Programme progress" />}
         </div>

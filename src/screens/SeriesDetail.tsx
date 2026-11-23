@@ -22,6 +22,10 @@ import type { MediaResource } from '../data/personalLibrary'
 import { VERIFICATION_STATUS_META } from '../data/personalLibrary'
 import { classifyMediaResource } from '../data/provenance'
 import { OPEN_SERIES } from '../data/openCatalogue'
+import { findAlternateVodVariants } from '../lib/vodAggregation'
+import { useArtwork } from '../lib/useArtwork'
+import { resolveRichSeriesDetails, type SeriesMetadataDetails } from '../data/metadataProviders'
+import { artworkEngine } from '../data/artworkEngine'
 import './Detail.css'
 
 export function SeriesDetail() {
@@ -142,7 +146,61 @@ export function SeriesDetail() {
     tabs.current[n - 1]?.focus()
   }
 
-  const seasonBackdrop = episodes[0]?.still || s.backdropUrl || s.art
+  const seriesContentId = `series:${s.id}`
+  const firstYear = Number.parseInt(String(s.years || '').slice(0, 4), 10) || undefined
+  const [richSeriesMeta, setRichSeriesMeta] = useState<SeriesMetadataDetails | null>(() => {
+    const cached = artworkEngine.getMetadataDetails(seriesContentId)
+    return cached && 'seasons' in cached ? cached : null
+  })
+
+  useEffect(() => {
+    let active = true
+    void resolveRichSeriesDetails({
+      title: s.title,
+      year: firstYear,
+      imdbId: s.imdbId,
+      seasonNumber: seasonNo,
+    }).then((details) => {
+      if (active && details) {
+        artworkEngine.setMetadataDetails(seriesContentId, details)
+        setRichSeriesMeta(details)
+      }
+    })
+    return () => {
+      active = false
+    }
+  }, [seriesContentId, s.title, firstYear, s.imdbId, seasonNo])
+
+  const resolvedBackdrop = useArtwork({
+    contentId: seriesContentId,
+    title: s.title,
+    type: 'series-backdrop',
+    providerArt: richSeriesMeta?.backdropUrl || s.backdropUrl || episodes[0]?.still || s.art,
+    imdbId: richSeriesMeta?.imdbId || s.imdbId,
+    year: firstYear,
+  })
+  const resolvedPoster = useArtwork({
+    contentId: seriesContentId,
+    title: s.title,
+    type: 'series-poster',
+    providerArt: richSeriesMeta?.posterUrl || s.posterUrl || s.art,
+    imdbId: richSeriesMeta?.imdbId || s.imdbId,
+    year: firstYear,
+  })
+  const resolvedSeasonPoster = useArtwork({
+    contentId: seriesContentId,
+    title: `${s.title} - Season ${seasonNo}`,
+    type: 'season-artwork',
+    seasonNumber: seasonNo,
+    autoEnrich: false,
+  })
+
+  const seasonBackdrop = resolvedBackdrop.src || episodes[0]?.still || s.backdropUrl || s.art
+  const effectiveSeriesPoster = resolvedPoster.src || s.posterUrl || s.art
+  const effectiveSeriesGenres = richSeriesMeta?.genres?.length ? richSeriesMeta.genres : s.genres
+  const effectiveSeriesSynopsis = richSeriesMeta?.overview || s.synopsis
+  const activeMetaSeason = richSeriesMeta?.seasons?.find((sn) => sn.seasonNumber === seasonNo)
+  const effectiveSeasonPoster = activeMetaSeason?.posterUrl || resolvedSeasonPoster.src
 
   return (
     <article className="detail">
@@ -150,7 +208,7 @@ export function SeriesDetail() {
         <Art
           src={seasonBackdrop}
           alt={s.title}
-          contentId={`series:${s.id}`}
+          contentId={seriesContentId}
           focus={s.focus}
           eager
           className="detail-backdrop"
@@ -158,37 +216,54 @@ export function SeriesDetail() {
         />
         <PageHeader overlay />
         <div className="detail-hero-content">
-          <Breadcrumbs crumbs={[{ label: 'Home', to: '/' }, { label: 'TV Shows', to: '/series' }, { label: s.title }]} />
-          <Link to="/series" className="text-link detail-back"><Icon name="back" size={16} />TV Shows</Link>
-          <p className="kicker"><Icon name="series" size={16} />TV Show · {s.genres.join(' / ')}</p>
-          <h1 className="title-xl">{s.title}</h1>
-          <p className="detail-tagline">{s.tagline}</p>
-          <div className="meta">
-            <span>{s.years}</span>
-            <span>{s.seasons.length} season{s.seasons.length > 1 ? 's' : ''}</span>
-            <span>{totalEps} episodes</span>
-            <span className="badge-tech">4K HDR</span>
-            <AgeRatingBadge rating={s.certificate} system="bbfc" />
-            {s.trailerUrl && (
-              <button
-                type="button"
-                className="btn btn-ghost btn-small"
-                onClick={() => setTrailerOpen(true)}
-                title="Watch series preview"
-              >
-                <Icon name="play" size={14} />
-                <span>Trailer</span>
-              </button>
+          <div className="detail-hero-layout">
+            {effectiveSeriesPoster && (
+              <div className="detail-hero-poster-wrap">
+                <Art
+                  src={effectiveSeriesPoster}
+                  alt={`${s.title} poster`}
+                  contentId={`${seriesContentId}:poster`}
+                  eager
+                  fallbackIcon="series"
+                  fallbackYear={firstYear}
+                />
+              </div>
             )}
-          </div>
-          <p className="detail-synopsis">{s.synopsis}</p>
-          {watchedEps > 0 && (
-            <div className="detail-progress">
-              <ProgressBar value={watchedEps / totalEps} label="Series progress" />
-              <span className="faint tnum">{watchedEps} of {totalEps} episodes watched</span>
+            <div className="detail-hero-meta-col">
+              <Breadcrumbs crumbs={[{ label: 'Home', to: '/' }, { label: 'TV Shows', to: '/series' }, { label: s.title }]} />
+              <Link to="/series" className="text-link detail-back"><Icon name="back" size={16} />TV Shows</Link>
+              <p className="kicker"><Icon name="series" size={16} />TV Show · {effectiveSeriesGenres.join(' / ')}</p>
+              <h1 className="title-xl">{s.title}</h1>
+              <p className="detail-tagline">{s.tagline}</p>
+              <div className="meta">
+                <span>{s.years}</span>
+                <span>{s.seasons.length} season{s.seasons.length > 1 ? 's' : ''}</span>
+                <span>{totalEps} episodes</span>
+                {richSeriesMeta?.network && <span>{richSeriesMeta.network}</span>}
+                <span className="badge-tech">4K HDR</span>
+                <AgeRatingBadge rating={s.certificate} system="bbfc" />
+                {s.trailerUrl && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-small"
+                    onClick={() => setTrailerOpen(true)}
+                    title="Watch series preview"
+                  >
+                    <Icon name="play" size={14} />
+                    <span>Trailer</span>
+                  </button>
+                )}
+              </div>
+              <p className="detail-synopsis">{effectiveSeriesSynopsis}</p>
+              {watchedEps > 0 && (
+                <div className="detail-progress">
+                  <ProgressBar value={watchedEps / totalEps} label="Series progress" />
+                  <span className="faint tnum">{watchedEps} of {totalEps} episodes watched</span>
+                </div>
+              )}
+              <TitleActions title={s} />
             </div>
-          )}
-          <TitleActions title={s} />
+          </div>
         </div>
       </header>
 
@@ -231,6 +306,25 @@ export function SeriesDetail() {
             {seasonWatched ? 'Mark season unwatched' : 'Mark season watched'}
           </button>
         </div>
+
+        {effectiveSeasonPoster && (
+          <div className="season-poster-strip">
+            <div className="season-poster-thumb">
+              <Art
+                src={effectiveSeasonPoster}
+                alt={`${s.title} Season ${seasonNo} poster`}
+                contentId={`season:${s.id}:${seasonNo}`}
+                fallbackIcon="series"
+              />
+            </div>
+            <div>
+              <strong>{activeMetaSeason?.name || `Season ${seasonNo}`}</strong>
+              <p className="faint" style={{ margin: '4px 0 0', fontSize: '0.84rem' }}>
+                {activeMetaSeason?.overview || `${episodes.length} episodes in Season ${seasonNo}.`}
+              </p>
+            </div>
+          </div>
+        )}
 
         <ol id="season-panel" role="tabpanel" aria-labelledby={`season-tab-${seasonNo}`} className="episode-list">
           {episodes.map((e) => {
@@ -380,6 +474,18 @@ function XtreamSeriesDetail({ show, initialEpisodeId }: { show: XtreamTitle; ini
     return store.xtreamCatalogue.series.filter((item) => item.id !== show.id && item.categoryId === show.categoryId).slice(0, 7)
   }, [store.xtreamCatalogue.series, show.id, show.categoryId])
 
+  const sourceNames = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const s of store.xtreamSources) {
+      map[s.id] = s.name
+    }
+    return map
+  }, [store.xtreamSources])
+
+  const variants = useMemo(() => {
+    return findAlternateVodVariants(show.name, show.year, store.xtreamCatalogue.series, sourceNames)
+  }, [show.name, show.year, store.xtreamCatalogue.series, sourceNames])
+
   return (
     <article className="detail">
       <header className="detail-hero">
@@ -481,6 +587,40 @@ function XtreamSeriesDetail({ show, initialEpisodeId }: { show: XtreamTitle; ini
               <CollectionDialog open={collecting} onClose={() => setCollecting(false)} itemRef={ref} itemTitle={show.name} />
             </div>
           </div>
+          {variants.length > 1 && (
+            <div className="detail-variants" style={{ marginTop: 20 }}>
+              <p style={{ fontSize: '0.85rem', color: 'rgb(var(--fg-muted-rgb))', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Icon name="hardDrive" size={14} />
+                <span>Available across {variants.length} server sources:</span>
+              </p>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {variants.map((v) => {
+                  const targetStreamId = v.providerChannelId || v.id.split(':')[1] || ''
+                  const isCurrent = v.sourceId === show.sourceId && targetStreamId === String(show.id)
+                  return isCurrent ? (
+                    <span
+                      key={v.id}
+                      className="badge badge-primary"
+                      style={{ padding: '6px 12px', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                    >
+                      <span>{v.name}</span>
+                      <span style={{ opacity: 0.75 }}>(Active)</span>
+                    </span>
+                  ) : (
+                    <Link
+                      key={v.id}
+                      to={`/series/${encodeURIComponent(`xt:${v.sourceId}:${targetStreamId}`)}`}
+                      className="btn btn-secondary btn-small"
+                      style={{ padding: '6px 12px', fontSize: '0.82rem' }}
+                    >
+                      <Icon name="play" size={12} />
+                      <span>Switch to {v.name}</span>
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </header>
 

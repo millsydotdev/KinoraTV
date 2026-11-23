@@ -25,6 +25,7 @@ const sections: ShortcutSection[] = [
   {
     title: 'Live TV & Guide',
     items: [
+      { key: '0 - 9', action: 'Direct channel keypad tuning' },
       { key: 'Z', action: 'Cycle timeline zoom (2h, 3h, 4h)' },
       { key: 'N', action: 'Jump timeline to current time' },
       { key: 'P', action: 'Switch to previous channel' },
@@ -42,6 +43,18 @@ const sections: ShortcutSection[] = [
       { key: '← / →', action: 'Seek backward / forward 10s' },
       { key: 'A', action: 'Cycle display aspect ratio' },
       { key: 'D', action: 'Toggle playback diagnostics overlay' },
+      { key: 'Shift + D', action: 'Toggle real-time stream telemetry' },
+      { key: 'Shift + C / L', action: 'Toggle in-player quick channel drawer' },
+    ],
+  },
+  {
+    title: 'Television & Remote Controls',
+    items: [
+      { key: '0 - 9', action: 'Direct numeric channel entry' },
+      { key: 'Red / F1', action: 'Jump to Library and Favourites' },
+      { key: 'Green / F2', action: 'Jump to Live TV Guide' },
+      { key: 'Yellow / F3', action: 'Open Search and Command Palette' },
+      { key: 'Blue / F4', action: 'Jump to Sources and Discovery' },
     ],
   },
 ]

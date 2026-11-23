@@ -329,8 +329,11 @@
 .guide-channel-tune:hover { background: var(--surface-2); }
 .guide-channel-name { display: grid; min-width: 0; line-height: 1.25; }
 .guide-channel-name strong { font-weight: 600; font-size: 0.8125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.guide-channel-subline { display: flex; align-items: center; gap: 4px; min-height: 14px; }
-.guide-channel-tag { font-size: 0.625rem; font-weight: 700; padding: 1px 4px; border-radius: 3px; background: var(--surface-3); color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; }
+.guide-channel-subline { display: flex; align-items: center; gap: 4px; min-height: 14px; flex-wrap: nowrap; overflow: hidden; }
+.guide-channel-tag { font-size: 0.625rem; font-weight: 700; padding: 1px 4px; border-radius: 3px; background: var(--surface-3); color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; line-height: 1.2; flex-shrink: 0; }
+.guide-channel-tag.tag-quality { background: rgb(var(--accent-rgb) / 0.15); color: var(--accent-text); border: 1px solid rgb(var(--accent-rgb) / 0.25); }
+.guide-channel-tag.tag-country { background: var(--surface-4); color: var(--text-2); font-weight: 800; }
+.guide-channel-tag.tag-framerate { background: var(--surface-3); color: var(--text-3); font-size: 0.5625rem; }
 .watching { display: inline-flex; align-items: center; gap: 3px; font-size: 0.625rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--accent-text); }
 .guide-channel-no { font-size: 0.75rem; color: var(--text-3); font-weight: 500; }
 /* Channel you are watching: raised band, accent edge and a "Watching" label */
@@ -384,8 +387,7 @@
 }
 .prog-gap-title { color: var(--text-3); font-style: italic; font-size: 0.75rem; }
 .prog-label {
-  position: sticky;
-  left: calc(var(--col-w) + 12px);
+  position: relative;
   display: grid;
   gap: 2px;
   min-width: 0;
@@ -1391,4 +1393,80 @@
   .guide-actions {
     display: none;
   }
+}
+
+/* EPG Time Travel Quick Anchors */
+.epg-anchors-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 4px 0 6px;
+  scrollbar-width: none;
+}
+.epg-anchors-bar::-webkit-scrollbar {
+  display: none;
+}
+.epg-anchors-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-right: 2px;
+}
+.epg-anchor-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  border-radius: var(--r-s);
+  border: 1px solid var(--line);
+  background: var(--surface-1);
+  color: var(--text-2);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 120ms var(--ease);
+}
+.epg-anchor-pill:hover {
+  background: var(--surface-2);
+  color: var(--text);
+  border-color: var(--line-strong, var(--line));
+}
+.chip-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: var(--r-full, 9999px);
+  border: 1px solid var(--line);
+  background: var(--surface-1);
+  color: var(--text-2);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 120ms var(--ease);
+}
+.chip-action-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+  border-color: var(--line-strong, var(--line));
+}
+.chip-category-drawer {
+  border-color: rgba(var(--accent-rgb, 99, 102, 241), 0.4);
+  color: var(--accent);
+}
+.chip-manage-bouquets {
+  opacity: 0.75;
+}
+.chip-manage-bouquets:hover {
+  opacity: 1;
+}
+.chip-bouquet {
+  border-color: rgba(var(--accent-rgb, 99, 102, 241), 0.3);
 }

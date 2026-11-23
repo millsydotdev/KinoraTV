@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react'
+import { registerLocalMediaLookups } from '../data/refs'
 import {
   getLocalLibraries,
   saveLocalLibrary,
@@ -90,6 +91,21 @@ export function LocalMediaProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     reloadAll()
   }, [reloadAll])
+
+  useEffect(() => {
+    registerLocalMediaLookups(
+      (id) => catalogue.movies.find((m) => m.id === id),
+      (id) => {
+        for (const s of catalogue.series) {
+          for (const sn of s.seasons) {
+            const ep = sn.episodes.find((e) => e.id === id)
+            if (ep) return { episode: ep, series: s }
+          }
+        }
+        return undefined
+      },
+    )
+  }, [catalogue])
 
   const addLibrary = useCallback(
     async (name: string, mediaType: 'movies' | 'tv', folderPath: string): Promise<LocalLibrary | null> => {

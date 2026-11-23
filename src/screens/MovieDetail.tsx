@@ -21,13 +21,16 @@ import type { MediaResource } from '../data/personalLibrary'
 import { VERIFICATION_STATUS_META } from '../data/personalLibrary'
 import { classifyMediaResource } from '../data/provenance'
 import { OPEN_MOVIES } from '../data/openCatalogue'
+import { findAlternateVodVariants } from '../lib/vodAggregation'
+import { useArtwork } from '../lib/useArtwork'
+import { resolveRichMovieDetails, type MovieMetadataDetails } from '../data/metadataProviders'
+import { artworkEngine } from '../data/artworkEngine'
 import './Detail.css'
 
 export function MovieDetail() {
   const { id = '' } = useParams()
   const movie = movieById(id)
   const store = useStore()
-  const toast = useToast()
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [trailerOpen, setTrailerOpen] = useState(false)
   const [activeDetailTab, setActiveDetailTab] = useState<'overview' | 'cast' | 'trailers' | 'related'>('overview')
@@ -114,11 +117,90 @@ export function MovieDetail() {
   const progress = progressOf(store.library, ref)
   const similar = movies.filter((m) => m.id !== movie.id && m.genres.some((g) => movie.genres.includes(g)))
 
+  return <MovieDetailView movie={movie} itemRef={ref} watched={watched} progress={progress} similar={similar} lightboxOpen={lightboxOpen} setLightboxOpen={setLightboxOpen} trailerOpen={trailerOpen} setTrailerOpen={setTrailerOpen} activeDetailTab={activeDetailTab} setActiveDetailTab={setActiveDetailTab} />
+}
+
+function MovieDetailView({
+  movie,
+  itemRef: ref,
+  watched,
+  progress,
+  similar,
+  lightboxOpen,
+  setLightboxOpen,
+  trailerOpen,
+  setTrailerOpen,
+  activeDetailTab,
+  setActiveDetailTab,
+}: {
+  movie: NonNullable<ReturnType<typeof movieById>>
+  itemRef: string
+  watched: boolean
+  progress: number | null
+  similar: ReturnType<typeof movies.filter>
+  lightboxOpen: boolean
+  setLightboxOpen: (v: boolean) => void
+  trailerOpen: boolean
+  setTrailerOpen: (v: boolean) => void
+  activeDetailTab: 'overview' | 'cast' | 'trailers' | 'related'
+  setActiveDetailTab: (t: 'overview' | 'cast' | 'trailers' | 'related') => void
+}) {
+  const store = useStore()
+  const toast = useToast()
+  const [richMeta, setRichMeta] = useState<MovieMetadataDetails | null>(() => {
+    const cached = artworkEngine.getMetadataDetails(ref)
+    return cached && !('seasons' in cached) ? cached : null
+  })
+
+  useEffect(() => {
+    let active = true
+    const cached = artworkEngine.getMetadataDetails(ref)
+    if (cached && !('seasons' in cached)) {
+      setRichMeta(cached)
+      return
+    }
+    void resolveRichMovieDetails({
+      title: movie.title,
+      year: movie.year,
+      imdbId: movie.imdbId,
+    }).then((details) => {
+      if (active && details) {
+        artworkEngine.setMetadataDetails(ref, details)
+        setRichMeta(details)
+      }
+    })
+    return () => {
+      active = false
+    }
+  }, [ref, movie.title, movie.year, movie.imdbId])
+
+  const resolvedBackdrop = useArtwork({
+    contentId: ref,
+    title: movie.title,
+    type: 'movie-backdrop',
+    providerArt: richMeta?.backdropUrl || movie.backdropUrl || movie.art,
+    imdbId: richMeta?.imdbId || movie.imdbId,
+    year: movie.year,
+  })
+  const resolvedPoster = useArtwork({
+    contentId: ref,
+    title: movie.title,
+    type: 'movie-poster',
+    providerArt: richMeta?.posterUrl || movie.posterUrl || movie.art,
+    imdbId: richMeta?.imdbId || movie.imdbId,
+    year: movie.year,
+  })
+
+  const effectiveGenres = richMeta?.genres?.length ? richMeta.genres : movie.genres
+  const effectiveSynopsis = richMeta?.overview || movie.synopsis
+  const effectiveBackdrop = resolvedBackdrop.src || movie.backdropUrl || movie.art
+  const effectivePoster = resolvedPoster.src || richMeta?.posterUrl || movie.posterUrl || movie.art
+
   return (
     <article className="detail">
       <header className="detail-hero">
         <Art
-          src={movie.backdropUrl || movie.art}
+          src={effectiveBackdrop}
           alt={movie.title}
           contentId={ref}
           focus={movie.focus}
@@ -129,46 +211,63 @@ export function MovieDetail() {
         />
         <PageHeader overlay />
         <div className="detail-hero-content">
-          <Breadcrumbs crumbs={[{ label: 'Home', to: '/' }, { label: 'Movies', to: '/movies' }, { label: movie.title }]} />
-          <Link to="/movies" className="text-link detail-back"><Icon name="back" size={16} />Movies</Link>
-          <p className="kicker"><Icon name="film" size={16} />Movie · {movie.genres.join(' / ')}</p>
-          <h1 className="title-xl">{movie.title}</h1>
-          <p className="detail-tagline">{movie.tagline}</p>
-          <div className="meta">
-            <span>{movie.year}</span>
-            <span>{runtimeLabel(movie.runtime)}</span>
-            <span className="badge-tech">4K HDR</span>
-            <span className="badge-tech">DOLBY VISION</span>
-            <AgeRatingBadge rating={movie.certificate} system="bbfc" />
-            {watched && <span className="watched-mark"><Icon name="check" size={14} />Watched</span>}
-            {(movie as unknown as { trailerUrl?: string }).trailerUrl && (
-              <button
-                type="button"
-                className="btn btn-ghost btn-small"
-                onClick={() => setTrailerOpen(true)}
-                title="Watch trailer preview"
-              >
-                <Icon name="play" size={14} />
-                <span>Trailer</span>
-              </button>
+          <div className="detail-hero-layout">
+            {effectivePoster && (
+              <div className="detail-hero-poster-wrap">
+                <Art
+                  src={effectivePoster}
+                  alt={`${movie.title} poster`}
+                  contentId={`${ref}:poster`}
+                  eager
+                  fallbackIcon="film"
+                  fallbackYear={movie.year}
+                />
+              </div>
             )}
-            <button
-              type="button"
-              className="btn btn-ghost btn-small"
-              onClick={() => setLightboxOpen(true)}
-              title="Inspect high resolution artwork"
-            >
-              <Icon name="fullscreen" size={14} />
-              <span>Artwork</span>
-            </button>
-          </div>
-          {progress !== null && (
-            <div className="detail-progress">
-              <ProgressBar value={progress} label="Watched so far" />
-              <span className="faint tnum">{Math.round(progress * 100)}% watched</span>
+            <div className="detail-hero-meta-col">
+              <Breadcrumbs crumbs={[{ label: 'Home', to: '/' }, { label: 'Movies', to: '/movies' }, { label: movie.title }]} />
+              <Link to="/movies" className="text-link detail-back"><Icon name="back" size={16} />Movies</Link>
+              <p className="kicker"><Icon name="film" size={16} />Movie · {effectiveGenres.join(' / ')}</p>
+              <h1 className="title-xl">{movie.title}</h1>
+              <p className="detail-tagline">{movie.tagline}</p>
+              <div className="meta">
+                <span>{movie.year}</span>
+                <span>{runtimeLabel(richMeta?.runtime || movie.runtime)}</span>
+                {richMeta?.director && <span>Dir. {richMeta.director}</span>}
+                <span className="badge-tech">4K HDR</span>
+                <span className="badge-tech">DOLBY VISION</span>
+                <AgeRatingBadge rating={movie.certificate} system="bbfc" />
+                {watched && <span className="watched-mark"><Icon name="check" size={14} />Watched</span>}
+                {(movie as unknown as { trailerUrl?: string }).trailerUrl && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-small"
+                    onClick={() => setTrailerOpen(true)}
+                    title="Watch trailer preview"
+                  >
+                    <Icon name="play" size={14} />
+                    <span>Trailer</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-small"
+                  onClick={() => setLightboxOpen(true)}
+                  title="Inspect high resolution artwork"
+                >
+                  <Icon name="fullscreen" size={14} />
+                  <span>Artwork</span>
+                </button>
+              </div>
+              {progress !== null && (
+                <div className="detail-progress">
+                  <ProgressBar value={progress} label="Watched so far" />
+                  <span className="faint tnum">{Math.round(progress * 100)}% watched</span>
+                </div>
+              )}
+              <TitleActions title={movie} />
             </div>
-          )}
-          <TitleActions title={movie} />
+          </div>
         </div>
       </header>
 
@@ -222,7 +321,12 @@ export function MovieDetail() {
               <Icon name="info" size={18} />
               Story & Synopsis
             </h2>
-            <p>{movie.synopsis}</p>
+            <p>{effectiveSynopsis}</p>
+            {richMeta?.cast && richMeta.cast.length > 0 && (
+              <p className="faint" style={{ fontSize: '0.86rem', marginTop: 8 }}>
+                <strong>Starring:</strong> {richMeta.cast.slice(0, 6).join(', ')}
+              </p>
+            )}
             <button
               type="button"
               className="btn btn-ghost btn-small"
@@ -400,6 +504,18 @@ function XtreamMovieDetail({ movie }: { movie: XtreamTitle }) {
       .slice(0, 6)
   }, [store.xtreamCatalogue.movies, movie.sourceId, movie.id, movie.categoryId, movie.categoryName])
 
+  const sourceNames = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const s of store.xtreamSources) {
+      map[s.id] = s.name
+    }
+    return map
+  }, [store.xtreamSources])
+
+  const variants = useMemo(() => {
+    return findAlternateVodVariants(movie.name, movie.year, store.xtreamCatalogue.movies, sourceNames)
+  }, [movie.name, movie.year, store.xtreamCatalogue.movies, sourceNames])
+
   return (
     <article className="detail">
       <header className="detail-hero">
@@ -490,6 +606,40 @@ function XtreamMovieDetail({ movie }: { movie: XtreamTitle }) {
               <CollectionDialog open={collecting} onClose={() => setCollecting(false)} itemRef={ref} itemTitle={details?.name || movie.name} />
             </div>
           </div>
+          {variants.length > 1 && (
+            <div className="detail-variants" style={{ marginTop: 20 }}>
+              <p style={{ fontSize: '0.85rem', color: 'rgb(var(--fg-muted-rgb))', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Icon name="hardDrive" size={14} />
+                <span>Available across {variants.length} server sources:</span>
+              </p>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {variants.map((v) => {
+                  const targetStreamId = v.providerChannelId || v.id.split(':')[1] || ''
+                  const isCurrent = v.sourceId === movie.sourceId && targetStreamId === String(movie.id)
+                  return isCurrent ? (
+                    <span
+                      key={v.id}
+                      className="badge badge-primary"
+                      style={{ padding: '6px 12px', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                    >
+                      <span>{v.name}</span>
+                      <span style={{ opacity: 0.75 }}>(Active)</span>
+                    </span>
+                  ) : (
+                    <Link
+                      key={v.id}
+                      to={`/movies/${encodeURIComponent(`xt:${v.sourceId}:${targetStreamId}`)}`}
+                      className="btn btn-secondary btn-small"
+                      style={{ padding: '6px 12px', fontSize: '0.82rem' }}
+                    >
+                      <Icon name="play" size={12} />
+                      <span>Switch to {v.name}</span>
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </header>
 

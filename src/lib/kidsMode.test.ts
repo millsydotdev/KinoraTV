@@ -9,6 +9,8 @@ import {
   filterKidSafeChannels,
   filterKidSafeTitles,
   filterKidSafeResources,
+  isWithinBedtimeCurfew,
+  isDailyLimitExceeded,
 } from './kidsMode'
 import type { Channel, Movie, Programme } from '../data/types'
 import type { MediaResource } from '../data/personalLibrary'
@@ -293,6 +295,26 @@ describe('kidsMode safety engine', () => {
       expect(isRefKidSafe('channel:adult1', true, findChannel, findTitle)).toBe(false)
       expect(isRefKidSafe('movie:m2', true, findChannel, findTitle)).toBe(false)
       expect(isRefKidSafe('channel:unknown', true, findChannel, findTitle)).toBe(false)
+    })
+
+    it('evaluates bedtime curfew and daily watch limits', () => {
+      // 9:30 PM (21:30) is inside default 8:00 PM curfew
+      const evening = new Date('2026-11-21T21:30:00')
+      expect(isWithinBedtimeCurfew(evening, 20, 0)).toBe(true)
+
+      // 3:00 PM (15:00) is outside curfew
+      const afternoon = new Date('2026-11-21T15:00:00')
+      expect(isWithinBedtimeCurfew(afternoon, 20, 0)).toBe(false)
+
+      // 5:00 AM is inside overnight curfew
+      const morning = new Date('2026-11-21T05:00:00')
+      expect(isWithinBedtimeCurfew(morning, 20, 0)).toBe(true)
+
+      // 45 minutes watched against 60 min limit -> not exceeded
+      expect(isDailyLimitExceeded(45 * 60, 60)).toBe(false)
+
+      // 65 minutes watched against 60 min limit -> exceeded
+      expect(isDailyLimitExceeded(65 * 60, 60)).toBe(true)
     })
   })
 })

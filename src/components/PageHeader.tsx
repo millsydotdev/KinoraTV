@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { movies, series } from '../data/catalog'
 import { startOfDay } from '../data/channels'
 import type { Channel, Programme } from '../data/types'
 import { clock, useNow } from '../lib/time'
@@ -341,6 +342,240 @@ function HeaderProfileMenu() {
   )
 }
 
+interface SearchSuggestion {
+  id: string
+  title: string
+  subtitle: string
+  type: 'channel' | 'movie' | 'series' | 'live'
+  to: string
+  badge: string
+}
+
+function HeaderSearch({ placeholder }: { placeholder: string }) {
+  const navigate = useNavigate()
+  const store = useStore()
+  const now = useNow()
+  const [query, setQuery] = useState('')
+  const [isOpen, setIsOpen] = useState(false)
+  const [activeIndex, setActiveIndex] = useState(-1)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const suggestions = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return []
+    const results: SearchSuggestion[] = []
+
+    // 1. Live TV Channels (up to 3)
+    for (const c of store.channels) {
+      if (results.filter((r) => r.type === 'channel').length >= 3) break
+      const name = (c.name || '').toLowerCase()
+      const num = String(c.number || '')
+      if (name.includes(q) || num === q) {
+        results.push({
+          id: `ch-${c.id}`,
+          title: c.name,
+          subtitle: `Channel ${c.number || ''} ${c.categories?.length ? `- ${c.categories[0]}` : ''}`,
+          type: 'channel',
+          to: `/live?channel=${encodeURIComponent(c.id)}`,
+          badge: 'Live TV',
+        })
+      }
+    }
+
+    // 2. Movies (up to 3)
+    for (const m of movies) {
+      if (results.filter((r) => r.type === 'movie').length >= 3) break
+      if (m.title.toLowerCase().includes(q) || m.genres?.some((g) => g.toLowerCase().includes(q))) {
+        results.push({
+          id: `movie-${m.id}`,
+          title: m.title,
+          subtitle: `${m.year} - ${m.genres?.slice(0, 2).join(', ') || 'Movie'}`,
+          type: 'movie',
+          to: `/movies?movie=${encodeURIComponent(m.id)}`,
+          badge: 'Movie',
+        })
+      }
+    }
+
+    // 3. Series (up to 3)
+    for (const s of series) {
+      if (results.filter((r) => r.type === 'series').length >= 3) break
+      if (s.title.toLowerCase().includes(q) || s.genres?.some((g) => g.toLowerCase().includes(q))) {
+        results.push({
+          id: `series-${s.id}`,
+          title: s.title,
+          subtitle: `${s.seasons?.length || 1} Seasons - ${s.genres?.slice(0, 2).join(', ') || 'Series'}`,
+          type: 'series',
+          to: `/series?series=${encodeURIComponent(s.id)}`,
+          badge: 'Series',
+        })
+      }
+    }
+
+    // 4. Live Programmes (up to 2)
+    for (const c of store.channels) {
+      if (results.filter((r) => r.type === 'live').length >= 2) break
+      const prog = store.programmeAt(c, now)
+      if (prog && prog.title.toLowerCase().includes(q)) {
+        results.push({
+          id: `prog-${prog.id || c.id}`,
+          title: prog.title,
+          subtitle: `On now on ${c.name} (${c.number || ''})`,
+          type: 'live',
+          to: `/live?channel=${encodeURIComponent(c.id)}`,
+          badge: 'On Now',
+        })
+      }
+    }
+
+    return results
+  }, [query, store, now])
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const handleSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    if (activeIndex >= 0 && activeIndex < suggestions.length) {
+      const selected = suggestions[activeIndex]
+      if (selected) {
+        setIsOpen(false)
+        setQuery('')
+        navigate(selected.to)
+        return
+      }
+    }
+    if (query.trim()) {
+      setIsOpen(false)
+      navigate(`/search?q=${encodeURIComponent(query.trim())}`)
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      if (!isOpen && query.trim()) {
+        setIsOpen(true)
+      } else {
+        setActiveIndex((prev) => (prev < suggestions.length - 1 ? prev + 1 : 0))
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActiveIndex((prev) => (prev > 0 ? prev - 1 : suggestions.length - 1))
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      setIsOpen(false)
+      setActiveIndex(-1)
+      inputRef.current?.blur()
+    } else if (e.key === 'Enter') {
+      handleSubmit()
+    }
+  }
+
+  return (
+    <div className="header-search-container" ref={containerRef}>
+      <form className="search-pill-form" onSubmit={handleSubmit} role="search">
+        <label htmlFor="header-search-input" className="visually-hidden">Search</label>
+        <Icon name="search" size={16} />
+        <input
+          ref={inputRef}
+          id="header-search-input"
+          type="search"
+          className="search-pill-input"
+          placeholder={placeholder}
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value)
+            setIsOpen(true)
+            setActiveIndex(-1)
+          }}
+          onFocus={() => {
+            if (query.trim()) setIsOpen(true)
+          }}
+          onKeyDown={handleKeyDown}
+          autoComplete="off"
+          spellCheck={false}
+          aria-autocomplete="list"
+          aria-controls="header-search-dropdown"
+          aria-expanded={isOpen && Boolean(query.trim())}
+        />
+        {query ? (
+          <button
+            type="button"
+            className="search-pill-clear"
+            onClick={() => {
+              setQuery('')
+              setIsOpen(false)
+              inputRef.current?.focus()
+            }}
+            aria-label="Clear search"
+          >
+            <Icon name="close" size={14} />
+          </button>
+        ) : (
+          <kbd className="search-pill-kbd">/</kbd>
+        )}
+      </form>
+
+      {isOpen && query.trim() && (
+        <div id="header-search-dropdown" className="header-search-popover" role="listbox">
+          {suggestions.length > 0 ? (
+            <div className="header-search-suggestions">
+              {suggestions.map((item, idx) => {
+                const isSelected = idx === activeIndex
+                return (
+                  <div
+                    key={item.id}
+                    role="option"
+                    aria-selected={isSelected}
+                    className={`header-search-item ${isSelected ? 'is-selected' : ''}`}
+                    onClick={() => {
+                      setIsOpen(false)
+                      setQuery('')
+                      navigate(item.to)
+                    }}
+                    onMouseEnter={() => setActiveIndex(idx)}
+                  >
+                    <div className="header-search-item-info">
+                      <span className="header-search-item-title">{item.title}</span>
+                      <span className="header-search-item-sub">{item.subtitle}</span>
+                    </div>
+                    <span className={`header-search-badge badge-${item.type}`}>{item.badge}</span>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="header-search-empty">
+              <span>No quick results found</span>
+            </div>
+          )}
+
+          <div
+            className="header-search-footer"
+            onClick={() => {
+              setIsOpen(false)
+              navigate(`/search?q=${encodeURIComponent(query.trim())}`)
+            }}
+          >
+            <span>Press Enter to search catalog for &ldquo;{query.trim()}&rdquo;</span>
+            <Icon name="right" size={14} />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** Per-screen header from the mockup: title and sub-tabs on the left, search, bell and clock on the right. */
 export function PageHeader({
   title,
@@ -403,19 +638,7 @@ export function PageHeader({
       </div>
 
       <div className="page-header-right">
-        {search && (
-          <button
-            type="button"
-            className="search-pill"
-            aria-label="Search movies, series, channels and more (shortcut /)"
-            title="Search movies, series, channels (/)"
-            onClick={() => navigate('/search')}
-          >
-            <Icon name="search" size={16} />
-            <span className="search-pill-label">{searchPlaceholder}</span>
-            <kbd className="search-pill-kbd">/</kbd>
-          </button>
-        )}
+        {search && <HeaderSearch placeholder={searchPlaceholder} />}
         {actions}
         <BackgroundTaskTrigger />
         <NotificationsAndReminders />

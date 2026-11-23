@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Channel, Programme } from '../data/types'
 import { Icon, type IconName } from './Icon'
-import { inNativeShell, loadChannelLogo, loadProgrammeArtwork } from '../lib/native'
+import { inNativeShell, loadCachedArtwork, loadChannelLogo, loadProgrammeArtwork } from '../lib/native'
 import { getCustomArtwork } from '../state/customArtwork'
 import { artworkEngine } from '../data/artworkEngine'
 import { clock } from '../lib/time'
@@ -35,6 +35,7 @@ export function Art({
   type ImageState = 'loading' | 'loaded' | 'error'
   const custom = (contentId || alt) ? getCustomArtwork(contentId || alt) : undefined
   const effectiveSrc = custom?.dataUrl || src
+  const containerRef = useRef<HTMLDivElement>(null)
   const imgRef = useRef<HTMLImageElement>(null)
 
   const isRemote = Boolean(effectiveSrc && (effectiveSrc.startsWith('http://') || effectiveSrc.startsWith('https://')))
@@ -59,33 +60,57 @@ export function Art({
       return
     }
 
-    if (isRemote) {
-      if (native) {
-        setResolvedSrc('')
-        setImageState('loading')
-        loadProgrammeArtwork(effectiveSrc)
-          .then((dataUri) => {
-            if (!active) return
-            if (dataUri) {
-              setResolvedSrc(dataUri)
-            } else {
-              setImageState('error')
-            }
-          })
-          .catch(() => {
-            if (active) setImageState('error')
-          })
+    const startLoad = () => {
+      if (isRemote) {
+        if (native) {
+          setResolvedSrc('')
+          setImageState('loading')
+          const cacheKey = contentId ? `art:${contentId}:${effectiveSrc}` : `url:${effectiveSrc}`
+          loadCachedArtwork(cacheKey, effectiveSrc)
+            .then((dataUri) => {
+              if (!active) return
+              if (dataUri) {
+                setResolvedSrc(dataUri)
+              } else {
+                setImageState('error')
+              }
+            })
+            .catch(() => {
+              if (active) setImageState('error')
+            })
+        } else {
+          setImageState('loading')
+          setResolvedSrc(effectiveSrc)
+        }
       } else {
+        setImageState('loading')
         setResolvedSrc(effectiveSrc)
       }
+    }
+
+    if (eager || typeof IntersectionObserver === 'undefined' || !containerRef.current) {
+      startLoad()
     } else {
-      setResolvedSrc(effectiveSrc)
+      const observer = new IntersectionObserver(
+        ([entry]) => {
+          if (entry?.isIntersecting) {
+            observer.disconnect()
+            startLoad()
+          }
+        },
+        { rootMargin: '240px' },
+      )
+      observer.observe(containerRef.current)
+      return () => {
+        active = false
+        observer.disconnect()
+      }
     }
 
     return () => {
       active = false
     }
-  }, [effectiveSrc, isRemote, native])
+  }, [effectiveSrc, isRemote, native, contentId, eager])
 
   useEffect(() => {
     if (!resolvedSrc) return
@@ -103,7 +128,7 @@ export function Art({
   const state = !effectiveSrc ? 'error' : imageState
 
   return (
-    <div className={`art ${state === 'loading' ? 'is-loading' : ''} ${className}`}>
+    <div ref={containerRef} className={`art ${state === 'loading' ? 'is-loading' : ''} ${className}`}>
       {state !== 'error' && resolvedSrc ? (
         <img
           ref={imgRef}
@@ -225,12 +250,24 @@ export function ProgrammeArt({
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const rawIconUrl = directIcon !== undefined ? directIcon : programme?.icon ?? null
+  // Normalize Sky metadata pd-image URLs so 16:9 photographic stills are requested instead of portrait covers
+  const normalizedRawIcon =
+    rawIconUrl?.includes('images.metadata.sky.com/pd-image/') && rawIconUrl.endsWith('/cover')
+      ? rawIconUrl.replace(/\/cover$/, '/16-9')
+      : rawIconUrl
+
   // Refuse channel logo URLs masquerading as programme artwork
   const isChannelLogo = Boolean(
-    (channel?.logoUrl && rawIconUrl && channel.logoUrl === rawIconUrl) ||
-    (rawIconUrl && (/\/tv-logo\/|\/channel-logo\/|channel_icon/i.test(rawIconUrl)))
+    (channel?.logoUrl && normalizedRawIcon && channel.logoUrl === normalizedRawIcon) ||
+    (normalizedRawIcon && (/\/tv-logo\/|\/channel-logo\/|channel_icon/i.test(normalizedRawIcon)))
   )
-  const iconUrl = isChannelLogo ? null : rawIconUrl
+
+  // When rendering card backdrops, refuse isolated title logos and wordmarks
+  const isTitleLogo = Boolean(
+    backdropOnly && normalizedRawIcon && (/\/logos?\/|title[-_]logo|wordmark|clearart/i.test(normalizedRawIcon))
+  )
+
+  const iconUrl = isChannelLogo || isTitleLogo ? null : normalizedRawIcon
 
   // Check user-selected custom artwork first (Priority 1)
   const customRecord = programme?.id

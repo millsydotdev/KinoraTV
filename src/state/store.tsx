@@ -1,4 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { hydrateMetadataCredentialsFromVault, loadMetadataConfig } from '../data/metadataProviders'
+import { artworkEngine } from '../data/artworkEngine'
 import { addDays, channels as demoChannels, nextProgramme as demoNext, programmeAt as demoAt, scheduleFor as demoSchedule, startOfDay } from '../data/channels'
 import { realLibrary } from '../lib/migrate'
 import { demoSources } from '../data/sources'
@@ -17,6 +19,7 @@ import { createGuide, guideQueries, includePlaylistsInGuides, programmesFor, res
 import { ACCENTS, THEME_BG, safeHex, type AccentName, type ThemeName } from '../lib/theme'
 import { activeChannels, createSource, fileLabel, removeSource, restoreSource, runImport, toSaved, type PlaylistSource } from './playlists'
 import { combineChannels } from './channel-matching'
+import { registerRecordingLookup, registerResourceLookup } from '../data/refs'
 import { usePersonalMediaLibrary } from './mediaLibrary'
 import { useUserPreferencesStore } from './userPreferences'
 import { useProfiles } from './profiles'
@@ -88,13 +91,18 @@ export interface Prefs {
   /** Fictional sample content, only when the user asks for it and has no real source. */
   demoMode: boolean
   sidebarCollapsed: boolean
+  homeHubCollapsed: boolean
   layoutMode: 'standard' | 'compact' | 'wide' | 'tv'
   viewMode: 'desktop' | 'tv'
   showArtworkBackgrounds: boolean
   animatedTransitions: boolean
   showMediaRatings: boolean
   /** 'system' follows the OS colour scheme; the resolved theme is stored in `theme`. */
-  themeMode: 'dark' | 'light' | 'dim' | 'system'
+  themeMode: 'dark' | 'midnight' | 'dim' | 'slate' | 'oled' | 'light' | 'system'
+  /** Optional custom User-Agent override for stream playback. Empty string means default Kinora agent. */
+  customUserAgent: string
+  /** Optional custom HTTP Referrer override for stream playback. Empty string means none. */
+  customReferrer: string
 }
 
 /** Source-checking settings removed in D3.1: nothing used them. Stripped from saved prefs so they stop being stored. */
@@ -111,8 +119,9 @@ export const defaultPrefs: Prefs = {
   autoplayNext: true, resume: 'resume', quality: 'auto',
   audioLanguage: 'English',
   subtitles: false, subtitleLanguage: 'English', subtitleSize: 'medium', subtitleStyle: 'shadow',
-  timeFormat: '24h', guideZoom: 3, guideArt: true, guideStart: 'now', demoMode: false, sidebarCollapsed: false,
+  timeFormat: '24h', guideZoom: 3, guideArt: true, guideStart: 'now', demoMode: false, sidebarCollapsed: false, homeHubCollapsed: false,
   layoutMode: 'standard', viewMode: 'desktop', showArtworkBackgrounds: true, animatedTransitions: true, showMediaRatings: true, themeMode: 'dark',
+  customUserAgent: '', customReferrer: '',
 }
 
 export const emptyLibrary: Library = {
@@ -196,12 +205,13 @@ export function sanitizePrefs(stored: Prefs & RemovedPrefs): Prefs {
     customAccent: safeHex(p.customAccent) ?? defaultPrefs.customAccent,
     density: pick('density', ['compact', 'comfortable', 'spacious']),
     sidebarCollapsed: Boolean(p.sidebarCollapsed),
+    homeHubCollapsed: Boolean(p.homeHubCollapsed),
     layoutMode: pick('layoutMode', ['standard', 'compact', 'wide', 'tv']),
     viewMode: (p.viewMode === 'tv' || p.layoutMode === 'tv') ? 'tv' : pick('viewMode', ['desktop', 'tv']),
     showArtworkBackgrounds: p.showArtworkBackgrounds !== false,
     animatedTransitions: p.animatedTransitions !== false,
     showMediaRatings: p.showMediaRatings !== false,
-    themeMode: pick('themeMode', ['dark', 'light', 'dim', 'system']),
+    themeMode: pick('themeMode', ['dark', 'midnight', 'dim', 'slate', 'oled', 'light', 'system']),
   }
 }
 
@@ -342,6 +352,14 @@ function useStoreValue(
     return initialPlaylists
   })
   const lastOp = useRef(0)
+  useEffect(() => {
+    void hydrateMetadataCredentialsFromVault().then(() => {
+      const cfg = loadMetadataConfig()
+      if (cfg.tmdbEnabled || cfg.tvmazeEnabled) {
+        void artworkEngine.runEnrichment()
+      }
+    })
+  }, [])
   const [restored, setRestored] = useState(() => !inNativeShell())
   const [storageNotice, setStorageNotice] = useState<StorageNotice | 'save-failed' | null>(null)
   const canSave = useRef(false)
@@ -917,6 +935,8 @@ function useStoreValue(
       setLibrary((l) => ({ ...l, recentSearches: [q, ...l.recentSearches.filter((s) => s.toLowerCase() !== q.toLowerCase())].slice(0, 8) })),
     removeRecentSearch: (q: string) => setLibrary((l) => ({ ...l, recentSearches: l.recentSearches.filter((s) => s !== q) })),
     clearRecentSearches: () => setLibrary((l) => ({ ...l, recentSearches: [] })),
+    importLibrary: (lib: Library) => setLibrary(lib),
+    importPrefs: (p: Partial<Prefs>) => setPrefs((prev) => ({ ...prev, ...p })),
     /** Empties the library in use; in sample mode, puts the sample activity back instead when asked. */
     resetLibrary: (to: 'empty' | 'demo') => setLibrary(to === 'empty' ? emptyLibrary : demoLibrary(Date.now())),
     resetPrefs: () => setPrefs(defaultPrefs),
@@ -931,6 +951,17 @@ function useStoreValue(
   const [seriesRules, setSeriesRules] = useState<SeriesRule[]>([])
   const [dvrConfig, setDvrConfig] = useState<DvrConfig | null>(null)
   const [dvrStorageInfo, setDvrStorageInfo] = useState<StorageInfo | null>(null)
+
+  useEffect(() => {
+    registerRecordingLookup((id) => recordings.find((r) => r.id === id))
+  }, [recordings])
+
+  useEffect(() => {
+    registerResourceLookup((id) => {
+      const clean = id.replace(/^res:/, '')
+      return mediaLibrary.allResources.find((r) => r.id === clean || r.id === id)
+    })
+  }, [mediaLibrary.allResources])
 
   const refreshDvrState = useCallback(async () => {
     try {
@@ -1065,7 +1096,7 @@ function useStoreValue(
 }
 
 type Store = ReturnType<typeof useStoreValue>
-const StoreContext = createContext<Store | null>(null)
+export const StoreContext = createContext<Store | null>(null)
 
 /** The `initial…` props seed imported playlists, guides, matches and sample mode for tests; the app always starts with none. */
 export function StoreProvider({

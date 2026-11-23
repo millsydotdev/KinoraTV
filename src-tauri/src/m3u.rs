@@ -36,11 +36,18 @@ pub struct Channel {
     pub language: Option<String>,
     pub country: Option<String>,
     pub chno: Option<u32>,
+    pub catchup: Option<String>,
+    pub catchup_days: Option<u32>,
+    pub catchup_source: Option<String>,
     /// The address as written in the playlist, kept for a future player. May contain account
     /// names, passwords or tokens: never log it or show it; show `stream_display` instead.
     pub stream_url: String,
     /// `scheme://host[:port]/…`, safe to show.
     pub stream_display: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub http_user_agent: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub http_referrer: Option<String>,
 }
 
 // Hand-written so a stray `{:?}` can never print a stream or logo address.
@@ -55,7 +62,12 @@ impl fmt::Debug for Channel {
             .field("language", &self.language)
             .field("country", &self.country)
             .field("chno", &self.chno)
+            .field("catchup", &self.catchup)
+            .field("catchup_days", &self.catchup_days)
+            .field("catchup_source", &self.catchup_source.as_ref().map(|_| "<redacted>"))
             .field("stream", &self.stream_display)
+            .field("http_user_agent", &self.http_user_agent)
+            .field("http_referrer", &self.http_referrer.as_ref().map(|_| "<redacted>"))
             .finish()
     }
 }
@@ -82,6 +94,8 @@ struct Pending {
     attrs: HashMap<String, String>,
     title: Option<String>,
     group: Option<String>,
+    http_user_agent: Option<String>,
+    http_referrer: Option<String>,
 }
 
 pub fn parse(text: &str) -> Result<Playlist, IngestError> {
@@ -155,12 +169,56 @@ pub fn parse(text: &str) -> Result<Playlist, IngestError> {
                 attrs: attributes(head),
                 title: title.map(str::to_owned),
                 group: None,
+                http_user_agent: None,
+                http_referrer: None,
             });
             continue;
         }
         if let Some(group) = line.strip_prefix("#EXTGRP:") {
             if let Some(p) = pending.as_mut() {
                 p.group = clean(group);
+            }
+            continue;
+        }
+        if let Some(opt) = line.strip_prefix("#EXTVLCOPT:") {
+            if let Some(p) = pending.as_mut() {
+                let opt = opt.trim();
+                if let Some(val) = opt
+                    .strip_prefix("http-user-agent=")
+                    .or_else(|| opt.strip_prefix("user-agent="))
+                {
+                    p.http_user_agent = clean(val);
+                } else if let Some(val) = opt
+                    .strip_prefix("http-referrer=")
+                    .or_else(|| opt.strip_prefix("http-referer="))
+                    .or_else(|| opt.strip_prefix("referrer="))
+                    .or_else(|| opt.strip_prefix("referer="))
+                {
+                    p.http_referrer = clean(val);
+                }
+            }
+            continue;
+        }
+        if let Some(http) = line.strip_prefix("#EXTHTTP:") {
+            if let Some(p) = pending.as_mut() {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(http.trim()) {
+                    if let Some(ua) = v
+                        .get("User-Agent")
+                        .or_else(|| v.get("user-agent"))
+                        .and_then(|s| s.as_str())
+                    {
+                        p.http_user_agent = clean(ua);
+                    }
+                    if let Some(rf) = v
+                        .get("Referer")
+                        .or_else(|| v.get("referer"))
+                        .or_else(|| v.get("Referrer"))
+                        .or_else(|| v.get("referrer"))
+                        .and_then(|s| s.as_str())
+                    {
+                        p.http_referrer = clean(rf);
+                    }
+                }
             }
             continue;
         }
@@ -179,7 +237,38 @@ pub fn parse(text: &str) -> Result<Playlist, IngestError> {
             );
             continue;
         };
+        let (pipe_ua, pipe_ref) = if let Some((_, pipe)) = line.split_once('|') {
+            parse_pipe_headers(pipe)
+        } else {
+            (None, None)
+        };
         let attr = |k: &str| p.attrs.get(k).and_then(|v| clean(v));
+        let attr_ua = attr("tvg-user-agent")
+            .or_else(|| attr("http-user-agent"))
+            .or_else(|| attr("user-agent"));
+        let attr_ref = attr("tvg-referrer")
+            .or_else(|| attr("tvg-referer"))
+            .or_else(|| attr("http-referrer"))
+            .or_else(|| attr("http-referer"))
+            .or_else(|| attr("referrer"))
+            .or_else(|| attr("referer"));
+        let final_ua = pipe_ua.or(p.http_user_agent).or(attr_ua);
+        let final_ref = pipe_ref.or(p.http_referrer).or(attr_ref);
+
+        let mut final_stream_url = stream_url;
+        if !final_stream_url.contains('|') {
+            let mut parts = Vec::new();
+            if let Some(ref u) = final_ua {
+                parts.push(format!("User-Agent={u}"));
+            }
+            if let Some(ref r) = final_ref {
+                parts.push(format!("Referer={r}"));
+            }
+            if !parts.is_empty() {
+                final_stream_url = format!("{final_stream_url}|{}", parts.join("&"));
+            }
+        }
+
         let tvg_id = attr("tvg-id");
         let Some(name) = p
             .title
@@ -191,7 +280,7 @@ pub fn parse(text: &str) -> Result<Playlist, IngestError> {
             out.skip(p.line, "entry has no channel name.");
             continue;
         };
-        if !exact.insert((tvg_id.clone(), stream_url.clone())) {
+        if !exact.insert((tvg_id.clone(), final_stream_url.clone())) {
             out.duplicates += 1;
             continue;
         }
@@ -229,9 +318,19 @@ pub fn parse(text: &str) -> Result<Playlist, IngestError> {
             chno: attr("tvg-chno")
                 .and_then(|c| c.parse::<u32>().ok())
                 .filter(|c| (1..=99_999).contains(c)),
+            catchup: attr("catchup")
+                .or_else(|| attr("catchup-type"))
+                .map(|s| s.to_ascii_lowercase()),
+            catchup_days: attr("catchup-days")
+                .or_else(|| attr("timeshift"))
+                .and_then(|c| c.parse::<u32>().ok())
+                .filter(|&c| (1..=365).contains(&c)),
+            catchup_source: attr("catchup-source"),
             tvg_id,
-            stream_url,
+            stream_url: final_stream_url,
             stream_display,
+            http_user_agent: final_ua,
+            http_referrer: final_ref,
         });
     }
     if let Some(p) = pending {
@@ -248,6 +347,80 @@ pub fn parse(text: &str) -> Result<Playlist, IngestError> {
         out.warnings.truncate(MAX_WARNINGS);
     }
     Ok(out)
+}
+
+/// Formats an M3U catchup stream URL using standard timeshift interpolation patterns.
+/// Replaces {utc}, ${start}, ${timestamp}, ${duration}, {duration}, ${end}, ${offset}.
+pub fn format_m3u_catchup_url(
+    base_stream_url: &str,
+    catchup_type: Option<&str>,
+    catchup_source: Option<&str>,
+    start_timestamp: i64,
+    duration_mins: u32,
+    stop_timestamp: i64,
+) -> String {
+    let duration_secs = (duration_mins as i64) * 60;
+    let stop_ts = if stop_timestamp > start_timestamp {
+        stop_timestamp
+    } else {
+        start_timestamp + duration_secs
+    };
+    let now_ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(start_timestamp + duration_secs);
+    let offset_secs = (now_ts - start_timestamp).max(0);
+
+    let substitute = |template: &str| -> String {
+        template
+            .replace("${start}", &start_timestamp.to_string())
+            .replace("{utc}", &start_timestamp.to_string())
+            .replace("${timestamp}", &now_ts.to_string())
+            .replace("{lutc}", &now_ts.to_string())
+            .replace("${duration}", &duration_secs.to_string())
+            .replace("{duration}", &duration_secs.to_string())
+            .replace("${end}", &stop_ts.to_string())
+            .replace("${stop}", &stop_ts.to_string())
+            .replace("{utcend}", &stop_ts.to_string())
+            .replace("${offset}", &offset_secs.to_string())
+    };
+
+    if let Some(src) = catchup_source {
+        let interpolated = substitute(src);
+        if interpolated.starts_with("http://") || interpolated.starts_with("https://") {
+            return interpolated;
+        }
+        if interpolated.starts_with('?') || interpolated.starts_with('&') {
+            let sep = if base_stream_url.contains('?') { "&" } else { "?" };
+            let query = interpolated.trim_start_matches(|c| c == '?' || c == '&');
+            return format!("{base_stream_url}{sep}{query}");
+        }
+        if base_stream_url.contains('?') {
+            format!("{base_stream_url}&{interpolated}")
+        } else {
+            format!("{base_stream_url}?{interpolated}")
+        }
+    } else {
+        match catchup_type.unwrap_or("default") {
+            "shift" => {
+                let sep = if base_stream_url.contains('?') { "&" } else { "?" };
+                format!("{base_stream_url}{sep}timeshift={offset_secs}&duration={duration_secs}")
+            }
+            "flussonic" => {
+                if let Some(idx) = base_stream_url.rfind('/') {
+                    let prefix = &base_stream_url[..idx];
+                    format!("{prefix}/archive/{start_timestamp}/{duration_secs}.m3u8")
+                } else {
+                    let sep = if base_stream_url.contains('?') { "&" } else { "?" };
+                    format!("{base_stream_url}{sep}utc={start_timestamp}&lutc={now_ts}")
+                }
+            }
+            _ => {
+                let sep = if base_stream_url.contains('?') { "&" } else { "?" };
+                format!("{base_stream_url}{sep}utc={start_timestamp}&lutc={now_ts}")
+            }
+        }
+    }
 }
 
 /// Splits `-1 tvg-id="a,b" group-title="News",Channel Name` at the first comma outside quotes.
@@ -317,12 +490,39 @@ fn clean(s: &str) -> Option<String> {
     (!s.is_empty()).then_some(s)
 }
 
+/// Extracts User-Agent and Referer headers from pipe syntax (`url|User-Agent=...&Referer=...` or `|Header1=Val1|Header2=Val2`).
+fn parse_pipe_headers(pipe: &str) -> (Option<String>, Option<String>) {
+    let mut ua = None;
+    let mut referrer = None;
+    for token in pipe.split(|c| c == '&' || c == '|') {
+        let token = token.trim();
+        if let Some((k, v)) = token.split_once('=') {
+            let k = k.trim().to_ascii_lowercase();
+            let v = v.trim();
+            if v.is_empty() {
+                continue;
+            }
+            if k == "user-agent" || k == "http-user-agent" {
+                ua = clean(v);
+            } else if k == "referer"
+                || k == "referrer"
+                || k == "http-referer"
+                || k == "http-referrer"
+            {
+                referrer = clean(v);
+            }
+        }
+    }
+    (ua, referrer)
+}
+
 /// The address as written, plus its safe display form.
 fn stream_address(line: &str) -> Option<(String, String)> {
     if line.len() > MAX_STREAM_URL {
         return None;
     }
-    let url = Url::parse(line).ok()?;
+    let (raw_url, _) = line.split_once('|').unwrap_or((line, ""));
+    let url = Url::parse(raw_url).ok()?;
     STREAM_SCHEMES
         .contains(&url.scheme())
         .then(|| (line.to_owned(), display_address(&url)))
@@ -383,8 +583,13 @@ mod tests {
                 language: Some("English".into()),
                 country: Some("GB".into()),
                 chno: Some(101),
+                catchup: None,
+                catchup_days: None,
+                catchup_source: None,
                 stream_url: "https://streams.example/news.m3u8".into(),
                 stream_display: "https://streams.example/…".into(),
+                http_user_agent: None,
+                http_referrer: None,
             }
         );
         let plain = &p.channels[1];
@@ -658,5 +863,99 @@ mod tests {
             (p.channels[0].chno, p.channels[0].tvg_id.as_ref()),
             (None, None)
         );
+    }
+
+    #[test]
+    fn parses_catchup_attributes_and_formats_timeshift_urls() {
+        let text = "#EXTM3U\n#EXTINF:-1 tvg-id=\"bbc1\" catchup=\"append\" catchup-days=\"7\" catchup-source=\"?playpath=${start}&duration=${duration}\",BBC One\nhttp://example.com/live/bbc1.m3u8\n";
+        let p = ok(text);
+        let ch = &p.channels[0];
+        assert_eq!(ch.catchup.as_deref(), Some("append"));
+        assert_eq!(ch.catchup_days, Some(7));
+        assert_eq!(
+            ch.catchup_source.as_deref(),
+            Some("?playpath=${start}&duration=${duration}")
+        );
+
+        let formatted = format_m3u_catchup_url(
+            &ch.stream_url,
+            ch.catchup.as_deref(),
+            ch.catchup_source.as_deref(),
+            1731636000,
+            60,
+            1731639600,
+        );
+        assert_eq!(
+            formatted,
+            "http://example.com/live/bbc1.m3u8?playpath=1731636000&duration=3600"
+        );
+
+        // Flussonic mode
+        let flussonic = format_m3u_catchup_url(
+            "http://stream.example/live/stream1/index.m3u8",
+            Some("flussonic"),
+            None,
+            1731636000,
+            30,
+            1731637800,
+        );
+        assert_eq!(
+            flussonic,
+            "http://stream.example/live/stream1/archive/1731636000/1800.m3u8"
+        );
+
+        // Shift mode
+        let shift = format_m3u_catchup_url(
+            "http://stream.example/live/stream2",
+            Some("shift"),
+            None,
+            1731636000,
+            45,
+            1731638700,
+        );
+        assert!(shift.contains("http://stream.example/live/stream2?timeshift="));
+        assert!(shift.contains("&duration=2700"));
+    }
+
+    #[test]
+    fn parses_extvlcopt_headers() {
+        let text = "#EXTM3U\n#EXTINF:-1,Channel 1\n#EXTVLCOPT:http-user-agent=CustomUA/2.0\n#EXTVLCOPT:http-referrer=https://ref.example/\nhttp://stream.example/live.m3u8\n";
+        let p = ok(text);
+        let ch = &p.channels[0];
+        assert_eq!(ch.http_user_agent.as_deref(), Some("CustomUA/2.0"));
+        assert_eq!(ch.http_referrer.as_deref(), Some("https://ref.example/"));
+        assert_eq!(
+            ch.stream_url,
+            "http://stream.example/live.m3u8|User-Agent=CustomUA/2.0&Referer=https://ref.example/"
+        );
+        assert_eq!(ch.stream_display, "http://stream.example/…");
+    }
+
+    #[test]
+    fn parses_exthttp_json_headers() {
+        let text = "#EXTM3U\n#EXTINF:-1,Channel 2\n#EXTHTTP:{\"User-Agent\": \"KPlayer/1.0\", \"Referer\": \"https://portal.example/\"}\nhttp://stream.example/live2.m3u8\n";
+        let p = ok(text);
+        let ch = &p.channels[0];
+        assert_eq!(ch.http_user_agent.as_deref(), Some("KPlayer/1.0"));
+        assert_eq!(ch.http_referrer.as_deref(), Some("https://portal.example/"));
+        assert_eq!(
+            ch.stream_url,
+            "http://stream.example/live2.m3u8|User-Agent=KPlayer/1.0&Referer=https://portal.example/"
+        );
+        assert_eq!(ch.stream_display, "http://stream.example/…");
+    }
+
+    #[test]
+    fn parses_pipe_syntax_headers_and_preserves_clean_display() {
+        let text = "#EXTM3U\n#EXTINF:-1,Pipe Channel\nhttp://stream.example/live.m3u8|User-Agent=CustomPlayer/1.0&Referer=https://portal.example/\n";
+        let p = ok(text);
+        let ch = &p.channels[0];
+        assert_eq!(ch.http_user_agent.as_deref(), Some("CustomPlayer/1.0"));
+        assert_eq!(ch.http_referrer.as_deref(), Some("https://portal.example/"));
+        assert_eq!(
+            ch.stream_url,
+            "http://stream.example/live.m3u8|User-Agent=CustomPlayer/1.0&Referer=https://portal.example/"
+        );
+        assert_eq!(ch.stream_display, "http://stream.example/…");
     }
 }

@@ -1,8 +1,8 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { CHANNEL_GROUPS, GUIDE_DAYS, MIN, addDays, startOfDay } from '../data/channels'
 import { movies, series } from '../data/catalog'
-import { catchupRef, channelRef, recordingRef } from '../data/refs'
+import { catchupRef, channelRef, m3uCatchupRef, recordingRef } from '../data/refs'
 import type { Channel, Programme } from '../data/types'
 import { Dialog } from '../components/Dialog'
 import { Icon } from '../components/Icon'
@@ -13,17 +13,26 @@ import { PageHeader } from '../components/PageHeader'
 import { ChannelCard } from '../components/Tiles'
 import { Art, ChannelMark, ProgressBar, ProgrammeArt, StateBlock } from '../components/ui'
 import { filterKidSafeChannels, filterKidSafeProgrammes, isChannelKidSafe } from '../lib/kidsMode'
-import { guideChannels, type GuideChannel } from '../lib/native'
 import { playbackText, type PlaybackStatus } from '../lib/playback'
 import { useUniversalPlayback } from '../state/playbackContext'
 import { clock, dayLabel, useNow } from '../lib/time'
 import { noListingsText } from '../state/guides'
-import { categoryLabel, channelGroups, inCategory, unavailableReason, cleanChannelTitle } from '../state/playlists'
+import { categoryLabel, channelGroups, inCategory, unavailableReason, cleanChannelTitle, parseChannelMetadata } from '../state/playlists'
 import { LIVE_TV_CATEGORIES, classifyChannelCategory, extractChannelLocation, getCategoryIcon } from '../data/channelCategories'
+import { BouquetManagerModal } from '../components/BouquetManagerModal'
+import { CategoryDrawer } from '../components/CategoryDrawer'
+import { LiveMosaicGrid } from '../components/LiveMosaicGrid'
+import { CatchupBrowserModal } from '../components/CatchupBrowserModal'
+import { EpgStatusModal } from '../components/EpgStatusModal'
+import { EpgMappingModal } from '../components/EpgMappingModal'
+import { loadBouquetConfig, applyCategoryPreferences, type BouquetConfig } from '../lib/bouquetManager'
 import { useProfiles } from '../state/profiles'
 import { useStore } from '../state/store'
 import { MediaContextMenu } from '../components/MediaContextMenu'
 import { ShareModal, type ShareItem } from '../components/ShareModal'
+import { NumericZapHUD } from '../components/NumericZapHUD'
+import { playChannelSwitchSound, playFavoriteSound } from '../lib/soundEffects'
+import { sortChannels, SORT_MODE_LABELS, type ChannelSortMode } from '../lib/channelSorting'
 import './LiveTV.css'
 
 // Guide row height per density setting (px), mirrored by --guide-row in global.css.
@@ -33,13 +42,6 @@ const ROW_H = { compact: 52, comfortable: 64, spacious: 76 } as const
 const GUIDE_PAGE = 100
 const CARD_PAGE = 120
 
-function parseChannelTag(name: string): { title: string; tag?: string } {
-  const match = name.match(/^(.*?)(?:\s*\(([^)]+)\))?(?:\s*\[([^\]]+)\])?$/i)
-  if (!match) return { title: name }
-  const clean = match[1]?.trim()
-  const tag = match[2] || (match[3] ? match[3].slice(0, 10) : undefined)
-  return { title: clean || name, tag }
-}
 
 const EPG_GENRES = [
   { name: 'All', color: undefined },
@@ -173,6 +175,7 @@ function GuidePreviewPlayer({
             max="100"
             value={Math.round(playback.volume * 100)}
             onChange={(e) => playback.setVolume(Number(e.target.value) / 100)}
+            onInput={(e) => playback.setVolume(Number((e.target as HTMLInputElement).value) / 100)}
             className="tvguide-volume-slider"
             aria-label="Volume"
           />
@@ -202,7 +205,22 @@ function GuidePreviewPlayer({
 export function LiveTV() {
   const now = useNow(15_000)
   const store = useStore()
-  const { isKidsMode } = useProfiles()
+  const { isKidsMode, activeProfile } = useProfiles()
+  const profileId = activeProfile?.id ?? 'default'
+  const [bouquetConfig, setBouquetConfig] = useState<BouquetConfig>(() => loadBouquetConfig(profileId))
+  const [bouquetModalOpen, setBouquetModalOpen] = useState(false)
+  const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false)
+  const [mosaicOpen, setMosaicOpen] = useState(false)
+  const [catchupModalOpen, setCatchupModalOpen] = useState(false)
+  const [epgStatusOpen, setEpgStatusOpen] = useState(false)
+
+  useEffect(() => {
+    setBouquetConfig(loadBouquetConfig(profileId))
+  }, [profileId])
+
+  const refreshBouquetConfig = () => {
+    setBouquetConfig(loadBouquetConfig(profileId))
+  }
   const rawChannels = store.channels
   const channels = useMemo(() => filterKidSafeChannels(rawChannels, isKidsMode), [rawChannels, isKidsMode])
   const { prefs, library, findChannel, channelMode, requestGuideDay } = store
@@ -221,6 +239,7 @@ export function LiveTV() {
   )
   const [countryFilter, setCountryFilter] = useState<string>('All')
   const [sourceFilter, setSourceFilter] = useState<string>('All')
+  const [sortMode, setSortMode] = useState<ChannelSortMode>('default')
   const [shareItem, setShareItem] = useState<ShareItem | null>(null)
   const [previewExpanded, setPreviewExpanded] = useState(false)
 
@@ -228,6 +247,12 @@ export function LiveTV() {
   const recentChannelIds = useMemo(
     () => library.history.filter((r) => r.ref.startsWith('channel:')).map((r) => r.ref.slice(8)),
     [library.history],
+  )
+
+  const hiddenItems = userPreferences?.preferences.hiddenItems ?? []
+  const notHidden = useMemo(
+    () => channels.filter((c) => !hiddenItems.includes(channelRef(c.id))),
+    [channels, hiddenItems],
   )
 
   const providerCategories = useMemo(
@@ -243,19 +268,32 @@ export function LiveTV() {
     return LIVE_TV_CATEGORIES.map((def) => def.name).filter((name) => present.has(name))
   }, [channels])
 
-  const activeCategories = groupingMode === 'canonical' ? canonicalCategories : providerCategories
+
+  const activeCategories = useMemo(() => {
+    const base = groupingMode === 'canonical' ? canonicalCategories : providerCategories
+    return applyCategoryPreferences(base, bouquetConfig)
+  }, [groupingMode, canonicalCategories, providerCategories, bouquetConfig])
+
+  const bouquetGroupIds = useMemo(() => bouquetConfig.bouquets.map((b) => `bouquet:${b.id}`), [bouquetConfig.bouquets])
+
   const allSelectableGroups = useMemo(
-    () => Array.from(new Set(['All', 'Favourites', 'Recently Watched', ...canonicalCategories, ...providerCategories])),
-    [canonicalCategories, providerCategories],
+    () => Array.from(new Set(['All', 'Favourites', 'Recently Watched', 'Catch-up', 'Reminders', ...bouquetGroupIds, ...canonicalCategories, ...providerCategories])),
+    [bouquetGroupIds, canonicalCategories, providerCategories],
   )
+  const tabParam = params.get('tab')
+  const requestedGroup = params.get('group') ?? (tabParam === 'catchup' ? 'Catch-up' : tabParam === 'reminders' ? 'Reminders' : null)
+  const group = requestedGroup && allSelectableGroups.includes(requestedGroup) ? requestedGroup : 'All'
+  const hasCatchupChannels = useMemo(() => notHidden.some((c) => (c.tvArchive && c.tvArchive > 0) || inCategory(c, 'Catch-up')), [notHidden])
+  const hasReminders = (library.reminders ?? []).length > 0
   const groups = [
     'All',
     'Favourites',
     ...(recentChannelIds.length > 0 ? ['Recently Watched'] : []),
+    ...(hasCatchupChannels || group === 'Catch-up' ? ['Catch-up'] : []),
+    ...(hasReminders || group === 'Reminders' ? ['Reminders'] : []),
+    ...bouquetGroupIds,
     ...activeCategories,
   ]
-  const requestedGroup = params.get('group')
-  const group = requestedGroup && allSelectableGroups.includes(requestedGroup) ? requestedGroup : 'All'
   const view = params.get('view') === 'channels' ? 'channels' : 'guide'
   const [dayOffset, setDayOffset] = useState(0)
   const [selected, setSelected] = useState<Programme | null>(null)
@@ -265,6 +303,7 @@ export function LiveTV() {
   // "Watching" follows the media element's real state, never just the selection.
   const reallyPlaying = playerOpen && ['playing', 'buffering', 'paused'].includes(playerStatus)
   const [focusId, setFocusId] = useState<string | null>(null)
+  const [focusChannelId, setFocusChannelId] = useState<string | null>(null)
 
   const [filterQuery, setFilterQuery] = useState('')
   const [manageMode, setManageMode] = useState(false)
@@ -278,11 +317,6 @@ export function LiveTV() {
   const [epgSearchQuery, setEpgSearchQuery] = useState('')
   const [epgGenre, setEpgGenre] = useState<string>('All')
 
-  const hiddenItems = userPreferences?.preferences.hiddenItems ?? []
-  const notHidden = useMemo(
-    () => channels.filter((c) => !hiddenItems.includes(channelRef(c.id))),
-    [channels, hiddenItems],
-  )
 
   const availableCountries = useMemo(() => {
     const set = new Set<string>()
@@ -311,6 +345,29 @@ export function LiveTV() {
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }))
   }, [store.playlists, notHidden])
 
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    counts.set('All', notHidden.length)
+    counts.set('Favourites', favIds.filter((id) => notHidden.some((c) => c.id === id)).length)
+    counts.set('Recently Watched', recentChannelIds.filter((id) => notHidden.some((c) => c.id === id)).length)
+    counts.set('Catch-up', notHidden.filter((c) => (c.tvArchive && c.tvArchive > 0) || inCategory(c, 'Catch-up')).length)
+    const reminderSet = new Set(library.reminders ?? [])
+    counts.set('Reminders', reminderSet.size === 0 ? 0 : notHidden.filter((c) => store.schedule(c, now).some((p) => reminderSet.has(p.id))).length)
+
+    for (const c of notHidden) {
+      if (groupingMode === 'canonical') {
+        const cat = classifyChannelCategory(c)
+        counts.set(cat.category, (counts.get(cat.category) ?? 0) + 1)
+      } else {
+        const catList = c.categories && c.categories.length > 0 ? c.categories : c.group ? [c.group] : ['General']
+        for (const g of catList) {
+          counts.set(g, (counts.get(g) ?? 0) + 1)
+        }
+      }
+    }
+    return counts
+  }, [notHidden, favIds, recentChannelIds, library.reminders, store, now, groupingMode])
+
   const baseVisible = useMemo(() => {
     let list: Channel[]
     if (group === 'All') {
@@ -321,6 +378,23 @@ export function LiveTV() {
       list = recentChannelIds
         .map((id) => notHidden.find((c) => c.id === id))
         .filter((c): c is Channel => Boolean(c))
+    } else if (group === 'Catch-up') {
+      list = notHidden.filter((c) => (c.tvArchive && c.tvArchive > 0) || inCategory(c, 'Catch-up'))
+    } else if (group === 'Reminders') {
+      const reminderSet = new Set(library.reminders ?? [])
+      list = reminderSet.size === 0 ? [] : notHidden.filter((c) => {
+        const sched = store.schedule(c, now)
+        return sched.some((p) => reminderSet.has(p.id))
+      })
+    } else if (group.startsWith('bouquet:')) {
+      const bqId = group.replace('bouquet:', '')
+      const targetBouquet = bouquetConfig.bouquets.find((b) => b.id === bqId)
+      if (targetBouquet) {
+        const bqSet = new Set(targetBouquet.channelIds)
+        list = notHidden.filter((c) => bqSet.has(c.id))
+      } else {
+        list = notHidden
+      }
     } else {
       list = notHidden.filter((c) => {
         if (inCategory(c, group)) return true
@@ -345,8 +419,8 @@ export function LiveTV() {
     }
 
     return list
-  }, [notHidden, group, favIds, recentChannelIds, countryFilter, sourceFilter])
-  const visible = filterQuery.trim()
+  }, [notHidden, group, favIds, recentChannelIds, countryFilter, sourceFilter, library.reminders, store, now])
+  const filtered = filterQuery.trim()
     ? baseVisible.filter((c) => {
         const needle = filterQuery.trim().toLowerCase()
         const prog = store.programmeAt(c, now)
@@ -357,64 +431,109 @@ export function LiveTV() {
         )
       })
     : baseVisible
+
+  const visible = useMemo(() => {
+    return sortChannels(filtered, sortMode, favIds)
+  }, [filtered, sortMode, favIds])
+
   // How many of `visible` to render; back to one page whenever the view or category changes.
   const [paged, setPaged] = useState({ key: '', count: 0 })
-  const pageKey = `${view}:${group}:${countryFilter}:${sourceFilter}`
+  const pageKey = `${view}:${group}:${countryFilter}:${sourceFilter}:${sortMode}`
   const pageSize = view === 'guide' ? GUIDE_PAGE : CARD_PAGE
   const shownCount = paged.key === pageKey ? paged.count : pageSize
   const shown = visible.slice(0, shownCount)
   const more = visible.length - shown.length
-  const showMore = (
-    more > 0 && (
-      <button type="button" className="btn btn-secondary btn-small live-more" onClick={() => setPaged({ key: pageKey, count: shownCount + pageSize })}>
-        Show {Math.min(pageSize, more)} more of {more} channels ({shown.length} of {visible.length} shown)
-      </button>
-    )
-  )
-  const countSummary = visible.length > 0 && (
-    <p className="live-count-summary faint tnum" role="status">
-      {group === 'All'
-        ? `Showing ${shown.length} of ${visible.length} unique ${visible.length === 1 ? 'channel' : 'channels'}${store.totalPlaylistEntries > channels.length ? ` (${store.totalPlaylistEntries} playlist entries across ${store.playlists.length} ${store.playlists.length === 1 ? 'playlist' : 'playlists'})` : ''}`
-        : `Showing ${shown.length} of ${visible.length} ${visible.length === 1 ? 'channel' : 'channels'} in ${group} (${channels.length} unique ${channels.length === 1 ? 'channel' : 'channels'} total)`}
-    </p>
-  )
-
   // Local midnights, so a day with a clock change is 23 or 25 hours long.
   const dayStart = addDays(startOfDay(now), dayOffset)
   const dayEnd = addDays(dayStart, 1)
   useEffect(() => requestGuideDay(dayStart), [requestGuideDay, dayStart])
-  const rows = shown.map((c) => ({
-    channel: c,
-    programmes: filterKidSafeProgrammes(store.schedule(c, dayStart), isKidsMode),
-  }))
 
   const scheduleSearchResults = useMemo(() => {
     if (!epgSearchQuery.trim() || epgSearchQuery.length < 2) return []
     const q = epgSearchQuery.toLowerCase()
     const results: { programme: Programme; channel: Channel }[] = []
-    for (const r of rows) {
-      for (const p of r.programmes) {
+    const searchPool = visible.slice(0, 300)
+    for (const c of searchPool) {
+      const progs = filterKidSafeProgrammes(store.schedule(c, dayStart), isKidsMode)
+      for (const p of progs) {
         if (
           p.title.toLowerCase().includes(q) ||
           (p.desc && p.desc.toLowerCase().includes(q)) ||
           (p.category && p.category.toLowerCase().includes(q))
         ) {
-          results.push({ programme: p, channel: r.channel })
+          results.push({ programme: p, channel: c })
           if (results.length >= 50) break
         }
       }
       if (results.length >= 50) break
     }
     return results
-  }, [rows, epgSearchQuery])
+  }, [visible, epgSearchQuery, store, dayStart, isKidsMode])
 
   // Geometry: the visible window shows `guideZoom` hours across whatever width the guide has.
   const scroller = useRef<HTMLDivElement>(null)
+  const scrollRaf = useRef<number | null>(null)
   const [width, setWidth] = useState(1200)
+  const [scrollState, setScrollState] = useState({
+    left: 0,
+    top: 0,
+    clientWidth: 1200,
+    clientHeight: 0,
+  })
+
+  const onGridScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget
+    const left = el.scrollLeft
+    const top = el.scrollTop
+    const clientWidth = el.clientWidth || 1200
+    const clientHeight = el.clientHeight || 0
+
+    // In React testing environment (happy-dom), update synchronously for act()
+    if (typeof window !== 'undefined' && (window as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT) {
+      setScrollState({ left, top, clientWidth, clientHeight })
+      return
+    }
+
+    if (scrollRaf.current !== null) {
+      cancelAnimationFrame(scrollRaf.current)
+    }
+    scrollRaf.current = requestAnimationFrame(() => {
+      setScrollState((prev) => {
+        if (
+          Math.abs(prev.left - left) < 4 &&
+          Math.abs(prev.top - top) < 4 &&
+          prev.clientWidth === clientWidth &&
+          prev.clientHeight === clientHeight
+        ) {
+          return prev
+        }
+        return { left, top, clientWidth, clientHeight }
+      })
+      scrollRaf.current = null
+    })
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (scrollRaf.current !== null) {
+        cancelAnimationFrame(scrollRaf.current)
+      }
+    }
+  }, [])
+
   useLayoutEffect(() => {
     const el = scroller.current
     if (!el) return
-    const ro = new ResizeObserver(([e]) => e && setWidth(e.contentRect.width))
+    const ro = new ResizeObserver(([e]) => {
+      if (e) {
+        setWidth(e.contentRect.width)
+        setScrollState((prev) => ({
+          ...prev,
+          clientWidth: el.clientWidth || e.contentRect.width || 1200,
+          clientHeight: el.clientHeight || 0,
+        }))
+      }
+    })
     ro.observe(el)
     return () => ro.disconnect()
   }, [view])
@@ -458,7 +577,10 @@ export function LiveTV() {
     setSelected(null)
     setPlayerOpen(true)
     store.recordView(channelRef(c.id))
-    if (announce) toast(`Switched to ${c.number} ${c.name}`)
+    if (announce) {
+      toast(`Switched to ${c.number} ${c.name}`)
+      playChannelSwitchSound()
+    }
   }
   const step = (dir: number) => {
     const list = visible.length ? visible : channels
@@ -468,6 +590,7 @@ export function LiveTV() {
   }
   const setGroup = (g: string) => {
     const next = new URLSearchParams(params)
+    next.delete('tab')
     if (g === 'All') next.delete('group')
     else next.set('group', g)
     setParams(next, { replace: true })
@@ -484,19 +607,39 @@ export function LiveTV() {
         e.preventDefault()
         tune(prevChannelRef.current)
       }
+      if (e.altKey && (e.key === 'c' || e.key === 'C')) {
+        e.preventDefault()
+        setCategoryDrawerOpen((prev) => !prev)
+      }
+      if (e.altKey && (e.key === 'm' || e.key === 'M')) {
+        e.preventDefault()
+        setMosaicOpen((prev) => !prev)
+      }
+      if (e.altKey && (e.key === 'u' || e.key === 'U')) {
+        e.preventDefault()
+        setCatchupModalOpen((prev) => !prev)
+      }
       if (/^[a-zA-Z]$/.test(e.key) && !e.ctrlKey && !e.altKey && !e.metaKey) {
         const letter = e.key.toUpperCase()
         const matchIdx = visible.findIndex((c) => cleanChannelTitle(c.name).toUpperCase().startsWith(letter))
         if (matchIdx >= 0) {
           const matchChan = visible[matchIdx]
-          if (matchIdx >= shownCount) {
-            setPaged({ key: pageKey, count: Math.ceil((matchIdx + 1) / pageSize) * pageSize })
+          if (matchChan) {
+            if (view === 'guide' && scrollState.clientHeight > 0 && visible.length > 15) {
+              const targetTop = Math.max(0, matchIdx * ROW_H[prefs.density] - (scrollState.clientHeight || 600) / 3)
+              scroller.current?.scrollTo({ top: targetTop, behavior: 'smooth' })
+              setFocusChannelId(matchChan.id)
+            } else {
+              if (matchIdx >= shownCount) {
+                setPaged({ key: pageKey, count: Math.ceil((matchIdx + 1) / pageSize) * pageSize })
+              }
+              window.setTimeout(() => {
+                const row = document.getElementById(`guide-row-${matchChan.id}`)
+                row?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+              }, 40)
+            }
+            toast(`Jumped to '${letter}': ${matchChan.name}`)
           }
-          window.setTimeout(() => {
-            const row = document.getElementById(`guide-row-${matchChan?.id}`)
-            row?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-          }, 40)
-          toast(`Jumped to '${letter}': ${matchChan?.name}`)
         }
       }
     }
@@ -507,16 +650,77 @@ export function LiveTV() {
   const select = (p: Programme) => {
     setSelected(p)
     setFocusId(p.id)
+    setFocusChannelId(p.channelId)
   }
 
+  const rowH = ROW_H[prefs.density]
+  // Two-axis virtualisation is active in guide view when the scroll container has real height and more than 10 rows.
+  const isVirtualised = view === 'guide' && scrollState.clientHeight > 0 && visible.length > 10
+  const guideChannels = isVirtualised ? visible : shown
+  const totalRowCount = guideChannels.length
+  const visibleRowCount = isVirtualised ? Math.ceil(scrollState.clientHeight / rowH) : totalRowCount
+  const rowBuffer = 8
+
+  let startRowIdx = 0
+  let endRowIdx = totalRowCount
+
+  if (isVirtualised) {
+    startRowIdx = Math.max(0, Math.floor(scrollState.top / rowH) - rowBuffer)
+    endRowIdx = Math.min(totalRowCount, startRowIdx + visibleRowCount + rowBuffer * 2)
+
+    // Ensure focused channel's row is included in the rendered slice if nearby
+    if (focusChannelId) {
+      const fIdx = guideChannels.findIndex((c) => c.id === focusChannelId)
+      if (fIdx >= 0 && Math.abs(fIdx - Math.floor(scrollState.top / rowH)) <= visibleRowCount + rowBuffer * 2) {
+        if (fIdx < startRowIdx) startRowIdx = Math.max(0, fIdx - 1)
+        if (fIdx >= endRowIdx) endRowIdx = Math.min(totalRowCount, fIdx + 2)
+      }
+    }
+  }
+
+  const topPadHeight = isVirtualised ? startRowIdx * rowH : 0
+  const bottomPadHeight = isVirtualised ? Math.max(0, (totalRowCount - endRowIdx) * rowH) : 0
+  const renderedChannels = isVirtualised ? guideChannels.slice(startRowIdx, endRowIdx) : shown
+
+  const showMore = (
+    !isVirtualised && more > 0 && (
+      <button type="button" className="btn btn-secondary btn-small live-more" onClick={() => setPaged({ key: pageKey, count: shownCount + pageSize })}>
+        Show {Math.min(pageSize, more)} more of {more} channels ({shown.length} of {visible.length} shown)
+      </button>
+    )
+  )
+  const countSummary = visible.length > 0 && (
+    <p className="live-count-summary faint tnum" role="status">
+      {group === 'All'
+        ? `Showing ${isVirtualised ? visible.length : shown.length} of ${visible.length} unique ${visible.length === 1 ? 'channel' : 'channels'}${store.totalPlaylistEntries > channels.length ? ` (${store.totalPlaylistEntries} playlist entries across ${store.playlists.length} ${store.playlists.length === 1 ? 'playlist' : 'playlists'})` : ''}`
+        : `Showing ${isVirtualised ? visible.length : shown.length} of ${visible.length} ${visible.length === 1 ? 'channel' : 'channels'} in ${group} (${channels.length} unique ${channels.length === 1 ? 'channel' : 'channels'} total)`}
+    </p>
+  )
+
+  const renderedRows = useMemo(() => {
+    return renderedChannels.map((c) => ({
+      channel: c,
+      programmes: filterKidSafeProgrammes(store.schedule(c, dayStart), isKidsMode),
+    }))
+  }, [renderedChannels, store, dayStart, isKidsMode])
+
   // Roving focus across the grid: arrows move between programmes, like a remote.
-  const effectiveFocus = focusId && rows.some((r) => r.programmes.some((p) => p.id === focusId))
-    ? focusId
-    : (rows.find((r) => r.channel.id === playing?.id) ?? rows[0])?.programmes.find((p) => p.start <= Math.max(now, dayStart) && Math.max(now, dayStart) < p.stop)?.id ?? rows[0]?.programmes[0]?.id ?? null
+  const effectiveFocus = useMemo(() => {
+    if (focusId) {
+      const inRendered = renderedRows.some((r) => r.programmes.some((p) => p.id === focusId))
+      if (inRendered) return focusId
+    }
+    const playingRow = renderedRows.find((r) => r.channel.id === playing?.id)
+    const anchorRow = playingRow ?? renderedRows[0]
+    if (!anchorRow) return null
+    const prog = anchorRow.programmes.find((p) => p.start <= Math.max(now, dayStart) && Math.max(now, dayStart) < p.stop)
+    return prog?.id ?? anchorRow.programmes[0]?.id ?? null
+  }, [focusId, renderedRows, playing?.id, now, dayStart])
+
   const onGridKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key) || !effectiveFocus) return
-    const r = rows.findIndex((row) => row.programmes.some((p) => p.id === effectiveFocus))
-    const row = rows[r]
+    const r = renderedRows.findIndex((row) => row.programmes.some((p) => p.id === effectiveFocus))
+    const row = renderedRows[r]
     if (!row) return
     const i = row.programmes.findIndex((p) => p.id === effectiveFocus)
     const cur = row.programmes[i] as Programme
@@ -526,27 +730,62 @@ export function LiveTV() {
     if (e.key === 'Home') target = row.programmes[0]
     if (e.key === 'End') target = row.programmes[row.programmes.length - 1]
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-      const other = rows[r + (e.key === 'ArrowUp' ? -1 : 1)]
-      const anchor = Math.max(cur.start, dayStart) + 60_000
-      target = other?.programmes.find((p) => p.start <= anchor && anchor < p.stop)
+      const channelIdx = guideChannels.findIndex((c) => c.id === row.channel.id)
+      const nextChannelIdx = channelIdx + (e.key === 'ArrowUp' ? -1 : 1)
+      if (nextChannelIdx >= 0 && nextChannelIdx < guideChannels.length) {
+        const nextChannel = guideChannels[nextChannelIdx]
+        if (nextChannel) {
+          const nextProgs = filterKidSafeProgrammes(store.schedule(nextChannel, dayStart), isKidsMode)
+          const anchor = Math.max(cur.start, dayStart) + 60_000
+          target = nextProgs.find((p) => p.start <= anchor && anchor < p.stop) ?? nextProgs[0]
+          if (target) {
+            setFocusChannelId(nextChannel.id)
+            if (isVirtualised) {
+              const targetTop = nextChannelIdx * rowH
+              if (targetTop < scrollState.top || targetTop > scrollState.top + scrollState.clientHeight - rowH) {
+                scroller.current?.scrollTo({ top: Math.max(0, targetTop - scrollState.clientHeight / 2 + rowH / 2), behavior: 'auto' })
+              }
+            }
+          }
+        }
+      }
     }
     if (target) {
       e.preventDefault()
       setFocusId(target.id)
+      setFocusChannelId(target.channelId)
     }
   }
+
+  const gridHasFocusRef = useRef(false)
   useEffect(() => {
-    if (!focusId) return
-    const el = scroller.current?.querySelector<HTMLElement>(`[data-pid="${CSS.escape(focusId)}"]`)
-    if (el && scroller.current?.contains(document.activeElement)) {
-      el.focus({ preventScroll: true })
-      el.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    if (!gridHasFocusRef.current) return
+    const inGrid = scroller.current?.contains(document.activeElement)
+    if (inGrid) return
+
+    // Active element was unmounted or focus was lost during virtual row recycling
+    let targetEl: HTMLElement | null = null
+    if (focusId) {
+      targetEl = scroller.current?.querySelector<HTMLElement>(`[data-pid="${CSS.escape(focusId)}"]`) ?? null
     }
-  }, [focusId])
+    if (!targetEl && focusChannelId) {
+      targetEl = scroller.current?.querySelector<HTMLElement>(`#guide-row-${CSS.escape(focusChannelId)} .prog, #guide-row-${CSS.escape(focusChannelId)} .guide-channel-tune`) ?? null
+    }
+    if (!targetEl) {
+      targetEl = scroller.current?.querySelector<HTMLElement>('.guide-row .prog, .guide-row .guide-channel-tune') ?? null
+    }
+    if (targetEl) {
+      targetEl.focus({ preventScroll: true })
+    }
+  }, [focusId, focusChannelId, renderedRows])
 
   const ticks = Array.from({ length: Math.round((dayEnd - dayStart) / (30 * MIN)) }, (_, i) => dayStart + i * 30 * MIN)
   const innerW = colW + x(dayEnd)
   const showNow = dayOffset === 0
+
+  // Horizontal window for programme virtualisation: 600px overscan on both sides
+  const minProgX = isVirtualised ? Math.max(0, scrollState.left - 600) : 0
+  const maxProgX = isVirtualised ? scrollState.left + (scrollState.clientWidth || 1200) + 600 : Number.POSITIVE_INFINITY
 
   const panel = selected && (
     <ProgrammePanel
@@ -570,11 +809,12 @@ export function LiveTV() {
 
   const tabs = (
     <div className="tabs" role="tablist" aria-label="Live TV views">
-      <button type="button" role="tab" className="tab" aria-selected={view === 'guide' && group !== 'Favourites' && group !== 'Catch-up'} onClick={() => { setView('guide'); if (group === 'Favourites' || group === 'Catch-up') setGroup('All') }}>TV Guide</button>
-      <button type="button" role="tab" className="tab" aria-selected={view === 'channels' && group !== 'Favourites' && group !== 'Catch-up'} onClick={() => { setView('channels'); if (group === 'Favourites' || group === 'Catch-up') setGroup('All') }}>Channels</button>
+      <button type="button" role="tab" className="tab" aria-selected={view === 'guide' && group !== 'Favourites' && group !== 'Catch-up' && group !== 'Reminders'} onClick={() => { setView('guide'); if (group === 'Favourites' || group === 'Catch-up' || group === 'Reminders') setGroup('All') }}>TV Guide</button>
+      <button type="button" role="tab" className="tab" aria-selected={view === 'channels' && group !== 'Favourites' && group !== 'Catch-up' && group !== 'Reminders'} onClick={() => { setView('channels'); if (group === 'Favourites' || group === 'Catch-up' || group === 'Reminders') setGroup('All') }}>Channels</button>
       <Link to="/recordings" role="tab" className="tab">Recordings</Link>
       <button type="button" role="tab" className="tab" aria-selected={group === 'Catch-up'} onClick={() => { setView('channels'); setGroup('Catch-up') }}>Catch Up</button>
       <button type="button" role="tab" className="tab" aria-selected={group === 'Favourites'} onClick={() => { setView('channels'); setGroup('Favourites') }}>Favourites</button>
+      <button type="button" role="tab" className="tab" aria-selected={group === 'Reminders'} onClick={() => { setView('channels'); setGroup('Reminders') }}>Reminders</button>
     </div>
   )
 
@@ -598,6 +838,10 @@ export function LiveTV() {
       <button type="button" className="now-btn" onClick={() => setEpgSearchOpen(true)} aria-label="Search guide schedule">
         <Icon name="search" size={14} />
         <span>Find Show</span>
+      </button>
+      <button type="button" className="now-btn" onClick={() => setEpgStatusOpen(true)} aria-label="View EPG guide diagnostics and channel mapping">
+        <Icon name="info" size={14} />
+        <span>EPG Health</span>
       </button>
       <div className="guide-zoom-group timeline-zoom-controls">
         <button
@@ -700,9 +944,25 @@ export function LiveTV() {
     </div>
   )
 
-  const emptyFavourites = (
+  const emptyGroupView = group === 'Favourites' ? (
     <StateBlock icon="heart" title="No favourite channels yet" action={<button type="button" className="btn btn-ghost" onClick={() => setGroup('All')}>Show all channels</button>}>
       Use the heart next to a channel name to keep it here. Favourites are saved on this device.
+    </StateBlock>
+  ) : group === 'Catch-up' ? (
+    <StateBlock icon="rotateCw" title="No catch-up channels found" action={<button type="button" className="btn btn-ghost" onClick={() => setGroup('All')}>Show all channels</button>}>
+      None of your active channels currently report catch-up or archive support.
+    </StateBlock>
+  ) : group === 'Reminders' ? (
+    <StateBlock icon="bell" title="No programme reminders set" action={<button type="button" className="btn btn-ghost" onClick={() => setGroup('All')}>Show all channels</button>}>
+      Click the bell icon on any upcoming programme in the guide to be reminded before it airs.
+    </StateBlock>
+  ) : filterQuery.trim() ? (
+    <StateBlock icon="search" title="No matching channels" action={<button type="button" className="btn btn-ghost" onClick={() => setFilterQuery('')}>Clear search</button>}>
+      {`No channels or current programmes matched "${filterQuery}".`}
+    </StateBlock>
+  ) : (
+    <StateBlock icon="folder" title={`No channels in ${group}`} action={<button type="button" className="btn btn-ghost" onClick={() => setGroup('All')}>Show all channels</button>}>
+      Try selecting another category or check your imported playlists.
     </StateBlock>
   )
 
@@ -890,6 +1150,7 @@ export function LiveTV() {
               className="tvguide-action-pill-btn"
               onClick={() => {
                 store.toggleFavourite(channelRef(previewChannel.id))
+                playFavoriteSound()
                 toast(favIds.includes(previewChannel.id) ? `Removed ${previewChannel.name} from favourites` : `Added ${previewChannel.name} to favourites`)
               }}
             >
@@ -971,6 +1232,20 @@ export function LiveTV() {
               </select>
             )}
 
+            <select
+              className="live-filter-select"
+              value={sortMode}
+              onChange={(e) => setSortMode(e.target.value as ChannelSortMode)}
+              aria-label="Sort channels"
+              title="Sort channels"
+            >
+              <option value="default">{SORT_MODE_LABELS['default']}</option>
+              <option value="number">{SORT_MODE_LABELS['number']}</option>
+              <option value="name-asc">{SORT_MODE_LABELS['name-asc']}</option>
+              <option value="name-desc">{SORT_MODE_LABELS['name-desc']}</option>
+              <option value="favorites-first">{SORT_MODE_LABELS['favorites-first']}</option>
+            </select>
+
             <button
               type="button"
               className="btn btn-small btn-ghost"
@@ -986,6 +1261,28 @@ export function LiveTV() {
               {groupingMode === 'canonical' ? 'Standard Categories' : 'Provider Groups'}
             </button>
           </div>
+
+          <button
+            type="button"
+            className="btn btn-small btn-secondary"
+            onClick={() => setMosaicOpen(true)}
+            aria-label="Open multi-screen mosaic"
+            title="Multi-Screen Quad View (Alt+M)"
+          >
+            <Icon name="grid" size={14} />
+            <span>Mosaic</span>
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-small btn-secondary"
+            onClick={() => setCatchupModalOpen(true)}
+            aria-label="Open Catch-up TV Hub"
+            title="Catch-up TV Replay (Alt+U)"
+          >
+            <Icon name="history" size={14} />
+            <span>Catch-up</span>
+          </button>
 
           <button
             type="button"
@@ -1051,24 +1348,52 @@ export function LiveTV() {
         )}
 
         <div className="chips live-chips" role="group" aria-label="Channel category">
-          {groups.map((g) => (
-            <button
-              key={g}
-              type="button"
-              className="chip"
-              aria-pressed={group === g}
-              onClick={() => setGroup(g)}
-              onFocus={(e) => e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' })}
-            >
-              <Icon name={getCategoryIcon(g)} size={14} />
-              <span>{g}</span>
-            </button>
-          ))}
+          <button
+            type="button"
+            className="chip-action-btn chip-category-drawer"
+            onClick={() => setCategoryDrawerOpen(true)}
+            title="Open Category Drawer (Alt+C)"
+            aria-label="Open Category Drawer"
+          >
+            <Icon name="layoutSidebar" size={14} />
+            <span>Categories</span>
+          </button>
+          {groups.map((g) => {
+            const isBouquet = g.startsWith('bouquet:')
+            const bId = isBouquet ? g.replace('bouquet:', '') : ''
+            const bq = isBouquet ? bouquetConfig.bouquets.find((b) => b.id === bId) : null
+            const iconName = isBouquet ? ((bq?.icon as any) || 'sparkles') : getCategoryIcon(g)
+            const label = isBouquet ? (bq?.name || 'Bouquet') : g
+
+            return (
+              <button
+                key={g}
+                type="button"
+                className={isBouquet ? 'chip chip-bouquet' : 'chip'}
+                aria-pressed={group === g}
+                onClick={() => setGroup(g)}
+                onFocus={(e) => e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' })}
+              >
+                <Icon name={iconName} size={14} />
+                <span>{label}</span>
+              </button>
+            )
+          })}
+          <button
+            type="button"
+            className="chip-action-btn chip-manage-bouquets"
+            onClick={() => setBouquetModalOpen(true)}
+            title="Manage Categories and Bouquets"
+            aria-label="Manage Categories and Bouquets"
+          >
+            <Icon name="edit" size={14} />
+            <span>Organize</span>
+          </button>
         </div>
 
         {view === 'channels' ? (
           <>
-            {channels.length === 0 ? noPlaylistChannels : visible.length === 0 ? emptyFavourites : (
+            {channels.length === 0 ? noPlaylistChannels : visible.length === 0 ? emptyGroupView : (
               <>
                 {countSummary}
                 <div className="grid-cards">
@@ -1081,7 +1406,7 @@ export function LiveTV() {
             )}
           </>
         ) : visible.length === 0 ? (
-          channels.length === 0 ? noPlaylistChannels : emptyFavourites
+          channels.length === 0 ? noPlaylistChannels : emptyGroupView
         ) : (
           <section className="guide" aria-label="TV guide">
             {channelMode !== 'demo' && store.guides.length === 0 && (
@@ -1097,6 +1422,27 @@ export function LiveTV() {
               </div>
             )}
             {countSummary}
+            <div className="epg-anchors-bar" role="toolbar" aria-label="Quick time anchors">
+              <span className="epg-anchors-label"><Icon name="clock" size={13} /> Time Travel:</span>
+              <button type="button" className="epg-anchor-pill" onClick={jumpToNow} title="Jump to current time">
+                Now
+              </button>
+              <button type="button" className="epg-anchor-pill" onClick={() => scrollToTime(now + 2 * 60 * MIN)} title="Jump 2 hours ahead">
+                +2 Hours
+              </button>
+              <button type="button" className="epg-anchor-pill" onClick={() => scrollToTime(dayStart + 20 * 60 * MIN)} title="Jump to Prime Time (8:00 PM)">
+                Prime Time (8 PM)
+              </button>
+              <button type="button" className="epg-anchor-pill" onClick={() => scrollToTime(dayStart + 23 * 60 * MIN)} title="Jump to Late Night (11:00 PM)">
+                Late Night (11 PM)
+              </button>
+              <button type="button" className="epg-anchor-pill" onClick={() => {
+                if (dayOffset !== 1) setDayOffset(1)
+                window.setTimeout(() => scrollToTime(dayStart + 24 * 60 * MIN + 20 * 60 * MIN, true), 50)
+              }} title="Jump to Tomorrow Prime Time (8:00 PM)">
+                Tomorrow (8 PM)
+              </button>
+            </div>
             <div className="epg-genre-bar" role="group" aria-label="EPG genre filter">
               {EPG_GENRES.map((g) => (
                 <button
@@ -1111,22 +1457,44 @@ export function LiveTV() {
                 </button>
               ))}
             </div>
-            <div className="guide-scroll" ref={scroller} style={{ ['--col-w' as string]: `${colW}px`, ['--row-h' as string]: `${ROW_H[prefs.density]}px` }}>
-              <div className="guide-inner" style={{ width: innerW }} role="grid" aria-label={`Programme guide, ${dayLabel(dayStart, now)}`} aria-rowcount={rows.length + 1} onKeyDown={onGridKey}>
+            <div
+              className="guide-scroll"
+              ref={scroller}
+              onScroll={onGridScroll}
+              onFocusCapture={() => { gridHasFocusRef.current = true }}
+              onBlurCapture={(e) => {
+                if (e.relatedTarget && !scroller.current?.contains(e.relatedTarget as Node)) {
+                  gridHasFocusRef.current = false
+                }
+              }}
+              style={{ ['--col-w' as string]: `${colW}px`, ['--row-h' as string]: `${ROW_H[prefs.density]}px` }}
+            >
+              <div className="guide-inner" style={{ width: innerW }} role="grid" aria-label={`Programme guide, ${dayLabel(dayStart, now)}`} aria-rowcount={(isVirtualised ? visible.length : shown.length) + 1} onKeyDown={onGridKey}>
                 <div className="guide-head" role="row">
                   <div className="guide-corner" role="columnheader">
                     <select className="corner-select" value={group} onChange={(e) => setGroup(e.target.value)} aria-label="Channel category">
-                      {allSelectableGroups.map((g) => <option key={g} value={g}>{g === 'All' ? 'Channels' : g}</option>)}
+                      {allSelectableGroups.map((g) => {
+                        let label = g === 'All' ? 'Channels' : g
+                        if (g.startsWith('bouquet:')) {
+                          const bId = g.replace('bouquet:', '')
+                          label = bouquetConfig.bouquets.find((b) => b.id === bId)?.name ?? 'Bouquet'
+                        }
+                        return <option key={g} value={g}>{label}</option>
+                      })}
                     </select>
                   </div>
                   <div className="guide-ticks" role="presentation">
                     {ticks.map((t) => {
                       const isHour = new Date(t).getMinutes() === 0
+                      const tickX = x(t)
+                      if (isVirtualised && (tickX < minProgX - 120 || tickX > maxProgX + 120)) {
+                        return null
+                      }
                       return (
                         <span
                           key={t}
                           className={`tick tnum${isHour ? ' is-hour' : ' is-half'}${showNow && t <= now && now < t + 30 * MIN ? ' is-current' : ''}`}
-                          style={{ left: x(t) }}
+                          style={{ left: tickX }}
                         >
                           <span className="tick-mark" aria-hidden="true" />
                           <span className="tick-label">{clock(t, prefs.timeFormat)}</span>
@@ -1135,13 +1503,15 @@ export function LiveTV() {
                     })}
                   </div>
                 </div>
-                {rows.map(({ channel: c, programmes }) => {
+                {topPadHeight > 0 && <div className="guide-spacer-top" style={{ height: topPadHeight }} aria-hidden="true" />}
+                {renderedRows.map(({ channel: c, programmes }, idx) => {
                   const fav = favIds.includes(c.id)
                   const isTuned = c.id === playing?.id
                   const isPlaying = reallyPlaying && isTuned
-                  const { title: cleanName, tag: qualityTag } = parseChannelTag(c.name)
+                  const cleanName = c.cleanName || cleanChannelTitle(c.name)
+                  const badges = c.badges ?? parseChannelMetadata(c.name).badges
                   return (
-                    <div key={c.id} id={`guide-row-${c.id}`} className={`guide-row${isTuned ? ' is-playing' : ''}`} role="row">
+                    <div key={c.id} id={`guide-row-${c.id}`} className={`guide-row${isTuned ? ' is-playing' : ''}`} role="row" aria-rowindex={(isVirtualised ? startRowIdx : 0) + idx + 2}>
                       <div
                         className="guide-channel"
                         role="rowheader"
@@ -1165,14 +1535,27 @@ export function LiveTV() {
                             aria-label={`Select ${c.name}`}
                           />
                         )}
-                        <button type="button" className="guide-channel-tune" onClick={() => tune(c)} aria-label={`Watch ${c.number} ${c.name}${isPlaying ? ', now watching' : ''}`} aria-current={isTuned ? 'true' : undefined}>
+                        <button
+                          type="button"
+                          className="guide-channel-tune"
+                          onClick={() => tune(c)}
+                          onFocus={() => {
+                            setFocusChannelId(c.id)
+                            gridHasFocusRef.current = true
+                          }}
+                          aria-label={`Watch ${c.number} ${c.name}${isPlaying ? ', now watching' : ''}`}
+                          aria-current={isTuned ? 'true' : undefined}
+                        >
                           <ChannelMark channel={c} size={compactCol ? 32 : 34} />
                           {!compactCol && (
                             <span className="guide-channel-name">
                               <strong title={c.name}>{cleanName}</strong>
+                              {c.name !== cleanName && <span className="sr-only">{c.name}</span>}
                               <span className="guide-channel-subline">
                                 {isPlaying && <span className="watching"><Icon name="play" size={9} />Watching</span>}
-                                {qualityTag && <span className="guide-channel-tag">{qualityTag}</span>}
+                                {badges.map((b, idx) => (
+                                  <span key={`${b.kind}-${idx}`} className={`guide-channel-tag tag-${b.kind}`}>{b.label}</span>
+                                ))}
                                 {c.tvArchive === 1 && <span className="guide-channel-tag" title="Catch-up TV available">Catch-up</span>}
                                 {(c.streamOptions?.length ?? 0) > 1 && (
                                   <span className="guide-channel-tag" title="Available stream servers">
@@ -1218,25 +1601,33 @@ export function LiveTV() {
                               if (effStart > cursor + 2 * MIN) {
                                 const gapLeft = x(cursor)
                                 const gapW = x(effStart) - gapLeft
-                                elements.push(
-                                  <div
-                                    key={`gap-${c.id}-${cursor}`}
-                                    className="prog prog-gap"
-                                    style={{ left: gapLeft, width: Math.max(0, gapW) }}
-                                    aria-hidden="true"
-                                  >
-                                    {gapW >= 70 && (
-                                      <span className="prog-label">
-                                        <span className="prog-title prog-gap-title">No listings</span>
-                                      </span>
-                                    )}
-                                  </div>
-                                )
+                                const isGapVisible = (gapLeft + gapW >= minProgX) && (gapLeft <= maxProgX)
+                                if (isGapVisible) {
+                                  elements.push(
+                                    <div
+                                      key={`gap-${c.id}-${cursor}`}
+                                      className="prog prog-gap"
+                                      style={{ left: gapLeft, width: Math.max(0, gapW) }}
+                                      aria-hidden="true"
+                                    >
+                                      {gapW >= 70 && (
+                                        <span className="prog-label">
+                                          <span className="prog-title prog-gap-title">No listings</span>
+                                        </span>
+                                      )}
+                                    </div>
+                                  )
+                                }
                               }
                               const onNow = p.start <= now && now < p.stop
                               const past = p.stop <= now
                               const left = x(effStart)
                               const w = x(effStop) - left
+                              const isProgVisible = (left + w >= minProgX) && (left <= maxProgX)
+                              if (!isProgVisible && p.id !== effectiveFocus && selected?.id !== p.id) {
+                                cursor = Math.max(cursor, effStop)
+                                continue
+                              }
                               const progRec = store.getRecordingForProgramme(p.id, c.id, p.start)
                               const genreClass = getProgrammeGenreClass(p.category)
                               const genreMatches = epgGenre === 'All' ? false : (
@@ -1248,6 +1639,7 @@ export function LiveTV() {
                                 (epgGenre === 'Documentary' && genreClass === 'prog-genre-doc')
                               )
                               const isDimmed = epgGenre !== 'All' && !genreMatches
+                              const labelOffset = Math.min(Math.max(0, w - 80), Math.max(0, scrollState.left - left))
                               elements.push(
                                 <button
                                   key={p.id}
@@ -1259,11 +1651,14 @@ export function LiveTV() {
                                   className={`prog${onNow ? ' is-now' : ''}${onNow && isPlaying ? ' is-playing' : ''}${past ? ' is-past' : ''}${selected?.id === p.id ? ' is-selected' : ''}${genreClass ? ` ${genreClass}` : ''}${genreMatches ? ' is-genre-matched' : ''}${isDimmed ? ' is-genre-dimmed' : ''}`}
                                   style={{ left, width: Math.max(0, w) }}
                                   onClick={() => select(p)}
-                                  onFocus={() => setFocusId(p.id)}
+                                  onFocus={() => {
+                                    setFocusId(p.id)
+                                    setFocusChannelId(c.id)
+                                  }}
                                   title={`${p.title} (${clock(p.start, prefs.timeFormat)} - ${clock(p.stop, prefs.timeFormat)})`}
                                   aria-label={`${p.title}, ${c.name}, ${clock(p.start, prefs.timeFormat)} to ${clock(p.stop, prefs.timeFormat)}${onNow ? ', on now' : ''}`}
                                 >
-                                  <span className="prog-label">
+                                  <span className="prog-label" style={labelOffset > 0 ? { transform: `translateX(${labelOffset}px)` } : undefined}>
                                     <span className="prog-title">
                                       {onNow && isPlaying && <Icon name="play" size={10} className="prog-playing" />}
                                       {onNow && (w >= 100 || p.title.toLowerCase().includes('live')) && (
@@ -1297,20 +1692,23 @@ export function LiveTV() {
                             if (cursor < dayEnd - 2 * MIN) {
                               const gapLeft = x(cursor)
                               const gapW = x(dayEnd) - gapLeft
-                              elements.push(
-                                <div
-                                  key={`gap-${c.id}-${cursor}`}
-                                  className="prog prog-gap"
-                                  style={{ left: gapLeft, width: Math.max(0, gapW) }}
-                                  aria-hidden="true"
-                                >
-                                  {gapW >= 70 && (
-                                    <span className="prog-label">
-                                      <span className="prog-title prog-gap-title">No listings</span>
-                                    </span>
-                                  )}
-                                </div>
-                              )
+                              const isGapVisible = (gapLeft + gapW >= minProgX) && (gapLeft <= maxProgX)
+                              if (isGapVisible) {
+                                elements.push(
+                                  <div
+                                    key={`gap-${c.id}-${cursor}`}
+                                    className="prog prog-gap"
+                                    style={{ left: gapLeft, width: Math.max(0, gapW) }}
+                                    aria-hidden="true"
+                                  >
+                                    {gapW >= 70 && (
+                                      <span className="prog-label">
+                                        <span className="prog-title prog-gap-title">No listings</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                )
+                              }
                             }
                             return elements
                           })()
@@ -1319,6 +1717,7 @@ export function LiveTV() {
                     </div>
                   )
                 })}
+                {bottomPadHeight > 0 && <div className="guide-spacer-bottom" style={{ height: bottomPadHeight }} aria-hidden="true" />}
                 {showNow && <div className="now-line" style={{ left: colW + x(now) }} aria-hidden="true" />}
               </div>
             </div>
@@ -1350,9 +1749,22 @@ export function LiveTV() {
           {panel}
         </Dialog>
 
-        <Dialog open={!!matchingChannel} onClose={() => setMatchingChannel(null)} title={matchingChannel ? `Match ${matchingChannel.name} to a guide` : 'Match guide'}>
-          {matchingChannel && <LiveMatchGuideDialog channel={matchingChannel} onClose={() => setMatchingChannel(null)} />}
-        </Dialog>
+        {matchingChannel && (
+          <EpgMappingModal
+            open={Boolean(matchingChannel)}
+            channel={matchingChannel}
+            currentMapping={store.mappings.find((m) => m.channel === matchingChannel.id)}
+            onClose={() => setMatchingChannel(null)}
+            onSaveMapping={(channelId, guideId, xmltvId) => {
+              store.setMapping(channelId, guideId, xmltvId)
+              toast(`Mapped ${matchingChannel.name} to ${xmltvId}`)
+            }}
+            onClearMapping={(channelId) => {
+              store.clearMapping(channelId)
+              toast(`Cleared guide mapping for ${matchingChannel.name}`)
+            }}
+          />
+        )}
 
         {contextChannel && (
           <MediaContextMenu
@@ -1461,15 +1873,23 @@ export function LiveTV() {
                       className="epg-search-item"
                       onClick={() => {
                         const channelIndex = visible.findIndex((item) => item.id === c.id)
-                        if (channelIndex >= shownCount) {
-                          setPaged({ key: pageKey, count: Math.ceil((channelIndex + 1) / pageSize) * pageSize })
-                        }
-                        select(p)
-                        window.setTimeout(() => {
+                        if (isVirtualised) {
+                          const targetTop = Math.max(0, channelIndex * rowH - (scrollState.clientHeight || 600) / 3)
+                          scroller.current?.scrollTo({ top: targetTop, behavior: 'smooth' })
                           scrollToTime(p.start, true)
-                          const row = document.getElementById(`guide-row-${c.id}`)
-                          row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-                        }, 50)
+                          setFocusChannelId(c.id)
+                          setFocusId(p.id)
+                        } else {
+                          if (channelIndex >= shownCount) {
+                            setPaged({ key: pageKey, count: Math.ceil((channelIndex + 1) / pageSize) * pageSize })
+                          }
+                          select(p)
+                          window.setTimeout(() => {
+                            scrollToTime(p.start, true)
+                            const row = document.getElementById(`guide-row-${c.id}`)
+                            row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+                          }, 50)
+                        }
                         setEpgSearchOpen(false)
                         setEpgSearchQuery('')
                         toast(`Jumped to ${p.title} on ${c.name}`)
@@ -1500,6 +1920,53 @@ export function LiveTV() {
           open={Boolean(shareItem)}
           onClose={() => setShareItem(null)}
           item={shareItem}
+        />
+        <NumericZapHUD
+          channels={channels}
+          onTune={(ch) => tune(ch, true)}
+        />
+        <BouquetManagerModal
+          open={bouquetModalOpen}
+          onClose={() => setBouquetModalOpen(false)}
+          categories={activeCategories}
+          channels={notHidden}
+          onConfigChange={refreshBouquetConfig}
+        />
+        <CategoryDrawer
+          open={categoryDrawerOpen}
+          onClose={() => setCategoryDrawerOpen(false)}
+          groups={groups}
+          activeGroup={group}
+          onSelectGroup={(g) => setGroup(g)}
+          categoryCounts={categoryCounts}
+          onOpenManager={() => setBouquetModalOpen(true)}
+          bouquets={bouquetConfig.bouquets}
+        />
+        <LiveMosaicGrid
+          open={mosaicOpen}
+          onClose={() => setMosaicOpen(false)}
+          channels={channels}
+          initialChannel={playing}
+          onTuneFullChannel={(ch) => tune(ch, true)}
+        />
+        <CatchupBrowserModal
+          open={catchupModalOpen}
+          onClose={() => setCatchupModalOpen(false)}
+        />
+        <EpgStatusModal
+          open={epgStatusOpen}
+          onClose={() => setEpgStatusOpen(false)}
+          channels={store.channels}
+          guides={store.guides}
+          mappings={store.mappings}
+          getMatch={store.guideMatch}
+          onOpenManualMap={(channel: Channel) => {
+            setEpgStatusOpen(false)
+            setMatchingChannel(channel)
+          }}
+          onClearMapping={(channelId: string) => {
+            store.clearMapping(channelId)
+          }}
         />
       </div>
     </>
@@ -1637,7 +2104,13 @@ function ProgrammePanel({ programme: p, channel, now, isPlayingChannel, isSelect
   const existingRec = store.getRecordingForProgramme(p.id, channel?.id, p.start)
   const existingRule = store.seriesRules.find((r) => r.title.toLowerCase() === p.title.toLowerCase() && r.isActive)
   const archiveWindowMs = (channel?.tvArchiveDuration || 7) * 86400 * 1000
-  const canCatchup = Boolean(ended && channel?.tvArchive === 1 && channel.sourceId && channel.xtreamStreamId && (now - p.start) <= archiveWindowMs)
+  const canCatchup = Boolean(
+    ended &&
+    channel?.tvArchive === 1 &&
+    channel.sourceId &&
+    (channel.xtreamStreamId || (channel.streamUrl && (channel.catchupType || channel.catchupSource))) &&
+    (now - p.start) <= archiveWindowMs
+  )
 
   const rating = useMemo(() => {
     const matchM = movies.find((m) => m.title.toLowerCase() === p.title.toLowerCase())
@@ -1750,7 +2223,11 @@ function ProgrammePanel({ programme: p, channel, now, isPlayingChannel, isSelect
         {ended && (
           canCatchup && channel ? (
             <Link
-              to={`/watch/${encodeURIComponent(catchupRef(channel.sourceId!, channel.xtreamStreamId!, Math.floor(p.start / 1000), Math.max(1, mins)))}`}
+              to={`/watch/${encodeURIComponent(
+                channel.xtreamStreamId
+                  ? catchupRef(channel.sourceId!, channel.xtreamStreamId, Math.floor(p.start / 1000), Math.max(1, mins))
+                  : m3uCatchupRef(channel.id, Math.floor(p.start / 1000), Math.max(1, mins), Math.floor(p.stop / 1000))
+              )}`}
               className="btn btn-primary"
             >
               <Icon name="play" size={16} />Watch on Catch-up
@@ -1904,83 +2381,6 @@ function ProgrammePanel({ programme: p, channel, now, isPlayingChannel, isSelect
               ))}
           </ul>
         </div>
-      )}
-    </div>
-  )
-}
-
-function LiveMatchGuideDialog({ channel, onClose }: { channel: Channel; onClose: () => void }) {
-  const store = useStore()
-  const toast = useToast()
-  const availableGuides = store.guides.filter((g) => Boolean(g.summary) || g.status === 'ready')
-  const [guideId, setGuideId] = useState(() => availableGuides[0]?.id ?? '')
-  const [list, setList] = useState<GuideChannel[] | null>(null)
-  const [query, setQuery] = useState('')
-  const selectedGuide = availableGuides.find((g) => g.id === guideId) ?? availableGuides[0]
-
-  useEffect(() => {
-    if (!selectedGuide) return
-    let live = true
-    setList(null)
-    guideChannels(selectedGuide.id).then((l) => { if (live) setList(l) }, () => { if (live) setList([]) })
-    return () => { live = false }
-  }, [selectedGuide?.id])
-
-  if (!selectedGuide) {
-    return <p className="faint">No loaded XMLTV guides are available to match against yet.</p>
-  }
-
-  const q = query.trim().toLowerCase()
-  const results = (list ?? []).filter((c) => !q || c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q)).slice(0, 16)
-
-  return (
-    <div className="live-match-dialog">
-      <p className="faint">
-        Choose an XMLTV guide and search by channel name or XMLTV ID to map <strong>{channel.name}</strong>{channel.tvgId ? ` (${channel.tvgId})` : ''}.
-      </p>
-      {availableGuides.length > 1 && (
-        <label className="field">
-          <span>XMLTV guide</span>
-          <select className="input" value={selectedGuide.id} onChange={(e) => setGuideId(e.target.value)}>
-            {availableGuides.map((g) => (
-              <option key={g.id} value={g.id}>{g.name} ({g.summary?.channels ?? 0} channels)</option>
-            ))}
-          </select>
-        </label>
-      )}
-      <label className="field">
-        <span>Search {selectedGuide.name}</span>
-        <input
-          className="input"
-          value={query}
-          placeholder="Channel name or XMLTV id"
-          onChange={(e) => setQuery(e.target.value)}
-          autoFocus
-        />
-      </label>
-      {list === null ? (
-        <p className="faint" role="status">Loading guide channels…</p>
-      ) : results.length === 0 ? (
-        <p className="faint">No guide channel matches that search.</p>
-      ) : (
-        <ul className="live-match-results">
-          {results.map((r) => (
-            <li key={r.id}>
-              <button
-                type="button"
-                className="btn btn-ghost btn-small"
-                onClick={() => {
-                  store.setMapping(channel.id, selectedGuide.id, r.id)
-                  toast(`Matched ${channel.name} to ${r.name} (${r.id})`)
-                  onClose()
-                }}
-              >
-                <strong>{r.name}</strong>
-                <span className="faint"> · {r.id}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
       )}
     </div>
   )

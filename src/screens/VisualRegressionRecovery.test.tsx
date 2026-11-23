@@ -119,7 +119,7 @@ describe('Phase 1 Visual Regression Recovery Suite', () => {
     expect(tabList).not.toBeNull()
 
     const tabs = tabList?.querySelectorAll('button[role="tab"]')
-    expect(tabs?.length).toBe(10)
+    expect(tabs?.length).toBe(11)
 
     // Verify specific sections exist
     const tabLabels = Array.from(tabs || []).map((t) => t.textContent?.trim())
@@ -132,6 +132,7 @@ describe('Phase 1 Visual Regression Recovery Suite', () => {
     expect(tabLabels).toContain('Saved Sources')
     expect(tabLabels).toContain('Collections')
     expect(tabLabels).toContain('Recently watched')
+    expect(tabLabels).toContain('Viewing Habits')
     expect(tabLabels).toContain('Hidden Items')
   })
 

@@ -42,8 +42,16 @@ const ArchivesScreen = lazy(() => import('./screens/ArchivesScreen').then((m) =>
 import { AudioPlayerBar } from './components/AudioPlayerBar'
 import { OfflineBanner } from './components/OfflineBanner'
 import { WhatsNewModal, hasSeenWhatsNew } from './components/WhatsNewModal'
+import { AmbientScreensaver } from './components/AmbientScreensaver'
+import { RemoteControlModal } from './components/RemoteControlModal'
+import { TraktSettingsModal } from './components/TraktSettingsModal'
+import { DownloadsModal } from './components/DownloadsModal'
+import { downloadRef } from './data/refs'
+import { loadTraktConfig, performTraktSync } from './lib/trakt'
 import { registerCommandHandler } from './lib/commands'
 import { initGlobalRemoteNav, restoreRouteFocus, saveRouteFocus } from './lib/remoteNav'
+import { initializeRemoteControlBridge } from './lib/remoteServerSync'
+import { GamepadController } from './lib/gamepadNav'
 import { applyThemeTokensToElement } from './lib/theme'
 import { APP_VERSION } from './lib/native'
 import { ProfileProvider } from './state/profiles'
@@ -51,7 +59,8 @@ import { StoreProvider, useStore } from './state/store'
 import { LocalMediaProvider } from './state/localMedia'
 
 function Shell() {
-  const { prefs, setPref, setupDone, mediaLibrary } = useStore()
+  const store = useStore()
+  const { prefs, setPref, setupDone, mediaLibrary } = store
   const navigate = useNavigate()
   useEffect(() => {
     ;(window as unknown as { __kinora_navigate?: (to: string) => void }).__kinora_navigate = (to: string) => navigate(to)
@@ -66,6 +75,36 @@ function Shell() {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [whatsNewOpen, setWhatsNewOpen] = useState(false)
+  const [remoteModalOpen, setRemoteModalOpen] = useState(false)
+  const [traktModalOpen, setTraktModalOpen] = useState(false)
+  const [downloadsModalOpen, setDownloadsModalOpen] = useState(false)
+  const [screensaverActive, setScreensaverActive] = useState(false)
+  const screensaverTimerRef = useRef<number | null>(null)
+
+  const resetScreensaverTimer = useCallback(() => {
+    if (screensaverTimerRef.current !== null) {
+      window.clearTimeout(screensaverTimerRef.current)
+    }
+    // 3 minutes (180,000 ms) idle on desktop/TV
+    screensaverTimerRef.current = window.setTimeout(() => {
+      setScreensaverActive(true)
+    }, 180000)
+  }, [])
+
+  useEffect(() => {
+    resetScreensaverTimer()
+    const onActivity = () => {
+      setScreensaverActive(false)
+      resetScreensaverTimer()
+    }
+    window.addEventListener('mousemove', onActivity)
+    window.addEventListener('keydown', onActivity)
+    return () => {
+      if (screensaverTimerRef.current !== null) window.clearTimeout(screensaverTimerRef.current)
+      window.removeEventListener('mousemove', onActivity)
+      window.removeEventListener('keydown', onActivity)
+    }
+  }, [resetScreensaverTimer])
   const closeNav = useCallback(() => setNavOpen(false), [])
   const openNav = useCallback(() => setNavOpen(true), [])
 
@@ -85,6 +124,16 @@ function Shell() {
   }, [])
 
   useEffect(() => {
+    const traktCfg = loadTraktConfig()
+    if (traktCfg.enabled && traktCfg.syncOnStartup && traktCfg.accessToken) {
+      void performTraktSync((ref) => {
+        store.setWatched([ref], true)
+        store.recordView(ref)
+      })
+    }
+  }, [store])
+
+  useEffect(() => {
     const el = document.documentElement
     el.dataset.theme = prefs.theme
     el.dataset.density = prefs.density
@@ -97,8 +146,83 @@ function Shell() {
 
   useEffect(() => {
     const unregRemote = initGlobalRemoteNav()
-    return () => unregRemote()
-  }, [])
+    const remoteBridgeCleanupPromise = initializeRemoteControlBridge()
+    const handleNavigateHome = () => navigate('/')
+    window.addEventListener('kinora:navigate_home', handleNavigateHome)
+    const handleOpenMobileRemote = () => setRemoteModalOpen(true)
+    window.addEventListener('kinora:open-mobile-remote', handleOpenMobileRemote)
+    const handleOpenTraktSync = () => setTraktModalOpen(true)
+    window.addEventListener('kinora:open-trakt-sync', handleOpenTraktSync)
+    const handleOpenDownloads = () => setDownloadsModalOpen(true)
+    window.addEventListener('kinora:open-downloads', handleOpenDownloads)
+    const handleRemoteColor = (e: Event) => {
+      const custom = e as CustomEvent<{ color: string }>
+      switch (custom.detail?.color) {
+        case 'red':
+          navigate('/library')
+          break
+        case 'green':
+          navigate('/live')
+          break
+        case 'yellow':
+          window.dispatchEvent(new CustomEvent('kinora:command-palette'))
+          break
+        case 'blue':
+          navigate('/sources')
+          break
+      }
+    }
+    window.addEventListener('kinora:remote-color', handleRemoteColor)
+
+    const gamepad = new GamepadController({
+      onAction: (action) => {
+        switch (action) {
+          case 'up':
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }))
+            break
+          case 'down':
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+            break
+          case 'left':
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }))
+            break
+          case 'right':
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+            break
+          case 'select':
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+            break
+          case 'back':
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+            break
+          case 'guide':
+            navigate('/live')
+            break
+          case 'recall':
+            window.dispatchEvent(new CustomEvent('kinora:recall-channel'))
+            break
+          case 'channelUp':
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageUp', bubbles: true }))
+            break
+          case 'channelDown':
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageDown', bubbles: true }))
+            break
+        }
+      },
+    })
+    gamepad.start()
+
+    return () => {
+      unregRemote()
+      gamepad.stop()
+      window.removeEventListener('kinora:remote-color', handleRemoteColor)
+      window.removeEventListener('kinora:navigate_home', handleNavigateHome)
+      window.removeEventListener('kinora:open-mobile-remote', handleOpenMobileRemote)
+      window.removeEventListener('kinora:open-trakt-sync', handleOpenTraktSync)
+      window.removeEventListener('kinora:open-downloads', handleOpenDownloads)
+      remoteBridgeCleanupPromise.then((unsub) => unsub?.())
+    }
+  }, [navigate])
 
   useEffect(() => {
     window.scrollTo(0, 0)
@@ -205,6 +329,13 @@ function Shell() {
       }
 
       if (e.key === '/' && !e.metaKey && !e.ctrlKey) {
+        const headerInput = document.getElementById('header-search-input') as HTMLInputElement | null
+        if (headerInput) {
+          e.preventDefault()
+          headerInput.focus()
+          headerInput.select()
+          return
+        }
         e.preventDefault()
         navigate('/search')
       }
@@ -316,11 +447,29 @@ function Shell() {
           onClearQueue={mediaLibrary.clearQueue}
           sleepTimerRemaining={mediaLibrary.sleepTimerRemaining}
           onSetSleepTimer={mediaLibrary.setSleepTimer}
+          onUpdateLyrics={mediaLibrary.updateAudioLyrics}
         />
       )}
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <WhatsNewModal open={whatsNewOpen} onClose={() => setWhatsNewOpen(false)} />
+      <RemoteControlModal open={remoteModalOpen} onClose={() => setRemoteModalOpen(false)} />
+      <TraktSettingsModal open={traktModalOpen} onClose={() => setTraktModalOpen(false)} />
+      <DownloadsModal
+        open={downloadsModalOpen}
+        onClose={() => setDownloadsModalOpen(false)}
+        onPlayItem={(item) => {
+          setDownloadsModalOpen(false)
+          navigate(`/watch/${encodeURIComponent(downloadRef(item.id, item.extension))}`)
+        }}
+      />
+      <AmbientScreensaver
+        visible={screensaverActive}
+        onDismiss={() => {
+          setScreensaverActive(false)
+          resetScreensaverTimer()
+        }}
+      />
     </NavMenuContext.Provider>
   )
 }

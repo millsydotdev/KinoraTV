@@ -233,4 +233,23 @@ describe('Kinora Universal Spatial Navigation', () => {
 
     cleanup()
   })
+
+  it('dispatches kinora:remote-color on TV remote color keys (Red, Green, Yellow, Blue)', () => {
+    const cleanup = initGlobalRemoteNav()
+    const receivedColors: string[] = []
+    const onColor = (e: Event) => {
+      receivedColors.push((e as CustomEvent<{ color: string }>).detail.color)
+    }
+    window.addEventListener('kinora:remote-color', onColor)
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ColorF0Red', bubbles: true }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ColorF1Green', bubbles: true }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ColorF2Yellow', bubbles: true }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ColorF3Blue', bubbles: true }))
+
+    expect(receivedColors).toEqual(['red', 'green', 'yellow', 'blue'])
+
+    window.removeEventListener('kinora:remote-color', onColor)
+    cleanup()
+  })
 })

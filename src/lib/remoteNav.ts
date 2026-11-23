@@ -193,6 +193,14 @@ export function navigateSpatial(direction: NavDirection): boolean {
 export function focusAndReveal(element: HTMLElement) {
   if (!element || typeof element.focus !== 'function') return
   element.focus()
+  element.setAttribute('data-tv-focused', 'true')
+  element.addEventListener(
+    'blur',
+    () => {
+      element.removeAttribute('data-tv-focused')
+    },
+    { once: true },
+  )
 
   try {
     element.scrollIntoView({
@@ -329,7 +337,12 @@ function pollGamepad() {
 }
 
 function handleRemoteBack() {
-  // If an overlay or modal is open, dismiss it
+  // If an overlay, modal, or search popover is open, dismiss it
+  const openSearch = document.querySelector('#header-search-dropdown')
+  if (openSearch) {
+    return
+  }
+
   const openDialog = document.querySelector('dialog[open], .ds-command-backdrop, .modal-backdrop') as HTMLElement | null
   if (openDialog) {
     const closeBtn = openDialog.querySelector<HTMLElement>(
@@ -341,8 +354,11 @@ function handleRemoteBack() {
     }
   }
 
-  // Otherwise perform navigation back
+  // Otherwise perform navigation back (if not already at home)
   if (typeof window !== 'undefined') {
+    if (window.location.pathname === '/' || window.location.pathname === '') {
+      return
+    }
     const nav = (window as unknown as { __kinora_navigate?: (to: string | number) => void }).__kinora_navigate
     if (nav) {
       nav(-1)
@@ -400,6 +416,22 @@ export function initGlobalRemoteNav(_options: RemoteNavOptions = {}): () => void
         e.preventDefault()
         kinoraChangeChannel('down')
       }
+    } else if (e.key === 'ColorF0Red' || (e.key === 'F1' && !e.ctrlKey && !e.altKey)) {
+      // TV Remote Red: Library and Favourites
+      e.preventDefault()
+      window.dispatchEvent(new CustomEvent('kinora:remote-color', { detail: { color: 'red' } }))
+    } else if (e.key === 'ColorF1Green' || (e.key === 'F2' && !e.ctrlKey && !e.altKey)) {
+      // TV Remote Green: Live TV Guide
+      e.preventDefault()
+      window.dispatchEvent(new CustomEvent('kinora:remote-color', { detail: { color: 'green' } }))
+    } else if (e.key === 'ColorF2Yellow' || (e.key === 'F3' && !e.ctrlKey && !e.altKey)) {
+      // TV Remote Yellow: Universal Search and Command Palette
+      e.preventDefault()
+      window.dispatchEvent(new CustomEvent('kinora:remote-color', { detail: { color: 'yellow' } }))
+    } else if (e.key === 'ColorF3Blue' || (e.key === 'F4' && !e.ctrlKey && !e.altKey)) {
+      // TV Remote Blue: Sources and Discovery
+      e.preventDefault()
+      window.dispatchEvent(new CustomEvent('kinora:remote-color', { detail: { color: 'blue' } }))
     }
   }
 

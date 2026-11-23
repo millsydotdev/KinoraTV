@@ -25,6 +25,7 @@ import { useProfiles } from '../state/profiles'
 import { useStore } from '../state/store'
 import { useLocalMedia } from '../state/localMedia'
 import { TrailerPlayerModal } from '../components/TrailerPlayerModal'
+import { aggregateVodTitles } from '../lib/vodAggregation'
 import './Browse.css'
 import './MediaStreaming.css'
 
@@ -102,10 +103,15 @@ export function SeriesBrowse() {
     return filterKidSafeTitles(series, isKidsMode)
   }, [isKidsMode])
 
+  const openSeries = useMemo(() => {
+    return filterKidSafeTitles(OPEN_SERIES, isKidsMode)
+  }, [isKidsMode])
+
   const isSampleProvider = typeof window !== 'undefined' && window.sessionStorage?.getItem('kinora.sample_provider_view') === '1'
   const { catalogue: localCatalogue } = useLocalMedia()
   const hasXtream = store.xtreamSources.length > 0 && safeXtreamSeries.length > 0
   const hasDemo = (store.demoTitles || isSampleProvider) && safeSeries.length > 0
+  const activeSeriesCatalogue = useMemo(() => hasDemo ? safeSeries : openSeries, [hasDemo, safeSeries, openSeries])
 
   // Public discovery television & documentary series
   const publicDiscoverySeries = useMemo(() => {
@@ -149,10 +155,26 @@ export function SeriesBrowse() {
       })
   }, [hasXtream, safeXtreamSeries, category, provider, selectedGenre, normalizedQuery, sort, activeTab, library.watchlist])
 
-  // Filtered demo series
+  const sourceNames = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const s of enabledSources) {
+      map[s.id] = s.name
+    }
+    return map
+  }, [enabledSources])
+
+  // Multi-source aggregated series for unified catalogue browsing
+  const displayedXtream = useMemo(() => {
+    if (enabledSources.length > 1 && provider === 'All') {
+      return aggregateVodTitles(filteredXtream, sourceNames)
+    }
+    return filteredXtream.map((s) => ({ ...s, variants: [], totalSources: 1 }))
+  }, [filteredXtream, enabledSources.length, provider, sourceNames])
+
+  // Filtered catalogue series (curated demo or verified open series)
   const filteredDemo = useMemo(() => {
-    if (!hasDemo) return []
-    return safeSeries
+    if (!hasDemo && openSeries.length === 0) return []
+    return activeSeriesCatalogue
       .filter((s) => category === 'All' || s.genres.some((g) => g.toLowerCase() === category.toLowerCase()))
       .filter((s) => !selectedGenre || s.genres.some((g) => g.toLowerCase() === selectedGenre.toLowerCase()))
       .filter((s) => activeTab !== 'my-shows' || library.watchlist.includes(seriesRef(s.id)))
@@ -167,7 +189,7 @@ export function SeriesBrowse() {
         if (sort === 'added') return b.added.localeCompare(a.added)
         return a.title.localeCompare(b.title)
       })
-  }, [hasDemo, safeSeries, category, selectedGenre, normalizedQuery, sort, activeTab, library.watchlist])
+  }, [hasDemo, openSeries.length, activeSeriesCatalogue, category, selectedGenre, normalizedQuery, sort, activeTab, library.watchlist])
 
   // Filtered public discovery series
   const filteredPublicDiscovery = useMemo(() => {
@@ -224,6 +246,25 @@ export function SeriesBrowse() {
         trailerUrl: s.trailerUrl,
       }))
     }
+    if (openSeries.length > 0) {
+      return openSeries.slice(0, 5).map((s) => ({
+        id: s.id,
+        kicker: 'FEATURED SERIES',
+        title: s.title,
+        synopsis: s.synopsis,
+        art: s.backdropUrl || s.art,
+        posterUrl: s.posterUrl || s.art,
+        year: s.years.split(' ')[0] || 'Series',
+        genre: s.genres[0] || 'Drama',
+        runtime: `${s.seasons?.length || 0} Season${(s.seasons?.length || 0) > 1 ? 's' : ''}`,
+        ageRating: s.certificate,
+        badges: getTechnicalBadges(s),
+        playUrl: `/series/${s.id}`,
+        detailUrl: `/series/${s.id}`,
+        itemRef: seriesRef(s.id),
+        trailerUrl: s.trailerUrl,
+      }))
+    }
     if (publicDiscoverySeries.length > 0) {
       return publicDiscoverySeries.slice(0, 5).map((s) => {
         const matchingOpen = OPEN_SERIES.find((os) => os.id === s.id || os.title.toLowerCase() === s.name.toLowerCase())
@@ -245,16 +286,16 @@ export function SeriesBrowse() {
       })
     }
     return []
-  }, [hasXtream, hasDemo, publicDiscoverySeries, safeXtreamSeries, safeSeries])
+  }, [hasXtream, hasDemo, publicDiscoverySeries, safeXtreamSeries, safeSeries, openSeries])
 
   // Rails data
   const trendingXtream = useMemo(() => safeXtreamSeries.slice(0, 8), [safeXtreamSeries])
-  const trendingDemo = useMemo(() => safeSeries.slice(0, 8), [safeSeries])
+  const trendingDemo = useMemo(() => hasDemo ? safeSeries.slice(0, 8) : openSeries.slice(0, 8), [hasDemo, safeSeries, openSeries])
   const trendingPublicDiscovery = useMemo(() => publicDiscoverySeries.slice(0, 8), [publicDiscoverySeries])
 
   // New Episodes (latest season episodes)
   const newEpisodes = useMemo(() => {
-    if (hasDemo) {
+    if (hasDemo || openSeries.length > 0) {
       const eps: {
         id: string
         showId: string
@@ -265,7 +306,7 @@ export function SeriesBrowse() {
         art: string
       }[] = []
 
-      for (const s of safeSeries) {
+      for (const s of activeSeriesCatalogue) {
         const lastSeason = s.seasons[s.seasons.length - 1]
         if (lastSeason && lastSeason.length > 0) {
           const lastEp = lastSeason[lastSeason.length - 1]
@@ -277,7 +318,7 @@ export function SeriesBrowse() {
               episodeTitle: lastEp.title,
               season: lastEp.season,
               number: lastEp.number,
-              art: lastEp.still || s.art,
+              art: lastEp.still || s.backdropUrl || s.art,
             })
           }
         }
@@ -285,17 +326,18 @@ export function SeriesBrowse() {
       return eps
     }
     return []
-  }, [hasDemo, safeSeries])
+  }, [hasDemo, openSeries.length, activeSeriesCatalogue])
 
   // Popular Shows
   const popularXtream = useMemo(() => safeXtreamSeries.slice(2, 10), [safeXtreamSeries])
   const popularDemo = useMemo(() => {
-    return [...safeSeries].sort((a, b) => {
+    const list = hasDemo ? safeSeries : openSeries
+    return [...list].sort((a, b) => {
       const bCount = Array.isArray(b.seasons) ? b.seasons.flat().length : 0
       const aCount = Array.isArray(a.seasons) ? a.seasons.flat().length : 0
       return bCount - aCount
     }).slice(0, 8)
-  }, [safeSeries])
+  }, [hasDemo, safeSeries, openSeries])
   const popularPublicDiscovery = useMemo(() => publicDiscoverySeries.slice(4, 12), [publicDiscoverySeries])
 
   // Returning Shows (continuing on-air series)
@@ -344,7 +386,7 @@ export function SeriesBrowse() {
 
   const availableCategories = useMemo(() => {
     if (hasXtream) return seriesCategories.map((c) => ({ id: c.id, name: c.name }))
-    if (hasDemo) return genresOf(safeSeries).map((g) => ({ id: g, name: g }))
+    if (hasDemo || openSeries.length > 0) return genresOf(activeSeriesCatalogue).map((g) => ({ id: g, name: g }))
     const set = new Set<string>()
     for (const r of publicDiscoverySeries) {
       if (r.tags) {
@@ -352,7 +394,7 @@ export function SeriesBrowse() {
       }
     }
     return Array.from(set).sort().map((t) => ({ id: t, name: t }))
-  }, [hasXtream, seriesCategories, hasDemo, safeSeries, publicDiscoverySeries])
+  }, [hasXtream, seriesCategories, hasDemo, openSeries.length, activeSeriesCatalogue, publicDiscoverySeries])
 
   const isFiltering = category !== 'All' || provider !== 'All' || Boolean(normalizedQuery) || Boolean(selectedGenre) || activeTab === 'a-z'
   const sourceName = (id: string) => store.xtreamSources.find((s) => s.id === id)?.name ?? 'Provider'
@@ -565,7 +607,7 @@ export function SeriesBrowse() {
                       />
                     )
                   })
-                : hasDemo
+                : (hasDemo || openSeries.length > 0)
                 ? trendingDemo.map((show) => {
                     const ref = seriesRef(show.id)
                     return (
@@ -619,7 +661,7 @@ export function SeriesBrowse() {
 
             {/* Popular Shows Rail */}
             <StreamingRail
-              title={hasXtream ? 'Popular Shows' : hasDemo ? 'Popular Shows' : 'Documentary & National TV Series'}
+              title={hasXtream ? 'Popular Shows' : (hasDemo || openSeries.length > 0) ? 'Popular Shows' : 'Documentary & National TV Series'}
               iconName="star"
               onSeeAll={() => setActiveTab('popular')}
             >
@@ -636,7 +678,7 @@ export function SeriesBrowse() {
                       layout="poster"
                     />
                   ))
-                : hasDemo
+                : (hasDemo || openSeries.length > 0)
                 ? popularDemo.map((show) => {
                     return (
                       <StreamingCard
@@ -814,9 +856,9 @@ export function SeriesBrowse() {
           {hasXtream ? (
             <div>
               <p className="browse-count faint">
-                Showing {Math.min(filteredXtream.length, providerLimit)} of {filteredXtream.length} series from Starlight Provider and connected sources.
+                Showing {Math.min(displayedXtream.length, providerLimit)} of {displayedXtream.length} series{enabledSources.length > 1 ? ` (aggregated across ${enabledSources.length} sources)` : ' from connected sources'}.
               </p>
-              {filteredXtream.length === 0 ? (
+              {displayedXtream.length === 0 ? (
                 <StateBlock
                   icon="search"
                   title="No TV shows match your criteria"
@@ -839,9 +881,11 @@ export function SeriesBrowse() {
                 </StateBlock>
               ) : (
                 <div className="grid-posters">
-                  {filteredXtream.slice(0, providerLimit).map((show) => {
+                  {displayedXtream.slice(0, providerLimit).map((show) => {
                     const routeId = `xt:${show.sourceId}:${show.id}`
-                    const line = [show.year, sourceName(show.sourceId)].filter(Boolean).join(' · ')
+                    const isMultiSource = show.totalSources > 1
+                    const sourceLabel = isMultiSource ? `${show.totalSources} sources` : sourceName(show.sourceId)
+                    const line = [show.year, sourceLabel].filter(Boolean).join(' · ')
                     return (
                       <XtreamPosterCard
                         key={`${show.sourceId}:${show.id}`}
@@ -850,16 +894,17 @@ export function SeriesBrowse() {
                         artworkKey={show.artworkKey}
                         line={line}
                         year={show.year}
+                        flag={isMultiSource ? <span style={{ fontSize: '0.7rem' }}>{show.totalSources} Sources</span> : undefined}
                       />
                     )
                   })}
                 </div>
               )}
             </div>
-          ) : hasDemo ? (
+          ) : (hasDemo || openSeries.length > 0) ? (
             <div>
               <p className="browse-count faint">
-                Showing {filteredDemo.length} TV shows in catalogue.
+                Showing {filteredDemo.length} TV shows in {hasDemo ? 'curated' : 'open'} catalogue.
               </p>
               {filteredDemo.length === 0 ? (
                 <StateBlock

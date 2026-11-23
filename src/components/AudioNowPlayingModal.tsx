@@ -1,5 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Icon } from './Icon'
+import { Art } from './ui'
+import { LyricsViewer } from './LyricsViewer'
+import { AudioVisualizer } from './AudioVisualizer'
 import type { AudioTrackState } from '../state/mediaLibrary'
 import './AudioNowPlayingModal.css'
 
@@ -16,6 +19,10 @@ export interface AudioNowPlayingModalProps {
   eqPreset?: EqualizerPreset
   onSelectEqPreset?: (preset: EqualizerPreset) => void
   analyserNode?: AnalyserNode | null
+  currentTime?: number
+  duration?: number
+  onSeek?: (timeSec: number) => void
+  onUpdateLyrics?: (lyrics: string) => void
 }
 
 export type EqualizerPreset = 'Flat' | 'Bass Boost' | 'Vocal' | 'Acoustic' | 'Club'
@@ -35,41 +42,15 @@ export function AudioNowPlayingModal({
   eqPreset: externalEqPreset,
   onSelectEqPreset: onExternalSelectEqPreset,
   analyserNode,
+  currentTime = 0,
+  duration = 0,
+  onSeek,
+  onUpdateLyrics,
 }: AudioNowPlayingModalProps) {
   const [internalEqPreset, setInternalEqPreset] = useState<EqualizerPreset>('Flat')
+  const [viewMode, setViewMode] = useState<'visualizer' | 'lyrics'>(() => (track.lyrics ? 'lyrics' : 'visualizer'))
   const eqPreset = externalEqPreset ?? internalEqPreset
   const setEqPreset = onExternalSelectEqPreset ?? setInternalEqPreset
-
-  const barsCount = 24
-  const [barHeights, setBarHeights] = useState<number[]>(() => Array(barsCount).fill(6))
-
-  useEffect(() => {
-    if (!isOpen || !isPlaying || !analyserNode) {
-      return
-    }
-
-    let animId: number
-    const bufferLength = analyserNode.frequencyBinCount
-    const dataArray = new Uint8Array(bufferLength)
-
-    const updateBars = () => {
-      analyserNode.getByteFrequencyData(dataArray)
-      const heights: number[] = []
-      const step = Math.max(1, Math.floor(bufferLength / barsCount))
-      for (let i = 0; i < barsCount; i++) {
-        const val = dataArray[i * step] || 0
-        const h = Math.max(6, Math.round((val / 255) * 48))
-        heights.push(h)
-      }
-      setBarHeights(heights)
-      animId = requestAnimationFrame(updateBars)
-    }
-
-    animId = requestAnimationFrame(updateBars)
-    return () => {
-      cancelAnimationFrame(animId)
-    }
-  }, [isOpen, isPlaying, analyserNode])
 
   if (!isOpen) return null
 
@@ -93,6 +74,27 @@ export function AudioNowPlayingModal({
           </span>
         </div>
 
+        <div className="anp-view-mode-toggle" role="tablist" aria-label="Playback visualizer mode">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={viewMode === 'visualizer'}
+            className={`anp-mode-btn ${viewMode === 'visualizer' ? 'is-active' : ''}`}
+            onClick={() => setViewMode('visualizer')}
+          >
+            Visualizer
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={viewMode === 'lyrics'}
+            className={`anp-mode-btn ${viewMode === 'lyrics' ? 'is-active' : ''}`}
+            onClick={() => setViewMode('lyrics')}
+          >
+            Lyrics
+          </button>
+        </div>
+
         <button
           type="button"
           className="anp-close-btn"
@@ -106,51 +108,73 @@ export function AudioNowPlayingModal({
 
       {/* Main Content */}
       <main className="anp-body">
-        {/* Artwork Stage with Radial Glow */}
-        <div className="anp-stage">
-          <div className="anp-ambient-glow" aria-hidden="true" />
-          <div className="anp-art-tile">
-            {track.artworkUrl ? (
-              <img src={track.artworkUrl} alt="" className="anp-art-img" />
+        {viewMode === 'visualizer' ? (
+          <>
+            {/* Artwork Stage with Radial Glow */}
+            <div className="anp-stage">
+              <div className="anp-ambient-glow" aria-hidden="true" />
+              <div className="anp-art-tile">
+                {track.artworkUrl ? (
+                  <Art src={track.artworkUrl} alt={track.name} contentId={`audio:${track.id}`} className="anp-art-img" fallbackIcon={track.mediaType === 'podcast' ? 'podcast' : track.mediaType === 'audiobook' ? 'book' : track.mediaType === 'music' ? 'music' : 'radio'} />
+                ) : (
+                  <div className="anp-art-fallback">
+                    <Icon
+                      name={
+                        track.mediaType === 'podcast'
+                          ? 'podcast'
+                          : track.mediaType === 'audiobook'
+                            ? 'book'
+                            : track.mediaType === 'music'
+                              ? 'music'
+                              : 'radio'
+                      }
+                      size={64}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Real-Time Audio Spectrum Visualizer */}
+            {analyserNode ? (
+              <AudioVisualizer
+                analyserNode={analyserNode}
+                isPlaying={isPlaying}
+                height={72}
+                showControls={true}
+              />
             ) : (
-              <div className="anp-art-fallback">
-                <Icon
-                  name={
-                    track.mediaType === 'podcast'
-                      ? 'podcast'
-                      : track.mediaType === 'audiobook'
-                        ? 'book'
-                        : track.mediaType === 'music'
-                          ? 'music'
-                          : 'radio'
-                  }
-                  size={64}
-                />
+              <div className="anp-visualizer-bars" aria-hidden="true">
+                {Array.from({ length: 24 }, (_, idx) => {
+                  const delay = ((idx * 0.08) % 1.2).toFixed(2)
+                  const duration = (0.8 + ((idx % 5) * 0.15)).toFixed(2)
+                  return (
+                    <div
+                      key={idx}
+                      className={`anp-bar ${isPlaying ? 'is-animated' : ''}`}
+                      style={{
+                        animationDelay: `${delay}s`,
+                        animationDuration: `${duration}s`,
+                      }}
+                    />
+                  )
+                })}
               </div>
             )}
+          </>
+        ) : (
+          <div className="anp-lyrics-wrapper">
+            <LyricsViewer
+              currentTime={currentTime}
+              duration={duration}
+              lyricsText={track.lyrics}
+              onSeek={onSeek}
+              onLyricsLoaded={onUpdateLyrics}
+              trackTitle={track.name}
+              trackArtist={track.provider}
+            />
           </div>
-        </div>
-
-        {/* Spectrum Wave Bars */}
-        <div className="anp-visualizer-bars" aria-hidden="true">
-          {Array.from({ length: barsCount }, (_, idx) => {
-            const delay = ((idx * 0.08) % 1.2).toFixed(2)
-            const duration = (0.8 + ((idx % 5) * 0.15)).toFixed(2)
-            const realHeight = analyserNode && isPlaying ? `${barHeights[idx]}px` : undefined
-            return (
-              <div
-                key={idx}
-                className={`anp-bar ${isPlaying && !analyserNode ? 'is-animated' : ''}`}
-                style={{
-                  animationDelay: analyserNode ? '0s' : `${delay}s`,
-                  animationDuration: analyserNode ? '0s' : `${duration}s`,
-                  height: realHeight ?? (isPlaying ? undefined : '6px'),
-                  transition: analyserNode ? 'height 60ms ease-out' : undefined,
-                }}
-              />
-            )
-          })}
-        </div>
+        )}
 
         {/* Track Metadata */}
         <div className="anp-meta">

@@ -1,0 +1,114 @@
+.enc-backup-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background-color: rgb(0 0 0 / 0.78);
+  backdrop-filter: blur(8px);
+}
+
+.enc-backup-modal {
+  width: 100%;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--panel, #12141a);
+  border: 1px solid var(--border, #2a2e3d);
+  border-radius: var(--radius-lg, 12px);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.6);
+  overflow: hidden;
+}
+
+.enc-backup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border, #2a2e3d);
+}
+
+.enc-backup-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--fg, #ffffff);
+}
+
+.enc-backup-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm, 6px);
+  border: none;
+  background: transparent;
+  color: var(--fg-dim, #9ca3af);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.enc-backup-close:hover {
+  background-color: rgb(255 255 255 / 0.08);
+  color: var(--fg, #ffffff);
+}
+
+.enc-backup-body {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.enc-backup-note {
+  font-size: 0.875rem;
+  color: var(--fg-dim, #9ca3af);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.enc-backup-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.enc-backup-label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--fg, #ffffff);
+}
+
+.enc-backup-input {
+  padding: 0.6rem 0.85rem;
+  border-radius: var(--radius-sm, 6px);
+  background-color: rgb(255 255 255 / 0.04);
+  border: 1px solid var(--border, #2a2e3d);
+  color: var(--fg, #ffffff);
+  font-size: 0.9rem;
+}
+
+.enc-backup-input:focus {
+  border-color: var(--accent, #6366f1);
+  outline: none;
+}
+
+.enc-backup-error {
+  font-size: 0.8rem;
+  color: #f87171;
+}
+
+.enc-backup-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border, #2a2e3d);
+  background-color: rgb(0 0 0 / 0.2);
+}

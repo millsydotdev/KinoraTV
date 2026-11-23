@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useState, type ReactNode } from
 import { NotificationContext } from './Notifications'
 
 type Toast = { id: number; message: string; action?: { label: string; run: () => void } }
-const ToastContext = createContext<((message: string, action?: Toast['action']) => void) | null>(null)
+export const ToastContext = createContext<((message: string, action?: Toast['action']) => void) | null>(null)
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([])

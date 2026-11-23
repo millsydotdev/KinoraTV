@@ -1,0 +1,49 @@
+/* Audio Visualizer styling. Follows Antislop and Kinora tokens. Zero em-dashes. */
+
+.audio-vis-container {
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: var(--radius-md, 8px);
+}
+
+.audio-vis-canvas {
+  width: 100%;
+  display: block;
+}
+
+.audio-vis-modes {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  z-index: 2;
+}
+
+.audio-vis-mode-btn {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid rgb(var(--fg) / 0.12);
+  background: rgb(var(--fg) / 0.04);
+  color: rgb(var(--fg) / 0.7);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.audio-vis-mode-btn:hover {
+  background: rgb(var(--fg) / 0.1);
+  color: rgb(var(--fg) / 0.95);
+}
+
+.audio-vis-mode-btn.is-active {
+  background: rgb(var(--accent) / 0.2);
+  border-color: rgb(var(--accent) / 0.6);
+  color: rgb(var(--accent));
+  font-weight: 600;
+}

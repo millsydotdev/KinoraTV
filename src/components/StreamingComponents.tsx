@@ -5,6 +5,8 @@ import { useStore } from '../state/store'
 import { useToast } from './Toast'
 import { useCardContextMenu, XtreamArt } from './Tiles'
 import { Art } from './ui'
+import { useArtwork } from '../lib/useArtwork'
+import type { ArtworkType } from '../data/artworkEngine'
 import '../screens/MediaStreaming.css'
 
 export interface NavTabItem {
@@ -106,9 +108,18 @@ export function StreamingHero({
   const store = useStore()
   const toast = useToast()
 
-  if (slides.length === 0) return null
-  const current = slides[activeIndex % slides.length]
-  if (!current) return null
+  const current = slides.length > 0 ? slides[activeIndex % slides.length] : undefined
+  const heroArtType: ArtworkType = isTv ? 'series-backdrop' : 'movie-backdrop'
+  const resolvedHero = useArtwork({
+    contentId: current?.itemRef,
+    title: current?.title || '',
+    type: heroArtType,
+    providerArt: current?.backdropUrl || current?.art,
+    year: current && typeof current.year === 'number' ? current.year : Number(current?.year) || null,
+    autoEnrich: Boolean(current),
+  })
+
+  if (slides.length === 0 || !current) return null
 
   const inWatchlist = store.library.watchlist.includes(current.itemRef)
 
@@ -118,15 +129,18 @@ export function StreamingHero({
         {current.artworkKey ? (
           <XtreamArt
             artworkKey={current.artworkKey}
+            contentId={current.itemRef}
+            artType={heroArtType}
             alt={current.title}
             eager
             className="hero-art"
             fallbackTitle={current.title}
             fallbackYear={typeof current.year === 'number' ? current.year : Number(current.year) || null}
+            fallbackIcon={isTv ? 'series' : 'film'}
           />
         ) : (
           <Art
-            src={current.backdropUrl || current.art || ''}
+            src={resolvedHero.src || current.backdropUrl || current.art || ''}
             alt={current.title}
             contentId={current.itemRef}
             eager
@@ -467,6 +481,22 @@ export function StreamingCard({
 }) {
   const { onContextMenu, menu } = useCardContextMenu(to, title, itemRef)
   const isPoster = layout === 'poster'
+  const isSeries = Boolean(episodeBadge) || to.startsWith('/series') || Boolean(itemRef?.startsWith('series:'))
+  const cardArtType: ArtworkType = isPoster
+    ? isSeries
+      ? 'series-poster'
+      : 'movie-poster'
+    : isSeries
+      ? 'series-backdrop'
+      : 'movie-backdrop'
+  const resolvedId = itemRef || (to.startsWith('/movies/') ? `movie:${to.slice(8)}` : to.startsWith('/series/') ? `series:${to.slice(8)}` : undefined)
+  const resolvedCard = useArtwork({
+    contentId: resolvedId,
+    title,
+    type: cardArtType,
+    providerArt: art,
+  })
+  const effectiveArt = resolvedCard.src || art || ''
 
   return (
     <>
@@ -479,17 +509,20 @@ export function StreamingCard({
         {artworkKey ? (
           <XtreamArt
             artworkKey={artworkKey}
+            contentId={resolvedId}
+            artType={cardArtType}
             alt={title}
             className="streaming-card-art"
             fallbackTitle={title}
+            fallbackIcon={isSeries ? 'series' : 'film'}
           />
         ) : (
           <Art
-            src={art || ''}
+            src={effectiveArt}
             alt={title}
-            contentId={itemRef || to}
+            contentId={resolvedId || to}
             className="streaming-card-art"
-            fallbackIcon={episodeBadge ? 'series' : isPoster ? 'film' : 'tv'}
+            fallbackIcon={isSeries ? 'series' : isPoster ? 'film' : 'tv'}
           />
         )}
 

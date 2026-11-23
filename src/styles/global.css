@@ -92,23 +92,146 @@
   --transition-normal: 200ms var(--ease);
   --transition-slow: 320ms var(--ease);
 }
+[data-theme='midnight'] {
+  color-scheme: dark;
+  --bg-rgb: 6 9 19;
+  --bg: #060913;
+  --nav: #03050a;
+  --surface: #0d121f;
+  --surface-1: #0d121f;
+  --surface-2: #141c2e;
+  --surface-3: #1c263d;
+  --raised: #141c2e;
+  --line: rgba(140, 170, 230, 0.08);
+  --line-strong: rgba(140, 170, 230, 0.15);
+  --text: #f1f5fc;
+  --text-2: #b0c0d8;
+  --text-3: #7b8fae;
+  --shadow: 0 18px 44px rgba(0, 0, 0, 0.65);
+  --card-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+  --scrim: 6 9 19;
+  --bg-app: #060913;
+  --main-bg: #060913;
+  --sidebar-bg: #03050a;
+  --header-bg: rgba(6, 9, 19, 0.88);
+  --hero-bg: #060913;
+  --overlay-bg: rgba(6, 9, 19, 0.85);
+  --surface-elevated: #141c2e;
+  --surface-card: #0d121f;
+  --surface-input: #141c2e;
+  --surface-drawer: #141c2e;
+  --surface-modal: #141c2e;
+  --surface-popover: #141c2e;
+  --text-primary: #f1f5fc;
+  --text-secondary: #b0c0d8;
+  --text-muted: #7b8fae;
+  --text-heading: #f1f5fc;
+}
 [data-theme='dim'] {
   color-scheme: dark;
   --bg-rgb: 24 28 36;
-  --nav: #1e232c;
-  --surface: #262c37;
-  --surface-1: #262c37;
-  --surface-2: #2d3440;
-  --surface-3: #37404d;
-  --raised: #2f3642;
-  --line: rgba(210, 220, 240, 0.1);
-  --line-strong: rgba(210, 220, 240, 0.2);
+  --bg: #181c24;
+  --nav: #14171e;
+  --surface: #202632;
+  --surface-1: #202632;
+  --surface-2: #28303e;
+  --surface-3: #323c4d;
+  --raised: #28303e;
+  --line: rgba(210, 220, 240, 0.09);
+  --line-strong: rgba(210, 220, 240, 0.16);
   --text: #f1f3f6;
   --text-2: #c0c7d1;
   --text-3: #a6aeba;
   --bad: #ff8f8f;
-  --shadow: 0 18px 44px rgba(0, 0, 0, 0.4);
-  --card-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  --shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+  --card-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+  --scrim: 24 28 36;
+  --bg-app: #181c24;
+  --main-bg: #181c24;
+  --sidebar-bg: #14171e;
+  --header-bg: rgba(24, 28, 36, 0.88);
+  --hero-bg: #181c24;
+  --overlay-bg: rgba(24, 28, 36, 0.85);
+  --surface-elevated: #28303e;
+  --surface-card: #202632;
+  --surface-input: #28303e;
+  --surface-drawer: #28303e;
+  --surface-modal: #28303e;
+  --surface-popover: #28303e;
+  --text-primary: #f1f3f6;
+  --text-secondary: #c0c7d1;
+  --text-muted: #a6aeba;
+  --text-heading: #f1f3f6;
+}
+[data-theme='slate'] {
+  color-scheme: dark;
+  --bg-rgb: 11 15 23;
+  --bg: #0b0f17;
+  --nav: #07090f;
+  --surface: #131924;
+  --surface-1: #131924;
+  --surface-2: #1b2332;
+  --surface-3: #242e40;
+  --raised: #1b2332;
+  --line: rgba(180, 200, 225, 0.08);
+  --line-strong: rgba(180, 200, 225, 0.14);
+  --text: #f2f5f9;
+  --text-2: #b8c4d4;
+  --text-3: #7e8fa6;
+  --shadow: 0 18px 44px rgba(0, 0, 0, 0.6);
+  --card-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+  --scrim: 11 15 23;
+  --bg-app: #0b0f17;
+  --main-bg: #0b0f17;
+  --sidebar-bg: #07090f;
+  --header-bg: rgba(11, 15, 23, 0.88);
+  --hero-bg: #0b0f17;
+  --overlay-bg: rgba(11, 15, 23, 0.85);
+  --surface-elevated: #1b2332;
+  --surface-card: #131924;
+  --surface-input: #1b2332;
+  --surface-drawer: #1b2332;
+  --surface-modal: #1b2332;
+  --surface-popover: #1b2332;
+  --text-primary: #f2f5f9;
+  --text-secondary: #b8c4d4;
+  --text-muted: #7e8fa6;
+  --text-heading: #f2f5f9;
+}
+[data-theme='oled'] {
+  color-scheme: dark;
+  --bg-rgb: 0 0 0;
+  --bg: #000000;
+  --nav: #000000;
+  --surface: #0a0a0a;
+  --surface-1: #0a0a0a;
+  --surface-2: #121212;
+  --surface-3: #1a1a1a;
+  --raised: #121212;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --text: #ffffff;
+  --text-2: #b8b8b8;
+  --text-3: #888888;
+  --shadow: 0 18px 44px rgba(0, 0, 0, 0.9);
+  --card-shadow: 0 10px 28px rgba(0, 0, 0, 0.85);
+  --scrim: 0 0 0;
+  --bg-app: #000000;
+  --main-bg: #000000;
+  --sidebar-bg: #000000;
+  --header-bg: rgba(0, 0, 0, 0.92);
+  --hero-bg: #000000;
+  --overlay-bg: rgba(0, 0, 0, 0.88);
+  --surface-elevated: #121212;
+  --surface-card: #0a0a0a;
+  --surface-input: #121212;
+  --surface-drawer: #121212;
+  --surface-modal: #121212;
+  --surface-popover: #121212;
+  --text-primary: #ffffff;
+  --text-secondary: #b8b8b8;
+  --text-muted: #888888;
+  --text-heading: #ffffff;
 }
 [data-theme='light'] {
   color-scheme: light;
@@ -157,10 +280,37 @@
   --warn-bg: color-mix(in oklab, var(--warn) 14%, transparent);
   --bad-bg: color-mix(in oklab, var(--bad) 14%, transparent);
   --info-bg: color-mix(in oklab, var(--info) 14%, transparent);
+  --r-xs: 2px;
   --r-s: 4px;
   --r-m: 8px;
   --r-l: 12px;
+  --r-xl: 16px;
+  --r-full: 9999px;
+  --radius-sm: var(--r-s);
+  --radius-md: var(--r-m);
+  --radius-lg: var(--r-l);
+  --radius-xl: var(--r-xl);
+
+  /* Typography Scale */
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-md: 1.0625rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 2rem;
+  --text-hero: clamp(2rem, 3.8vw, 3.5rem);
+
+  /* Spacing Scale */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+
   --font: 'Hanken Grotesk Variable', 'Segoe UI', system-ui, sans-serif;
+  --font-brand: 'Outfit Variable', 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
   --side-w: clamp(230px, 15.8vw, 264px);
   --side-compact-w: 76px;
@@ -199,9 +349,10 @@
   font-size: 0.9375rem;
 }
 [data-mode='tv'] :focus,
-[data-mode='tv'] :focus-visible {
+[data-mode='tv'] :focus-visible,
+[data-tv-focused='true'] {
   outline: none;
-  box-shadow: 0 0 0 3.5px #E50914, 0 0 24px rgba(229, 9, 20, 0.6) !important;
+  box-shadow: 0 0 0 3.5px var(--accent, #e50914), 0 0 24px var(--accent-glow, rgba(229, 9, 20, 0.6)) !important;
   border-radius: inherit;
   z-index: 20;
 }
@@ -215,10 +366,23 @@
 [data-mode='tv'] .tile:focus,
 [data-mode='tv'] .tile:focus-visible,
 [data-mode='tv'] .channel-card:focus,
-[data-mode='tv'] .channel-card:focus-visible {
-  transform: scale(1.04);
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.8), 0 0 0 3.5px #E50914, 0 0 28px rgba(229, 9, 20, 0.65) !important;
+[data-mode='tv'] .channel-card:focus-visible,
+[data-mode='tv'] .ds-card:focus,
+[data-mode='tv'] .ds-card:focus-visible,
+[data-mode='tv'] .res-card:focus,
+[data-mode='tv'] .res-card:focus-visible,
+.card[data-tv-focused='true'],
+.poster-card[data-tv-focused='true'],
+.wide-card[data-tv-focused='true'],
+.tile[data-tv-focused='true'],
+.channel-card[data-tv-focused='true'],
+.ds-card[data-tv-focused='true'],
+.res-card[data-tv-focused='true'] {
+  transform: scale(1.045);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.8), 0 0 0 3.5px var(--accent, #e50914), 0 0 28px var(--accent-glow, rgba(229, 9, 20, 0.65)) !important;
+  border-color: var(--accent, #e50914) !important;
   transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 25;
 }
 [data-layout='compact'] {
   --gutter: clamp(16px, 1.8vw, 28px);
@@ -394,7 +558,30 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 
 .channel-card-media { position: relative; overflow: hidden; background: var(--surface-2); }
 .channel-card-art { width: 100%; height: 100%; }
-.channel-card-ambient { position: absolute; inset: 0; background: radial-gradient(circle at 80% 20%, color-mix(in oklab, var(--channel-tone, #3d4650) 30%, transparent) 0%, transparent 65%), linear-gradient(180deg, #151820 0%, #0d1015 100%); opacity: 0.9; }
+.channel-card-art img {
+  object-fit: cover;
+  object-position: center 25%;
+}
+.channel-card-art.programme-art.is-portrait > .art img {
+  object-fit: contain;
+  object-position: center;
+}
+.channel-card-ambient {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at 50% 45%, color-mix(in oklab, var(--channel-tone, #3d4650) 45%, transparent) 0%, transparent 70%),
+    linear-gradient(180deg, #181d26 0%, #0d1015 100%);
+  opacity: 0.95;
+}
+.channel-card-ambient-logo {
+  opacity: 0.85;
+  transform: translateY(-8px);
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.5));
+}
 
 .art-fallback-branded {
   position: absolute;
@@ -549,13 +736,58 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   box-shadow: 0 0 14px var(--accent-glow, rgba(229, 9, 20, 0.55)), inset 0 0 6px var(--accent-soft, rgba(229, 9, 20, 0.25));
   animation: tv-border-glow 2.4s ease-in-out infinite;
 }
+/* Authoritative Aspect Ratio Standard:
+   - 2:3 for vertical posters (movies, series, books, anime)
+   - 16:9 for landscape thumbnails (episodes, live channels, wide cards, documentaries, sports)
+   - 1:1 for square artwork (radio stations, music albums, avatar profiles)
+*/
 .card-media { aspect-ratio: 16 / 9; }
 .card-poster .card-media,
-.card-poster .xtream-art.card-media { aspect-ratio: 2 / 3; }
+.card-poster .xtream-art.card-media,
+.poster-card .card-media,
+.res-media-poster { aspect-ratio: 2 / 3 !important; }
 .card-wide .card-media,
 .card-wide .xtream-art.card-media,
 .episode-card .card-media,
-.episode-card .xtream-art.card-media { aspect-ratio: 16 / 9; }
+.episode-card .xtream-art.card-media,
+.wide-card .card-media,
+.res-media-wide { aspect-ratio: 16 / 9 !important; }
+.res-media-square,
+.card-square { aspect-ratio: 1 / 1 !important; }
+
+/* Standard Shimmer Loading Skeleton */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--surface-2) 0%,
+    var(--surface-3) 50%,
+    var(--surface-2) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.6s infinite ease-in-out;
+  border-radius: var(--r-s, 4px);
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Standard Empty State Block */
+.empty-state, .state-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: clamp(32px, 5vw, 64px) var(--gutter);
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-l, 12px);
+  box-shadow: var(--elevation-1);
+  margin: var(--gutter) 0;
+  gap: 16px;
+}
 /* Text over artwork is always light on a dark scrim, whatever the theme. */
 .card-media { --text: #f3f5f8; --text-2: #cfd4dc; --text-3: #aeb5c0; color: var(--text); }
 .card-shade::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to top, rgb(var(--scrim) / 0.88) 0%, rgb(var(--scrim) / 0.32) 42%, rgb(var(--scrim) / 0) 68%); }

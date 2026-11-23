@@ -116,6 +116,7 @@ afterEach(async () => {
   await act(async () => root.unmount())
   host.remove()
   document.body.replaceChildren()
+  localStorage.clear()
   vi.restoreAllMocks()
 })
 
@@ -420,6 +421,12 @@ describe('language and quality choices', () => {
     expect(levelCap(levels, '480p')).toBe(0)
     expect(levelCap(levels, 'auto')).toBe(-1)
     expect(levelCap([{ height: 1080 }], '480p')).toBe(-1)
+  })
+
+  it('formats level bitrate and names cleanly for player menus', () => {
+    const lvl = { id: 1, height: 1080, bitrate: 5_500_000 }
+    const mbps = lvl.bitrate ? ` (${(lvl.bitrate / 1_000_000).toFixed(1)} Mbps)` : ''
+    expect(`${lvl.height}p${mbps}`).toBe('1080p (5.5 Mbps)')
   })
 })
 

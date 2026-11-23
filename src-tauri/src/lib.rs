@@ -11,6 +11,8 @@
 mod artwork;
 mod catalogue;
 mod dash;
+mod dlna;
+mod downloader;
 mod dvr;
 mod fetch;
 mod guides;
@@ -18,8 +20,12 @@ mod hls;
 mod ingest;
 mod local_media;
 mod m3u;
+mod metadata_vault;
+pub mod parking;
 mod pin;
+mod remote_server;
 mod sources;
+mod stalker;
 mod stream;
 mod updater;
 mod xmltv;
@@ -70,13 +76,120 @@ async fn fetch_programme_artwork(
     }))
 }
 
-/// Queries an approved metadata provider API (TMDB or TVmaze).
+/// Fetches and persistently caches typed artwork (movie poster, backdrop, season poster, still).
+#[tauri::command]
+async fn fetch_artwork(
+    artwork_key: String,
+    url: Option<String>,
+    force_refresh: Option<bool>,
+    artwork: tauri::State<'_, artwork::ArtworkStore>,
+) -> Result<Option<ChannelLogo>, ingest::IngestError> {
+    let res = artwork
+        .get_or_fetch_artwork_opts(&artwork_key, url.as_deref(), force_refresh.unwrap_or(false))
+        .await?;
+    Ok(res.map(|a| ChannelLogo {
+        mime_type: a.mime_type,
+        bytes: a.bytes,
+    }))
+}
+
+#[tauri::command]
+fn artwork_cache_stats(
+    artwork: tauri::State<'_, artwork::ArtworkStore>,
+) -> artwork::ArtworkCacheStats {
+    artwork.cache_stats()
+}
+
+#[tauri::command]
+fn clear_artwork_cache(artwork: tauri::State<'_, artwork::ArtworkStore>) -> u64 {
+    artwork.clear_cache()
+}
+
+#[tauri::command]
+fn retry_failed_artwork(artwork: tauri::State<'_, artwork::ArtworkStore>) {
+    artwork.clear_failed();
+}
+
+#[tauri::command]
+fn load_local_media_artwork(
+    media_id: String,
+    variant: Option<String>,
+    engine: tauri::State<'_, local_media::LocalMediaEngine>,
+) -> Option<ChannelLogo> {
+    let kind = variant.as_deref().unwrap_or("poster");
+    engine
+        .read_local_artwork(&media_id, kind)
+        .map(|a| ChannelLogo {
+            mime_type: a.mime_type,
+            bytes: a.bytes,
+        })
+}
+
+/// Queries an approved metadata provider API (TMDB, TVmaze, or TVDB).
 #[tauri::command]
 async fn fetch_metadata(
     url: String,
     auth_header: Option<String>,
 ) -> Result<String, ingest::IngestError> {
     fetch::fetch_metadata(&url, auth_header.as_deref()).await
+}
+
+/// Queries an approved subtitle provider or downloads subtitle text (OpenSubtitles).
+#[tauri::command]
+async fn fetch_subtitle(
+    url: String,
+    api_key: Option<String>,
+) -> Result<String, ingest::IngestError> {
+    fetch::fetch_subtitle(&url, api_key.as_deref()).await
+}
+
+/// Sends an authenticated or public request to Trakt.tv REST API.
+#[tauri::command]
+async fn fetch_trakt(
+    url: String,
+    method: String,
+    client_id: String,
+    access_token: Option<String>,
+    body: Option<String>,
+) -> Result<String, ingest::IngestError> {
+    fetch::fetch_trakt_api(
+        &url,
+        &method,
+        &client_id,
+        access_token.as_deref(),
+        body.as_deref(),
+    )
+    .await
+}
+
+/// Sends a bounded JSON POST request to an approved metadata provider API (e.g. TVDB v4 login).
+#[tauri::command]
+async fn post_metadata(
+    url: String,
+    body_json: String,
+    auth_header: Option<String>,
+) -> Result<String, ingest::IngestError> {
+    fetch::post_metadata(&url, &body_json, auth_header.as_deref()).await
+}
+
+#[tauri::command]
+fn save_metadata_credentials(
+    credentials: metadata_vault::MetadataCredentials,
+    vault: tauri::State<'_, metadata_vault::MetadataVault>,
+) -> Result<(), ingest::IngestError> {
+    vault.save(credentials)
+}
+
+#[tauri::command]
+fn load_metadata_credentials(
+    vault: tauri::State<'_, metadata_vault::MetadataVault>,
+) -> metadata_vault::MetadataCredentials {
+    vault.load()
+}
+
+#[tauri::command]
+fn clear_metadata_credentials(vault: tauri::State<'_, metadata_vault::MetadataVault>) {
+    vault.clear();
 }
 
 /// Checks for application updates from the official release manifest.
@@ -150,6 +263,119 @@ fn is_xtream_connected(source_id: String, providers: tauri::State<'_, xtream::Pr
 }
 
 #[tauri::command]
+async fn connect_stalker(
+    portal_url: String,
+    mac: String,
+    stalker: tauri::State<'_, stalker::StalkerEngine>,
+) -> Result<stalker::StalkerProfile, ingest::IngestError> {
+    stalker.connect(&portal_url, &mac).await
+}
+
+#[tauri::command]
+async fn load_stalker_catalogue(
+    stalker: tauri::State<'_, stalker::StalkerEngine>,
+) -> Result<stalker::StalkerCatalogue, ingest::IngestError> {
+    stalker.load_catalogue().await
+}
+
+#[tauri::command]
+async fn open_stalker_stream(
+    cmd: String,
+    stalker: tauri::State<'_, stalker::StalkerEngine>,
+    streams: tauri::State<'_, stream::Streams>,
+) -> Result<stream::Opened, ingest::IngestError> {
+    let url = stalker.create_playback_link(&cmd).await?;
+    streams.open(url.as_str())
+}
+
+#[tauri::command]
+fn disconnect_stalker(stalker: tauri::State<'_, stalker::StalkerEngine>) {
+    stalker.disconnect();
+}
+
+#[tauri::command]
+fn is_stalker_connected(stalker: tauri::State<'_, stalker::StalkerEngine>) -> bool {
+    stalker.is_connected()
+}
+
+#[tauri::command]
+fn start_download(
+    url: String,
+    title: String,
+    kind: String,
+    extension: String,
+    artwork_url: Option<String>,
+    downloader: tauri::State<'_, std::sync::Arc<downloader::DownloadEngine>>,
+) -> Result<downloader::DownloadItem, ingest::IngestError> {
+    downloader.start_download(&url, &title, &kind, &extension, artwork_url)
+}
+
+#[tauri::command]
+fn pause_download(
+    id: String,
+    downloader: tauri::State<'_, std::sync::Arc<downloader::DownloadEngine>>,
+) -> Result<downloader::DownloadItem, ingest::IngestError> {
+    downloader.pause_download(&id)
+}
+
+#[tauri::command]
+fn resume_download(
+    id: String,
+    downloader: tauri::State<'_, std::sync::Arc<downloader::DownloadEngine>>,
+) -> Result<downloader::DownloadItem, ingest::IngestError> {
+    downloader.resume_download(&id)
+}
+
+#[tauri::command]
+fn cancel_download(
+    id: String,
+    downloader: tauri::State<'_, std::sync::Arc<downloader::DownloadEngine>>,
+) -> Result<(), ingest::IngestError> {
+    downloader.cancel_download(&id)
+}
+
+#[tauri::command]
+fn delete_download(
+    id: String,
+    downloader: tauri::State<'_, std::sync::Arc<downloader::DownloadEngine>>,
+) -> Result<(), ingest::IngestError> {
+    downloader.delete_download(&id)
+}
+
+#[tauri::command]
+fn get_downloads(
+    downloader: tauri::State<'_, std::sync::Arc<downloader::DownloadEngine>>,
+) -> Vec<downloader::DownloadItem> {
+    downloader.list()
+}
+
+/// Discovers DLNA / UPnP MediaRenderer devices across the local subnet.
+#[tauri::command]
+async fn discover_dlna_renderers() -> Result<Vec<dlna::DlnaDevice>, ingest::IngestError> {
+    dlna::discover_renderers().await
+}
+
+/// Casts media to a DLNA MediaRenderer by setting its URI and initiating playback.
+#[tauri::command]
+async fn cast_dlna_media(
+    control_url: String,
+    media_url: String,
+    title: String,
+) -> Result<bool, ingest::IngestError> {
+    dlna::cast_media(&control_url, &media_url, &title).await
+}
+
+/// Dispatches a playback command (play, pause, stop, volume) to the DLNA renderer.
+#[tauri::command]
+async fn control_dlna_playback(
+    control_url: String,
+    action: String,
+    volume: Option<u8>,
+) -> Result<bool, ingest::IngestError> {
+    dlna::control_playback(&control_url, &action, volume).await
+}
+
+#[tauri::command]
 async fn open_xtream_stream(
     source_id: String,
     stream_type: String,
@@ -173,6 +399,27 @@ async fn open_xtream_catchup(
 ) -> Result<stream::Opened, ingest::IngestError> {
     let url = providers.get_catchup_url(&source_id, &stream_id, start_timestamp, duration_mins)?;
     streams.open(url.as_str())
+}
+
+#[tauri::command]
+async fn open_m3u_catchup(
+    stream_url: String,
+    catchup_type: Option<String>,
+    catchup_source: Option<String>,
+    start_timestamp: i64,
+    duration_mins: u32,
+    stop_timestamp: i64,
+    streams: tauri::State<'_, stream::Streams>,
+) -> Result<stream::Opened, ingest::IngestError> {
+    let resolved_url = m3u::format_m3u_catchup_url(
+        &stream_url,
+        catchup_type.as_deref(),
+        catchup_source.as_deref(),
+        start_timestamp,
+        duration_mins,
+        stop_timestamp,
+    );
+    streams.open(resolved_url.as_str())
 }
 
 #[tauri::command]
@@ -328,6 +575,14 @@ fn dvr_get_storage_info(dvr: tauri::State<'_, dvr::DvrEngine>) -> dvr::StorageIn
 }
 
 #[tauri::command]
+fn dvr_evaluate_series_rules(
+    programmes: Vec<dvr::ProgrammeCandidate>,
+    dvr: tauri::State<'_, dvr::DvrEngine>,
+) -> Vec<dvr::Recording> {
+    dvr.evaluate_series_rules_for_programmes(&programmes)
+}
+
+#[tauri::command]
 async fn test_xtream_connection(
     server: String,
     username: String,
@@ -433,9 +688,10 @@ async fn parse_playlist_text(text: String) -> Result<ingest::Report, ingest::Ing
 #[tauri::command]
 async fn open_stream(
     url: String,
+    options: Option<stream::StreamOptions>,
     streams: tauri::State<'_, stream::Streams>,
 ) -> Result<stream::Opened, ingest::IngestError> {
-    streams.open(&url)
+    streams.open_with_options(&url, options)
 }
 
 /// Ends a playback session (if it is still the current one), cancelling its in-flight requests.
@@ -738,7 +994,7 @@ fn select_local_media_folder(
     Ok(None)
 }
 
-/// Starts an HLS playback stream for an indexed local media file inside an approved library root.
+/// Starts a playback stream for an indexed local media file inside an approved library root.
 #[tauri::command]
 fn open_local_media_stream(
     media_id: String,
@@ -753,9 +1009,9 @@ fn open_local_media_stream(
     });
     if is_movie || is_ep {
         Ok(stream::Opened {
-            url: format!("kstream://localhost/local/{}/playlist.m3u8", media_id),
+            url: format!("kstream://localhost/local/{}/stream", media_id),
             session: 0,
-            format: "hls",
+            format: "direct",
         })
     } else {
         Err(ingest::IngestError::new(
@@ -763,6 +1019,50 @@ fn open_local_media_stream(
             "Local media item not found.",
         ))
     }
+}
+
+/// Starts the wireless LAN mobile remote control web server.
+#[tauri::command]
+async fn start_remote_server(
+    app: tauri::AppHandle,
+    port: Option<u16>,
+    pin: Option<String>,
+    manager: tauri::State<'_, remote_server::RemoteServerManager>,
+) -> Result<remote_server::RemoteServerStatus, String> {
+    use tauri::Emitter;
+    let app_handle = app.clone();
+    manager
+        .start(port, pin, move |event| {
+            let _ = app_handle.emit("kinora:remote_command", event);
+        })
+        .await
+}
+
+/// Stops the wireless LAN mobile remote control web server.
+#[tauri::command]
+async fn stop_remote_server(
+    manager: tauri::State<'_, remote_server::RemoteServerManager>,
+) -> Result<(), String> {
+    manager.stop().await;
+    Ok(())
+}
+
+/// Returns the current runtime status of the mobile remote server.
+#[tauri::command]
+async fn get_remote_server_status(
+    manager: tauri::State<'_, remote_server::RemoteServerManager>,
+) -> Result<remote_server::RemoteServerStatus, String> {
+    Ok(manager.get_status().await)
+}
+
+/// Updates the cached playback state broadcast to connected mobile remotes.
+#[tauri::command]
+async fn update_remote_playback_state(
+    state: remote_server::RemotePlaybackState,
+    manager: tauri::State<'_, remote_server::RemoteServerManager>,
+) -> Result<(), String> {
+    manager.update_playback_state(state).await;
+    Ok(())
 }
 
 /// The page origin allowed to read `kstream` responses: the dev server in `tauri dev`, otherwise
@@ -789,17 +1089,33 @@ pub fn run() {
             let app_data = app.path().app_data_dir().ok();
             let dir = app_data.as_ref().map(|d| d.join("sources"));
             app.manage(local_media::LocalMediaEngine::new(app_data.clone()));
-            app.manage(dvr::DvrEngine::new(app_data));
+            app.manage(dvr::DvrEngine::new(app_data.clone()));
+            app.manage(metadata_vault::MetadataVault::new(app_data.clone()));
             app.manage(guides::GuideStore::new(dir.clone()));
             app.manage(catalogue::CatalogueStore::new(dir.clone()));
             app.manage(sources::Store::new(dir.clone()));
             app.manage(artwork::ArtworkStore::new(dir.clone()));
             app.manage(xtream::Providers::new(dir));
+            app.manage(stalker::StalkerEngine::new(app_data.clone()));
+            app.manage(downloader::DownloadEngine::new(app_data));
+            app.manage(remote_server::RemoteServerManager::new());
             app.manage(stream::Streams::new(
                 fetch::Policy::default(),
                 stream::Limits::default(),
                 origin,
             ));
+            let dvr_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs() as i64)
+                        .unwrap_or(0);
+                    let dvr = dvr_handle.state::<dvr::DvrEngine>();
+                    let _ = dvr.tick(now);
+                }
+            });
             Ok(())
         })
         .register_asynchronous_uri_scheme_protocol("kstream", |ctx, request, responder| {
@@ -858,6 +1174,27 @@ pub fn run() {
                     responder.respond(local_media::into_response(reply));
                     return;
                 }
+                if uri_path.starts_with("/downloads/") {
+                    let dl = app.state::<std::sync::Arc<downloader::DownloadEngine>>();
+                    let header =
+                        |name: &str| request.headers().get(name).and_then(|v| v.to_str().ok());
+                    let ranges: Vec<&str> = request
+                        .headers()
+                        .get_all("range")
+                        .iter()
+                        .filter_map(|v| v.to_str().ok())
+                        .collect();
+                    let reply = dl
+                        .serve(
+                            request.method().as_str(),
+                            uri_path,
+                            header("origin"),
+                            &ranges,
+                        )
+                        .await;
+                    responder.respond(downloader::into_response(reply));
+                    return;
+                }
                 let streams = app.state::<stream::Streams>();
                 let header = |name: &str| request.headers().get(name).and_then(|v| v.to_str().ok());
                 let ranges: Vec<&str> = request
@@ -882,6 +1219,15 @@ pub fn run() {
             app_info,
             fetch_channel_logo,
             fetch_programme_artwork,
+            fetch_artwork,
+            artwork_cache_stats,
+            clear_artwork_cache,
+            retry_failed_artwork,
+            load_local_media_artwork,
+            post_metadata,
+            save_metadata_credentials,
+            load_metadata_credentials,
+            clear_metadata_credentials,
             connect_xtream,
             refresh_xtream,
             load_xtream_catalogue,
@@ -891,6 +1237,7 @@ pub fn run() {
             is_xtream_connected,
             open_xtream_stream,
             open_xtream_catchup,
+            open_m3u_catchup,
             dvr_get_recordings,
             dvr_start_recording,
             dvr_stop_recording,
@@ -905,6 +1252,7 @@ pub fn run() {
             dvr_get_config,
             dvr_save_config,
             dvr_get_storage_info,
+            dvr_evaluate_series_rules,
             test_xtream_connection,
             xtream_vod_details,
             xtream_epg,
@@ -926,6 +1274,8 @@ pub fn run() {
             hash_parental_pin,
             verify_parental_pin,
             fetch_metadata,
+            fetch_subtitle,
+            fetch_trakt,
             check_for_updates,
             get_local_libraries,
             save_local_library,
@@ -934,7 +1284,25 @@ pub fn run() {
             get_local_media_catalogue,
             get_storage_volumes_info,
             select_local_media_folder,
-            open_local_media_stream
+            open_local_media_stream,
+            start_remote_server,
+            stop_remote_server,
+            get_remote_server_status,
+            update_remote_playback_state,
+            connect_stalker,
+            load_stalker_catalogue,
+            open_stalker_stream,
+            disconnect_stalker,
+            is_stalker_connected,
+            start_download,
+            pause_download,
+            resume_download,
+            cancel_download,
+            delete_download,
+            get_downloads,
+            discover_dlna_renderers,
+            cast_dlna_media,
+            control_dlna_playback
         ])
         .run(tauri::generate_context!());
 

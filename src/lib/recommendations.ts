@@ -357,7 +357,7 @@ export function computeRecommendations({
   if (recentSource && demoTitles) {
     const targetGenres = new Set(recentSource.genres)
     const related = candidates
-      .filter((c) => c.ref !== recentSource!.ref)
+      .filter((c) => c.ref !== recentSource!.ref && (Boolean(c.art) || Boolean(c.artworkKey)))
       .map((c) => {
         let matchCount = 0
         if (c.kind === 'movie') {

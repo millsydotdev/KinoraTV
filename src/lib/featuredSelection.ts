@@ -16,6 +16,9 @@ export interface FeaturedSlide {
   kicker: string
   badgeIcon?: string
   art?: string
+  backdropUrl?: string
+  logoUrl?: string
+  imdbId?: string
   artworkKey?: string | null
   focus?: number
   genres?: string[]
@@ -128,6 +131,8 @@ export function selectFeaturedSlides(inputs: FeaturedSelectionInputs): FeaturedS
         kicker: isMovie ? 'FEATURED MOVIE' : 'FEATURED SERIES',
         badgeIcon: isMovie ? 'film' : 'tv',
         art: t.art,
+        backdropUrl: t.backdropUrl || t.art,
+        imdbId: t.imdbId,
         focus: t.focus,
         genres: t.genres,
         yearOrYears: isMovie ? t.year : t.years,
@@ -305,6 +310,19 @@ export function selectFeaturedSlides(inputs: FeaturedSelectionInputs): FeaturedS
   return slides
 }
 
+export function normalizeProgrammeArt(raw: string | undefined | null, targetAspect: '16:9' | '2:3' = '16:9'): string | undefined {
+  if (!raw) return undefined
+  if (raw.includes('images.metadata.sky.com/pd-image/')) {
+    if (targetAspect === '16:9' && raw.endsWith('/cover')) {
+      return raw.replace(/\/cover$/, '/16-9')
+    }
+    if (targetAspect === '2:3' && raw.endsWith('/16-9')) {
+      return raw.replace(/\/16-9$/, '/cover')
+    }
+  }
+  return raw
+}
+
 function buildLiveSlide(
   c: Channel,
   p: Programme | undefined,
@@ -317,6 +335,10 @@ function buildLiveSlide(
     timeStr = `until ${endClock}`
   }
 
+  const rawArt = p?.art || (hasGenuineProgrammeArt(p) && !p?.icon?.includes('imgur.com') ? p?.icon : undefined) || undefined
+  const landscapeStill = normalizeProgrammeArt(rawArt, '16:9')
+  const isTitleCover = Boolean(rawArt && (/\/cover$|title[-_]logo|wordmark/i.test(rawArt) && !rawArt.includes('/16-9')))
+
   return {
     id: c.id,
     kind: 'live',
@@ -325,7 +347,9 @@ function buildLiveSlide(
     synopsis: p?.desc || `Live broadcast on ${c.name}.`,
     kicker: `Now on ${c.name}`,
     badgeIcon: 'tv',
-    art: p?.art || (hasGenuineProgrammeArt(p) && !p?.icon?.includes('imgur.com') ? p?.icon : undefined) || undefined,
+    art: landscapeStill,
+    backdropUrl: landscapeStill,
+    logoUrl: isTitleCover ? rawArt : undefined,
     channel: c,
     programme: p,
     channelMarkText: c.mark.text,

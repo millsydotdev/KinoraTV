@@ -109,6 +109,21 @@ pub struct SeriesRule {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ProgrammeCandidate {
+    pub channel_id: String,
+    pub channel_name: String,
+    #[serde(default)]
+    pub channel_logo: Option<String>,
+    pub programme_id: String,
+    pub title: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    pub start_time: i64,
+    pub end_time: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DvrConfig {
     pub storage_path: String,
     pub max_storage_bytes: u64,
@@ -235,8 +250,52 @@ impl DvrEngine {
             let _ = set_private_permissions(&dvr_dir, 0o700);
 
             let config = Self::read_config(&dvr_dir);
-            let recordings = Self::read_recordings(&dvr_dir);
+            let mut recordings = Self::read_recordings(&dvr_dir);
             let rules = Self::read_rules(&dvr_dir);
+
+            // Shutdown and crash recovery:
+            let mut recovered = false;
+            let now = now_secs();
+            for rec in recordings.iter_mut() {
+                if rec.status == RecordingStatus::Recording {
+                    recovered = true;
+                    if let Some(fp) = &rec.file_path {
+                        let path = PathBuf::from(fp);
+                        let parent = path.parent().unwrap_or(&path);
+                        let has_segments = parent.join("segment_0.ts").exists();
+                        if path.exists() && has_segments && rec.file_size_bytes > 0 {
+                            rec.status = RecordingStatus::Completed;
+                            rec.end_time = now;
+                            rec.duration_secs = (now - rec.start_time).max(1) as u64;
+                            if let Ok(content) = fs::read_to_string(&path) {
+                                if !content.contains("#EXT-X-ENDLIST") {
+                                    let mut updated = content;
+                                    if !updated.contains("#EXT-X-PLAYLIST-TYPE:VOD") {
+                                        updated.push_str("#EXT-X-PLAYLIST-TYPE:VOD\n");
+                                    }
+                                    updated.push_str("#EXT-X-ENDLIST\n");
+                                    let _ = fs::write(&path, updated.as_bytes());
+                                }
+                            }
+                        } else {
+                            rec.status = RecordingStatus::Failed;
+                            rec.error_message = Some(
+                                "Recording incomplete: interrupted before media segments could be captured."
+                                    .into(),
+                            );
+                        }
+                    } else {
+                        rec.status = RecordingStatus::Failed;
+                        rec.error_message = Some(
+                            "Recording incomplete: interrupted by application shutdown."
+                                .into(),
+                        );
+                    }
+                }
+            }
+            if recovered {
+                let _ = Self::atomic_write_json(&dvr_dir, RECORDINGS_FILE, &recordings);
+            }
 
             (Some(dvr_dir), recordings, rules, config)
         } else {
@@ -471,6 +530,55 @@ impl DvrEngine {
         total_bytes += m3u8.len() as u64;
 
         Ok((m3u8_path.to_string_lossy().to_string(), total_bytes))
+    }
+
+    #[allow(dead_code)]
+    pub fn append_segment(
+        &self,
+        recording_id: &str,
+        segment_bytes: &[u8],
+        duration_secs: f64,
+    ) -> Result<u64, IngestError> {
+        let mut recs = self.recordings.lock().unwrap_or_else(|p| p.into_inner());
+        let rec = recs
+            .iter_mut()
+            .find(|r| r.id == recording_id)
+            .ok_or_else(|| IngestError::new(ErrorCode::Storage, "Recording not found."))?;
+
+        if rec.status != RecordingStatus::Recording {
+            return Err(IngestError::new(
+                ErrorCode::Storage,
+                "Recording is not currently active.",
+            ));
+        }
+
+        let folder = self.get_recording_folder(&rec.channel_name, &rec.id, &rec.title);
+        let m3u8_path = folder.join("playlist.m3u8");
+
+        let mut next_idx = 0;
+        while folder.join(format!("segment_{}.ts", next_idx)).exists() {
+            next_idx += 1;
+        }
+
+        let seg_name = format!("segment_{}.ts", next_idx);
+        let seg_path = folder.join(&seg_name);
+        fs::write(&seg_path, segment_bytes).map_err(|_| {
+            IngestError::new(ErrorCode::Storage, "Could not write recorded segment.")
+        })?;
+
+        rec.file_size_bytes += segment_bytes.len() as u64;
+        rec.duration_secs += duration_secs.round() as u64;
+
+        if let Ok(content) = fs::read_to_string(&m3u8_path) {
+            let mut lines: Vec<&str> = content.lines().collect();
+            lines.retain(|l| *l != "#EXT-X-ENDLIST");
+            let mut updated = lines.join("\n");
+            updated.push('\n');
+            updated.push_str(&format!("#EXTINF:{:.1},\n{}\n", duration_secs, seg_name));
+            let _ = fs::write(&m3u8_path, updated.as_bytes());
+        }
+
+        Ok(rec.file_size_bytes)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -735,6 +843,49 @@ impl DvrEngine {
             }
         }
         self.save_rules_internal()
+    }
+
+    pub fn evaluate_series_rules_for_programmes(
+        &self,
+        programmes: &[ProgrammeCandidate],
+    ) -> Vec<Recording> {
+        let rules = self.get_rules();
+        let mut scheduled = Vec::new();
+        let active_rules: Vec<_> = rules.into_iter().filter(|r| r.is_active).collect();
+        if active_rules.is_empty() {
+            return scheduled;
+        }
+
+        for p in programmes {
+            for rule in &active_rules {
+                if let Some(ref cid) = rule.channel_id {
+                    if cid != &p.channel_id {
+                        continue;
+                    }
+                }
+                let norm_rule_title = rule.title.trim().to_lowercase();
+                let norm_prog_title = p.title.trim().to_lowercase();
+                if !norm_rule_title.is_empty() && norm_prog_title.contains(&norm_rule_title) {
+                    if let Ok(rec) = self.schedule_recording(
+                        p.channel_id.clone(),
+                        p.channel_name.clone(),
+                        p.channel_logo.clone(),
+                        Some(p.programme_id.clone()),
+                        p.title.clone(),
+                        p.description.clone(),
+                        p.start_time,
+                        p.end_time,
+                        Some(rule.padding_start_mins),
+                        Some(rule.padding_end_mins),
+                        Some(rule.id.clone()),
+                    ) {
+                        scheduled.push(rec);
+                    }
+                    break;
+                }
+            }
+        }
+        scheduled
     }
 
     #[allow(dead_code)]
@@ -1165,6 +1316,66 @@ mod tests {
     }
 
     #[test]
+    fn test_series_rules_matching_and_tick() {
+        let temp = TempDir::new("rules_matching");
+        let engine = DvrEngine::new(Some(temp.path().to_path_buf()));
+
+        let rule = SeriesRule {
+            id: "rule_news".into(),
+            title: "Global News".into(),
+            channel_id: Some("ch_news".into()),
+            record_type: "all_episodes".into(),
+            padding_start_mins: 1,
+            padding_end_mins: 1,
+            retention_days: Some(7),
+            keep_max_episodes: Some(5),
+            is_active: true,
+            created_at: 1000,
+        };
+        engine.save_rule(rule).unwrap();
+
+        let candidates = vec![
+            ProgrammeCandidate {
+                channel_id: "ch_news".into(),
+                channel_name: "News 24".into(),
+                channel_logo: None,
+                programme_id: "prog_news_101".into(),
+                title: "Global News at Six".into(),
+                description: Some("Daily news broadcast".into()),
+                start_time: 2000,
+                end_time: 2600,
+            },
+            ProgrammeCandidate {
+                channel_id: "ch_other".into(),
+                channel_name: "Other TV".into(),
+                channel_logo: None,
+                programme_id: "prog_news_other".into(),
+                title: "Global News at Eight".into(),
+                description: None,
+                start_time: 2700,
+                end_time: 3300,
+            },
+        ];
+
+        let scheduled = engine.evaluate_series_rules_for_programmes(&candidates);
+        assert_eq!(scheduled.len(), 1);
+        assert_eq!(scheduled[0].programme_id.as_deref(), Some("prog_news_101"));
+        assert_eq!(scheduled[0].status, RecordingStatus::Scheduled);
+
+        engine.tick(1900).unwrap();
+        let recs = engine.get_recordings();
+        assert_eq!(recs[0].status, RecordingStatus::Scheduled);
+
+        engine.tick(1945).unwrap();
+        let recs = engine.get_recordings();
+        assert_eq!(recs[0].status, RecordingStatus::Recording);
+
+        engine.tick(2665).unwrap();
+        let recs = engine.get_recordings();
+        assert_eq!(recs[0].status, RecordingStatus::Completed);
+    }
+
+    #[test]
     fn test_dvr_http_serving() {
         tauri::async_runtime::block_on(async {
             let temp = TempDir::new("serving");
@@ -1197,5 +1408,44 @@ mod tests {
             assert_eq!(range_reply.status, 206);
             assert_eq!(range_reply.body.len(), 100);
         });
+    }
+
+    #[test]
+    fn test_dvr_restart_recovery_and_segment_appending() {
+        let temp = TempDir::new("recovery");
+        let path = temp.path().to_path_buf();
+
+        let rec_id = {
+            let engine = DvrEngine::new(Some(path.clone()));
+            let rec = engine
+                .start_manual_recording(
+                    "ch_live".into(),
+                    "Live Channel".into(),
+                    None,
+                    None,
+                    "Live Event".into(),
+                    None,
+                    Some(7200),
+                )
+                .unwrap();
+            assert_eq!(rec.status, RecordingStatus::Recording);
+
+            // Append live segment
+            let seg_data = vec![0x47; 188 * 5];
+            let new_size = engine.append_segment(&rec.id, &seg_data, 6.0).unwrap();
+            assert!(new_size > rec.file_size_bytes);
+
+            rec.id
+        };
+
+        // Simulate app restart: re-initialize DvrEngine from disk
+        let engine2 = DvrEngine::new(Some(path));
+        let recs2 = engine2.get_recordings();
+        let recovered = recs2.iter().find(|r| r.id == rec_id).unwrap();
+
+        // Must be recovered to Completed without data corruption
+        assert_eq!(recovered.status, RecordingStatus::Completed);
+        assert!(recovered.duration_secs > 0);
+        assert!(recovered.file_path.is_some());
     }
 }

@@ -18,6 +18,20 @@ import {
   type PlaylistSource,
 } from '../state/playlists'
 import { useStore, type XtreamSource } from '../state/store'
+import { XtreamServerModal } from '../components/XtreamServerModal'
+import { StreamCheckerModal } from '../components/StreamCheckerModal'
+import { StalkerServerModal } from '../components/StalkerServerModal'
+import {
+  connectStalker,
+  loadStalkerCatalogue,
+  type StalkerCatalogue,
+} from '../lib/native'
+import {
+  formatMacInput,
+  isValidMacAddress,
+  saveStalkerPortal,
+  stalkerToPlaylistReport,
+} from '../lib/stalker'
 import { SourcesPersonalTab } from './SourcesPersonalTab'
 import { SourcesTechnicalTab } from './SourcesTechnicalTab'
 import { SourcesMasterDiscovery } from './SourcesMasterDiscovery'
@@ -49,6 +63,8 @@ export function Sources() {
   const tab = tabParam === 'discovery' ? 'discovery' : tabParam === 'my-sources' ? 'my-sources' : tabParam === 'technical' ? 'technical' : 'active'
   const [detailId, setDetailId] = useState<string | null>(null)
   const [removeId, setRemoveId] = useState<string | null>(null)
+  const [streamCheckerOpen, setStreamCheckerOpen] = useState(false)
+  const [stalkerModalOpen, setStalkerModalOpen] = useState(false)
 
   const detail = store.sources.find((s) => s.id === detailId)
   const playlistDetail = store.playlists.find((s) => s.id === detailId)
@@ -94,7 +110,37 @@ export function Sources() {
 
   return (
     <>
-      <PageHeader title="Sources" tabs={tabs} search={false} actions={<Link to="/sources/add" className="btn btn-primary btn-small"><Icon name="plus" size={16} />Add Source</Link>} />
+      <PageHeader
+        title="Sources"
+        tabs={tabs}
+        search={false}
+        actions={
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {store.channels.length > 0 && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={() => setStreamCheckerOpen(true)}
+              >
+                <Icon name="activity" size={16} />
+                Check Stream Health
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn btn-secondary btn-small"
+              onClick={() => setStalkerModalOpen(true)}
+            >
+              <Icon name="sources" size={16} />
+              Stalker / MAG
+            </button>
+            <Link to="/sources/add" className="btn btn-primary btn-small">
+              <Icon name="plus" size={16} />
+              Add Source
+            </Link>
+          </div>
+        }
+      />
       <div className="page sources">
 
         {store.storageNotice && (
@@ -166,7 +212,7 @@ export function Sources() {
         <div className="sources-foot">
           <DemoNote>
             {store.playlists.length + store.guides.length > 0 && 'Imported playlists and guides are saved on this device, including their addresses, which can contain private tokens. Guide programmes are kept on this device too. Streams are only fetched when you play a channel. '}
-            {store.xtreamSources.length > 0 && 'Provider names and catalogue counts are saved on this device. Provider addresses and login details remain in memory for this app session and must be entered again after restart. '}
+            {store.xtreamSources.length > 0 && 'Provider names and catalogue counts are saved on this device. Provider credentials are encrypted securely in the local vault and restored at startup. '}
             {store.sources.length > 0 && ' Sources marked Sample are demonstration data: nothing is fetched, scanned or validated for them, and their counts are sample values.'}
             {' '}Open a source to refresh or remove it.
           </DemoNote>
@@ -193,6 +239,32 @@ export function Sources() {
           {xtreamToRemove && <p className="muted">{xtreamToRemove.name} and its imported movies and series will be removed. Your M3U playlists and XMLTV guides are not affected.</p>}
           {toRemove && <p className="muted">{toRemove.name} will be removed{toRemove.streams ? `, along with the ${toRemove.streams.total} streams it lists` : ''}. Channels other sources provide are not affected.</p>}
         </Dialog>
+
+        <StreamCheckerModal
+          open={streamCheckerOpen}
+          onClose={() => setStreamCheckerOpen(false)}
+          channels={store.channels}
+          profileId={store.activeProfile?.id ?? 'default'}
+          onBouquetCreated={(bName) => toast(`Saved verified streams to bouquet "${bName}"`)}
+        />
+
+        <StalkerServerModal
+          open={stalkerModalOpen}
+          onClose={() => setStalkerModalOpen(false)}
+          onPortalConnected={(cat) => {
+            const report = stalkerToPlaylistReport(cat)
+            store.addPlaylist(
+              {
+                name: cat.profile.name || 'MAG Portal',
+                origin: 'url',
+                url: cat.portalUrl,
+                label: 'Stalker Portal',
+              },
+              report
+            )
+            toast(`Connected Stalker portal with ${report.channels.length} channels.`)
+          }}
+        />
       </div>
     </>
   )
@@ -368,6 +440,7 @@ function XtreamDetail({ source, onRemove }: { source: XtreamSource; onRemove: ()
   const store = useStore()
   const toast = useToast()
   const [busy, setBusy] = useState(false)
+  const [serverModalOpen, setServerModalOpen] = useState(false)
   return (
     <div className="source-detail">
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
@@ -400,7 +473,7 @@ function XtreamDetail({ source, onRemove }: { source: XtreamSource; onRemove: ()
         {source.serverInfo?.url && <div><dt>Server</dt><dd>{source.serverInfo.url}</dd></div>}
         {source.serverInfo?.timezone && <div><dt>Timezone</dt><dd>{source.serverInfo.timezone}</dd></div>}
         <div><dt>Last read</dt><dd>{source.lastSuccess ? relative(source.lastSuccess, Date.now()) : 'Never'}</dd></div>
-        <div><dt>Saved</dt><dd>Provider configuration is saved on this device. Credentials stay in app memory.</dd></div>
+        <div><dt>Saved</dt><dd>Provider configuration and credentials are saved in the local encrypted vault.</dd></div>
       </dl>
 
       <div className="title-actions">
@@ -421,6 +494,14 @@ function XtreamDetail({ source, onRemove }: { source: XtreamSource; onRemove: ()
             {busy ? 'Refreshing…' : 'Refresh all services'}
           </button>
         )}
+        <button
+          type="button"
+          className="btn btn-ghost btn-small"
+          onClick={() => setServerModalOpen(true)}
+        >
+          <Icon name="link" size={16} />
+          Server Mirrors & Failover
+        </button>
         <Link to={`/sources/add?kind=xtream&source=${encodeURIComponent(source.id)}`} className="btn btn-ghost btn-small">
           <Icon name="link" size={16} />
           {source.connected ? 'Reconnect / Edit' : 'Enter login to reconnect'}
@@ -430,6 +511,14 @@ function XtreamDetail({ source, onRemove }: { source: XtreamSource; onRemove: ()
           Remove Provider
         </button>
       </div>
+
+      <XtreamServerModal
+        open={serverModalOpen}
+        onClose={() => setServerModalOpen(false)}
+        sourceId={source.id}
+        sourceName={source.name}
+        primaryServer={source.serverInfo?.url || ''}
+      />
     </div>
   )
 }
@@ -935,7 +1024,7 @@ export function CatalogueDetail({ entry, catalogue }: { entry: CatalogueEntry; c
   )
 }
 
-export type ExtendedSourceKind = SourceKind | 'xtream' | 'radio' | 'podcast' | 'api' | 'custom'
+export type ExtendedSourceKind = SourceKind | 'xtream' | 'stalker' | 'radio' | 'podcast' | 'api' | 'custom'
 
 const typeOptions: { value: ExtendedSourceKind; label: string; icon: IconName }[] = [
   { value: 'm3u', label: 'M3U Playlist', icon: 'live' },
@@ -943,6 +1032,7 @@ const typeOptions: { value: ExtendedSourceKind; label: string; icon: IconName }[
   { value: 'url-list', label: 'URL List', icon: 'link' },
   { value: 'xmltv', label: 'XMLTV Guide', icon: 'guide' },
   { value: 'xtream', label: 'Movies & Series', icon: 'film' },
+  { value: 'stalker', label: 'Stalker / MAG', icon: 'sources' },
   { value: 'radio', label: 'Radio Stream', icon: 'audio' },
   { value: 'podcast', label: 'Podcast RSS', icon: 'audio' },
   { value: 'api', label: 'Metadata API', icon: 'database' },
@@ -993,6 +1083,9 @@ export function AddSource() {
   const xtreamAdded = useRef(false)
   const xtreamPageActive = useRef(true)
   const isXtream = kind === 'xtream'
+  const isStalker = kind === 'stalker'
+  const [stalkerMac, setStalkerMac] = useState('00:1A:79:')
+  const [stalkerPreview, setStalkerPreview] = useState<StalkerCatalogue | null>(null)
   const sourceToReconnect = store.xtreamSources.find((source) => source.id === sourceParam)
   useEffect(() => {
     if (sourceToReconnect) setName(sourceToReconnect.name)
@@ -1104,7 +1197,7 @@ export function AddSource() {
     if (!name.trim()) setName(next.name)
     setStep(2)
   }
-  const scanUrl = () => {
+  const scanUrl = async () => {
     if (isPersonalMedia) {
       const trimmedUrl = url.trim()
       const trimmedName = name.trim()
@@ -1144,6 +1237,31 @@ export function AddSource() {
       }
       setCustomPreview(previewRes)
       setStep(2)
+      return
+    }
+    if (isStalker) {
+      if (!url.trim() || !isValidMacAddress(stalkerMac)) {
+        setErrors({
+          url: !url.trim() ? 'Enter your Stalker portal server address.' : undefined,
+          name: !isValidMacAddress(stalkerMac) ? 'Enter a valid 6-byte hexadecimal MAC address (e.g. 00:1A:79:AB:CD:EF).' : undefined,
+        })
+        return
+      }
+      setBusy(true)
+      setErrors({})
+      try {
+        const prof = await connectStalker(url.trim(), stalkerMac)
+        if (!prof) throw new Error('Could not connect to the Stalker portal.')
+        const cat = await loadStalkerCatalogue()
+        if (!cat) throw new Error('Could not load Stalker catalogue.')
+        setStalkerPreview(cat)
+        if (!name.trim()) setName(prof.name || 'MAG Portal')
+        setStep(2)
+      } catch (err: unknown) {
+        setErrors({ url: err instanceof Error ? err.message : 'Could not connect to Stalker portal.' })
+      } finally {
+        setBusy(false)
+      }
       return
     }
     if (isXtream) {
@@ -1193,6 +1311,32 @@ export function AddSource() {
       store.mediaLibrary.addCustomResource(customPreview, notes.trim() || undefined)
       toast(`Added ${name.trim()} to your personal sources.`)
       navigate('/sources?tab=my-sources')
+      return
+    }
+    if (stalkerPreview) {
+      if (!checkName()) return
+      const report = stalkerToPlaylistReport(stalkerPreview)
+      store.addPlaylist(
+        {
+          name: name.trim(),
+          origin: 'url',
+          url: stalkerPreview.portalUrl,
+          label: 'Stalker Portal',
+        },
+        report
+      )
+      saveStalkerPortal({
+        id: `stalker-${Date.now().toString(36)}`,
+        portalUrl: stalkerPreview.portalUrl,
+        mac: stalkerPreview.mac,
+        label: name.trim(),
+        lastConnected: new Date().toISOString(),
+        channelCount: report.channels.length,
+        vodCount: stalkerPreview.vod.length,
+        expDate: stalkerPreview.profile.expDate,
+      })
+      toast(`Added ${name.trim()}: ${report.channels.length} channels from Stalker portal.`)
+      navigate('/sources')
       return
     }
     if (xtreamPreview?.catalogue) {
@@ -1404,7 +1548,50 @@ export function AddSource() {
           </form>
         )}
 
-        {step === 1 && !isXtream && !isPersonalMedia && (
+        {step === 1 && isStalker && (
+          <form className="add-form" onSubmit={(e) => { e.preventDefault(); scanUrl() }} aria-busy={busy}>
+            <div className="field">
+              <span>Source Type</span>
+              <Segmented label="Source type" value={kind} onChange={setKind} options={typeOptions} className="type-picker" />
+            </div>
+            <label className="field">
+              <span>Stalker portal address</span>
+              <input
+                className="input input-lg"
+                type="url"
+                inputMode="url"
+                autoComplete="url"
+                value={url}
+                onChange={(e) => { setUrl(e.target.value); setErrors({}) }}
+                placeholder="http://portal.example.com/c/ or /server/load.php"
+                aria-invalid={errors.url ? true : undefined}
+                disabled={busy}
+                autoFocus
+              />
+              {errors.url ? <span className="field-error" role="alert">{errors.url}</span> : <span className="field-hint">Enter the Ministra or Stalker portal URL provided by your service.</span>}
+            </label>
+            <label className="field">
+              <span>Device MAC address</span>
+              <input
+                className="input"
+                type="text"
+                value={stalkerMac}
+                onChange={(e) => { setStalkerMac(formatMacInput(e.target.value)); setErrors({}) }}
+                placeholder="00:1A:79:XX:XX:XX"
+                maxLength={17}
+                disabled={busy}
+              />
+              <span className="field-hint">Hardware MAC identifier registered with your portal subscription.</span>
+            </label>
+            <div className="add-actions">
+              <button type="submit" className="btn btn-primary btn-block" disabled={busy || !url.trim() || !isValidMacAddress(stalkerMac)}>
+                {busy ? 'Connecting portal…' : 'Continue'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {step === 1 && !isXtream && !isStalker && !isPersonalMedia && (
           <form className="add-form" onSubmit={(e) => { e.preventDefault(); scanUrl() }} aria-busy={busy}>
             <label className="field">
               <span>{isGuide ? 'Paste a guide URL' : 'Paste a playlist URL'}</span>
@@ -1430,6 +1617,48 @@ export function AddSource() {
                 : 'Kinora downloads or reads the playlist and lists its channels. It does not open or test any stream. Sources are saved on this device.'}
             </p>
           </form>
+        )}
+
+        {step === 2 && stalkerPreview && (
+          <form className="add-form" onSubmit={(e) => { e.preventDefault(); if (checkName()) setStep(3) }}>
+            <div className="validate-box">
+              <p className="validate-status is-ok"><Icon name="check" size={18} />Stalker portal verified: {stalkerPreview.channels.length} channels</p>
+              <ul className="check-list">
+                <li><Icon name="check" size={16} />{stalkerPreview.genres.length} genres and categories</li>
+                <li><Icon name="check" size={16} />{stalkerPreview.vod.length} VOD movie and on-demand titles</li>
+                {stalkerPreview.profile.expDate && <li><Icon name="info" size={16} />Subscription valid through {stalkerPreview.profile.expDate}</li>}
+                <li><Icon name="info" size={16} />Authenticated with device MAC {stalkerPreview.mac}</li>
+              </ul>
+            </div>
+            <label className="field">
+              <span>Name</span>
+              <input className="input" value={name} maxLength={48} onChange={(e) => setName(e.target.value)} placeholder="For example: Living room MAG portal" aria-invalid={errors.name ? true : undefined} />
+              {errors.name && <span className="field-error">{errors.name}</span>}
+            </label>
+            <div className="add-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setStep(1)}>Back</button>
+              <button type="submit" className="btn btn-primary">Continue</button>
+            </div>
+          </form>
+        )}
+
+        {step === 3 && stalkerPreview && (
+          <div className="add-form">
+            <dl className="detail-facts">
+              <div><dt>Name</dt><dd>{name.trim()}</dd></div>
+              <div><dt>Address</dt><dd className="source-url-full">{stalkerPreview.portalUrl}</dd></div>
+              <div><dt>Type</dt><dd>Stalker / MAG portal</dd></div>
+              <div><dt>MAC Address</dt><dd className="tnum">{stalkerPreview.mac}</dd></div>
+              <div><dt>Channels</dt><dd className="tnum">{stalkerPreview.channels.length}</dd></div>
+              <div><dt>VOD Titles</dt><dd className="tnum">{stalkerPreview.vod.length}</dd></div>
+              <div><dt>Saved</dt><dd>On this device</dd></div>
+            </dl>
+            <p className="muted">Live TV channels are added to your playlist channel catalogue, with protected stream links.</p>
+            <div className="add-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setStep(2)}>Back</button>
+              <button type="button" className="btn btn-primary" onClick={add}><Icon name="plus" size={18} />Add Source</button>
+            </div>
+          </div>
         )}
 
         {step === 2 && xtreamPreview?.catalogue && (

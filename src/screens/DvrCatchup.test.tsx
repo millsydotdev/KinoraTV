@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ToastProvider } from '../components/Toast'
-import { catchupRef, channelRef, recordingRef, resolve } from '../data/refs'
+import { catchupRef, channelRef, m3uCatchupRef, recordingRef, resolve } from '../data/refs'
 import { ProfileProvider } from '../state/profiles'
 import { StoreProvider } from '../state/store'
 import { LiveTV } from './LiveTV'
@@ -77,6 +77,36 @@ describe('DVR, Live TV Recording, Catch-up TV & Timeshift', () => {
       expect(cuResolved.streamUrl).toBe('catchup://xt-src-1/1001/1731636000/60')
       expect(cuResolved.item.durationMins).toBe(60)
       expect(cuResolved.item.startTimestamp).toBe(1731636000)
+    }
+
+    const m3uRef = m3uCatchupRef('ch-m3u-1', 1731636000, 60, 1731639600)
+    expect(m3uRef).toBe('catchup:m3u:ch-m3u-1:1731636000:60:1731639600')
+
+    const dummyChannel = {
+      id: 'ch-m3u-1',
+      number: 1,
+      name: 'BBC One HD',
+      group: 'General',
+      categories: ['General'],
+      logoUrl: null,
+      mark: { text: 'BBC', tone: '#3d4650' },
+      streamUrl: 'https://streams.example/bbc1.m3u8',
+      hd: true,
+      sourceId: 'src-m3u',
+      tvgId: 'bbc1.uk',
+      catchupType: 'append',
+      catchupSource: '?playpath=${start}&duration=${duration}',
+    }
+
+    const m3uResolved = resolve(m3uRef, Date.now(), (id) => id === 'ch-m3u-1' ? dummyChannel as any : undefined, undefined, false)
+    expect(m3uResolved).toBeDefined()
+    expect(m3uResolved?.kind).toBe('catchup')
+    if (m3uResolved?.kind === 'catchup') {
+      expect(m3uResolved.title).toBe('BBC One HD (Catch-up)')
+      expect(m3uResolved.streamUrl).toContain('catchup://m3u/?')
+      expect(m3uResolved.streamUrl).toContain('url=https%3A%2F%2Fstreams.example%2Fbbc1.m3u8')
+      expect(m3uResolved.streamUrl).toContain('start=1731636000')
+      expect(m3uResolved.streamUrl).toContain('dur=60')
     }
   })
 

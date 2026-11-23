@@ -1,0 +1,152 @@
+/* Direct numeric keypad channel tuning HUD.
+   Positioned top-right in player or living room view.
+   Strictly adheres to typography standards: zero em-dashes. */
+
+.numeric-zap-hud {
+  position: absolute;
+  top: 28px;
+  right: 28px;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  min-width: 260px;
+  max-width: 380px;
+  background: rgb(var(--scrim, 0 0 0) / 0.88);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.16));
+  border-radius: var(--radius-lg, 12px);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  animation: zapHudSlideIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  pointer-events: none;
+}
+
+@keyframes zapHudSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.numeric-zap-digits-box {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 10px 14px 6px;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.numeric-zap-label {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint, rgba(255, 255, 255, 0.5));
+}
+
+.numeric-zap-digits {
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--accent, #3b82f6);
+  text-shadow: 0 0 12px rgba(59, 130, 246, 0.5);
+}
+
+.numeric-zap-content {
+  padding: 12px 14px;
+}
+
+.numeric-zap-match {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.numeric-zap-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.numeric-zap-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.numeric-zap-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text, #ffffff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.numeric-zap-badge {
+  font-size: 0.625rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm, 4px);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.numeric-zap-badge.tag-quality {
+  background: rgba(59, 130, 246, 0.25);
+  color: #93c5fd;
+  border: 1px solid rgba(59, 130, 246, 0.4);
+}
+
+.numeric-zap-badge.tag-framerate {
+  background: rgba(16, 185, 129, 0.2);
+  color: #6ee7b7;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.numeric-zap-badge.tag-country {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fcd34d;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.numeric-zap-hint {
+  font-size: 0.6875rem;
+  color: var(--text-faint, rgba(255, 255, 255, 0.5));
+}
+
+.numeric-zap-no-match {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.numeric-zap-unknown {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-muted, rgba(255, 255, 255, 0.7));
+}
+
+.numeric-zap-progress-bar {
+  height: 3px;
+  width: 100%;
+  background: var(--accent, #3b82f6);
+  animation: zapProgress 1.3s linear forwards;
+}
+
+@keyframes zapProgress {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}

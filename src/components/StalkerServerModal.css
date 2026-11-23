@@ -1,0 +1,223 @@
+/* StalkerServerModal.css - Styles for Stalker / MAG portal modal */
+
+.stalker-modal {
+  background: var(--bg-surface, #16181f);
+  border: 1px solid var(--border-color, #282a36);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 540px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+}
+
+.stalker-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--border-color, #282a36);
+}
+
+.stalker-modal-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stalker-modal-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary, #f0f0f5);
+}
+
+.stalker-modal-subtitle {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary, #9da1b2);
+}
+
+.stalker-modal-body {
+  padding: 20px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.stalker-section-title {
+  margin: 0 0 8px;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary, #9da1b2);
+}
+
+.stalker-portal-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.stalker-portal-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-card, #1c1f2b);
+  border: 1px solid var(--border-color, #282a36);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.stalker-portal-chip:hover {
+  background: var(--bg-hover, #232738);
+  border-color: var(--primary, #3b82f6);
+}
+
+.stalker-chip-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stalker-chip-label {
+  font-weight: 500;
+  color: var(--text-primary, #f0f0f5);
+}
+
+.stalker-chip-mac {
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: var(--text-tertiary, #73788f);
+}
+
+.stalker-chip-remove {
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary, #73788f);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.stalker-chip-remove:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.stalker-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.stalker-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stalker-field label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-secondary, #9da1b2);
+}
+
+.stalker-mac-input {
+  font-family: monospace;
+  letter-spacing: 0.08em;
+}
+
+.stalker-hint {
+  font-size: 0.75rem;
+  color: var(--text-tertiary, #73788f);
+}
+
+.stalker-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 6px;
+  color: #f87171;
+  font-size: 0.85rem;
+}
+
+.stalker-profile-card {
+  padding: 14px 16px;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.stalker-profile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.stalker-profile-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text-primary, #f0f0f5);
+}
+
+.stalker-status-badge {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 12px;
+  text-transform: capitalize;
+  font-weight: 600;
+}
+
+.stalker-status-badge.active {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+
+.stalker-status-badge.inactive,
+.stalker-status-badge.disabled {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.stalker-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  font-size: 0.82rem;
+}
+
+.stalker-meta-label {
+  color: var(--text-secondary, #9da1b2);
+  margin-right: 6px;
+}
+
+.stalker-meta-val {
+  font-weight: 500;
+  color: var(--text-primary, #f0f0f5);
+}
+
+.stalker-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}

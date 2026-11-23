@@ -191,6 +191,17 @@ describe('stream session boundary', () => {
     expect(shell.invoke).toHaveBeenLastCalledWith('close_stream', { session: 3 })
   })
 
+  it('passes custom stream options to Rust open_stream command', async () => {
+    shell.inside = true
+    shell.invoke.mockResolvedValueOnce(ok)
+    const opts = { userAgent: 'CustomVLC/3.0', referrer: 'https://ref.example/', headers: { 'X-Auth': '123' } }
+    await expect(openStream('https://cdn.example/custom.m3u8', opts)).resolves.toEqual(ok)
+    expect(shell.invoke).toHaveBeenLastCalledWith('open_stream', {
+      url: 'https://cdn.example/custom.m3u8',
+      options: opts,
+    })
+  })
+
   it('sends stream commands one at a time, so the session Rust keeps is the last one asked for', async () => {
     shell.inside = true
     let finishFirst!: (v: unknown) => void

@@ -44,6 +44,8 @@ pub struct Policy {
     pub only_hosts: &'static [&'static str],
     /// Refuse plain http, on every request and redirect hop.
     pub https_only: bool,
+    /// Optional custom HTTP headers per-request or per-source (e.g. User-Agent, Referer).
+    pub custom_headers: Vec<(String, String)>,
     /// Test-only: lets the local test server on 127.0.0.1 be reached. Not compiled into the app.
     #[cfg(test)]
     pub allow_loopback: bool,
@@ -63,6 +65,7 @@ impl Default for Policy {
             noun: "playlist",
             only_hosts: &[],
             https_only: false,
+            custom_headers: Vec::new(),
             #[cfg(test)]
             allow_loopback: false,
             #[cfg(test)]
@@ -153,7 +156,26 @@ impl Policy {
             connect_timeout: Duration::from_secs(5),
             total_timeout: Duration::from_secs(10),
             noun: "metadata",
-            only_hosts: &["api.themoviedb.org", "api.tvmaze.com"],
+            only_hosts: &["api.themoviedb.org", "api.tvmaze.com", "api4.thetvdb.com"],
+            https_only: true,
+            ..Self::default()
+        }
+    }
+
+    /// Approved subtitle providers and CDNs: OpenSubtitles REST API.
+    pub fn subtitle() -> Self {
+        Self {
+            max_bytes: 2 * 1024 * 1024,
+            max_redirects: 3,
+            connect_timeout: Duration::from_secs(5),
+            total_timeout: Duration::from_secs(12),
+            noun: "subtitle",
+            only_hosts: &[
+                "api.opensubtitles.com",
+                "dl.opensubtitles.org",
+                "subsource.net",
+                "rest.opensubtitles.org",
+            ],
             https_only: true,
             ..Self::default()
         }
@@ -167,6 +189,20 @@ impl Policy {
             connect_timeout: Duration::from_secs(5),
             total_timeout: Duration::from_secs(10),
             noun: "updater",
+            https_only: true,
+            ..Self::default()
+        }
+    }
+
+    /// Approved Trakt.tv API endpoints for scrobbling and two-way watch history sync.
+    pub fn trakt() -> Self {
+        Self {
+            max_bytes: 2 * 1024 * 1024,
+            max_redirects: 3,
+            connect_timeout: Duration::from_secs(5),
+            total_timeout: Duration::from_secs(12),
+            noun: "trakt",
+            only_hosts: &["api.trakt.tv"],
             https_only: true,
             ..Self::default()
         }
@@ -405,8 +441,19 @@ pub fn guarded_client(policy: &Policy) -> Result<reqwest::Client, IngestError> {
             policy: policy.clone(),
         }))
         .connect_timeout(policy.connect_timeout)
-        .timeout(policy.total_timeout)
-        .user_agent(concat!("Kinora/", env!("CARGO_PKG_VERSION")));
+        .timeout(policy.total_timeout);
+
+    let custom_ua = policy
+        .custom_headers
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("user-agent"))
+        .map(|(_, v)| v.as_str());
+
+    if let Some(ua) = custom_ua {
+        builder = builder.user_agent(ua);
+    } else {
+        builder = builder.user_agent(concat!("Kinora/", env!("CARGO_PKG_VERSION")));
+    }
     if let Some(idle) = policy.read_timeout {
         builder = builder.read_timeout(idle);
     }
@@ -434,9 +481,16 @@ pub async fn download_bytes(
     let client = guarded_client(policy)?;
     let noun = policy.noun;
 
-    let mut response = client
-        .get(url)
-        .header(ACCEPT, accept)
+    let mut request = client.get(url).header(ACCEPT, accept);
+    for (name, val) in &policy.custom_headers {
+        if let (Ok(h_name), Ok(h_val)) = (
+            reqwest::header::HeaderName::from_bytes(name.as_bytes()),
+            reqwest::header::HeaderValue::from_str(val),
+        ) {
+            request = request.header(h_name, h_val);
+        }
+    }
+    let mut response = request
         .send()
         .await
         .map_err(|e| from_reqwest(&e, &host, noun))?;
@@ -517,6 +571,8 @@ pub async fn fetch_metadata(
         let code = status.as_u16();
         let message = if matches!(code, 401 | 403) {
             format!("{host} refused metadata access (HTTP {code}). Check API credentials.")
+        } else if code == 429 {
+            format!("{host} rate limit reached (HTTP 429). Retry shortly.")
         } else {
             format!("{host} answered with HTTP {code} instead of metadata.")
         };
@@ -533,6 +589,220 @@ pub async fn fetch_metadata(
             return Err(IngestError::new(
                 ErrorCode::TooLarge,
                 format!("Metadata response from {host} exceeded maximum size limit."),
+            ));
+        }
+        body.extend_from_slice(&chunk);
+    }
+
+    Ok(String::from_utf8_lossy(&body).into_owned())
+}
+
+/// Sends a small bounded JSON POST request to an approved metadata provider API (e.g. TVDB v4 login).
+pub async fn post_metadata(
+    raw_url: &str,
+    body_json: &str,
+    auth_header: Option<&str>,
+) -> Result<String, IngestError> {
+    if body_json.len() > 4096 {
+        return Err(IngestError::new(
+            ErrorCode::TooLarge,
+            "Metadata request payload exceeded maximum size limit.",
+        ));
+    }
+    let policy = Policy::metadata();
+    let url = check_url(raw_url, &policy)?;
+    let host = url.host_str().unwrap_or_default().to_owned();
+    let client = guarded_client(&policy)?;
+    let noun = policy.noun;
+
+    let mut req = client
+        .post(url)
+        .header(ACCEPT, "application/json")
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body(body_json.to_owned());
+
+    if let Some(auth) = auth_header {
+        req = req.header(reqwest::header::AUTHORIZATION, auth);
+    }
+
+    let mut response = req
+        .send()
+        .await
+        .map_err(|e| from_reqwest(&e, &host, noun))?;
+
+    if let Some(peer) = response.remote_addr() {
+        if !policy.permits(peer.ip()) {
+            return Err(blocked(&host, noun));
+        }
+    }
+    let status = response.status();
+    if !status.is_success() {
+        let code = status.as_u16();
+        let message = if matches!(code, 401 | 403) {
+            format!("{host} refused metadata authentication (HTTP {code}). Check API credentials.")
+        } else if code == 429 {
+            format!("{host} rate limit reached (HTTP 429). Retry shortly.")
+        } else {
+            format!("{host} answered with HTTP {code} instead of metadata.")
+        };
+        return Err(IngestError::new(ErrorCode::HttpStatus, message));
+    }
+
+    let mut body = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|e| from_reqwest(&e, &host, noun))?
+    {
+        if body.len() + chunk.len() > policy.max_bytes {
+            return Err(IngestError::new(
+                ErrorCode::TooLarge,
+                format!("Metadata response from {host} exceeded maximum size limit."),
+            ));
+        }
+        body.extend_from_slice(&chunk);
+    }
+
+    Ok(String::from_utf8_lossy(&body).into_owned())
+}
+
+/// Queries an approved subtitle provider or downloads subtitle text (OpenSubtitles).
+pub async fn fetch_subtitle(
+    raw_url: &str,
+    api_key: Option<&str>,
+) -> Result<String, IngestError> {
+    let policy = Policy::subtitle();
+    let url = check_url(raw_url, &policy)?;
+    let host = url.host_str().unwrap_or_default().to_owned();
+    let client = guarded_client(&policy)?;
+    let noun = policy.noun;
+
+    let mut req = client
+        .get(url)
+        .header(ACCEPT, "application/json, text/vtt, text/plain, */*")
+        .header(reqwest::header::USER_AGENT, "Kinora v0.6.0");
+
+    if let Some(key) = api_key {
+        req = req.header("Api-Key", key);
+    }
+
+    let mut response = req
+        .send()
+        .await
+        .map_err(|e| from_reqwest(&e, &host, noun))?;
+
+    if let Some(peer) = response.remote_addr() {
+        if !policy.permits(peer.ip()) {
+            return Err(blocked(&host, noun));
+        }
+    }
+    let status = response.status();
+    if !status.is_success() {
+        let code = status.as_u16();
+        let message = if matches!(code, 401 | 403) {
+            format!("{host} refused subtitle access (HTTP {code}). Check API credentials.")
+        } else if code == 429 {
+            format!("{host} rate limit reached (HTTP 429). Retry shortly.")
+        } else {
+            format!("{host} answered with HTTP {code} instead of subtitles.")
+        };
+        return Err(IngestError::new(ErrorCode::HttpStatus, message));
+    }
+
+    let mut body = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|e| from_reqwest(&e, &host, noun))?
+    {
+        if body.len() + chunk.len() > policy.max_bytes {
+            return Err(IngestError::new(
+                ErrorCode::TooLarge,
+                format!("Subtitle response from {host} exceeded maximum size limit."),
+            ));
+        }
+        body.extend_from_slice(&chunk);
+    }
+
+    Ok(String::from_utf8_lossy(&body).into_owned())
+}
+
+/// Sends an authenticated or public request to Trakt.tv REST API.
+pub async fn fetch_trakt_api(
+    raw_url: &str,
+    method: &str,
+    client_id: &str,
+    access_token: Option<&str>,
+    body_json: Option<&str>,
+) -> Result<String, IngestError> {
+    let policy = Policy::trakt();
+    let url = check_url(raw_url, &policy)?;
+    let host = url.host_str().unwrap_or_default().to_owned();
+    let client = guarded_client(&policy)?;
+    let noun = policy.noun;
+
+    let req_builder = match method.to_uppercase().as_str() {
+        "POST" => {
+            let mut b = client.post(url);
+            if let Some(json) = body_json {
+                if json.len() > 65536 {
+                    return Err(IngestError::new(ErrorCode::TooLarge, "Request payload too large"));
+                }
+                b = b.header(CONTENT_TYPE, "application/json").body(json.to_string());
+            }
+            b
+        }
+        "DELETE" => client.delete(url),
+        _ => client.get(url),
+    };
+
+    let mut req = req_builder
+        .header(ACCEPT, "application/json")
+        .header("trakt-api-version", "2")
+        .header("trakt-api-key", client_id)
+        .header(reqwest::header::USER_AGENT, "Kinora v0.6.0");
+
+    if let Some(token) = access_token {
+        if !token.is_empty() {
+            req = req.header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"));
+        }
+    }
+
+    let mut response = req
+        .send()
+        .await
+        .map_err(|e| from_reqwest(&e, &host, noun))?;
+
+    if let Some(peer) = response.remote_addr() {
+        if !policy.permits(peer.ip()) {
+            return Err(blocked(&host, noun));
+        }
+    }
+    let status = response.status();
+    if !status.is_success() {
+        let code = status.as_u16();
+        let message = if matches!(code, 401 | 403) {
+            format!("{host} refused Trakt authentication (HTTP {code}). Check credentials.")
+        } else if code == 429 {
+            format!("{host} rate limit reached (HTTP 429). Retry shortly.")
+        } else if code == 404 {
+            format!("{host} resource not found (HTTP 404).")
+        } else {
+            format!("{host} answered with HTTP {code} instead of Trakt data.")
+        };
+        return Err(IngestError::new(ErrorCode::HttpStatus, message));
+    }
+
+    let mut body = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|e| from_reqwest(&e, &host, noun))?
+    {
+        if body.len() + chunk.len() > policy.max_bytes {
+            return Err(IngestError::new(
+                ErrorCode::TooLarge,
+                format!("Trakt response from {host} exceeded maximum size limit."),
             ));
         }
         body.extend_from_slice(&chunk);
@@ -619,6 +889,14 @@ pub async fn fetch_media(
     let url = check_url(url.as_str(), policy)?;
     let host = url.host_str().unwrap_or_default().to_owned();
     let mut request = client.get(url).timeout(total).header(ACCEPT, "*/*");
+    for (name, val) in &policy.custom_headers {
+        if let (Ok(h_name), Ok(h_val)) = (
+            reqwest::header::HeaderName::from_bytes(name.as_bytes()),
+            reqwest::header::HeaderValue::from_str(val),
+        ) {
+            request = request.header(h_name, h_val);
+        }
+    }
     if let Some(range) = range {
         request = request.header(RANGE, range);
     }
@@ -1661,5 +1939,52 @@ mod tests {
         // Loopback / private rejected
         assert!(check_url("https://127.0.0.1:8080/api", &policy).is_err());
         assert!(check_url("https://10.0.0.1/api", &policy).is_err());
+    }
+
+    #[test]
+    fn subtitle_policy_allows_opensubtitles_and_subsource() {
+        let policy = Policy::subtitle();
+        assert!(check_url(
+            "https://api.opensubtitles.com/api/v1/subtitles?query=Dune",
+            &policy
+        )
+        .is_ok());
+        assert!(check_url(
+            "https://dl.opensubtitles.org/subtitles/12345.vtt",
+            &policy
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn subtitle_policy_rejects_insecure_or_disallowed_hosts() {
+        let policy = Policy::subtitle();
+        // Insecure HTTP rejected
+        assert!(check_url("http://api.opensubtitles.com/api/v1/subtitles", &policy).is_err());
+        // Unapproved hosts rejected
+        assert!(check_url("https://example.com/subtitles.srt", &policy).is_err());
+        // Loopback / private rejected
+        assert!(check_url("https://127.0.0.1:8080/subs", &policy).is_err());
+        assert!(check_url("https://192.168.1.50/subs", &policy).is_err());
+    }
+
+    #[test]
+    fn trakt_policy_allows_api_trakt_tv() {
+        let policy = Policy::trakt();
+        assert!(check_url("https://api.trakt.tv/sync/watched/movies", &policy).is_ok());
+        assert!(check_url("https://api.trakt.tv/scrobble/start", &policy).is_ok());
+    }
+
+    #[test]
+    fn trakt_policy_rejects_insecure_or_disallowed_hosts() {
+        let policy = Policy::trakt();
+        // Insecure HTTP rejected
+        assert!(check_url("http://api.trakt.tv/sync/watched/movies", &policy).is_err());
+        // Unapproved hosts rejected
+        assert!(check_url("https://trakt.tv/activate", &policy).is_err());
+        assert!(check_url("https://example.com/api", &policy).is_err());
+        // Loopback / private rejected
+        assert!(check_url("https://127.0.0.1:8080/scrobble", &policy).is_err());
+        assert!(check_url("https://192.168.1.50/scrobble", &policy).is_err());
     }
 }

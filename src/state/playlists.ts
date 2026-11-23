@@ -124,9 +124,10 @@ export const categoryLabel = (c: Channel) => c.categories.join(' · ')
 
 /** The channel list for a category chip; each channel appears once whatever its number of categories. */
 export function filterChannels(channels: Channel[], group: string, favouriteIds: string[]): Channel[] {
-  if (group === 'All') return channels
-  if (group === 'Favourites') return channels.filter((c) => favouriteIds.includes(c.id))
-  return channels.filter((c) => inCategory(c, group))
+  const active = channels.filter((c) => !c.isDivider)
+  if (group === 'All') return active
+  if (group === 'Favourites') return active.filter((c) => favouriteIds.includes(c.id))
+  return active.filter((c) => inCategory(c, group))
 }
 
 /**
@@ -137,17 +138,10 @@ const idSafe = (key: string) =>
   [...key].map((ch) => (/[A-Za-z0-9.-]/.test(ch) ? ch : `_${(ch.codePointAt(0) ?? 0).toString(16)}_`)).join('')
 
 /** A channel as parsed (with its stream address) or as restored from disk (without one). */
-type ChannelEntry = SavedChannel & Partial<Pick<PlaylistChannel, 'logo' | 'language' | 'country' | 'streamDisplay'>> & { streamUrl: string | null }
+type ChannelEntry = SavedChannel & Partial<Pick<PlaylistChannel, 'logo' | 'language' | 'country' | 'catchup' | 'catchupDays' | 'catchupSource' | 'streamDisplay'>> & { streamUrl: string | null }
 
-/** Strips noisy technical and regional tags from channel titles for display. */
-export function cleanChannelTitle(name: string): string {
-  let s = name.trim()
-  s = s.replace(/\s*\[(?:UK|US|CA|AU|Geo-blocked|FHD|HD|SD|1080p|720p|HEVC)\]/gi, '')
-  s = s.replace(/\s*\((?:1080p|720p|576p|480p|FHD|HD|SD|backup|alt)\)/gi, '')
-  s = s.replace(/\s+-\s+(?:1080p|720p|HD|SD)$/i, '')
-  s = s.replace(/\s+\b(?:1080p|720p|576p|480p|FHD|HD|SD|UHD|4K)\b$/i, '')
-  return s.trim() || name
-}
+import { cleanChannelTitle, isDividerChannel, parseChannelMetadata } from '../lib/cleanTitle'
+export { cleanChannelTitle, isDividerChannel, parseChannelMetadata }
 
 /**
  * Maps entries to channels. Ids are `<sourceId>~<escaped Rust key>`: unique within a source, stable
@@ -157,11 +151,19 @@ export function cleanChannelTitle(name: string): string {
 export function toChannels(sourceId: string, entries: ChannelEntry[]): Channel[] {
   return entries.map((c, i) => {
     const name = c.name.trim() || 'Unnamed channel'
-    const isHd = /\b(hd|fhd|1080p?|uhd|4k)\b/i.test(name)
+    const meta = parseChannelMetadata(name)
+    const isHd = meta.resolution === 'HD' || meta.resolution === '720p' || meta.resolution === '1080p' || meta.resolution === '4K' || /\b(hd|fhd|1080p?|uhd|4k)\b/i.test(name)
+    const isDivider = isDividerChannel(name, c.streamUrl)
+    const hasCatchup = Boolean(c.catchup || (c.catchupDays && c.catchupDays > 0) || c.catchupSource)
+    const tvArchive = hasCatchup ? 1 : undefined
+    const tvArchiveDuration = c.catchupDays ? c.catchupDays * 24 * 3600 : undefined
     return {
       id: `${sourceId}~${idSafe(c.key)}`,
       number: c.chno ?? i + 1,
       name,
+      cleanName: meta.cleanTitle,
+      badges: meta.badges,
+      isDivider,
       group: c.group?.trim() || UNCATEGORISED,
       categories: splitCategories(c.group),
       logoUrl: c.logo ?? null,
@@ -170,6 +172,10 @@ export function toChannels(sourceId: string, entries: ChannelEntry[]): Channel[]
       hd: isHd,
       sourceId,
       tvgId: c.tvgId,
+      tvArchive,
+      tvArchiveDuration,
+      catchupType: c.catchup ?? null,
+      catchupSource: c.catchupSource ?? null,
     }
   })
 }

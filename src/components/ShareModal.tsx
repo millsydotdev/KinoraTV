@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { Icon } from './Icon'
+import { Art } from './ui'
 import { useToast } from './Toast'
 import './ShareModal.css'
 
@@ -141,7 +142,7 @@ export function ShareModal({ open, onClose, item }: ShareModalProps) {
         {/* Media Preview Card */}
         <div className="share-media-card">
           {item.art ? (
-            <img src={item.art} alt="" className="share-media-art" />
+            <Art src={item.art} alt={item.title} className="share-media-art" fallbackIcon={item.kind === 'series' ? 'series' : 'film'} />
           ) : (
             <div className="share-media-art-placeholder">
               <Icon name="film" size={24} />

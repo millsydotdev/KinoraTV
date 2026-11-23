@@ -30,6 +30,45 @@
   align-items: center;
   gap: 10px;
 }
+
+.anp-view-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.anp-mode-btn {
+  background: transparent;
+  border: none;
+  border-radius: 9999px;
+  padding: 4px 14px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.65);
+  cursor: pointer;
+  transition: all 140ms var(--ease);
+}
+
+.anp-mode-btn:hover {
+  color: #fff;
+}
+
+.anp-mode-btn.is-active {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.anp-lyrics-wrapper {
+  width: 100%;
+  max-width: 580px;
+  height: 340px;
+  margin-bottom: 24px;
+}
 .anp-live-badge {
   display: inline-flex;
   align-items: center;

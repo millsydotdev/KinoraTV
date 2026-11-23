@@ -98,22 +98,15 @@ export function CastModal({ open, onClose }: CastModalProps) {
             {devices.map((device) => {
               const active = session?.device.id === device.id
               return (
-                <div
+                <button
+                  type="button"
                   key={device.id}
                   className={`cast-device-item ${active ? 'is-connected' : ''}`}
                   onClick={() => {
                     if (active) disconnect()
                     else connect(device)
                   }}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault()
-                      if (active) disconnect()
-                      else connect(device)
-                    }
-                  }}
+                  aria-label={`${active ? 'Disconnect from' : 'Connect to'} ${device.name}`}
                 >
                   <div className="cast-device-info">
                     <span className="cast-device-name">{device.name}</span>
@@ -131,7 +124,7 @@ export function CastModal({ open, onClose }: CastModalProps) {
                       <Icon name="right" size={16} />
                     )}
                   </div>
-                </div>
+                </button>
               )
             })}
           </div>

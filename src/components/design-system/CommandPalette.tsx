@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { Icon, type IconName } from '../Icon'
 import { useProfiles } from '../../state/profiles'
 import { useStore } from '../../state/store'
+import { cleanChannelTitle } from '../../lib/cleanTitle'
+import { movies, series } from '../../data/catalog'
 import './CommandPalette.css'
 
 interface CommandItem {
@@ -10,8 +12,27 @@ interface CommandItem {
   title: string
   sub?: string
   icon: IconName
-  category: 'Navigation' | 'Explore' | 'Library' | 'Actions' | 'Channels' | 'Titles' | 'Audio' | 'Settings' | 'Profiles'
+  category: 'Recent' | 'Navigation' | 'Explore' | 'Library' | 'Actions' | 'Channels' | 'Titles' | 'Audio' | 'Settings' | 'Profiles'
   run: () => void
+}
+
+const RECENT_KEY = 'kinora.recent_commands.v1'
+
+function getRecentCommandIds(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENT_KEY)
+    return raw ? (JSON.parse(raw) as string[]) : []
+  } catch {
+    return []
+  }
+}
+
+function saveRecentCommandId(id: string) {
+  try {
+    const recents = getRecentCommandIds().filter((r) => r !== id)
+    recents.unshift(id)
+    localStorage.setItem(RECENT_KEY, JSON.stringify(recents.slice(0, 5)))
+  } catch {}
 }
 
 export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -20,6 +41,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const { profiles, switchProfile } = useProfiles()
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const [recentIds, setRecentIds] = useState<string[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
 
@@ -27,12 +49,33 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     if (open) {
       setQuery('')
       setSelectedIndex(0)
+      setRecentIds(getRecentCommandIds())
       window.setTimeout(() => inputRef.current?.focus(), 50)
     }
   }, [open])
 
-  // Build command catalogue
-  const commands: CommandItem[] = [
+  useEffect(() => {
+    if (!open) return
+    const onGlobalKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', onGlobalKey)
+    return () => window.removeEventListener('keydown', onGlobalKey)
+  }, [open, onClose])
+
+  // Scroll active item into view
+  useEffect(() => {
+    if (listRef.current) {
+      const activeEl = listRef.current.children[selectedIndex] as HTMLElement | undefined
+      activeEl?.scrollIntoView({ block: 'nearest' })
+    }
+  }, [selectedIndex])
+
+  // Build static and action command catalogue
+  const baseCommands: CommandItem[] = [
     // Core Navigation
     { id: 'nav-home', title: 'Go to Home', sub: 'Featured streaming and discovery', icon: 'home', category: 'Navigation', run: () => navigate('/') },
     { id: 'nav-live', title: 'Go to Live TV', sub: 'Interactive guide and channels', icon: 'live', category: 'Navigation', run: () => navigate('/live') },
@@ -78,15 +121,39 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     { id: 'set-about', title: 'Settings: About Kinora', sub: 'Application version, license, and shortcuts', icon: 'info', category: 'Settings', run: () => navigate('/settings/about') },
 
     // Actions
+    {
+      id: 'act-toggle-fullscreen',
+      title: 'Toggle Full Screen',
+      sub: 'Switch between windowed and borderless fullscreen mode',
+      icon: 'fullscreen',
+      category: 'Actions',
+      run: () => {
+        if (document.fullscreenElement) void document.exitFullscreen()
+        else void document.documentElement.requestFullscreen?.()
+      },
+    },
+    {
+      id: 'act-toggle-theme',
+      title: 'Toggle Theme',
+      sub: `Switch theme mode (currently ${store.prefs.theme})`,
+      icon: 'palette',
+      category: 'Actions',
+      run: () => {
+        store.setPref('theme', store.prefs.theme === 'dark' ? 'light' : 'dark')
+      },
+    },
     { id: 'act-sources-add', title: 'Add New Source', sub: 'Import playlist or XMLTV guide address or file', icon: 'plus', category: 'Actions', run: () => navigate('/sources/add') },
-    { id: 'act-sources-refresh', title: 'Open Sources & Sync', sub: 'View and refresh playlists and XMLTV guides', icon: 'refresh', category: 'Actions', run: () => navigate('/sources') },
+    { id: 'act-sources-refresh', title: 'Refresh Sources & Sync', sub: 'View and refresh playlists and XMLTV guides', icon: 'refresh', category: 'Actions', run: () => navigate('/sources') },
     { id: 'act-export-backup', title: 'Export Data Backup', sub: 'Download JSON copy of preferences and library', icon: 'download', category: 'Actions', run: () => navigate('/settings/data') },
     { id: 'act-shortcuts', title: 'View Keyboard Shortcuts', sub: 'Display application keybindings modal', icon: 'helpCircle', category: 'Actions', run: () => { window.dispatchEvent(new CustomEvent('kinora:shortcuts')) } },
+    { id: 'act-mobile-remote', title: 'Wireless Mobile Remote Control', sub: 'Connect phone or tablet to control Kinora over local Wi-Fi', icon: 'remote', category: 'Actions', run: () => { window.dispatchEvent(new CustomEvent('kinora:open-mobile-remote')) } },
+    { id: 'act-trakt-sync', title: 'Trakt.tv Scrobbler & Sync', sub: 'Connect Trakt account or synchronize watched viewing history', icon: 'history', category: 'Actions', run: () => { window.dispatchEvent(new CustomEvent('kinora:open-trakt-sync')) } },
+    { id: 'act-downloads', title: 'Downloads & Offline Media', sub: 'Manage downloaded movies, episodes, and offline playback', icon: 'download', category: 'Actions', run: () => { window.dispatchEvent(new CustomEvent('kinora:open-downloads')) } },
   ]
 
   // Add Household Profiles
   for (const p of profiles) {
-    commands.push({
+    baseCommands.push({
       id: `prof-${p.id}`,
       title: `Switch Profile: ${p.name}`,
       sub: p.isKids ? 'Kids Mode Profile' : 'Household Profile',
@@ -96,28 +163,100 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     })
   }
 
-  // Add popular channels
-  for (const c of store.channels.slice(0, 15)) {
-    commands.push({
-      id: `chan-${c.id}`,
-      title: c.name,
-      sub: `Channel ${c.number} · Live TV`,
-      icon: 'tv',
-      category: 'Channels',
-      run: () => navigate(`/live?channel=${c.id}`),
-    })
+  const cleanQ = query.trim().toLowerCase()
+
+  // Dynamic Channel Search across entire lineup
+  const channelCommands: CommandItem[] = []
+  if (cleanQ) {
+    const matched = store.channels
+      .filter((c) => {
+        if (c.isDivider) return false
+        const clean = (c.cleanName || cleanChannelTitle(c.name)).toLowerCase()
+        const raw = c.name.toLowerCase()
+        const num = String(c.number)
+        return clean.includes(cleanQ) || raw.includes(cleanQ) || num === cleanQ
+      })
+      .slice(0, 8)
+
+    for (const c of matched) {
+      const clean = c.cleanName || cleanChannelTitle(c.name)
+      const badgeText = c.badges && c.badges.length > 0 ? ` · ${c.badges.map((b) => b.label).join(' ')}` : ''
+      channelCommands.push({
+        id: `chan-${c.id}`,
+        title: clean,
+        sub: `Channel ${c.number}${badgeText} · Live TV`,
+        icon: 'tv',
+        category: 'Channels',
+        run: () => navigate(`/live?channel=${c.id}`),
+      })
+    }
+  } else {
+    // When query is empty, show first 5 channels as quick recommendations
+    const top = store.channels.filter((c) => !c.isDivider).slice(0, 5)
+    for (const c of top) {
+      const clean = c.cleanName || cleanChannelTitle(c.name)
+      channelCommands.push({
+        id: `chan-${c.id}`,
+        title: clean,
+        sub: `Channel ${c.number} · Live TV`,
+        icon: 'tv',
+        category: 'Channels',
+        run: () => navigate(`/live?channel=${c.id}`),
+      })
+    }
   }
 
+  // Dynamic Title Search across on-demand library
+  const titleCommands: CommandItem[] = []
+  if (cleanQ && store.demoTitles) {
+    const catalogTitles = [
+      ...movies.map((m) => ({ id: m.id, title: m.title, year: m.year, genres: m.genres, kind: 'movie' as const })),
+      ...series.map((s) => ({ id: s.id, title: s.title, year: parseInt(s.years, 10) || 2026, genres: s.genres, kind: 'series' as const })),
+    ]
+    const matchedTitles = catalogTitles
+      .filter((t) => {
+        const title = t.title.toLowerCase()
+        const year = String(t.year)
+        const genres = t.genres ? t.genres.join(' ').toLowerCase() : ''
+        return title.includes(cleanQ) || year === cleanQ || genres.includes(cleanQ)
+      })
+      .slice(0, 6)
+
+    for (const t of matchedTitles) {
+      const isMovie = t.kind === 'movie'
+      titleCommands.push({
+        id: `media-${t.id}`,
+        title: t.title,
+        sub: `${t.year} · ${isMovie ? 'Movie' : 'Series'}${t.genres ? ` · ${t.genres.slice(0, 2).join(', ')}` : ''}`,
+        icon: isMovie ? 'film' : 'series',
+        category: 'Titles',
+        run: () => navigate(`/watch/${encodeURIComponent(isMovie ? `movie:${t.id}` : `series:${t.id}`)}`),
+      })
+    }
+  }
+
+  const allAvailable = [...baseCommands, ...channelCommands, ...titleCommands]
+
   // Filter commands
-  const cleanQ = query.trim().toLowerCase()
-  const matching = cleanQ
-    ? commands.filter(
-        (c) =>
-          c.title.toLowerCase().includes(cleanQ) ||
-          (c.sub && c.sub.toLowerCase().includes(cleanQ)) ||
-          c.category.toLowerCase().includes(cleanQ),
-      )
-    : commands
+  let matching: CommandItem[]
+  if (cleanQ) {
+    matching = allAvailable.filter(
+      (c) =>
+        c.title.toLowerCase().includes(cleanQ) ||
+        (c.sub && c.sub.toLowerCase().includes(cleanQ)) ||
+        c.category.toLowerCase().includes(cleanQ),
+    )
+  } else {
+    // When query is empty, place Recent commands at top
+    const recentCommands: CommandItem[] = []
+    for (const id of recentIds) {
+      const found = baseCommands.find((c) => c.id === id)
+      if (found) {
+        recentCommands.push({ ...found, category: 'Recent' })
+      }
+    }
+    matching = [...recentCommands, ...baseCommands, ...channelCommands]
+  }
 
   const searchAction: CommandItem | null = cleanQ
     ? {
@@ -131,6 +270,12 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     : null
 
   const filtered = searchAction ? [searchAction, ...matching] : matching
+
+  const executeItem = (item: CommandItem) => {
+    saveRecentCommandId(item.id)
+    item.run()
+    onClose()
+  }
 
   const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
@@ -152,8 +297,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       e.preventDefault()
       const selected = filtered[selectedIndex]
       if (selected) {
-        selected.run()
-        onClose()
+        executeItem(selected)
       }
     }
   }
@@ -176,7 +320,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
             ref={inputRef}
             type="text"
             className="ds-command-input"
-            placeholder="Type a command or search screens, channels, settings…"
+            placeholder="Type a command or search screens, channels, settings..."
             value={query}
             onChange={(e) => {
               setQuery(e.target.value)
@@ -193,14 +337,11 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
             <ul ref={listRef} className="ds-command-list" role="listbox">
               {filtered.map((item, idx) => (
                 <li
-                  key={item.id}
+                  key={`${item.category}-${item.id}-${idx}`}
                   role="option"
                   aria-selected={idx === selectedIndex}
                   className={`ds-command-item ${idx === selectedIndex ? 'is-selected' : ''}`}
-                  onClick={() => {
-                    item.run()
-                    onClose()
-                  }}
+                  onClick={() => executeItem(item)}
                   onMouseEnter={() => setSelectedIndex(idx)}
                 >
                   <Icon name={item.icon} size={18} className="ds-command-item-icon" />

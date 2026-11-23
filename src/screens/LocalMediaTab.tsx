@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useLocalMedia } from '../state/localMedia'
 import { Icon } from '../components/Icon'
 import { Dialog } from '../components/Dialog'
+import { LocalMediaArt } from '../components/Tiles'
 import { useToast } from '../components/Toast'
 import type { LocalLibrary } from '../lib/native'
 
@@ -316,13 +317,15 @@ export function LocalMediaTab() {
                 {filteredMovies.map((movie) => (
                   <div key={movie.id} className="local-movie-card">
                     <div className="movie-poster-wrap">
-                      {movie.artPath ? (
-                        <img src={movie.artPath} alt={movie.title} className="movie-poster" />
-                      ) : (
-                        <div className="movie-poster-fallback">
-                          <Icon name="film" size={32} />
-                        </div>
-                      )}
+                      <LocalMediaArt
+                        mediaId={movie.id}
+                        title={movie.title}
+                        year={movie.year}
+                        kind="movie"
+                        variant="poster"
+                        localArtPath={movie.artPath}
+                        className="movie-poster"
+                      />
                       <div className="movie-poster-overlay">
                         <Link
                           to={`/watch/${encodeURIComponent('local-movie:' + movie.id)}`}

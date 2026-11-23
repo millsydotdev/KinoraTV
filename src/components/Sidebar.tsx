@@ -8,10 +8,10 @@ import './Sidebar.css'
 export function Logo() {
   return (
     <span className="logo">
-      <KPlayMark size={28} className="logo-mark" idPrefix="sb-logo" />
+      <KPlayMark size={26} className="logo-mark" idPrefix="sb-logo" />
       <span className="logo-text">
         <span className="logo-word">KINORA</span>
-        <span className="logo-badge">TV</span>
+        <span className="logo-badge logo-tv">TV</span>
       </span>
     </span>
   )

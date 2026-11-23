@@ -709,6 +709,58 @@ impl LocalMediaEngine {
         }
     }
 
+    /// Reads validated local poster, backdrop, or episode still bytes for a scanned media item.
+    /// Strictly verifies that the artwork path lies within a configured local library folder and
+    /// carries valid raster image magic bytes (PNG, JPEG, GIF, or WebP), capped at 5 MB.
+    pub fn read_local_artwork(
+        &self,
+        media_id: &str,
+        variant: &str,
+    ) -> Option<crate::artwork::Artwork> {
+        const MAX_LOCAL_ART_BYTES: u64 = 5 * 1024 * 1024;
+        let cat = self.get_catalogue();
+        let art_path = if let Some(m) = cat.movies.iter().find(|m| m.id == media_id) {
+            if variant == "backdrop" {
+                m.backdrop_path.as_deref().or(m.art_path.as_deref())
+            } else {
+                m.art_path.as_deref()
+            }
+        } else if let Some(s) = cat.series.iter().find(|s| s.id == media_id) {
+            if variant == "backdrop" {
+                s.backdrop_path.as_deref().or(s.art_path.as_deref())
+            } else {
+                s.art_path.as_deref()
+            }
+        } else if let Some(e) = cat
+            .series
+            .iter()
+            .flat_map(|s| &s.seasons)
+            .flat_map(|sn| &sn.episodes)
+            .find(|e| e.id == media_id)
+        {
+            e.art_path.as_deref().or_else(|| {
+                cat.series
+                    .iter()
+                    .find(|s| s.id == e.series_id)
+                    .and_then(|s| s.backdrop_path.as_deref().or(s.art_path.as_deref()))
+            })
+        } else {
+            None
+        }?;
+
+        let art_buf = PathBuf::from(art_path);
+        if !self.is_path_in_library(&art_buf) || !art_buf.is_file() {
+            return None;
+        }
+        let meta = fs::metadata(&art_buf).ok()?;
+        if meta.len() == 0 || meta.len() > MAX_LOCAL_ART_BYTES {
+            return None;
+        }
+        let bytes = fs::read(&art_buf).ok()?;
+        let mime_type = crate::artwork::detect_raster_mime(&bytes)?;
+        Some(crate::artwork::Artwork { mime_type, bytes })
+    }
+
     /// Serves local media files safely for the kstream protocol handler.
     pub async fn serve(
         &self,
@@ -732,6 +784,72 @@ impl LocalMediaEngine {
         let file_type = parts.next().unwrap_or("");
 
         let cat = self.get_catalogue();
+
+        if file_type == "art" || file_type == "poster" || file_type == "backdrop" {
+            let art_path_opt = if let Some(m) = cat.movies.iter().find(|m| m.id == media_id) {
+                if file_type == "backdrop" {
+                    m.backdrop_path.as_deref().or(m.art_path.as_deref())
+                } else {
+                    m.art_path.as_deref()
+                }
+            } else if let Some(s) = cat.series.iter().find(|s| s.id == media_id) {
+                if file_type == "backdrop" {
+                    s.backdrop_path.as_deref().or(s.art_path.as_deref())
+                } else {
+                    s.art_path.as_deref()
+                }
+            } else if let Some(e) = cat
+                .series
+                .iter()
+                .flat_map(|s| &s.seasons)
+                .flat_map(|sn| &sn.episodes)
+                .find(|e| e.id == media_id)
+            {
+                e.art_path.as_deref().or_else(|| {
+                    cat.series
+                        .iter()
+                        .find(|s| s.id == e.series_id)
+                        .and_then(|s| s.art_path.as_deref())
+                })
+            } else {
+                None
+            };
+
+            if let Some(art_path) = art_path_opt {
+                let art_buf = PathBuf::from(art_path);
+                if self.is_path_in_library(&art_buf) && art_buf.is_file() {
+                    if let Ok(bytes) = fs::read(&art_buf) {
+                        let ext = art_buf
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .unwrap_or("")
+                            .to_lowercase();
+                        let mime = match ext.as_str() {
+                            "png" => "image/png",
+                            "webp" => "image/webp",
+                            "gif" => "image/gif",
+                            _ => "image/jpeg",
+                        };
+                        return LocalMediaReply {
+                            status: 200,
+                            headers: vec![
+                                ("content-type", mime.into()),
+                                ("cache-control", "max-age=86400".into()),
+                                ("access-control-allow-origin", "*".into()),
+                            ],
+                            body: bytes,
+                        };
+                    }
+                }
+            }
+
+            return LocalMediaReply {
+                status: 404,
+                headers: vec![("content-type", "text/plain".into())],
+                body: b"Artwork not found".to_vec(),
+            };
+        }
+
         let target_path_buf = if let Some(m) = cat.movies.iter().find(|m| m.id == media_id) {
             PathBuf::from(&m.file_path)
         } else if let Some(e) = cat
@@ -782,15 +900,17 @@ impl LocalMediaEngine {
                 }
             };
 
-            let mime = if target_path_buf
+            let ext_str = target_path_buf
                 .extension()
                 .and_then(|e| e.to_str())
                 .unwrap_or("")
-                .eq_ignore_ascii_case("mkv")
-            {
-                "video/x-matroska"
-            } else {
-                "video/mp4"
+                .to_lowercase();
+            let mime = match ext_str.as_str() {
+                "mkv" => "video/x-matroska",
+                "webm" => "video/webm",
+                "mov" => "video/quicktime",
+                "avi" => "video/x-msvideo",
+                _ => "video/mp4",
             };
 
             let mut start: u64 = 0;
@@ -800,14 +920,30 @@ impl LocalMediaEngine {
             if is_range {
                 let range_str = ranges[0].trim_start_matches("bytes=");
                 if let Some(dash_idx) = range_str.find('-') {
-                    let s_str = &range_str[..dash_idx];
-                    let e_str = &range_str[dash_idx + 1..];
-                    if let Ok(s) = s_str.parse::<u64>() {
+                    let s_str = range_str[..dash_idx].trim();
+                    let e_str = range_str[dash_idx + 1..].trim();
+                    if s_str.is_empty() && !e_str.is_empty() {
+                        if let Ok(suffix) = e_str.parse::<u64>() {
+                            start = file_len.saturating_sub(suffix);
+                            end = file_len.saturating_sub(1);
+                        }
+                    } else if !s_str.is_empty() && e_str.is_empty() {
+                        if let Ok(s) = s_str.parse::<u64>() {
+                            start = s;
+                            end = file_len.saturating_sub(1);
+                        }
+                    } else if let (Ok(s), Ok(e)) = (s_str.parse::<u64>(), e_str.parse::<u64>()) {
                         start = s;
-                    }
-                    if let Ok(e) = e_str.parse::<u64>() {
                         end = e.min(file_len.saturating_sub(1));
                     }
+                }
+
+                if start >= file_len || start > end {
+                    return LocalMediaReply {
+                        status: 416,
+                        headers: vec![("content-range", format!("bytes */{file_len}"))],
+                        body: Vec::new(),
+                    };
                 }
             }
 
@@ -1330,5 +1466,75 @@ mod tests {
         assert!(summary.total_disk_bytes > 0);
         assert!(summary.available_disk_bytes > 0);
         assert!(summary.percent_used >= 0.0 && summary.percent_used <= 100.0);
+    }
+
+    #[test]
+    fn serves_local_media_stream_and_artwork_safely() {
+        tauri::async_runtime::block_on(async {
+            let temp_dir = std::env::temp_dir().join(format!("kinora_test_serve_{}", now_secs()));
+            let movie_folder = temp_dir.join("Test Movie (2024)");
+            let _ = fs::create_dir_all(&movie_folder);
+
+            let video_path = movie_folder.join("Test.Movie.2024.1080p.mp4");
+            let poster_path = movie_folder.join("poster.jpg");
+
+            let video_data = b"MOCK_VIDEO_STREAM_BYTES_FOR_RANGE_TESTING_0123456789";
+            let poster_data = b"\xFF\xD8\xFF\xE0\x00\x10JFIF_MOCK_JPEG_DATA";
+
+            fs::write(&video_path, video_data).unwrap();
+            fs::write(&poster_path, poster_data).unwrap();
+
+            let engine = LocalMediaEngine::new(Some(temp_dir.clone()));
+
+            let lib = LocalLibrary {
+                id: "lib_serve_test".into(),
+                name: "Serve Test".into(),
+                media_type: LocalMediaType::Movies,
+                folders: vec![temp_dir.to_string_lossy().to_string()],
+                last_scanned_at: None,
+                auto_scan: true,
+                scan_interval_hours: 24,
+            };
+
+            engine.save_library(lib).unwrap();
+            let scan_result = engine.scan_library("lib_serve_test").unwrap();
+            assert_eq!(scan_result.items_indexed, 1);
+
+            let cat = engine.get_catalogue();
+            assert_eq!(cat.movies.len(), 1);
+            let movie_id = &cat.movies[0].id;
+
+            // Test range request for direct media streaming
+            let reply_range = engine
+                .serve("GET", &format!("/local/{movie_id}/stream"), None, &["bytes=0-9"])
+                .await;
+            assert_eq!(reply_range.status, 206);
+            assert_eq!(reply_range.body, &video_data[0..10]);
+            let has_range_header = reply_range
+                .headers
+                .iter()
+                .any(|(k, v)| *k == "content-range" && v.starts_with("bytes 0-9/"));
+            assert!(has_range_header);
+
+            // Test artwork serving
+            let reply_art = engine
+                .serve("GET", &format!("/local/{movie_id}/art"), None, &[])
+                .await;
+            assert_eq!(reply_art.status, 200);
+            assert_eq!(reply_art.body, poster_data);
+            let has_content_type = reply_art
+                .headers
+                .iter()
+                .any(|(k, v)| *k == "content-type" && v == "image/jpeg");
+            assert!(has_content_type);
+
+            // Test non-existent media item
+            let reply_404 = engine
+                .serve("GET", "/local/lm_non_existent/stream", None, &[])
+                .await;
+            assert_eq!(reply_404.status, 404);
+
+            let _ = fs::remove_dir_all(&temp_dir);
+        });
     }
 }

@@ -36,7 +36,7 @@ export interface CommandPayloadMap {
 export interface KinoraCommand<K extends CommandType = CommandType> {
   type: K
   payload?: CommandPayloadMap[K]
-  source?: 'keyboard' | 'remote' | 'ui' | 'api'
+  source?: 'keyboard' | 'remote' | 'ui' | 'api' | 'voice'
   timestamp?: number
 }
 

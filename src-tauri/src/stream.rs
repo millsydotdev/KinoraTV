@@ -19,7 +19,7 @@ use std::task::Poll;
 use std::time::Duration;
 
 use reqwest::Url;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::{watch, Semaphore};
 
 use crate::dash;
@@ -78,6 +78,18 @@ pub struct Opened {
     pub format: &'static str,
 }
 
+/// Options passed when opening a stream, such as custom headers, User-Agent or Referrer overrides.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct StreamOptions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_agent: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub referrer: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub headers: Option<HashMap<String, String>>,
+}
+
 struct Entry {
     url: Url,
     kind: Kind,
@@ -96,6 +108,7 @@ struct Session {
     client: reqwest::Client,
     requests: Arc<Semaphore>,
     budget: Arc<Semaphore>,
+    policy: Policy,
 }
 
 /// One HTTP-style answer for the protocol handler.
@@ -114,6 +127,7 @@ pub struct Streams {
     limits: Limits,
     /// The exact page origin allowed to read stream responses (no wildcard, never reflected).
     origin: String,
+    pub parking: crate::parking::StreamParking,
 }
 
 /// Direct media containers that play as direct streams rather than HLS playlists.
@@ -191,6 +205,28 @@ fn parse_range(values: &[&str]) -> Result<Option<(u64, Option<u64>)>, ()> {
     }
 }
 
+/// Extracts the base stream URL and any pipe-delimited headers (`url|Header=Val&Header2=Val2` or `url|Header=Val|Header2=Val2`).
+pub fn parse_pipe_headers(raw: &str) -> (&str, Vec<(String, String)>) {
+    let (url_part, pipe_part) = match raw.split_once('|') {
+        Some((u, p)) => (u.trim(), Some(p.trim())),
+        None => (raw.trim(), None),
+    };
+    let mut headers = Vec::new();
+    if let Some(pipe) = pipe_part {
+        for item in pipe.split(|c| c == '&' || c == '|') {
+            let item = item.trim();
+            if let Some((k, v)) = item.split_once('=') {
+                let k = k.trim();
+                let v = v.trim();
+                if !k.is_empty() && !v.is_empty() {
+                    headers.push((k.to_string(), v.to_string()));
+                }
+            }
+        }
+    }
+    (url_part, headers)
+}
+
 impl Streams {
     pub fn new(policy: Policy, limits: Limits, origin: String) -> Self {
         Self {
@@ -199,6 +235,7 @@ impl Streams {
             policy,
             limits,
             origin,
+            parking: crate::parking::StreamParking::new(Duration::from_secs(8)),
         }
     }
 
@@ -210,7 +247,13 @@ impl Streams {
     /// Starts a session for `raw` (an http(s) HLS address) and ends the previous one, cancelling
     /// its in-flight work. Nothing is fetched until the page asks for the returned address.
     pub fn open(&self, raw: &str) -> Result<Opened, IngestError> {
-        let scheme = raw
+        self.open_with_options(raw, None)
+    }
+
+    /// Starts a session for `raw` with optional custom stream options (headers, user-agent, referrer).
+    pub fn open_with_options(&self, raw: &str, options: Option<StreamOptions>) -> Result<Opened, IngestError> {
+        let (url_raw, pipe_headers) = parse_pipe_headers(raw);
+        let scheme = url_raw
             .trim()
             .split_once(':')
             .map(|(s, _)| s.to_ascii_lowercase())
@@ -227,7 +270,7 @@ impl Streams {
             };
             return Err(unsupported(&format!("This stream uses a {shown} address, which Kinora cannot play. Only HLS streams over http(s) are supported.")));
         }
-        let url = fetch::check_url(raw, &self.policy).map_err(|e| {
+        let url = fetch::check_url(url_raw, &self.policy).map_err(|e| {
             if e.code == ErrorCode::InvalidUrl && e.message.contains("username and password") {
                 unsupported(
                     "This stream's address contains sign-in details, which Kinora does not use.",
@@ -244,12 +287,40 @@ impl Streams {
         } else {
             Kind::Playlist { depth: 0 }
         };
-        let stream_policy = Policy {
+        let mut stream_policy = Policy {
             connect_timeout: self.limits.connect,
             read_timeout: Some(self.limits.idle),
             total_timeout: self.limits.segment_total,
             ..self.policy.clone()
         };
+        if let Some(opts) = options {
+            if let Some(ua) = opts.user_agent {
+                let trimmed = ua.trim();
+                if !trimmed.is_empty() {
+                    stream_policy.custom_headers.push(("User-Agent".into(), trimmed.to_string()));
+                }
+            }
+            if let Some(r) = opts.referrer {
+                let trimmed = r.trim();
+                if !trimmed.is_empty() {
+                    stream_policy.custom_headers.push(("Referer".into(), trimmed.to_string()));
+                }
+            }
+            if let Some(custom) = opts.headers {
+                for (k, v) in custom {
+                    let k_trim = k.trim();
+                    let v_trim = v.trim();
+                    if !k_trim.is_empty() && !v_trim.is_empty() {
+                        stream_policy.custom_headers.retain(|(name, _)| !name.eq_ignore_ascii_case(k_trim));
+                        stream_policy.custom_headers.push((k_trim.to_string(), v_trim.to_string()));
+                    }
+                }
+            }
+        }
+        for (k, v) in pipe_headers {
+            stream_policy.custom_headers.retain(|(name, _)| !name.eq_ignore_ascii_case(&k));
+            stream_policy.custom_headers.push((k, v));
+        }
         let client = fetch::guarded_client(&stream_policy)?;
         let id = {
             let mut next = self.next_id.lock().unwrap_or_else(|p| p.into_inner());
@@ -268,6 +339,7 @@ impl Streams {
             client,
             requests: Arc::new(Semaphore::new(self.limits.concurrent)),
             budget: Arc::new(Semaphore::new(self.limits.budget_bytes)),
+            policy: stream_policy,
         };
         session
             .by_url
@@ -396,10 +468,11 @@ impl Streams {
                     s.client.clone(),
                     s.requests.clone(),
                     s.budget.clone(),
+                    s.policy.clone(),
                 )
             })
         });
-        let Some((url, kind, session, mut cancelled, client, requests, budget)) = found else {
+        let Some((url, kind, session, mut cancelled, client, requests, budget, policy)) = found else {
             return self.fail(404, "Unknown or expired stream resource.");
         };
         // Only a prefix handle has anything after it, and nothing can leave its host.
@@ -447,6 +520,38 @@ impl Streams {
                 format!("bytes={s}-{max_end}")
             }
         });
+        if kind == Kind::Direct {
+            if let Some(parked) = self.parking.claim(&url) {
+                let ctype = parked
+                    .content_type
+                    .as_deref()
+                    .map(|t| {
+                        t.split(';')
+                            .next()
+                            .unwrap_or_default()
+                            .trim()
+                            .to_ascii_lowercase()
+                    })
+                    .filter(|t| MEDIA_TYPES.contains(&t.as_str()))
+                    .unwrap_or_else(|| "video/mp2t".into());
+                let mut headers = vec![("Content-Type", ctype), ("Accept-Ranges", "bytes".into())];
+                let body_len = parked.body.len();
+                let (status, body) = match range {
+                    Some((start, end)) => {
+                        let end = end
+                            .unwrap_or(body_len.saturating_sub(1) as u64)
+                            .min(body_len.saturating_sub(1) as u64);
+                        if start >= body_len as u64 || start > end {
+                            return self.fail(416, "Range not satisfiable.");
+                        }
+                        headers.push(("Content-Range", format!("bytes {start}-{end}/{body_len}")));
+                        (206, parked.body[start as usize..=end as usize].to_vec())
+                    }
+                    None => (200, parked.body),
+                };
+                return self.reply(status, headers, body);
+            }
+        }
         let work = async {
             // Waiting for a request slot counts towards the request's own time limit.
             let _slot = tokio::time::timeout(total, requests.acquire_owned())
@@ -457,7 +562,7 @@ impl Streams {
                 fetch::fetch_media(
                     &client,
                     &url,
-                    &self.policy,
+                    &policy,
                     range_header.as_deref(),
                     total,
                     cap,
@@ -538,6 +643,17 @@ impl Streams {
                 vec![("Content-Type", PLAYLIST_TYPE.into())],
                 out.into_bytes(),
             ),
+            Err(RewriteError::NotHls) => {
+                self.parking.park(
+                    fetched.final_url.clone(),
+                    fetched.body,
+                    fetched.content_type,
+                );
+                self.fail(
+                    415,
+                    "This stream is not in a format Kinora can play: HLS or DASH.",
+                )
+            }
             Err(e) => self.rewrite_failure(
                 e,
                 "This stream is not in a format Kinora can play: HLS or DASH.",
@@ -1219,5 +1335,82 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn parses_pipe_headers_correctly() {
+        let (url, headers) = parse_pipe_headers(
+            "https://example.com/live.m3u8|User-Agent=CustomPlayer/1.0&Referer=https://ref.example/",
+        );
+        assert_eq!(url, "https://example.com/live.m3u8");
+        assert_eq!(
+            headers,
+            vec![
+                ("User-Agent".to_string(), "CustomPlayer/1.0".to_string()),
+                ("Referer".to_string(), "https://ref.example/".to_string())
+            ]
+        );
+
+        let (url2, headers2) = parse_pipe_headers("https://example.com/stream.ts");
+        assert_eq!(url2, "https://example.com/stream.ts");
+        assert!(headers2.is_empty());
+    }
+
+    #[test]
+    fn parks_non_hls_buffer_and_claims_in_direct_mode() {
+        let s = streams(small());
+        let stream_url = "http://127.0.0.1:9/live.ts";
+
+        // Open as direct media:
+        let opened_direct = s.open(stream_url).unwrap();
+        assert_eq!(opened_direct.format, "direct");
+
+        // Park buffer to verify claim:
+        let parsed_url = Url::parse(stream_url).unwrap();
+        s.parking.park(parsed_url, vec![0x47, 0xAA, 0xBB], Some("video/mp2t".into()));
+
+        // Answer for direct stream handle claims the parked buffer without network hit:
+        let handle = handle_of(&opened_direct.url);
+        let resp = get(&s, &handle);
+        assert_eq!(resp.status, 200);
+        assert_eq!(resp.body, vec![0x47, 0xAA, 0xBB]);
+        assert_eq!(header(&resp, "Content-Type").as_deref(), Some("video/mp2t"));
+    }
+
+    #[test]
+    fn open_with_custom_options_merges_headers_properly() {
+        let s = streams(small());
+        let mut custom_headers = HashMap::new();
+        custom_headers.insert("X-Custom-Auth".to_string(), "Token123".to_string());
+        custom_headers.insert("Origin".to_string(), "https://allowed.example".to_string());
+
+        let options = StreamOptions {
+            user_agent: Some("CustomVLC/3.0".into()),
+            referrer: Some("https://portal.example/".into()),
+            headers: Some(custom_headers),
+        };
+
+        // Open with pipe headers overriding user agent
+        let opened = s
+            .open_with_options(
+                "http://127.0.0.1:9/live.m3u8|User-Agent=PipeOverride/2.0",
+                Some(options),
+            )
+            .unwrap();
+
+        assert_eq!(opened.format, "hls");
+        assert!(opened.url.starts_with(HANDLE_BASE));
+
+        let sess_guard = s.session.lock().unwrap();
+        let session = sess_guard.as_ref().unwrap();
+        let headers = &session.policy.custom_headers;
+
+        // Pipe override must win for User-Agent
+        assert!(headers.iter().any(|(k, v)| k == "User-Agent" && v == "PipeOverride/2.0"));
+        // Referrer was provided in options
+        assert!(headers.iter().any(|(k, v)| k == "Referer" && v == "https://portal.example/"));
+        // Custom headers were retained
+        assert!(headers.iter().any(|(k, v)| k == "X-Custom-Auth" && v == "Token123"));
+        assert!(headers.iter().any(|(k, v)| k == "Origin" && v == "https://allowed.example"));
     }
 }

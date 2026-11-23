@@ -59,6 +59,8 @@ export interface Movie {
   added: string
   audio: string[]
   subtitles: string[]
+  /** Optional WebVTT storyboard content for trickplay scrub thumbnails. */
+  storyboardVtt?: string
 }
 
 export interface Episode {
@@ -71,6 +73,8 @@ export interface Episode {
   runtime: number
   still: string
   stillFocus: number
+  /** Optional WebVTT storyboard content for trickplay scrub thumbnails. */
+  storyboardVtt?: string
 }
 
 export interface Series {
@@ -126,6 +130,11 @@ export interface StreamVariant {
   streamDisplay?: string
 }
 
+export interface ChannelBadge {
+  label: string
+  kind: 'quality' | 'framerate' | 'country' | 'badge'
+}
+
 /**
  * Shaped after an M3U `#EXTINF` entry (tvg-id, tvg-name, tvg-logo, group-title, url)
  * so a parsed playlist can replace the demonstration list without touching the screens.
@@ -134,6 +143,12 @@ export interface Channel {
   id: string
   number: number
   name: string
+  /** Sanitised channel title without provider noise or technical brackets. */
+  cleanName?: string
+  /** Structured technical and regional badges extracted from the raw title. */
+  badges?: ChannelBadge[]
+  /** Whether this channel entry is a divider/spacer row in an IPTV playlist. */
+  isDivider?: boolean
   /** The group as the source wrote it (`Animation;Comedy`), or Uncategorised. */
   group: string
   /** `group` split into individual categories; used for filtering and display. */
@@ -158,6 +173,10 @@ export interface Channel {
   tvArchive?: number
   /** Number of days of catch-up archive available for this channel. */
   tvArchiveDuration?: number
+  /** Catch-up timeshift mode from M3U playlist ('default' | 'append' | 'shift' | 'flussonic' | 'xc'). */
+  catchupType?: string | null
+  /** Catch-up source URL template for dynamic timeshift replay. */
+  catchupSource?: string | null
   /** Raw Xtream stream ID for catch-up playback. */
   xtreamStreamId?: string
 }

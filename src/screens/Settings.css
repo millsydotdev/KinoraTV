@@ -177,10 +177,10 @@
   margin: 0;
 }
 
-/* Theme 3-Options Selector */
+/* Theme Options Selector */
 .settings-theme-cards-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
   gap: 12px;
 }
 
@@ -640,6 +640,10 @@
   border-radius: 14px;
   cursor: pointer;
   transition: all 140ms var(--ease);
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
 }
 
 .settings-typography-card:hover {
@@ -715,5 +719,64 @@
 @media (max-width: 860px) {
   .settings-columns-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Structured Settings Group and Row Layout */
+.set-group {
+  margin-bottom: 18px;
+}
+
+.set-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.set-row:last-child {
+  border-bottom: none;
+}
+
+.set-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.set-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.3;
+}
+
+.set-text .faint {
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+.set-control {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 780px) {
+  .set-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .set-control {
+    width: 100%;
+    justify-content: flex-start;
   }
 }

@@ -4,9 +4,11 @@
 
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Icon } from './Icon'
+import { Art, ChannelMark } from './ui'
 import { useUniversalPlayback } from '../state/playbackContext'
 import { useStore } from '../state/store'
 import { channelRef, resolve } from '../data/refs'
+import { computeVideoStyle, DEFAULT_PICTURE_SETTINGS } from '../lib/videoGeometry'
 import './PersistentPlayerDock.css'
 
 export function PersistentPlayerDock() {
@@ -32,6 +34,7 @@ export function PersistentPlayerDock() {
     pipMode,
     videoRef,
     aspectRatio,
+    pictureSettings,
     togglePlay,
     stopPlayback,
     setPipMode,
@@ -85,8 +88,7 @@ export function PersistentPlayerDock() {
         playsInline
         aria-label={activeStream?.title ? `${activeStream.title} video` : 'Player video'}
         style={{
-          objectFit: aspectRatio === 'fill' ? 'cover' : aspectRatio === 'auto' ? 'contain' : 'contain',
-          aspectRatio: aspectRatio === '16:9' ? '16/9' : aspectRatio === '4:3' ? '4/3' : undefined,
+          ...computeVideoStyle(aspectRatio, pictureSettings || DEFAULT_PICTURE_SETTINGS),
         }}
       />
 
@@ -153,6 +155,13 @@ export function PersistentPlayerDock() {
       {pipMode === 'minimized' && (
         <div className="pip-minimized-content">
           <div className="pip-min-info">
+            {activeStream?.channel ? (
+              <ChannelMark channel={activeStream.channel} size={24} />
+            ) : (activeStream?.art || activeStream?.programmeArt) ? (
+              <div style={{ width: 24, height: 24, borderRadius: 4, overflow: 'hidden', flexShrink: 0 }}>
+                <Art src={activeStream.art || activeStream.programmeArt || ''} alt={activeStream.title} contentId={activeStream.ref} fallbackIcon="film" />
+              </div>
+            ) : null}
             {activeStream?.isLive && <span className="pip-live-dot">LIVE</span>}
             <span className="pip-min-title" title={activeStream?.title}>
               {activeStream?.title || 'Playing Audio'}

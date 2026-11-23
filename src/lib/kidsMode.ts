@@ -223,3 +223,35 @@ export function isSearchQueryKidSafe(query: string): boolean {
   }
   return true
 }
+
+export interface KidsCurfewSettings {
+  bedtimeHour?: number // 0-23, e.g. 20 (8:00 PM)
+  bedtimeMinute?: number // 0-59, e.g. 0
+  dailyLimitMinutes?: number // e.g. 60
+}
+
+/** Checks whether the current time falls within the bedtime curfew (e.g. 8:00 PM to 6:00 AM). */
+export function isWithinBedtimeCurfew(
+  now: Date,
+  bedtimeHour = 20,
+  bedtimeMinute = 0
+): boolean {
+  const currentMinutes = now.getHours() * 60 + now.getMinutes()
+  const curfewStartMinutes = bedtimeHour * 60 + bedtimeMinute
+  const curfewEndMinutes = 6 * 60 // 6:00 AM morning unlock
+
+  // If curfew starts in the evening (e.g. 20:00) and ends in the morning (06:00)
+  if (curfewStartMinutes > curfewEndMinutes) {
+    return currentMinutes >= curfewStartMinutes || currentMinutes < curfewEndMinutes
+  }
+  return currentMinutes >= curfewStartMinutes && currentMinutes < curfewEndMinutes
+}
+
+/** Checks whether total watch time today has exceeded the daily allowance limit. */
+export function isDailyLimitExceeded(
+  watchedSecondsToday: number,
+  dailyLimitMinutes = 60
+): boolean {
+  if (dailyLimitMinutes <= 0) return false
+  return watchedSecondsToday >= dailyLimitMinutes * 60
+}

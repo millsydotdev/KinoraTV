@@ -13,10 +13,11 @@
 //! - Raster signature validation (PNG, JPEG, GIF, WebP); rejects HTML, SVG, unknown formats,
 //!   and region blocks (e.g. Imgur UK region block).
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tokio::sync::Semaphore;
@@ -25,16 +26,26 @@ use crate::fetch::{self, Policy};
 use crate::ingest::{ErrorCode, IngestError};
 use crate::sources;
 
-static REQUESTS: Semaphore = Semaphore::const_new(6);
+static REQUESTS: Semaphore = Semaphore::const_new(20);
 const MAX_CACHE_BYTES: u64 = 150 * 1024 * 1024;
 const PRUNE_TARGET_BYTES: u64 = 100 * 1024 * 1024;
 const MAX_CACHE_FILES: usize = 3000;
+const FAILED_RETRY_TTL: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct Artwork {
     pub mime_type: &'static str,
     pub bytes: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtworkCacheStats {
+    pub file_count: usize,
+    pub total_bytes: u64,
+    pub max_bytes: u64,
+    pub failed_count: usize,
 }
 
 pub fn detect_raster_mime(bytes: &[u8]) -> Option<&'static str> {
@@ -324,7 +335,7 @@ pub fn cache_filename(key: &str) -> String {
 pub struct ArtworkStore {
     dir: Option<PathBuf>,
     pruning: Mutex<()>,
-    failed: Mutex<HashSet<String>>,
+    failed: Mutex<HashMap<String, Instant>>,
 }
 
 impl ArtworkStore {
@@ -338,23 +349,86 @@ impl ArtworkStore {
         Self {
             dir,
             pruning: Mutex::new(()),
-            failed: Mutex::new(HashSet::new()),
+            failed: Mutex::new(HashMap::new()),
         }
     }
 
     fn is_failed(&self, key: &str) -> bool {
-        self.failed
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .contains(key)
+        let mut map = self.failed.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(failed_at) = map.get(key) {
+            if failed_at.elapsed() < FAILED_RETRY_TTL {
+                return true;
+            }
+            map.remove(key);
+        }
+        false
     }
 
     fn mark_failed(&self, key: String) {
-        let mut set = self.failed.lock().unwrap_or_else(|p| p.into_inner());
-        if set.len() > 8192 {
-            set.clear();
+        let mut map = self.failed.lock().unwrap_or_else(|p| p.into_inner());
+        if map.len() > 8192 {
+            map.retain(|_, t| t.elapsed() < FAILED_RETRY_TTL);
+            if map.len() > 8192 {
+                map.clear();
+            }
         }
-        set.insert(key);
+        map.insert(key, Instant::now());
+    }
+
+    pub fn clear_failed(&self) {
+        self.failed
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clear();
+    }
+
+    pub fn cache_stats(&self) -> ArtworkCacheStats {
+        let failed_count = {
+            let mut map = self.failed.lock().unwrap_or_else(|p| p.into_inner());
+            map.retain(|_, t| t.elapsed() < FAILED_RETRY_TTL);
+            map.len()
+        };
+        let mut file_count = 0usize;
+        let mut total_bytes = 0u64;
+        if let Some(ref dir) = self.dir {
+            if let Ok(entries) = fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().and_then(|e| e.to_str()) == Some("bin") {
+                        if let Ok(meta) = entry.metadata() {
+                            file_count += 1;
+                            total_bytes = total_bytes.saturating_add(meta.len());
+                        }
+                    }
+                }
+            }
+        }
+        ArtworkCacheStats {
+            file_count,
+            total_bytes,
+            max_bytes: MAX_CACHE_BYTES,
+            failed_count,
+        }
+    }
+
+    pub fn clear_cache(&self) -> u64 {
+        self.clear_failed();
+        let Some(ref dir) = self.dir else { return 0 };
+        let _lock = self.pruning.lock().unwrap_or_else(|p| p.into_inner());
+        let Ok(entries) = fs::read_dir(dir) else {
+            return 0;
+        };
+        let mut freed = 0u64;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("bin") {
+                if let Ok(meta) = entry.metadata() {
+                    freed = freed.saturating_add(meta.len());
+                }
+                let _ = fs::remove_file(path);
+            }
+        }
+        freed
     }
 
     pub fn read_cached(&self, key: &str) -> Option<Artwork> {
@@ -531,11 +605,44 @@ impl ArtworkStore {
         artwork_key: &str,
         remote_url: Option<&str>,
     ) -> Result<Option<Artwork>, IngestError> {
-        if let Some(cached) = self.read_cached(artwork_key) {
-            return Ok(Some(cached));
-        }
-        if self.is_failed(artwork_key) {
-            return Ok(None);
+        self.get_or_fetch_artwork_opts(artwork_key, remote_url, false)
+            .await
+    }
+
+    pub async fn get_or_fetch_artwork_opts(
+        &self,
+        artwork_key: &str,
+        remote_url: Option<&str>,
+        force_refresh: bool,
+    ) -> Result<Option<Artwork>, IngestError> {
+        let url_key = remote_url.map(|u| format!("url:{u}"));
+
+        if !force_refresh {
+            if let Some(cached) = self.read_cached(artwork_key) {
+                return Ok(Some(cached));
+            }
+            if let Some(ref uk) = url_key {
+                if uk != artwork_key {
+                    if let Some(cached) = self.read_cached(uk) {
+                        self.write_cached(artwork_key, &cached.bytes);
+                        return Ok(Some(cached));
+                    }
+                }
+            }
+            if self.is_failed(artwork_key) {
+                return Ok(None);
+            }
+            if let Some(ref uk) = url_key {
+                if self.is_failed(uk) {
+                    return Ok(None);
+                }
+            }
+        } else {
+            let mut map = self.failed.lock().unwrap_or_else(|p| p.into_inner());
+            map.remove(artwork_key);
+            if let Some(ref uk) = url_key {
+                map.remove(uk);
+            }
         }
 
         let Some(u) = remote_url else { return Ok(None) };
@@ -544,6 +651,9 @@ impl ArtworkStore {
             Ok(url) => url,
             Err(_) => {
                 self.mark_failed(artwork_key.to_string());
+                if let Some(uk) = url_key {
+                    self.mark_failed(uk);
+                }
                 return Ok(None);
             }
         };
@@ -560,11 +670,17 @@ impl ArtworkStore {
             Ok(res) => res,
             Err(_) => {
                 self.mark_failed(artwork_key.to_string());
+                if let Some(uk) = url_key {
+                    self.mark_failed(uk);
+                }
                 return Ok(None);
             }
         };
         if is_region_block(checked.host_str(), &raw_bytes) {
             self.mark_failed(artwork_key.to_string());
+            if let Some(uk) = url_key {
+                self.mark_failed(uk);
+            }
             return Ok(None);
         }
         let (bytes, mime_type) = if let Some(raster_mime) = detect_raster_mime(&raw_bytes) {
@@ -588,6 +704,11 @@ impl ArtworkStore {
             return Ok(None);
         };
         self.write_cached(artwork_key, &bytes);
+        if let Some(ref uk) = url_key {
+            if uk != artwork_key {
+                self.write_cached(uk, &bytes);
+            }
+        }
         Ok(Some(Artwork { mime_type, bytes }))
     }
 }
@@ -995,11 +1116,40 @@ mod tests {
         let f_prog = cache_filename(&prog_key);
 
         // Every content type gets its own unique disk cache file
-        let mut unique_files = HashSet::new();
+        let mut unique_files = std::collections::HashSet::new();
         unique_files.insert(f_channel);
         unique_files.insert(f_poster);
         unique_files.insert(f_backdrop);
         unique_files.insert(f_prog);
         assert_eq!(unique_files.len(), 4);
+    }
+
+    #[test]
+    fn cache_stats_clear_and_failed_reset_work() {
+        let dir = std::env::temp_dir().join(format!("kinora-art-stats-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let store = ArtworkStore::new(Some(dir.clone()));
+
+        let initial = store.cache_stats();
+        assert_eq!(initial.file_count, 0);
+        assert_eq!(initial.total_bytes, 0);
+
+        let png = b"\x89PNG\r\n\x1a\nfake-png-body";
+        store.write_cached("movie-poster:test-1", png);
+        store.mark_failed("url:https://example.invalid/bad.jpg".to_string());
+
+        let populated = store.cache_stats();
+        assert_eq!(populated.file_count, 1);
+        assert_eq!(populated.total_bytes, png.len() as u64);
+        assert_eq!(populated.failed_count, 1);
+
+        store.clear_failed();
+        assert_eq!(store.cache_stats().failed_count, 0);
+
+        let freed = store.clear_cache();
+        assert_eq!(freed, png.len() as u64);
+        assert_eq!(store.cache_stats().file_count, 0);
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }

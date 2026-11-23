@@ -1,33 +1,30 @@
-import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { movies, series } from '../data/catalog'
-import { movieRef, seriesRef, channelRef } from '../data/refs'
-import type { Movie, Series, Channel } from '../data/types'
+import type { Channel } from '../data/types'
 import { Icon } from '../components/Icon'
 import { PageHeader } from '../components/PageHeader'
-import { ChannelCard, PosterCard, Section, WideCard, XtreamArt, XtreamPosterCard, idleLabel } from '../components/Tiles'
+import { ChannelCard, PosterCard, WideCard, XtreamArt, XtreamPosterCard, idleLabel } from '../components/Tiles'
 import { ContentRail } from '../components/ContentRail'
 import { useToast } from '../components/Toast'
 import { ChannelMark, Art } from '../components/ui'
 import { type TechnicalFormat } from '../components/TechnicalBadges'
-import { filterKidSafeChannels, filterKidSafeTitles, filterKidSafeXtreamTitles, isRefKidSafe } from '../lib/kidsMode'
-import { continueWatching } from '../lib/library'
 import { useNow, clock } from '../lib/time'
 import { NOT_TESTED } from '../state/playlists'
 import { useProfiles } from '../state/profiles'
 import { useStore } from '../state/store'
+import { useUniversalPlayback } from '../state/playbackContext'
 import { useLocalMedia } from '../state/localMedia'
 import { isLogoArtwork } from '../components/ResourceCard'
 import type { MediaResource } from '../data/personalLibrary'
-import { computeRecommendations } from '../lib/recommendations'
 import { HomeCustomizeModal } from '../components/HomeCustomizeModal'
 import { DEFAULT_HOME_SECTIONS } from '../state/userPreferences'
 import {
-  selectFeaturedSlides,
-  hasGenuineProgrammeArt,
-  isValidProgrammeTitle,
+  buildHomeFeed,
   type FeaturedSlide,
-} from '../lib/featuredSelection'
+  type HomeFeedData,
+} from '../lib/homeFeed'
+import { useArtwork } from '../lib/useArtwork'
 import './Home.css'
 
 interface HomeHeroProps {
@@ -45,6 +42,29 @@ function HomeHero({
 
   const currentSlide = slides[carouselIndex % Math.max(1, slides.length)]
 
+  const heroArtType = currentSlide?.kind === 'series' ? 'series-backdrop' : 'movie-backdrop'
+  const resolvedHero = useArtwork({
+    contentId: currentSlide?.ref,
+    title: currentSlide?.title || '',
+    type: heroArtType,
+    providerArt: currentSlide?.backdropUrl || currentSlide?.art,
+    imdbId: currentSlide?.imdbId,
+    year: typeof currentSlide?.yearOrYears === 'number' ? currentSlide.yearOrYears : Number(String(currentSlide?.yearOrYears ?? '').slice(0, 4)) || null,
+    autoEnrich: Boolean(currentSlide && (currentSlide.kind === 'movie' || currentSlide.kind === 'series' || (currentSlide.kind === 'live' && currentSlide.title))),
+  })
+
+  // Guard against title logos, wordmarks, or portrait covers being enlarged to fill the hero background.
+  // Backdrops must strictly be genuine landscape visuals.
+  const candidateHeroArt = resolvedHero.src || currentSlide?.backdropUrl || currentSlide?.art
+  const isTitleGraphicOrCover = Boolean(
+    candidateHeroArt && (
+      /\/logos?\/|title[-_]logo|wordmark|clearart|\/cover$|poster|folder\.jpg/i.test(candidateHeroArt) &&
+      !candidateHeroArt.includes('/16-9')
+    )
+  )
+  const effectiveHeroArt = isTitleGraphicOrCover ? null : candidateHeroArt
+  const heroTitleLogo = currentSlide?.logoUrl || (isTitleGraphicOrCover && !candidateHeroArt?.includes('/cover') ? candidateHeroArt : null)
+
   const inLibrary = currentSlide ? (
     currentSlide.kind === 'live'
       ? store.library.favourites.includes(currentSlide.ref)
@@ -55,10 +75,17 @@ function HomeHero({
     <section className="hero home-hero-cinematic" aria-labelledby="hero-title">
       {currentSlide && (
         <div className="home-hero-art-layer">
-          {currentSlide.art ? (
-            <Art src={currentSlide.art} alt={currentSlide.title} contentId={currentSlide.ref} eager className="home-hero-art" />
+          {effectiveHeroArt ? (
+            <Art src={effectiveHeroArt} alt={currentSlide.title} contentId={currentSlide.ref} eager className="home-hero-art" />
           ) : currentSlide.artworkKey ? (
-            <XtreamArt artworkKey={currentSlide.artworkKey} fallbackTitle={currentSlide.title} eager />
+            <XtreamArt
+              artworkKey={currentSlide.artworkKey}
+              contentId={currentSlide.ref}
+              artType={heroArtType}
+              fallbackTitle={currentSlide.title}
+              fallbackIcon={currentSlide.kind === 'series' ? 'series' : 'film'}
+              eager
+            />
           ) : (
             <div className="home-hero-cinematic-stage">
               <div className="home-hero-stage-glow" />
@@ -84,19 +111,23 @@ function HomeHero({
 
       <div className="home-hero-inner">
         <span className="home-hero-tag">
+          <Icon name="play" size={11} />
           {currentSlide?.kicker ?? 'Featured'}
         </span>
-        <h1 id="hero-title" className="home-hero-main-title">
-          {currentSlide?.title ?? (previewChannel?.name ? `${previewChannel.name} Live` : 'Kinora')}
-        </h1>
+        {heroTitleLogo ? (
+          <div className="home-hero-title-graphic-wrapper">
+            <img src={heroTitleLogo} alt={currentSlide?.title ?? ''} className="home-hero-title-logo" />
+            <h1 id="hero-title" className="sr-only">
+              {currentSlide?.title ?? (previewChannel?.name ? `${previewChannel.name} Live` : 'Kinora')}
+            </h1>
+          </div>
+        ) : (
+          <h1 id="hero-title" className="home-hero-main-title">
+            {currentSlide?.title ?? (previewChannel?.name ? `${previewChannel.name} Live` : 'Kinora')}
+          </h1>
+        )}
         <div className="home-hero-meta">
           {currentSlide?.yearOrYears && <span>{currentSlide.yearOrYears}</span>}
-          {currentSlide?.genres?.length ? (
-            <>
-              {currentSlide.yearOrYears && <span>•</span>}
-              <span>{currentSlide.genres.slice(0, 2).join(', ')}</span>
-            </>
-          ) : null}
           {currentSlide?.runtime && (
             <>
               <span>•</span>
@@ -108,6 +139,15 @@ function HomeHero({
           )}
           {currentSlide?.isLive && (
             <span className="badge-live">LIVE</span>
+          )}
+          {currentSlide?.genres && currentSlide.genres.length > 0 && (
+            <div className="home-hero-genre-tags" aria-label="Genres">
+              {currentSlide.genres.slice(0, 3).map((g: string) => (
+                <span key={g} className="home-hero-genre-chip">
+                  {g}
+                </span>
+              ))}
+            </div>
           )}
         </div>
         <p className="home-hero-desc">
@@ -136,7 +176,7 @@ function HomeHero({
               }
             }}
           >
-            <Icon name={inLibrary ? 'check' : 'bookmark'} size={18} />
+            <Icon name={inLibrary ? 'check' : 'plus'} size={18} />
             <span className="sr-only">Add to Library</span>
           </button>
         </div>
@@ -189,6 +229,8 @@ interface HomeSideHubProps {
   totalSeries: number
   totalChannels: number
   storageText: string
+  collapsed?: boolean
+  onToggleCollapse?: () => void
 }
 
 function HomeSideHub({
@@ -199,11 +241,17 @@ function HomeSideHub({
   totalSeries,
   totalChannels,
   storageText,
+  collapsed = false,
+  onToggleCollapse,
 }: HomeSideHubProps) {
   const store = useStore()
+  const navigate = useNavigate()
+  const playbackCtx = useUniversalPlayback()
   const [channelsTab, setChannelsTab] = useState<'now' | 'next'>('now')
 
   const previewProg = previewChannel ? store.programmeAt(previewChannel, now) : undefined
+  const isThisActive = playbackCtx.activeStream?.channel?.id === previewChannel?.id
+  const isPlaying = isThisActive && playbackCtx.playbackState.status === 'playing'
 
   const progProgress = previewProg && previewProg.stop > previewProg.start
     ? Math.min(1, Math.max(0, (now - previewProg.start) / (previewProg.stop - previewProg.start)))
@@ -213,8 +261,32 @@ function HomeSideHub({
     : 0
 
   return (
-    <aside className="home-side-hub" aria-label="Live TV and Library Hub">
-      {/* Mini Live Player Preview */}
+    <aside
+      id="home-side-hub"
+      className={`home-side-hub${collapsed ? ' is-collapsed' : ''}`}
+      role="dialog"
+      aria-modal={!collapsed}
+      aria-hidden={collapsed}
+      aria-label="Live TV and Library"
+    >
+      <div className="home-side-hub-header">
+        <div className="home-side-hub-title-wrap">
+          <span className="home-side-hub-live-dot" aria-hidden="true" />
+          <span className="home-side-hub-title">Live &amp; Library</span>
+        </div>
+        {onToggleCollapse && (
+          <button
+            type="button"
+            className="home-side-hub-collapse-btn"
+            onClick={onToggleCollapse}
+            aria-label="Close panel"
+            title="Close (Esc)"
+          >
+            <Icon name="close" size={16} />
+          </button>
+        )}
+      </div>
+
       <div className="home-mini-live-card">
         <div className="home-mini-live-preview">
           <span className="home-mini-live-badge">LIVE</span>
@@ -245,45 +317,36 @@ function HomeSideHub({
               </div>
             </div>
           )}
-          <div className="home-mini-live-controls">
-            {previewChannel ? (
-              <>
-                <div className="home-mini-live-controls-left">
-                  <button type="button" className="home-mini-ctrl-btn" aria-label="Play or pause stream">
-                    <Icon name="play" size={16} />
-                  </button>
-                  <button type="button" className="home-mini-ctrl-btn" aria-label="Mute volume">
-                    <Icon name="volume" size={16} />
-                  </button>
-                </div>
-                <div className="home-mini-live-controls-right">
-                  <button type="button" className="home-mini-ctrl-btn" aria-label="Subtitles">
-                    <Icon name="subtitles" size={16} />
-                  </button>
-                  <button type="button" className="home-mini-ctrl-btn" aria-label="Picture in Picture">
-                    <Icon name="pip" size={16} />
-                  </button>
-                  <Link to={`/watch/${encodeURIComponent(channelRef(previewChannel.id))}`} className="home-mini-ctrl-btn" aria-label="Fullscreen">
-                    <Icon name="fullscreen" size={16} />
-                  </Link>
-                </div>
-              </>
-            ) : (
-              <div className="home-mini-live-controls-left">
-                <Link to="/sources" className="home-mini-ctrl-btn" aria-label="Add source" title="Add live TV source">
-                  <Icon name="plus" size={14} />
-                  <span style={{ fontSize: '0.75rem', paddingLeft: 4 }}>Add Source</span>
-                </Link>
-              </div>
+
+          <div className="home-mini-live-overlay">
+            {previewChannel && (
+              <button
+                type="button"
+                className="home-mini-play-btn"
+                onClick={() => {
+                  if (isPlaying) {
+                    playbackCtx.pause()
+                  } else {
+                    navigate(`/live?channel=${encodeURIComponent(previewChannel.id)}`)
+                  }
+                }}
+                aria-label={isPlaying ? 'Pause live playback' : `Play ${previewChannel.name}`}
+              >
+                <Icon name={isPlaying ? 'pause' : 'play'} size={24} />
+              </button>
             )}
           </div>
         </div>
-        <div className="home-mini-live-meta">
-          <h3 className="home-mini-live-title">
-            {previewProg?.title ?? (previewChannel ? `${previewChannel.name} Live` : 'Live Broadcast')}
-          </h3>
-          <p className="home-mini-live-sub">
-            <span>{previewChannel?.name ?? 'No Channels Active'}{previewProg?.category ? ` • ${previewProg.category}` : ''}</span>
+
+        <div className="home-mini-live-details">
+          <div className="home-mini-live-header">
+            <span className="home-mini-ch-name">{previewChannel?.name ?? 'Live Television'}</span>
+            <span className="badge badge-accent">ON AIR</span>
+          </div>
+          <p className="home-mini-prog-title">
+            {previewProg?.title ?? (previewChannel ? idleLabel(previewChannel) : 'Connect source to stream live TV')}
+          </p>
+          <p className="home-mini-prog-time">
             <span>{previewProg ? `${clock(previewProg.start, store.prefs.timeFormat)} - ${clock(previewProg.stop, store.prefs.timeFormat)}` : previewChannel ? 'On air' : 'Connect source'}</span>
           </p>
           {previewProg && (
@@ -294,7 +357,6 @@ function HomeSideHub({
         </div>
       </div>
 
-      {/* Quick Channels Card with On Now / Next Sub-tabs */}
       <div className="home-channels-box">
         <div className="home-channels-subtabs" role="tablist">
           <button
@@ -345,7 +407,6 @@ function HomeSideHub({
         </div>
       </div>
 
-      {/* Quick Actions Row */}
       <div className="home-quick-actions-bar" role="group" aria-label="Quick Navigation">
         <Link to="/live" className="home-quick-act-btn">
           <Icon name="calendar" size={18} />
@@ -365,7 +426,6 @@ function HomeSideHub({
         </Link>
       </div>
 
-      {/* Your Library at a Glance HUD */}
       <div className="home-library-hud">
         <Link to="/library" className="home-library-hud-header">
           <span>Your Library at a Glance</span>
@@ -423,7 +483,7 @@ export function HomeQuickJump({ className = '' }: HomeQuickJumpProps) {
             aria-label={dest.label}
           >
             <span className="home-quick-jump-icon">
-              <Icon name={dest.icon} size={20} />
+              <Icon name={dest.icon} size={18} />
             </span>
             <span className="home-quick-jump-label">{dest.label}</span>
             {dest.badge && <span className="home-quick-jump-badge">{dest.badge}</span>}
@@ -432,16 +492,6 @@ export function HomeQuickJump({ className = '' }: HomeQuickJumpProps) {
       </div>
     </nav>
   )
-}
-
-function formatRemainingTime(seconds: number): string {
-  const totalMins = Math.max(1, Math.round(seconds / 60))
-  const h = Math.floor(totalMins / 60)
-  const m = totalMins % 60
-  if (h > 0) {
-    return `${h}h ${String(m).padStart(2, '0')} min left`
-  }
-  return `${m} min left`
 }
 
 function HomeAudioCard({
@@ -455,17 +505,10 @@ function HomeAudioCard({
 }) {
   const isLogo = isLogoArtwork(resource)
   return (
-    <div
+    <button
+      type="button"
       className={`card channel-card home-audio-card${isPlaying ? ' is-selected' : ''}`}
-      role="button"
-      tabIndex={0}
       onClick={() => onPlay(resource)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          onPlay(resource)
-        }
-      }}
       aria-label={`${resource.name}, ${resource.provider || 'Radio'}${isPlaying ? ', playing' : ''}`}
     >
       <div
@@ -502,23 +545,13 @@ function HomeAudioCard({
           <strong>{resource.name}</strong>
           <span className="faint">{resource.provider || 'Live Broadcast'}</span>
         </span>
-        <button
-          type="button"
-          className="home-audio-play-badge"
-          aria-label={isPlaying ? `Pause ${resource.name}` : `Play ${resource.name}`}
-          onClick={(e) => {
-            e.stopPropagation()
-            onPlay(resource)
-          }}
-        >
+        <span className="home-audio-play-badge" aria-hidden="true">
           <Icon name={isPlaying ? 'pause' : 'play'} size={16} />
-        </button>
+        </span>
       </div>
-    </div>
+    </button>
   )
 }
-
-
 
 function HomeLiveTvSetupBanner({ onLookAround }: { onLookAround?: () => void }) {
   return (
@@ -586,34 +619,6 @@ export function Home() {
   const { isKidsMode, activeProfile } = useProfiles()
   const profileId = activeProfile?.id ?? 'default'
 
-  const safeMovies = useMemo(() => filterKidSafeTitles(movies, isKidsMode), [isKidsMode])
-  const safeSeries = useMemo(() => filterKidSafeTitles(series, isKidsMode), [isKidsMode])
-  const safeXtreamMovies = useMemo(() => filterKidSafeXtreamTitles(xtreamCatalogue.movies, isKidsMode), [xtreamCatalogue.movies, isKidsMode])
-  const safeXtreamSeries = useMemo(() => filterKidSafeXtreamTitles(xtreamCatalogue.series, isKidsMode), [xtreamCatalogue.series, isKidsMode])
-
-  const publicFilms = useMemo(() => {
-    return mediaLibrary.allResources.filter(
-      (r) =>
-        r.category === 'movies' ||
-        r.category === 'films' ||
-        r.subcategory.includes('film') ||
-        r.subcategory.includes('cinema') ||
-        r.subcategory.includes('archive'),
-    )
-  }, [mediaLibrary.allResources])
-
-  const publicSeries = useMemo(() => {
-    return mediaLibrary.allResources.filter(
-      (r) =>
-        r.category === 'series' ||
-        r.category === 'tv' ||
-        r.subcategory.includes('series') ||
-        r.subcategory.includes('broadcasting'),
-    )
-  }, [mediaLibrary.allResources])
-
-  const ratings = userPreferences?.preferences.ratings ?? {}
-  const hiddenItems = userPreferences?.preferences.hiddenItems ?? []
   const homeSections = useMemo(() => {
     try {
       const raw = localStorage.getItem(`kinora.home_sections.v1.${profileId}`)
@@ -621,287 +626,271 @@ export function Home() {
     } catch {}
     return userPreferences?.preferences.homeSectionsConfig ?? DEFAULT_HOME_SECTIONS
   }, [profileId, userPreferences?.preferences.homeSectionsConfig])
+
   const cardDensity = userPreferences?.preferences.cardDensity ?? 'comfortable'
+  const isTvMode = store.prefs.viewMode === 'tv' || userPreferences?.preferences.viewMode === 'tv'
 
-  const resume = continueWatching(library, demoTitles)
-  const safeResume = useMemo(() => {
-    if (!isKidsMode) return resume
-    const findTitle = (id: string) => movies.find((m) => m.id === id) ?? series.find((s) => s.id === id)
-    return resume.filter((item) => isRefKidSafe(item.ref, true, findChannel, findTitle))
-  }, [resume, isKidsMode, findChannel])
-
-  const safeChannelsList = useMemo(() => filterKidSafeChannels(channels, isKidsMode), [channels, isKidsMode])
-
-  const featuredSlides = useMemo(() => {
-    return selectFeaturedSlides({
+  // Central home feed data preparation with global deduplication
+  const feed: HomeFeedData = useMemo(() => {
+    return buildHomeFeed({
       now,
       demoTitles,
       isKidsMode,
-      demoMovies: safeMovies,
-      demoSeries: safeSeries,
-      channels: safeChannelsList,
+      library,
+      channels,
+      findChannel,
       programmeAt,
+      nextProgramme,
+      allMovies: movies,
+      allSeries: series,
       xtreamCatalogue,
-      mediaLibrary:
-        mediaLibrary.mySources.length > 0
-          ? mediaLibrary.mySources.map((s) => s.resource)
-          : mediaLibrary.allResources,
-      favourites: library.favourites,
-      timeFormat: prefs.timeFormat,
+      mediaLibrary,
+      localCatalogue,
+      userPreferences: {
+        ratings: userPreferences?.preferences.ratings,
+        dislikeFeedback: userPreferences?.preferences.dislikeFeedback,
+        hiddenItems: userPreferences?.preferences.hiddenItems,
+        cardDensity: userPreferences?.preferences.cardDensity,
+      },
+      prefsTimeFormat: prefs.timeFormat,
     })
   }, [
     now,
     demoTitles,
     isKidsMode,
-    safeMovies,
-    safeSeries,
-    safeChannelsList,
+    library,
+    channels,
+    findChannel,
     programmeAt,
+    nextProgramme,
     xtreamCatalogue,
-    mediaLibrary.mySources,
-    mediaLibrary.allResources,
-    library.favourites,
+    mediaLibrary,
+    localCatalogue,
+    userPreferences?.preferences,
     prefs.timeFormat,
   ])
 
-  // Channels with active programmes and genuine EPG artwork first, followed by remaining on-air and other channels
-  const onNowChannels = [
-    ...safeChannelsList.filter((c) => {
-      const p = programmeAt(c, now)
-      return hasGenuineProgrammeArt(p) && isValidProgrammeTitle(p)
-    }),
-    ...safeChannelsList.filter((c) => {
-      const p = programmeAt(c, now)
-      return Boolean(p) && !(hasGenuineProgrammeArt(p) && isValidProgrammeTitle(p))
-    }),
-    ...safeChannelsList.filter((c) => !programmeAt(c, now)),
-  ]
+  const previewChannel = useMemo(() => {
+    return feed.liveChannels[0]?.channel ?? channels[0]
+  }, [feed.liveChannels, channels])
 
-  // Filter hidden channels out of onNowChannels
-  const visibleOnNow = onNowChannels.filter((c) => !hiddenItems.includes(channelRef(c.id)))
-
-  // Deterministic local recommendation engine
-  const recs = computeRecommendations({
-    ratings,
-    dislikeFeedback: userPreferences?.preferences.dislikeFeedback ?? {},
-    history: library.history,
-    favourites: library.favourites,
-    watchlist: library.watchlist,
-    hiddenItems,
-    demoTitles,
-    demoMovies: safeMovies,
-    demoSeries: safeSeries,
-    channels: safeChannelsList,
-    xtreamMovies: safeXtreamMovies,
-    xtreamSeries: safeXtreamSeries,
-    programmeAt,
-    now,
-  })
-
-  // Master reference curated recommendations for 100% visual parity
-  const masterRefRecommendations = useMemo(() => {
-    if (!demoTitles) return []
-    const masterDefs: Array<{ id: string; badges: TechnicalFormat[] }> = [
-      { id: 'the-outpost', badges: ['4K'] },
-      { id: 'neon-district', badges: ['4K', 'HDR'] },
-      { id: 'silent-tide', badges: ['4K'] },
-      { id: 'the-archive', badges: ['4K'] },
-      { id: 'valley-of-ashes', badges: ['4K'] },
-      { id: 'redline', badges: ['4K', 'HDR'] },
-    ]
-    const list = masterDefs
-      .map(({ id, badges }) => {
-        const m = movies.find((item) => item.id === id)
-        if (!m) return null
-        return {
-          ref: movieRef(m.id),
-          to: `/movies/${m.id}`,
-          title: m.title.toUpperCase(),
-          art: m.art,
-          focus: m.focus,
-          badges,
-          reason: undefined as string | undefined,
-        }
-      })
-      .filter((item): item is NonNullable<typeof item> => Boolean(item))
-
-    const masterIds = new Set(masterDefs.map((d) => `movie:${d.id}`))
-    for (const r of recs.recommendedForYou) {
-      if (!masterIds.has(r.ref) && !hiddenItems.includes(r.ref)) {
-        list.push({
-          ref: r.ref,
-          to: r.to,
-          title: r.title,
-          art: r.art,
-          focus: r.focus ?? 50,
-          badges: ['4K'],
-          reason: r.reason,
-        })
-      }
-    }
-    return list.filter((item) => !hiddenItems.includes(item.ref))
-  }, [demoTitles, hiddenItems, recs.recommendedForYou])
-
-  // Data-driven content collections from genuine catalogue items
-  const trendingTitles = [
-    safeMovies.find((m) => m.id === 'salt-meridian'),
-    safeSeries.find((s) => s.id === 'ninth-ward'),
-    safeMovies.find((m) => m.id === 'harbour-lights'),
-    safeSeries.find((s) => s.id === 'fathom'),
-    safeMovies.find((m) => m.id === 'low-orbit'),
-    safeSeries.find((s) => s.id === 'kingsmoor'),
-    safeMovies.find((m) => m.id === 'undertow'),
-    safeSeries.find((s) => s.id === 'static'),
-    safeMovies.find((m) => m.id === 'glasshouse'),
-    safeSeries.find((s) => s.id === 'wildfire-season'),
-    safeMovies.find((m) => m.id === 'copper-saints'),
-    safeSeries.find((s) => s.id === 'understudies'),
-  ]
-    .filter((t): t is Movie | Series => Boolean(t))
-    .filter((t) => !hiddenItems.includes(t.kind === 'movie' ? movieRef(t.id) : seriesRef(t.id)))
-
-  const scifiTitles = [...safeMovies, ...safeSeries].filter((t) =>
-    t.genres.some((g) => {
-      const lower = g.toLowerCase()
-      return lower.includes('science') || lower.includes('space') || lower.includes('fantasy')
-    }) && !hiddenItems.includes(t.kind === 'movie' ? movieRef(t.id) : seriesRef(t.id))
-  )
-
-  const crimeDramaTitles = isKidsMode ? [] : [...safeMovies, ...safeSeries].filter((t) =>
-    t.genres.some((g) => ['crime', 'drama', 'mystery'].includes(g.toLowerCase())) &&
-    !t.genres.some((g) => g.toLowerCase().includes('science')) &&
-    !hiddenItems.includes(t.kind === 'movie' ? movieRef(t.id) : seriesRef(t.id))
-  )
-
-  const actionTitles = [...safeMovies, ...safeSeries].filter((t) =>
-    t.genres.some((g) => ['action', 'thriller', 'western', 'adventure'].includes(g.toLowerCase())) &&
-    !t.genres.some((g) => g.toLowerCase().includes('science')) &&
-    !hiddenItems.includes(t.kind === 'movie' ? movieRef(t.id) : seriesRef(t.id))
-  )
-
-  const comedyTitles = [...safeMovies, ...safeSeries].filter((t) =>
-    t.genres.some((g) => ['comedy', 'animation', 'family'].includes(g.toLowerCase())) &&
-    !hiddenItems.includes(t.kind === 'movie' ? movieRef(t.id) : seriesRef(t.id))
-  )
-
-  const recentlyAdded = [...safeMovies, ...safeSeries]
-    .filter((t) => !hiddenItems.includes(t.kind === 'movie' ? movieRef(t.id) : seriesRef(t.id)))
-    .sort((a, b) => b.added.localeCompare(a.added))
-    .slice(0, 12)
-
-  const favChannels = library.favourites
-    .filter((r) => r.startsWith('channel:') && !hiddenItems.includes(r))
-    .map((r) => findChannel(r.slice(8)))
-    .filter((c): c is NonNullable<typeof c> => Boolean(c))
-
-  const shortcuts = [
-    { to: '/library?tab=watchlist', label: 'Watchlist', count: library.watchlist.length, icon: 'bookmark' as const },
-    { to: '/library?tab=favourites', label: 'Favourites', count: library.favourites.length, icon: 'heart' as const },
-    { to: '/library?tab=collections', label: 'Collections', count: library.collections.length, icon: 'folder' as const },
-    { to: '/library?tab=history', label: 'Recently watched', count: library.history.length, icon: 'history' as const },
-  ]
-
+  // Map section IDs to renderers, strictly adhering to deduplicated feed data
   const sectionRenderers: Record<string, () => React.ReactNode> = {
     'continue-watching': () => {
-      const items = demoTitles ? safeResume.slice(0, isTvMode ? 10 : 4) : safeResume
-      if (items.length > 0) {
+      if (feed.continueWatching.length === 0) {
+        return null
+      }
+      return (
+        <ContentRail
+          key="continue-watching"
+          id="continue-watching"
+          icon="play"
+          title={demoTitles ? 'Continue Watching' : 'Jump Back In'}
+          sub="Pick up where you left off"
+          viewAll="/library?tab=history"
+          layout="wide"
+        >
+          {feed.continueWatching.map((r) => (
+            <WideCard
+              key={r.ref}
+              to={r.play}
+              title={r.title}
+              sub={`${r.kind === 'episode' ? r.meta : 'Movie'} · ${r.remainingFormatted}`}
+              art={r.art}
+              focus={r.focus}
+              progress={r.progress}
+              itemRef={r.ref}
+              onDismiss={() => {
+                const saved = library.progress[r.ref]
+                store.removeProgress(r.ref)
+                toast(`Removed “${r.title}” from Jump Back In`, {
+                  label: 'Undo',
+                  run: () => {
+                    if (saved) {
+                      store.restoreProgress(r.ref, saved)
+                      toast(`Restored “${r.title}” to Jump Back In`)
+                    }
+                  },
+                })
+              }}
+              playable
+            />
+          ))}
+        </ContentRail>
+      )
+    },
+
+    'live-tv-right-now': () => {
+      if (feed.liveChannels.length > 0) {
         return (
           <ContentRail
-            key="continue-watching"
-            id="continue-watching"
-            icon="play"
-            title={demoTitles ? 'Continue Watching' : 'Jump Back In'}
-            sub="Pick up where you left off"
-            viewAll="/library?tab=history"
+            key="live-tv-right-now"
+            id="live-tv-right-now"
+            icon="live"
+            title="Live TV Right Now"
+            sub="Broadcasts on air right now"
+            viewAll="/live"
             layout="wide"
           >
-            {items.map((r) => (
-              <WideCard
-                key={r.ref}
-                to={r.play}
-                title={r.title}
-                sub={`${r.kind === 'episode' ? r.meta : 'Movie'} · ${formatRemainingTime(r.secondsLeft)}`}
-                art={r.art}
-                focus={r.focus}
-                progress={r.progress}
-                itemRef={r.ref}
-                onDismiss={() => {
-                  const saved = library.progress[r.ref]
-                  store.removeProgress(r.ref)
-                  toast(`Removed “${r.title}” from Jump Back In`, {
-                    label: 'Undo',
-                    run: () => {
-                      if (saved) {
-                        store.restoreProgress(r.ref, saved)
-                        toast(`Restored “${r.title}” to Jump Back In`)
-                      }
-                    },
-                  })
-                }}
-                playable
+            {feed.liveChannels.slice(0, 16).map((item) => (
+              <ChannelCard
+                key={item.channel.id}
+                channel={item.channel}
+                now={item.now}
+                next={item.next}
+                to={`/live?channel=${item.channel.id}`}
+                format={prefs.timeFormat}
+                at={now}
               />
             ))}
           </ContentRail>
         )
       }
       if (!demoTitles) {
-        return (
-          <ContentRail
-            key="jump-back-in"
-            id="jump-back-in"
-            icon="play"
-            title="Jump Back In"
-            sub="Quick access across your media lineup"
-            layout="wide"
-          >
-            <Link to="/live" className="card wide-card home-empty-action-card">
-              <div className="card-media card-shade home-action-card-media">
-                <div className="home-action-icon"><Icon name="calendar" size={28} /></div>
-                <span className="card-top"><span className="badge badge-accent">Live TV</span></span>
-                <span className="card-overlay">
-                  <strong>Full TV Guide & Channels</strong>
-                  <span className="faint">Browse complete electronic programme guide</span>
-                </span>
-              </div>
-            </Link>
-            <Link to="/movies" className="card wide-card home-empty-action-card">
-              <div className="card-media card-shade home-action-card-media">
-                <div className="home-action-icon"><Icon name="film" size={28} /></div>
-                <span className="card-top"><span className="badge badge-accent">Cinema</span></span>
-                <span className="card-overlay">
-                  <strong>Browse Movies & Cinema</strong>
-                  <span className="faint">Explore full film catalogue and archives</span>
-                </span>
-              </div>
-            </Link>
-            <Link to="/radio" className="card wide-card home-empty-action-card">
-              <div className="card-media card-shade home-action-card-media">
-                <div className="home-action-icon"><Icon name="radio" size={28} /></div>
-                <span className="card-top"><span className="badge badge-accent">Audio</span></span>
-                <span className="card-overlay">
-                  <strong>Live Radio & Audio</strong>
-                  <span className="faint">Listen to world radio streams and broadcasts</span>
-                </span>
-              </div>
-            </Link>
-            <Link to="/sources" className="card wide-card home-empty-action-card">
-              <div className="card-media card-shade home-action-card-media">
-                <div className="home-action-icon"><Icon name="plus" size={28} /></div>
-                <span className="card-top"><span className="badge badge-accent">Sources</span></span>
-                <span className="card-overlay">
-                  <strong>Sources & Playlists</strong>
-                  <span className="faint">Add M3U playlists, guides or Xtream accounts</span>
-                </span>
-              </div>
-            </Link>
-          </ContentRail>
-        )
+        return <HomeLiveTvSetupBanner key="live-tv-setup" onLookAround={() => setPref('demoMode', true)} />
       }
       return null
     },
 
+    'trending-popular': () => {
+      if (feed.movies.length === 0) return null
+      return (
+        <ContentRail
+          key="trending-popular"
+          id="trending-popular"
+          icon="film"
+          title="Movies"
+          sub="Critically acclaimed and popular films"
+          viewAll="/movies"
+          layout="poster"
+        >
+          {feed.movies.map((m) => (
+            m.isXtream ? (
+              <XtreamPosterCard
+                key={m.ref}
+                to={m.to}
+                title={m.title}
+                artworkKey={m.artworkKey}
+                line={m.line}
+                year={typeof m.year === 'number' ? m.year : undefined}
+              />
+            ) : (
+              <PosterCard
+                key={m.ref}
+                to={m.to}
+                title={m.title}
+                art={m.art}
+                badges={m.badges}
+                line={m.line}
+              />
+            )
+          ))}
+        </ContentRail>
+      )
+    },
+
+    'series-rail': () => {
+      if (feed.series.length === 0) return null
+      return (
+        <ContentRail
+          key="series-rail"
+          id="series-rail"
+          icon="series"
+          title="Series &amp; TV Shows"
+          sub="Complete seasons and episodic archives"
+          viewAll="/series"
+          layout="poster"
+        >
+          {feed.series.map((s) => (
+            s.isXtream ? (
+              <XtreamPosterCard
+                key={s.ref}
+                to={s.to}
+                title={s.title}
+                artworkKey={s.artworkKey}
+                line={s.line}
+                year={typeof s.year === 'number' ? s.year : undefined}
+              />
+            ) : (
+              <PosterCard
+                key={s.ref}
+                to={s.to}
+                title={s.title}
+                art={s.art}
+                line={s.line}
+              />
+            )
+          ))}
+        </ContentRail>
+      )
+    },
+
+    'cultural-vault': () => {
+      if (feed.culturalVault.length === 0) return null
+      return (
+        <ContentRail
+          key="cultural-vault"
+          id="cultural-vault"
+          icon="library"
+          title="Cultural Film Vault &amp; Archives"
+          sub="Curated classic cinema and national registries"
+          viewAll="/movies"
+          layout="poster"
+        >
+          {feed.culturalVault.map((r) => (
+            <PosterCard
+              key={r.id}
+              to={r.to}
+              title={r.title}
+              art={r.art}
+              line={r.line}
+              flag={<><Icon name="library" size={10} />Archive</>}
+            />
+          ))}
+        </ContentRail>
+      )
+    },
+
+    'radio-audio': () => {
+      if (feed.audioItems.length === 0) return null
+      return (
+        <ContentRail
+          key="radio-audio"
+          id="radio-audio"
+          icon="radio"
+          title="Live Radio &amp; Spoken Audio"
+          sub="Personal Media Library"
+          viewAll="/radio"
+          layout="wide"
+        >
+          {feed.audioItems.slice(0, 8).map((r) => (
+            <HomeAudioCard
+              key={r.id}
+              resource={r}
+              onPlay={(res) => {
+                if (mediaLibrary.currentAudio?.id === res.id) {
+                  mediaLibrary.toggleAudioPlay()
+                } else {
+                  mediaLibrary.playAudio({
+                    id: res.id,
+                    name: res.name,
+                    provider: res.provider,
+                    streamUrl: res.playbackUrl ?? res.url,
+                    artworkUrl: res.artworkUrl,
+                    accentHue: res.accentHue,
+                    mediaType: 'radio',
+                  })
+                }
+              }}
+              isPlaying={mediaLibrary.currentAudio?.id === r.id && mediaLibrary.isAudioPlaying}
+            />
+          ))}
+        </ContentRail>
+      )
+    },
+
     'recommended-for-you': () => {
-      const items = demoTitles ? masterRefRecommendations.slice(0, 6) : recs.recommendedForYou
+      const items = demoTitles ? feed.masterRecommendations.slice(0, 6) : feed.recommendations.recommendedForYou
       if (items.length === 0) return null
       return (
         <ContentRail
@@ -938,45 +927,23 @@ export function Home() {
       )
     },
 
-    'live-tv-right-now': () =>
-      visibleOnNow.length > 0 ? (
-        <ContentRail
-          key="live-tv-right-now"
-          id="live-tv-right-now"
-          icon="live"
-          title="Live TV Right Now"
-          sub="Broadcasts on air right now"
-          viewAll="/live"
-          layout="wide"
-        >
-          {visibleOnNow.slice(0, 16).map((c) => (
-            <ChannelCard
-              key={c.id}
-              channel={c}
-              now={programmeAt(c, now)}
-              next={nextProgramme(c, now)}
-              to={`/live?channel=${c.id}`}
-              format={prefs.timeFormat}
-              at={now}
-            />
-          ))}
-        </ContentRail>
-      ) : !demoTitles ? (
-        <HomeLiveTvSetupBanner key="live-tv-setup" onLookAround={() => setPref('demoMode', true)} />
-      ) : null,
-
-    'because-you-watched': () =>
-      recs.becauseYouWatched ? (
+    'because-you-watched': () => {
+      if (!feed.recommendations.becauseYouWatched) return null
+      const filteredItems = feed.recommendations.becauseYouWatched.items.filter(
+        (r) => (Boolean(r.art) || Boolean(r.artworkKey)) && !feed.continueWatching.some((cw) => cw.ref === r.ref),
+      )
+      if (filteredItems.length === 0) return null
+      return (
         <ContentRail
           key="because-you-watched"
           id="because-you-watched"
           icon="sparkles"
-          title={`Because You Watched ${recs.becauseYouWatched.sourceTitle}`}
+          title={`Because You Watched ${feed.recommendations.becauseYouWatched.sourceTitle}`}
           sub="Titles sharing similar themes and genres"
           viewAll="/movies"
           layout="poster"
         >
-          {recs.becauseYouWatched.items.map((r) =>
+          {filteredItems.map((r) =>
             demoTitles ? (
               <PosterCard
                 key={r.ref}
@@ -997,114 +964,14 @@ export function Home() {
             ),
           )}
         </ContentRail>
-      ) : null,
+      )
+    },
 
-    'trending-popular': () =>
-      demoTitles
-        ? trendingTitles.length > 0 ? (
-            <ContentRail
-              key="trending-popular"
-              id="trending-popular"
-              icon="film"
-              title="Trending & Popular"
-              sub="Critically acclaimed movies and series"
-              viewAll="/movies"
-              layout="poster"
-            >
-              {trendingTitles.map((t) => (
-                <PosterCard
-                  key={t.id}
-                  to={t.kind === 'movie' ? `/movies/${t.id}` : `/series/${t.id}`}
-                  title={t.title}
-                  art={t.art}
-                  focus={t.focus}
-                  line={t.kind === 'movie' ? `${t.year} · ${t.genres[0]}` : `${t.seasons.length} ${t.seasons.length === 1 ? 'Season' : 'Seasons'} · ${t.genres[0]}`}
-                />
-              ))}
-            </ContentRail>
-          ) : null
-        : safeXtreamMovies.length > 0 ? (
-            <ContentRail
-              key="xtream-movies"
-              id="xtream-movies"
-              icon="film"
-              title="Movies"
-              sub="From your provider"
-              viewAll="/movies"
-              layout="poster"
-            >
-              {safeXtreamMovies.map((m) => (
-                <XtreamPosterCard
-                  key={`${m.sourceId}:${m.id}`}
-                  to={`/movies/${encodeURIComponent(`xt:${m.sourceId}:${m.id}`)}`}
-                  title={m.name}
-                  artworkKey={m.artworkKey}
-                  line={m.year ? String(m.year) : undefined}
-                  year={m.year}
-                />
-              ))}
-            </ContentRail>
-          ) : publicFilms.length > 0 ? (
-            <ContentRail
-              key="public-cinema"
-              id="public-cinema"
-              icon="film"
-              title="Public Cinema & Cultural Film Archives"
-              sub="Curated classic cinema and national registries"
-              viewAll="/movies"
-              layout="poster"
-            >
-              {publicFilms.slice(0, 10).map((r) => (
-                <PosterCard
-                  key={r.id}
-                  to={`/movies/${encodeURIComponent(r.id)}`}
-                  title={r.name}
-                  art={r.artworkUrl}
-                  line={[r.provider, r.subcategory].filter(Boolean).join(' · ')}
-                  flag={<><Icon name="library" size={10} />Archive</>}
-                />
-              ))}
-            </ContentRail>
-          ) : null,
-
-    'radio-audio': () =>
-      mediaLibrary.allResources.length > 0 ? (
-        <ContentRail
-          key="radio-audio"
-          id="radio-audio"
-          icon="radio"
-          title="Live Radio & Spoken Audio"
-          sub="Personal Media Library"
-          viewAll="/radio"
-          layout="wide"
-        >
-          {mediaLibrary.allResources.filter((r) => r.category === 'radio' && r.playbackUrl).slice(0, 8).map((r) => (
-            <HomeAudioCard
-              key={r.id}
-              resource={r}
-              onPlay={(res) => {
-                if (mediaLibrary.currentAudio?.id === res.id) {
-                  mediaLibrary.toggleAudioPlay()
-                } else {
-                  mediaLibrary.playAudio({
-                    id: res.id,
-                    name: res.name,
-                    provider: res.provider,
-                    streamUrl: res.playbackUrl ?? res.url,
-                    artworkUrl: res.artworkUrl,
-                    accentHue: res.accentHue,
-                    mediaType: 'radio',
-                  })
-                }
-              }}
-              isPlaying={mediaLibrary.currentAudio?.id === r.id && mediaLibrary.isAudioPlaying}
-            />
-          ))}
-        </ContentRail>
-      ) : null,
-
-    'favourites-rail': () =>
-      favChannels.length > 0 ? (
+    'favourites-rail': () => {
+      const liveTopIds = new Set(feed.liveChannels.slice(0, 8).map((l) => l.channel.id))
+      const uniqueFavourites = feed.favouriteChannels.filter((c) => !liveTopIds.has(c.id))
+      if (uniqueFavourites.length === 0) return null
+      return (
         <ContentRail
           key="favourites-rail"
           id="favourites-rail"
@@ -1114,7 +981,7 @@ export function Home() {
           viewAll="/live?group=Favourites"
           layout="wide"
         >
-          {favChannels.map((c) => (
+          {uniqueFavourites.map((c) => (
             <ChannelCard
               key={c.id}
               channel={c}
@@ -1126,346 +993,64 @@ export function Home() {
             />
           ))}
         </ContentRail>
-      ) : null,
-
-    'scifi-space': () => {
-      if (demoTitles) {
-        if (scifiTitles.length === 0) return null
-        return (
-          <ContentRail
-            key="scifi-space"
-            id="scifi-space"
-            icon="film"
-            title="Sci-Fi & Space Exploration"
-            sub="Distant worlds and future frontiers"
-            viewAll="/movies?genre=Science%20fiction"
-            layout="poster"
-          >
-            {scifiTitles.map((t) => (
-              <PosterCard
-                key={t.id}
-                to={t.kind === 'movie' ? `/movies/${t.id}` : `/series/${t.id}`}
-                title={t.title}
-                art={t.art}
-                focus={t.focus}
-                line={t.kind === 'movie' ? `${t.year} · ${t.genres[0]}` : `${t.seasons.length} ${t.seasons.length === 1 ? 'Season' : 'Seasons'} · ${t.genres[0]}`}
-              />
-            ))}
-          </ContentRail>
-        )
-      }
-      const realScifi = publicFilms.filter(
-        (r) =>
-          r.tags?.some((tag) => ['space', 'science', 'scifi', 'nasa', 'astronomy', 'cosmos'].includes(tag.toLowerCase())) ||
-          r.subcategory.toLowerCase().includes('space') ||
-          r.subcategory.toLowerCase().includes('science'),
-      )
-      if (realScifi.length === 0) return null
-      return (
-        <ContentRail
-          key="scifi-space"
-          id="scifi-space"
-          icon="film"
-          title="Sci-Fi & Space Exploration"
-          sub="Science fiction archives and deep space exploration"
-          viewAll="/movies"
-          layout="poster"
-        >
-          {realScifi.slice(0, 10).map((r) => (
-            <PosterCard
-              key={r.id}
-              to={`/movies/${encodeURIComponent(r.id)}`}
-              title={r.name}
-              art={r.artworkUrl}
-              line={[r.provider, r.subcategory].filter(Boolean).join(' · ')}
-              flag={<><Icon name="library" size={10} />Archive</>}
-            />
-          ))}
-        </ContentRail>
       )
     },
 
-    'crime-drama': () => {
-      if (demoTitles) {
-        if (crimeDramaTitles.length === 0) return null
-        return (
-          <ContentRail
-            key="crime-drama"
-            id="crime-drama"
-            icon="film"
-            title="Crime & Psychological Drama"
-            sub="Gripping investigations and moral dilemmas"
-            viewAll="/movies?genre=Crime"
-            layout="poster"
-          >
-            {crimeDramaTitles.map((t) => (
-              <PosterCard
-                key={t.id}
-                to={t.kind === 'movie' ? `/movies/${t.id}` : `/series/${t.id}`}
-                title={t.title}
-                art={t.art}
-                focus={t.focus}
-                line={t.kind === 'movie' ? `${t.year} · ${t.genres[0]}` : `${t.seasons.length} ${t.seasons.length === 1 ? 'Season' : 'Seasons'} · ${t.genres[0]}`}
-              />
-            ))}
-          </ContentRail>
-        )
-      }
-      const realDrama = publicFilms.filter(
-        (r) =>
-          r.tags?.some((tag) => ['mystery', 'crime', 'drama', 'thriller', 'detective', 'film-noir'].includes(tag.toLowerCase())) ||
-          r.subcategory.toLowerCase().includes('drama') ||
-          r.subcategory.toLowerCase().includes('mystery'),
-      )
-      if (realDrama.length === 0) return null
-      return (
-        <ContentRail
-          key="crime-drama"
-          id="crime-drama"
-          icon="film"
-          title="Mystery & Classical Drama"
-          sub="Suspense, film noir and psychological narratives"
-          viewAll="/movies"
-          layout="poster"
-        >
-          {realDrama.slice(0, 10).map((r) => (
-            <PosterCard
-              key={r.id}
-              to={`/movies/${encodeURIComponent(r.id)}`}
-              title={r.name}
-              art={r.artworkUrl}
-              line={[r.provider, r.subcategory].filter(Boolean).join(' · ')}
-              flag={<><Icon name="library" size={10} />Archive</>}
-            />
-          ))}
-        </ContentRail>
-      )
-    },
-
-    'action-adventure': () => {
-      if (demoTitles) {
-        if (actionTitles.length === 0) return null
-        return (
-          <ContentRail
-            key="action-adventure"
-            id="action-adventure"
-            icon="film"
-            title="Action & Adventure"
-            sub="High-octane missions, chases and survival"
-            viewAll="/movies?genre=Action"
-            layout="poster"
-          >
-            {actionTitles.map((t) => (
-              <PosterCard
-                key={t.id}
-                to={t.kind === 'movie' ? `/movies/${t.id}` : `/series/${t.id}`}
-                title={t.title}
-                art={t.art}
-                focus={t.focus}
-                line={t.kind === 'movie' ? `${t.year} · ${t.genres[0]}` : `${t.seasons.length} ${t.seasons.length === 1 ? 'Season' : 'Seasons'} · ${t.genres[0]}`}
-              />
-            ))}
-          </ContentRail>
-        )
-      }
-      const realAction = publicFilms.filter(
-        (r) =>
-          r.tags?.some((tag) => ['action', 'adventure', 'western', 'thriller', 'expedition'].includes(tag.toLowerCase())) ||
-          r.subcategory.toLowerCase().includes('action') ||
-          r.subcategory.toLowerCase().includes('adventure'),
-      )
-      if (realAction.length === 0) return null
-      return (
-        <ContentRail
-          key="action-adventure"
-          id="action-adventure"
-          icon="film"
-          title="Action & Classical Adventure"
-          sub="High-stakes epics and cinematic expeditions"
-          viewAll="/movies"
-          layout="poster"
-        >
-          {realAction.slice(0, 10).map((r) => (
-            <PosterCard
-              key={r.id}
-              to={`/movies/${encodeURIComponent(r.id)}`}
-              title={r.name}
-              art={r.artworkUrl}
-              line={[r.provider, r.subcategory].filter(Boolean).join(' · ')}
-              flag={<><Icon name="library" size={10} />Archive</>}
-            />
-          ))}
-        </ContentRail>
-      )
-    },
-
-    'comedy-entertainment': () => {
-      if (demoTitles) {
-        if (comedyTitles.length === 0) return null
-        return (
-          <ContentRail
-            key="comedy-entertainment"
-            id="comedy-entertainment"
-            icon="film"
-            title="Comedy & Family Entertainment"
-            sub="Lighter moments and animated tales"
-            viewAll="/movies?genre=Animation"
-            layout="poster"
-          >
-            {comedyTitles.map((t) => (
-              <PosterCard
-                key={t.id}
-                to={t.kind === 'movie' ? `/movies/${t.id}` : `/series/${t.id}`}
-                title={t.title}
-                art={t.art}
-                focus={t.focus}
-                line={t.kind === 'movie' ? `${t.year} · ${t.genres[0]}` : `${t.seasons.length} ${t.seasons.length === 1 ? 'Season' : 'Seasons'} · ${t.genres[0]}`}
-              />
-            ))}
-          </ContentRail>
-        )
-      }
-      const realComedy = publicFilms.filter(
-        (r) =>
-          r.tags?.some((tag) => ['comedy', 'animation', 'humor', 'family', 'silent-comedy'].includes(tag.toLowerCase())) ||
-          r.subcategory.toLowerCase().includes('comedy') ||
-          r.subcategory.toLowerCase().includes('animation'),
-      )
-      if (realComedy.length === 0) return null
-      return (
-        <ContentRail
-          key="comedy-entertainment"
-          id="comedy-entertainment"
-          icon="film"
-          title="Comedy & Animation Classics"
-          sub="Timeless humor and foundational animation"
-          viewAll="/movies"
-          layout="poster"
-        >
-          {realComedy.slice(0, 10).map((r) => (
-            <PosterCard
-              key={r.id}
-              to={`/movies/${encodeURIComponent(r.id)}`}
-              title={r.name}
-              art={r.artworkUrl}
-              line={[r.provider, r.subcategory].filter(Boolean).join(' · ')}
-              flag={<><Icon name="library" size={10} />Archive</>}
-            />
-          ))}
-        </ContentRail>
-      )
-    },
-
+    // Legacy section mapping for existing profile compatibility
     'recently-added': () => {
-      if (demoTitles) {
-        if (recentlyAdded.length === 0) return null
-        return (
-          <ContentRail
-            key="recently-added"
-            id="recently-added"
-            icon="film"
-            title="Recently Added"
-            sub="Latest arrivals across all genres"
-            viewAll="/movies"
-            layout="poster"
-          >
-            {recentlyAdded.map((t) => (
-              <PosterCard
-                key={t.id}
-                to={t.kind === 'movie' ? `/movies/${t.id}` : `/series/${t.id}`}
-                title={t.title}
-                art={t.art}
-                focus={t.focus}
-                line={t.kind === 'movie' ? `${t.year} · ${t.genres[0]}` : `${t.seasons.length} ${t.seasons.length === 1 ? 'Season' : 'Seasons'} · ${t.genres[0]}`}
-              />
-            ))}
-          </ContentRail>
-        )
-      }
-      const recentItems = [...publicFilms, ...publicSeries].slice(0, 12)
-      if (recentItems.length === 0) return null
+      // If cultural vault is already an active section, render recently added titles
+      if (feed.recentlyAdded.length === 0) return null
       return (
         <ContentRail
           key="recently-added"
           id="recently-added"
           icon="film"
-          title="Curated Public Cinema & Archives"
-          sub="Selected historical works and restored media"
+          title="Recently Added"
+          sub="Latest arrivals across all genres"
           viewAll="/movies"
           layout="poster"
         >
-          {recentItems.map((r) => (
+          {feed.recentlyAdded.map((t) => (
             <PosterCard
-              key={r.id}
-              to={r.category === 'series' ? `/series/${encodeURIComponent(r.id)}` : `/movies/${encodeURIComponent(r.id)}`}
-              title={r.name}
-              art={r.artworkUrl}
-              line={[r.provider, r.subcategory].filter(Boolean).join(' · ')}
-              flag={<><Icon name="library" size={10} />Archive</>}
+              key={t.id}
+              to={t.kind === 'movie' ? `/movies/${t.id}` : `/series/${t.id}`}
+              title={t.title}
+              art={t.art}
+              focus={t.focus}
+              line={t.kind === 'movie' ? `${t.year} · ${t.genres[0]}` : `${t.seasons.length} ${t.seasons.length === 1 ? 'Season' : 'Seasons'} · ${t.genres[0]}`}
             />
           ))}
         </ContentRail>
       )
     },
+
+    'scifi-space': () => null,
+    'crime-drama': () => null,
+    'action-adventure': () => null,
+    'comedy-entertainment': () => null,
   }
-
-  // Real mode series rail renderer
-  const realSeriesRail = !demoTitles && safeXtreamSeries.length > 0 ? (
-    <ContentRail
-      key="xtream-series"
-      id="xtream-series"
-      icon="series"
-      title="Series"
-      sub="From your provider"
-      viewAll="/series"
-      layout="poster"
-    >
-      {safeXtreamSeries.map((s) => (
-        <XtreamPosterCard
-          key={`${s.sourceId}:${s.id}`}
-          to={`/series/${encodeURIComponent(`xt:${s.sourceId}:${s.id}`)}`}
-          title={s.name}
-          artworkKey={s.artworkKey}
-          line={s.year ? String(s.year) : undefined}
-          year={s.year}
-        />
-      ))}
-    </ContentRail>
-  ) : !demoTitles && publicSeries.length > 0 ? (
-    <ContentRail
-      key="public-series"
-      id="public-series"
-      icon="series"
-      title="Television Series Archives"
-      sub="Public broadcasts and episodic retrospective collections"
-      viewAll="/series"
-      layout="poster"
-    >
-      {publicSeries.slice(0, 10).map((r) => (
-        <PosterCard
-          key={r.id}
-          to={`/series/${encodeURIComponent(r.id)}`}
-          title={r.name}
-          art={r.artworkUrl}
-          line={[r.provider, r.subcategory].filter(Boolean).join(' · ')}
-          flag={<><Icon name="library" size={10} />Archive</>}
-        />
-      ))}
-    </ContentRail>
-  ) : null
-
-  const isTvMode = store.prefs.viewMode === 'tv' || userPreferences?.preferences.viewMode === 'tv'
 
   const activeSections = useMemo(() => {
     const visibleSections = [...homeSections].filter((s) => s.visible !== false)
+
+    // Ensure series-rail and cultural-vault exist in the list if missing from an older saved profile
+    if (!visibleSections.some((s) => s.id === 'series-rail')) {
+      const movieIdx = visibleSections.findIndex((s) => s.id === 'trending-popular')
+      const insertAt = movieIdx >= 0 ? movieIdx + 1 : visibleSections.length
+      visibleSections.splice(insertAt, 0, { id: 'series-rail', title: 'Series & TV Shows', visible: true, order: 4 })
+    }
+    if (!visibleSections.some((s) => s.id === 'cultural-vault')) {
+      visibleSections.push({ id: 'cultural-vault', title: 'Cultural Film Vault & Archives', visible: true, order: 7 })
+    }
 
     if (isTvMode) {
       // In TV Mode, enforce television launcher hierarchy:
       // 1. Continue Watching
       // 2. Live On Air
-      // 3. Trending & Popular
+      // 3. Movies
+      // 4. Series & TV Shows
       // Followed by remaining enabled sections in their configured order
-      const tvPriorityOrder = ['continue-watching', 'live-tv-right-now', 'trending-popular']
+      const tvPriorityOrder = ['continue-watching', 'live-tv-right-now', 'trending-popular', 'series-rail']
       const prioritized: typeof homeSections = []
 
       for (const id of tvPriorityOrder) {
@@ -1489,17 +1074,52 @@ export function Home() {
     .map((s) => sectionRenderers[s.id]?.())
     .filter(Boolean)
 
-  const previewChannel = useMemo(() => {
-    return safeChannelsList.find((c) => Boolean(store.programmeAt(c, now))) ?? safeChannelsList[0]
-  }, [safeChannelsList, store, now])
+  // Drawer state: transient, starts closed, never saved open
+  const [hubOpen, setHubOpen] = useState(false)
+  const hubCollapsed = !hubOpen
+  const hubToggleRef = useRef<HTMLButtonElement>(null)
+  const toggleHub = () => setHubOpen((o) => !o)
+  const closeHub = () => {
+    setHubOpen(false)
+    hubToggleRef.current?.focus()
+  }
+
+  useEffect(() => {
+    if (!hubOpen) return
+    document.querySelector<HTMLButtonElement>('.home-side-hub-collapse-btn')?.focus()
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        setHubOpen(false)
+        hubToggleRef.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [hubOpen])
 
   return (
     <div className="home-smarttv-wrapper">
-      <PageHeader />
+      <PageHeader
+        actions={
+          <button
+            type="button"
+            ref={hubToggleRef}
+            className={`header-hub-toggle-btn${hubCollapsed ? '' : ' is-active'}`}
+            aria-label={hubCollapsed ? 'Open Live & Library panel' : 'Close Live & Library panel'}
+            aria-expanded={!hubCollapsed}
+            aria-controls="home-side-hub"
+            onClick={toggleHub}
+          >
+            <Icon name="live" size={18} />
+            <span className="header-hub-btn-label">Live &amp; Library</span>
+          </button>
+        }
+      />
       <div className="home-layout-container">
         <div className="home-main-flow">
           <HomeHero
-            slides={featuredSlides}
+            slides={feed.featuredSlides}
             previewChannel={previewChannel}
           />
           <HomeQuickJump />
@@ -1520,32 +1140,6 @@ export function Home() {
             )}
 
             {renderedSections}
-            {realSeriesRail}
-
-            <div className="home-pair">
-              {favChannels.length > 0 && (
-                <Section icon="heart" title="Your Channels" viewAll="/live?group=Favourites" grid="channel-chips">
-                  {favChannels.map((c) => {
-                    const p = programmeAt(c, now)
-                    return (
-                      <Link key={c.id} to={`/live?channel=${c.id}`} className="card channel-chip">
-                        <ChannelMark channel={c} size={40} />
-                        <span><strong>{c.name}</strong><span className="faint">{p ? p.title : idleLabel(c)}</span></span>
-                      </Link>
-                    )
-                  })}
-                </Section>
-              )}
-              <Section icon="library" title="Your Library" viewAll="/library" grid="shortcut-grid">
-                {shortcuts.map((s) => (
-                  <Link key={s.label} to={s.to} className="card shortcut">
-                    <span className="shortcut-icon"><Icon name={s.icon} /></span>
-                    <span><strong>{s.label}</strong><span className="faint tnum">{s.count} {s.count === 1 ? 'item' : 'items'}</span></span>
-                    <Icon name="right" size={18} />
-                  </Link>
-                ))}
-              </Section>
-            </div>
 
             <p className="footer-note faint">
               {channelMode === 'playlists'
@@ -1557,8 +1151,17 @@ export function Home() {
           </div>
         </div>
 
+        {/* Overlay backdrop when companion drawer is open */}
+        {!hubCollapsed && (
+          <div
+            className="home-side-hub-backdrop"
+            onClick={closeHub}
+            aria-hidden="true"
+          />
+        )}
+
         <HomeSideHub
-          channels={safeChannelsList}
+          channels={channels}
           now={now}
           previewChannel={previewChannel}
           totalMovies={(demoTitles ? movies.length : 0) + xtreamCatalogue.movies.length + (localCatalogue?.movies?.length || 0)}
@@ -1571,6 +1174,8 @@ export function Home() {
                 : `${Math.round(storageSummary.availableDiskBytes / 1024 ** 3)} GB Free`
               : '0 B Indexed'
           }
+          collapsed={hubCollapsed}
+          onToggleCollapse={closeHub}
         />
       </div>
     </div>

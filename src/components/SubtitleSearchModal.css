@@ -1,0 +1,224 @@
+/* SubtitleSearchModal.css - In-player subtitle search and downloader modal.
+   Strictly adheres to typography standards: zero em-dashes across all code and comments. */
+
+.subtitle-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: subtitleModalFadeIn 180ms var(--ease);
+}
+
+@keyframes subtitleModalFadeIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.subtitle-modal-dialog {
+  width: 100%;
+  max-width: 680px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface, #18181b);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--r-l, 14px);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+  color: var(--text, #fff);
+  overflow: hidden;
+}
+
+.subtitle-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.subtitle-modal-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.subtitle-modal-title-icon {
+  color: var(--accent, #6366f1);
+}
+
+.subtitle-modal-title {
+  margin: 0;
+  font-size: 1.1875rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.subtitle-modal-subtitle {
+  margin: 2px 0 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-2, rgba(255, 255, 255, 0.65));
+}
+
+.subtitle-search-form {
+  padding: 16px 24px;
+  background: rgba(0, 0, 0, 0.12);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.subtitle-input-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.subtitle-input-query {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 0.875rem;
+  color: #fff;
+  outline: none;
+  transition: border-color 140ms ease;
+}
+
+.subtitle-input-query:focus {
+  border-color: var(--accent, #6366f1);
+}
+
+.subtitle-select {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.8125rem;
+  color: #fff;
+  outline: none;
+  cursor: pointer;
+}
+
+.subtitle-options-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 0.8125rem;
+}
+
+.subtitle-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  color: var(--text-2, rgba(255, 255, 255, 0.7));
+}
+
+.subtitle-results-container {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 380px;
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.subtitle-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  gap: 12px;
+  transition: all 140ms ease;
+}
+
+.subtitle-card:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.subtitle-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.subtitle-file-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subtitle-card-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.6875rem;
+}
+
+.subtitle-lang-pill {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(99, 102, 241, 0.2);
+  color: #a5b4fc;
+  font-weight: 600;
+}
+
+.subtitle-format-pill {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.75);
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.subtitle-cc-pill {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+  font-weight: 700;
+}
+
+.subtitle-downloads-count {
+  color: var(--text-2, rgba(255, 255, 255, 0.5));
+}
+
+.subtitle-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 16px;
+  gap: 12px;
+  color: var(--text-2, rgba(255, 255, 255, 0.6));
+  text-align: center;
+}
+
+.subtitle-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.18);
+}

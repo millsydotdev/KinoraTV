@@ -1,6 +1,7 @@
 // The typed boundary between React and the Rust shell (src-tauri/src/lib.rs). In a plain browser
 // (Vite dev server, Vitest) there is no shell, so calls resolve to null instead of failing.
 import { invoke, isTauri } from '@tauri-apps/api/core'
+export { isTauri }
 import packageInfo from '../../package.json'
 
 /** Single authoritative application version read directly from root package.json. */
@@ -97,10 +98,15 @@ export interface PlaylistChannel {
   language: string | null
   country: string | null
   chno: number | null
+  catchup?: string | null
+  catchupDays?: number | null
+  catchupSource?: string | null
   /** As written in the playlist; may hold account names, passwords or tokens. Never display or log it. */
   streamUrl: string
   /** `scheme://host[:port]/…`: the only form of the stream address to show. */
   streamDisplay: string
+  httpUserAgent?: string | null
+  httpReferrer?: string | null
 }
 
 /** Mirrors `Report` in src-tauri/src/ingest.rs. */
@@ -249,6 +255,144 @@ export interface XtreamEpisode {
 }
 export interface XtreamSeason { number: number; episodes: XtreamEpisode[] }
 export interface XtreamSeriesDetails { plot: string | null; seasons: XtreamSeason[] }
+
+export interface StalkerProfile {
+  mac: string
+  name: string
+  status: string
+  expDate: string | null
+  phone: string | null
+}
+
+export interface StalkerGenre {
+  id: string
+  title: string
+  alias: string
+}
+
+export interface StalkerChannel {
+  id: string
+  number: number
+  name: string
+  cmd: string
+  logo: string | null
+  genreId: string
+}
+
+export interface StalkerVodItem {
+  id: string
+  name: string
+  cmd: string
+  poster: string | null
+  year: string | null
+  categoryId: string | null
+}
+
+export interface StalkerCatalogue {
+  portalUrl: string
+  mac: string
+  profile: StalkerProfile
+  genres: StalkerGenre[]
+  channels: StalkerChannel[]
+  vod: StalkerVodItem[]
+}
+
+export type DownloadStatus = 'queued' | 'downloading' | 'paused' | 'completed' | 'failed' | 'cancelled'
+
+export interface DownloadItem {
+  id: string
+  url: string
+  title: string
+  kind: string
+  extension: string
+  artworkUrl: string | null
+  status: DownloadStatus
+  downloadedBytes: number
+  totalBytes: number
+  speedBps: number
+  etaSeconds: number | null
+  errorMessage: string | null
+  filePath: string | null
+  createdAt: number
+  completedAt: number | null
+}
+
+export const parseDownloadItem = (raw: unknown): DownloadItem => {
+  const v = raw as Record<string, unknown>
+  return {
+    id: typeof v?.id === 'string' ? v.id : '',
+    url: typeof v?.url === 'string' ? v.url : '',
+    title: typeof v?.title === 'string' ? v.title : '',
+    kind: typeof v?.kind === 'string' ? v.kind : 'video',
+    extension: typeof v?.extension === 'string' ? v.extension : 'mp4',
+    artworkUrl: typeof v?.artworkUrl === 'string' ? v.artworkUrl : null,
+    status: (typeof v?.status === 'string' ? v.status : 'queued') as DownloadStatus,
+    downloadedBytes: typeof v?.downloadedBytes === 'number' ? v.downloadedBytes : 0,
+    totalBytes: typeof v?.totalBytes === 'number' ? v.totalBytes : 0,
+    speedBps: typeof v?.speedBps === 'number' ? v.speedBps : 0,
+    etaSeconds: typeof v?.etaSeconds === 'number' ? v.etaSeconds : null,
+    errorMessage: typeof v?.errorMessage === 'string' ? v.errorMessage : null,
+    filePath: typeof v?.filePath === 'string' ? v.filePath : null,
+    createdAt: typeof v?.createdAt === 'number' ? v.createdAt : 0,
+    completedAt: typeof v?.completedAt === 'number' ? v.completedAt : null,
+  }
+}
+
+export const parseStalkerProfile = (raw: unknown): StalkerProfile => {
+  const v = raw as Record<string, unknown>
+  return {
+    mac: typeof v?.mac === 'string' ? v.mac : '',
+    name: typeof v?.name === 'string' ? v.name : 'Stalker User',
+    status: typeof v?.status === 'string' ? v.status : 'Active',
+    expDate: typeof v?.expDate === 'string' ? v.expDate : null,
+    phone: typeof v?.phone === 'string' ? v.phone : null,
+  }
+}
+
+export const parseStalkerGenre = (raw: unknown): StalkerGenre => {
+  const v = raw as Record<string, unknown>
+  return {
+    id: typeof v?.id === 'string' ? v.id : '',
+    title: typeof v?.title === 'string' ? v.title : '',
+    alias: typeof v?.alias === 'string' ? v.alias : '',
+  }
+}
+
+export const parseStalkerChannel = (raw: unknown): StalkerChannel => {
+  const v = raw as Record<string, unknown>
+  return {
+    id: typeof v?.id === 'string' ? v.id : '',
+    number: typeof v?.number === 'number' ? v.number : 0,
+    name: typeof v?.name === 'string' ? v.name : '',
+    cmd: typeof v?.cmd === 'string' ? v.cmd : '',
+    logo: typeof v?.logo === 'string' ? v.logo : null,
+    genreId: typeof v?.genreId === 'string' ? v.genreId : '',
+  }
+}
+
+export const parseStalkerVodItem = (raw: unknown): StalkerVodItem => {
+  const v = raw as Record<string, unknown>
+  return {
+    id: typeof v?.id === 'string' ? v.id : '',
+    name: typeof v?.name === 'string' ? v.name : '',
+    cmd: typeof v?.cmd === 'string' ? v.cmd : '',
+    poster: typeof v?.poster === 'string' ? v.poster : null,
+    year: typeof v?.year === 'string' ? v.year : null,
+    categoryId: typeof v?.categoryId === 'string' ? v.categoryId : null,
+  }
+}
+
+export const parseStalkerCatalogue = (raw: unknown): StalkerCatalogue => {
+  const v = raw as Record<string, unknown>
+  return {
+    portalUrl: typeof v?.portalUrl === 'string' ? v.portalUrl : '',
+    mac: typeof v?.mac === 'string' ? v.mac : '',
+    profile: parseStalkerProfile(v?.profile),
+    genres: Array.isArray(v?.genres) ? v.genres.map(parseStalkerGenre) : [],
+    channels: Array.isArray(v?.channels) ? v.channels.map(parseStalkerChannel) : [],
+    vod: Array.isArray(v?.vod) ? v.vod.map(parseStalkerVodItem) : [],
+  }
+}
 
 const parseXtreamEntry = (raw: unknown): XtreamEntry => {
   const v = raw as Record<string, unknown> | null
@@ -481,6 +625,117 @@ export async function isXtreamConnected(sourceId: string): Promise<boolean> {
   }
 }
 
+export async function connectStalker(portalUrl: string, mac: string): Promise<StalkerProfile | null> {
+  if (!isTauri()) return null
+  try {
+    const raw = await invoke('connect_stalker', { portalUrl, mac })
+    return raw ? parseStalkerProfile(raw) : null
+  } catch (e) {
+    throw toIngestError(e, 'Kinora could not connect to this Stalker portal.')
+  }
+}
+
+export async function loadStalkerCatalogue(): Promise<StalkerCatalogue | null> {
+  if (!isTauri()) return null
+  try {
+    const raw = await invoke('load_stalker_catalogue')
+    return raw ? parseStalkerCatalogue(raw) : null
+  } catch (e) {
+    throw toIngestError(e, 'Kinora could not load the Stalker catalogue.')
+  }
+}
+
+export async function openStalkerStream(cmd: string): Promise<OpenedStream | null> {
+  if (!isTauri()) return null
+  return queued(async () => {
+    let raw: unknown
+    try {
+      raw = await invoke('open_stalker_stream', { cmd })
+    } catch (e) {
+      throw toIngestError(e)
+    }
+    return parseOpenedStream(raw)
+  })
+}
+
+export async function disconnectStalker(): Promise<void> {
+  if (!isTauri()) return
+  await invoke('disconnect_stalker')
+}
+
+export async function isStalkerConnected(): Promise<boolean> {
+  if (!isTauri()) return false
+  try {
+    return Boolean(await invoke('is_stalker_connected'))
+  } catch {
+    return false
+  }
+}
+
+export async function startDownload(
+  url: string,
+  title: string,
+  kind: string,
+  extension: string,
+  artworkUrl?: string | null,
+): Promise<DownloadItem | null> {
+  if (!isTauri()) return null
+  try {
+    const raw = await invoke('start_download', { url, title, kind, extension, artworkUrl: artworkUrl ?? null })
+    return raw ? parseDownloadItem(raw) : null
+  } catch (e) {
+    throw toIngestError(e, 'Kinora could not start this download.')
+  }
+}
+
+export async function pauseDownload(id: string): Promise<DownloadItem | null> {
+  if (!isTauri()) return null
+  try {
+    const raw = await invoke('pause_download', { id })
+    return raw ? parseDownloadItem(raw) : null
+  } catch (e) {
+    throw toIngestError(e, 'Kinora could not pause this download.')
+  }
+}
+
+export async function resumeDownload(id: string): Promise<DownloadItem | null> {
+  if (!isTauri()) return null
+  try {
+    const raw = await invoke('resume_download', { id })
+    return raw ? parseDownloadItem(raw) : null
+  } catch (e) {
+    throw toIngestError(e, 'Kinora could not resume this download.')
+  }
+}
+
+export async function cancelDownload(id: string): Promise<void> {
+  if (!isTauri()) return
+  try {
+    await invoke('cancel_download', { id })
+  } catch (e) {
+    throw toIngestError(e, 'Kinora could not cancel this download.')
+  }
+}
+
+export async function deleteDownload(id: string): Promise<void> {
+  if (!isTauri()) return
+  try {
+    await invoke('delete_download', { id })
+  } catch (e) {
+    throw toIngestError(e, 'Kinora could not delete this download.')
+  }
+}
+
+export async function getDownloads(): Promise<DownloadItem[]> {
+  if (!isTauri()) return []
+  try {
+    const raw = await invoke('get_downloads')
+    return Array.isArray(raw) ? raw.map(parseDownloadItem) : []
+  } catch {
+    return []
+  }
+}
+
 export async function testXtreamConnection(server: string, username: string, password: string): Promise<XtreamConnectionReport | null> {
   if (!isTauri()) return null
   try {
@@ -546,6 +801,38 @@ export async function openXtreamCatchup(
     let raw: unknown
     try {
       raw = await invoke('open_xtream_catchup', { sourceId, streamId, startTimestamp, durationMins })
+    } catch (e) {
+      throw toIngestError(e)
+    }
+    return parseOpenedStream(raw)
+  })
+}
+
+export async function openM3uCatchup(
+  streamUrl: string,
+  catchupType: string | null,
+  catchupSource: string | null,
+  startTimestamp: number,
+  durationMins: number,
+  stopTimestamp: number,
+): Promise<OpenedStream | null> {
+  if (!isTauri()) {
+    return {
+      url: `kstream://localhost/mock-m3u-catchup-${startTimestamp}`,
+      session: 1,
+    }
+  }
+  return queued(async () => {
+    let raw: unknown
+    try {
+      raw = await invoke('open_m3u_catchup', {
+        streamUrl,
+        catchupType: catchupType ?? null,
+        catchupSource: catchupSource ?? null,
+        startTimestamp,
+        durationMins,
+        stopTimestamp,
+      })
     } catch (e) {
       throw toIngestError(e)
     }
@@ -907,6 +1194,29 @@ export async function dvrGetStorageInfo(): Promise<StorageInfo> {
   }
 }
 
+export interface ProgrammeCandidate {
+  channelId: string
+  channelName: string
+  channelLogo?: string
+  programmeId: string
+  title: string
+  description?: string
+  startTime: number
+  endTime: number
+}
+
+export async function dvrEvaluateSeriesRules(programmes: ProgrammeCandidate[]): Promise<Recording[]> {
+  if (!isTauri()) {
+    return []
+  }
+  try {
+    const raw = await invoke('dvr_evaluate_series_rules', { programmes })
+    return Array.isArray(raw) ? (raw as Recording[]) : []
+  } catch (e) {
+    throw toIngestError(e, 'Kinora could not evaluate series recording rules.')
+  }
+}
+
 const isIngestCode = (v: unknown): v is (typeof INGEST_CODES)[number] => INGEST_CODES.some((c) => c === v)
 const isCount = (v: unknown, max: number): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= max
 const isOptText = (v: unknown, max: number): v is string | null => v === null || isText(v, max)
@@ -918,11 +1228,32 @@ function parseChannel(raw: unknown): PlaylistChannel {
     !isText(v.key, 600) || !isText(v.name, 1024) || !isText(v.streamUrl, 4096) || !isText(v.streamDisplay, 600) ||
     !isOptText(v.tvgId, 1024) || !isOptText(v.group, 1024) || !isOptText(v.logo, 2048) ||
     !isOptText(v.language, 1024) || !isOptText(v.country, 1024) ||
-    !(v.chno === null || (isCount(v.chno, 99_999) && v.chno > 0))
+    !(v.chno === null || (isCount(v.chno, 99_999) && v.chno > 0)) ||
+    !(v.catchup === undefined || isOptText(v.catchup, 128)) ||
+    !(v.catchupDays === null || typeof v.catchupDays === 'undefined' || (isCount(v.catchupDays, 365) && v.catchupDays > 0)) ||
+    !(v.catchupSource === undefined || isOptText(v.catchupSource, 4096)) ||
+    !(v.httpUserAgent === undefined || isOptText(v.httpUserAgent, 2048)) ||
+    !(v.httpReferrer === undefined || isOptText(v.httpReferrer, 4096))
   ) {
     throw new Error('The native shell returned a playlist channel in an unexpected shape.')
   }
-  return { key: v.key, tvgId: v.tvgId, name: v.name, group: v.group, logo: v.logo, language: v.language, country: v.country, chno: v.chno, streamUrl: v.streamUrl, streamDisplay: v.streamDisplay }
+  return {
+    key: v.key,
+    tvgId: v.tvgId,
+    name: v.name,
+    group: v.group,
+    logo: v.logo,
+    language: v.language,
+    country: v.country,
+    chno: v.chno,
+    ...(v.catchup !== undefined ? { catchup: v.catchup as string | null } : {}),
+    ...(v.catchupDays !== undefined ? { catchupDays: v.catchupDays as number | null } : {}),
+    ...(v.catchupSource !== undefined ? { catchupSource: v.catchupSource as string | null } : {}),
+    ...(v.httpUserAgent !== undefined ? { httpUserAgent: v.httpUserAgent as string | null } : {}),
+    ...(v.httpReferrer !== undefined ? { httpReferrer: v.httpReferrer as string | null } : {}),
+    streamUrl: v.streamUrl,
+    streamDisplay: v.streamDisplay,
+  }
 }
 
 export function parsePlaylistReport(raw: unknown): PlaylistReport {
@@ -1025,7 +1356,9 @@ export async function loadChannelLogo(
     }
   }
   try {
-    return await pending
+    const resolved = await pending
+    if (!resolved) logoCache.delete(cacheKey)
+    return resolved
   } catch {
     logoCache.delete(cacheKey)
     return null
@@ -1033,6 +1366,29 @@ export async function loadChannelLogo(
 }
 
 const programmeArtCache = new Map<string, Promise<string | null>>()
+const typedArtworkCache = new Map<string, Promise<string | null>>()
+const localArtworkCache = new Map<string, Promise<string | null>>()
+
+function bytesToDataUri(mimeType: string, bytes: Uint8Array): string {
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  }
+  return `data:${mimeType};base64,${btoa(binary)}`
+}
+
+export interface ArtworkCacheStats {
+  fileCount: number
+  totalBytes: number
+  maxBytes: number
+  failedCount: number
+}
+
+export interface MetadataCredentials {
+  tmdbApiKey: string
+  tvdbApiKey: string
+  tvdbPin: string
+}
 
 /** Fetches, caches and validates programme artwork in Rust; returns base64 data URI or null. */
 export async function loadProgrammeArtwork(url: string | null): Promise<string | null> {
@@ -1043,11 +1399,7 @@ export async function loadProgrammeArtwork(url: string | null): Promise<string |
     pending = invoke('fetch_programme_artwork', { url }).then((raw) => {
       const art = parseArtwork(raw)
       if (!art) return null
-      let binary = ''
-      for (let i = 0; i < art.bytes.length; i += 0x8000) {
-        binary += String.fromCharCode(...art.bytes.subarray(i, i + 0x8000))
-      }
-      return `data:${art.mimeType};base64,${btoa(binary)}`
+      return bytesToDataUri(art.mimeType, art.bytes)
     })
     programmeArtCache.set(url, pending)
     if (programmeArtCache.size > 4096) {
@@ -1056,11 +1408,122 @@ export async function loadProgrammeArtwork(url: string | null): Promise<string |
     }
   }
   try {
-    return await pending
+    const resolved = await pending
+    if (!resolved) programmeArtCache.delete(url)
+    return resolved
   } catch {
     programmeArtCache.delete(url)
     return null
   }
+}
+
+/** Fetches and persistently caches typed artwork (movie poster, backdrop, season, still) in Rust. */
+export async function loadCachedArtwork(
+  artworkKey: string,
+  url: string | null,
+  forceRefresh = false,
+): Promise<string | null> {
+  if (!artworkKey) return null
+  if (!isTauri()) return url
+  const cacheMapKey = `${artworkKey}|${url ?? ''}`
+  if (forceRefresh) {
+    typedArtworkCache.delete(cacheMapKey)
+  }
+  let pending = typedArtworkCache.get(cacheMapKey)
+  if (!pending) {
+    pending = invoke('fetch_artwork', {
+      artworkKey,
+      url: url ?? null,
+      forceRefresh,
+    }).then((raw) => {
+      const art = parseArtwork(raw)
+      if (!art) return null
+      return bytesToDataUri(art.mimeType, art.bytes)
+    })
+    typedArtworkCache.set(cacheMapKey, pending)
+    if (typedArtworkCache.size > 4096) {
+      const oldest = typedArtworkCache.keys().next().value
+      if (oldest) typedArtworkCache.delete(oldest)
+    }
+  }
+  try {
+    const resolved = await pending
+    if (!resolved) typedArtworkCache.delete(cacheMapKey)
+    return resolved
+  } catch {
+    typedArtworkCache.delete(cacheMapKey)
+    return null
+  }
+}
+
+/** Reads validated local sidecar/folder artwork for a scanned local media item via Rust IPC. */
+export async function loadLocalMediaArtwork(
+  mediaId: string,
+  variant: 'poster' | 'backdrop' | 'still' = 'poster',
+): Promise<string | null> {
+  if (!mediaId) return null
+  if (!isTauri()) return null
+  const key = `${mediaId}:${variant}`
+  let pending = localArtworkCache.get(key)
+  if (!pending) {
+    pending = invoke('load_local_media_artwork', { mediaId, variant }).then((raw) => {
+      const art = parseArtwork(raw)
+      if (!art) return null
+      return bytesToDataUri(art.mimeType, art.bytes)
+    })
+    localArtworkCache.set(key, pending)
+    if (localArtworkCache.size > 1024) {
+      const oldest = localArtworkCache.keys().next().value
+      if (oldest) localArtworkCache.delete(oldest)
+    }
+  }
+  try {
+    const resolved = await pending
+    if (!resolved) localArtworkCache.delete(key)
+    return resolved
+  } catch {
+    localArtworkCache.delete(key)
+    return null
+  }
+}
+
+export async function getArtworkCacheStats(): Promise<ArtworkCacheStats | null> {
+  if (!isTauri()) return null
+  try {
+    const raw = await invoke('artwork_cache_stats', {})
+    if (!raw || typeof raw !== 'object') return null
+    const r = raw as Record<string, unknown>
+    return {
+      fileCount: typeof r.fileCount === 'number' ? r.fileCount : 0,
+      totalBytes: typeof r.totalBytes === 'number' ? r.totalBytes : 0,
+      maxBytes: typeof r.maxBytes === 'number' ? r.maxBytes : 150 * 1024 * 1024,
+      failedCount: typeof r.failedCount === 'number' ? r.failedCount : 0,
+    }
+  } catch {
+    return null
+  }
+}
+
+export async function clearArtworkCache(): Promise<number> {
+  programmeArtCache.clear()
+  typedArtworkCache.clear()
+  localArtworkCache.clear()
+  if (!isTauri()) return 0
+  try {
+    const freed = await invoke('clear_artwork_cache', {})
+    return typeof freed === 'number' ? freed : 0
+  } catch {
+    return 0
+  }
+}
+
+export async function retryFailedArtwork(): Promise<void> {
+  programmeArtCache.clear()
+  typedArtworkCache.clear()
+  if (!isTauri()) return
+  try {
+    await invoke('retry_failed_artwork', {})
+  } catch {}
 }
 
 /** Reads a file the user picked with `<input type="file">` and parses it in Rust; no path is shared. */
@@ -1104,12 +1567,19 @@ function serial() {
 // last one the page asked for (rapid channel changes, React's double-run effects in development).
 const queued = serial()
 
+/** Options passed when opening a stream, such as custom headers, User-Agent or Referrer overrides. */
+export interface StreamOptions {
+  userAgent?: string | null
+  referrer?: string | null
+  headers?: Record<string, string> | null
+}
+
 /**
  * Starts a guarded playback session in Rust for a playlist channel's stream address and returns an
  * opaque `kstream` address for hls.js. `null` outside the native shell. Rejects with `IngestError`
  * (`unsupported-stream`, `blocked`...) when the stream cannot be played.
  */
-export async function openStream(streamUrl: string): Promise<OpenedStream | null> {
+export async function openStream(streamUrl: string, options?: StreamOptions): Promise<OpenedStream | null> {
   if (!isTauri()) return null
   return queued(async () => {
     let raw: unknown
@@ -1121,8 +1591,14 @@ export async function openStream(streamUrl: string): Promise<OpenedStream | null
         const params = new URLSearchParams(search ?? '')
         const extension = params.get('ext') ?? undefined
         raw = await invoke('open_xtream_stream', { sourceId, streamType, itemId, extension })
+      } else if (streamUrl.startsWith('stalker://')) {
+        const withoutPrefix = streamUrl.slice('stalker://'.length)
+        const cmd = decodeURIComponent(withoutPrefix)
+        raw = await invoke('open_stalker_stream', { cmd })
       } else {
-        raw = await invoke('open_stream', { url: streamUrl })
+        const payload: { url: string; options?: StreamOptions | null } = { url: streamUrl }
+        if (options !== undefined) payload.options = options
+        raw = await invoke('open_stream', payload)
       }
     } catch (e) {
       throw toIngestError(e)
@@ -1681,7 +2157,7 @@ export async function verifyParentalPin(pin: string, stored: unknown): Promise<V
 }
 
 /**
- * Queries an approved metadata provider (The Movie Database or TVmaze) via Rust IPC.
+ * Queries an approved metadata provider (TMDB, TVmaze, or TVDB) via Rust IPC.
  * Strictly bounded by Policy::metadata(), with no URL leaking and direct connections only.
  * Returns null outside the native shell or when request fails.
  */
@@ -1702,6 +2178,92 @@ export async function fetchMetadata(url: string, authHeader?: string | null): Pr
   } catch {
     return null
   }
+}
+
+/**
+ * Safely fetches subtitle data (JSON query or VTT/SRT text) from an approved subtitle provider.
+ * Strictly bounded by Policy::subtitle(), with no URL leaking and direct connections only.
+ * Returns null outside the native shell or when request fails.
+ */
+export async function fetchSubtitle(url: string, apiKey?: string | null): Promise<string | null> {
+  if (!isTauri()) {
+    try {
+      const headers: Record<string, string> = { Accept: 'application/json, text/vtt, text/plain, */*' }
+      if (apiKey) headers['Api-Key'] = apiKey
+      const res = await fetch(url, { headers })
+      if (!res.ok) return null
+      return await res.text()
+    } catch {
+      return null
+    }
+  }
+  try {
+    return await invoke('fetch_subtitle', { url, apiKey: apiKey ?? null })
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Sends a bounded JSON POST request to an approved metadata provider (e.g. TVDB v4 login).
+ */
+export async function postMetadata(
+  url: string,
+  bodyJson: string,
+  authHeader?: string | null,
+): Promise<string | null> {
+  if (!isTauri()) {
+    try {
+      const headers: Record<string, string> = {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      }
+      if (authHeader) headers['Authorization'] = authHeader
+      const res = await fetch(url, { method: 'POST', headers, body: bodyJson })
+      if (!res.ok) return null
+      return await res.text()
+    } catch {
+      return null
+    }
+  }
+  try {
+    return await invoke('post_metadata', { url, bodyJson, authHeader: authHeader ?? null })
+  } catch {
+    return null
+  }
+}
+
+export async function saveMetadataCredentialsVault(credentials: MetadataCredentials): Promise<boolean> {
+  if (!isTauri()) return false
+  try {
+    await invoke('save_metadata_credentials', { credentials })
+    return true
+  } catch {
+    return false
+  }
+}
+
+export async function loadMetadataCredentialsVault(): Promise<MetadataCredentials | null> {
+  if (!isTauri()) return null
+  try {
+    const raw = await invoke('load_metadata_credentials', {})
+    if (!raw || typeof raw !== 'object') return null
+    const r = raw as Record<string, unknown>
+    return {
+      tmdbApiKey: typeof r.tmdbApiKey === 'string' ? r.tmdbApiKey : '',
+      tvdbApiKey: typeof r.tvdbApiKey === 'string' ? r.tvdbApiKey : '',
+      tvdbPin: typeof r.tvdbPin === 'string' ? r.tvdbPin : '',
+    }
+  } catch {
+    return null
+  }
+}
+
+export async function clearMetadataCredentialsVault(): Promise<void> {
+  if (!isTauri()) return
+  try {
+    await invoke('clear_metadata_credentials', {})
+  } catch {}
 }
 
 export interface UpdateCheckResult {
@@ -1975,9 +2537,26 @@ export async function getLocalMediaCatalogue(): Promise<LocalMediaCatalogue> {
   }
   try {
     const raw = await invoke<any>('get_local_media_catalogue')
+    const movies = (Array.isArray(raw?.movies) ? raw.movies : []).map((m: LocalMovie) => ({
+      ...m,
+      artPath: m.artPath ? (m.artPath.startsWith('kstream://') || m.artPath.startsWith('http') || m.artPath.startsWith('data:') ? m.artPath : `kstream://localhost/local/${m.id}/art`) : null,
+      backdropPath: m.backdropPath ? (m.backdropPath.startsWith('kstream://') || m.backdropPath.startsWith('http') || m.backdropPath.startsWith('data:') ? m.backdropPath : `kstream://localhost/local/${m.id}/backdrop`) : null,
+    }))
+    const series = (Array.isArray(raw?.series) ? raw.series : Array.isArray(raw?.shows) ? raw.shows : []).map((s: LocalSeries) => ({
+      ...s,
+      artPath: s.artPath ? (s.artPath.startsWith('kstream://') || s.artPath.startsWith('http') || s.artPath.startsWith('data:') ? s.artPath : `kstream://localhost/local/${s.id}/art`) : null,
+      backdropPath: s.backdropPath ? (s.backdropPath.startsWith('kstream://') || s.backdropPath.startsWith('http') || s.backdropPath.startsWith('data:') ? s.backdropPath : `kstream://localhost/local/${s.id}/backdrop`) : null,
+      seasons: (s.seasons || []).map((sn: LocalSeason) => ({
+        ...sn,
+        episodes: (sn.episodes || []).map((e: LocalEpisode) => ({
+          ...e,
+          artPath: e.artPath ? (e.artPath.startsWith('kstream://') || e.artPath.startsWith('http') || e.artPath.startsWith('data:') ? e.artPath : `kstream://localhost/local/${e.id}/art`) : null,
+        })),
+      })),
+    }))
     return {
-      movies: Array.isArray(raw?.movies) ? raw.movies : [],
-      series: Array.isArray(raw?.series) ? raw.series : Array.isArray(raw?.shows) ? raw.shows : [],
+      movies,
+      series,
       totalMediaBytes: typeof raw?.totalMediaBytes === 'number' ? raw.totalMediaBytes : 0,
     }
   } catch {
@@ -2034,20 +2613,173 @@ export async function selectLocalMediaFolder(folderPath?: string): Promise<strin
 }
 
 export async function openLocalMediaStream(mediaId: string): Promise<OpenedStream | null> {
-  if (!isTauri()) return null
+  if (!isTauri()) {
+    return {
+      url: `kstream://localhost/local/${mediaId}/stream`,
+      session: 0,
+      format: 'direct',
+    }
+  }
   try {
     const raw = await invoke<{ url: string; session: number; format?: string }>('open_local_media_stream', { mediaId })
     if (raw && typeof raw.url === 'string') {
       return {
         url: raw.url,
-        session: raw.session || 1,
-        format: 'hls',
+        session: raw.session || 0,
+        format: raw.format === 'hls' ? 'hls' : 'direct',
       }
     }
     return null
   } catch {
     return null
   }
+}
+
+export interface RemotePlaybackState {
+  title: string
+  subtitle?: string | null
+  isPlaying: boolean
+  volume: number
+  isMuted: boolean
+  durationSec: number
+  positionSec: number
+  channelName?: string | null
+  channelNumber?: number | null
+}
+
+export interface RemoteServerStatus {
+  running: boolean
+  port: number
+  localIp: string
+  pairingPin: string
+  serverUrl: string
+  connectedClients: number
+}
+
+export interface RemoteCommandEvent {
+  command: string
+  payload?: Record<string, unknown> | null
+  clientId?: string | null
+  timestamp: number
+}
+
+export async function startRemoteServer(port?: number, pin?: string): Promise<RemoteServerStatus | null> {
+  if (!isTauri()) {
+    return {
+      running: true,
+      port: port || 5198,
+      localIp: '127.0.0.1',
+      pairingPin: pin || '7492',
+      serverUrl: `http://127.0.0.1:${port || 5198}`,
+      connectedClients: 0,
+    }
+  }
+  try {
+    return await invoke<RemoteServerStatus>('start_remote_server', { port, pin })
+  } catch (err) {
+    console.error('Failed to start remote server:', err)
+    return null
+  }
+}
+
+export async function stopRemoteServer(): Promise<boolean> {
+  if (!isTauri()) return true
+  try {
+    await invoke('stop_remote_server')
+    return true
+  } catch {
+    return false
+  }
+}
+
+export async function getRemoteServerStatus(): Promise<RemoteServerStatus | null> {
+  if (!isTauri()) {
+    return {
+      running: false,
+      port: 5198,
+      localIp: '127.0.0.1',
+      pairingPin: '7492',
+      serverUrl: 'http://127.0.0.1:5198',
+      connectedClients: 0,
+    }
+  }
+  try {
+    return await invoke<RemoteServerStatus>('get_remote_server_status')
+  } catch {
+    return null
+  }
+}
+
+export async function updateRemotePlaybackState(state: RemotePlaybackState): Promise<boolean> {
+  if (!isTauri()) return true
+  try {
+    await invoke('update_remote_playback_state', { state })
+    return true
+  } catch {
+    return false
+  }
+}
+
+export async function fetchTrakt(
+  url: string,
+  method: 'GET' | 'POST' | 'DELETE' = 'GET',
+  clientId: string,
+  accessToken?: string | null,
+  body?: string | null
+): Promise<string> {
+  if (!isTauri()) {
+    return JSON.stringify({ ok: true, mock: true })
+  }
+  return await invoke<string>('fetch_trakt', {
+    url,
+    method,
+    clientId,
+    accessToken: accessToken ?? null,
+    body: body ?? null,
+  })
+}
+
+/** Discovered DLNA / UPnP MediaRenderer device from SSDP scan. */
+export interface DlnaDevice {
+  id: string
+  name: string
+  model: string
+  manufacturer: string
+  location: string
+  ip: string
+  port: number
+  avTransportUrl?: string | null
+  renderingControlUrl?: string | null
+}
+
+/** Discovers DLNA / UPnP MediaRenderer devices across the local subnet. */
+export async function discoverDlnaRenderers(): Promise<DlnaDevice[]> {
+  if (!isTauri()) return []
+  return invoke<DlnaDevice[]>('discover_dlna_renderers')
+}
+
+/** Casts media to a DLNA MediaRenderer by setting its URI and initiating playback. */
+export async function castDlnaMedia(
+  controlUrl: string,
+  mediaUrl: string,
+  title: string
+): Promise<boolean> {
+  if (!isTauri()) return false
+  return invoke<boolean>('cast_dlna_media', { controlUrl, mediaUrl, title })
+}
+
+/** Dispatches a playback command (play, pause, stop, volume) to the DLNA renderer. */
+export async function controlDlnaPlayback(
+  controlUrl: string,
+  action: string,
+  volume?: number
+): Promise<boolean> {
+  if (!isTauri()) return false
+  return invoke<boolean>('control_dlna_playback', {
+    controlUrl,
+    action,
+    volume: volume ?? null,
+  })
 }
 
 if (typeof window !== 'undefined') {

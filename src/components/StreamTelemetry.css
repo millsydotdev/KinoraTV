@@ -1,0 +1,150 @@
+.stream-telemetry-hud {
+  position: absolute;
+  top: 72px;
+  right: 24px;
+  width: 320px;
+  background: rgba(18, 20, 24, 0.94);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
+  z-index: 46;
+  color: var(--text-1);
+  padding: 14px 16px;
+  animation: telemetry-fade-in 200ms ease forwards;
+}
+
+@keyframes telemetry-fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.telemetry-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.telemetry-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-2);
+}
+
+.telemetry-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.telemetry-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.telemetry-label {
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.telemetry-value {
+  color: var(--text-1);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75rem;
+}
+
+.telemetry-buffer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.telemetry-buffer-track {
+  width: 60px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.telemetry-buffer-bar {
+  height: 100%;
+  transition: width 300ms ease;
+}
+
+.telemetry-buffer-bar.low {
+  background: #ef4444;
+}
+
+.telemetry-buffer-bar.mid {
+  background: #f59e0b;
+}
+
+.telemetry-buffer-bar.high {
+  background: #10b981;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #9ca3af;
+}
+
+.status-dot.playing {
+  background: #10b981;
+}
+
+.status-dot.buffering {
+  background: #f59e0b;
+  animation: telemetry-pulse 1s infinite alternate;
+}
+
+.status-dot.paused {
+  background: #60a5fa;
+}
+
+.status-dot.error {
+  background: #ef4444;
+}
+
+@keyframes telemetry-pulse {
+  from { opacity: 0.4; }
+  to { opacity: 1; }
+}
+
+.watchdog-healthy {
+  color: #10b981;
+}
+
+.watchdog-buffering {
+  color: #f59e0b;
+}
+
+.watchdog-reconnecting {
+  color: #ef4444;
+  animation: telemetry-pulse 1s infinite alternate;
+}

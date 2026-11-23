@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { MediaResource } from '../data/personalLibrary'
 import { Dialog } from './Dialog'
 import { Icon } from './Icon'
+import { Art } from './ui'
 import { useToast } from './Toast'
 import { useStore } from '../state/store'
 import './PodcastFeedModal.css'
@@ -107,7 +108,7 @@ export function PodcastFeedModal({ isOpen, onClose, podcast }: PodcastFeedModalP
         {/* Header Bar */}
         <div className="podcast-feed-header">
           {podcast.artworkUrl ? (
-            <img src={podcast.artworkUrl} alt="" className="podcast-feed-cover" />
+            <Art src={podcast.artworkUrl} alt={podcast.name} contentId={`podcast:${podcast.id}`} className="podcast-feed-cover" fallbackIcon="podcast" />
           ) : (
             <div className="podcast-feed-cover">
               <Icon name="podcast" size={36} />

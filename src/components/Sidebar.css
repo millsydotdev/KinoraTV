@@ -37,14 +37,15 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 8px 8px 8px 12px;
+  gap: 6px;
+  padding: 6px 6px 6px 10px;
   margin-bottom: 8px;
-  border-radius: 16px;
+  border-radius: 14px;
   background: rgba(255, 255, 255, 0.025);
   border: 1px solid rgba(255, 255, 255, 0.05);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
   flex: none;
+  min-width: 0;
 }
 
 .sidebar.is-collapsed .sidebar-top {
@@ -61,18 +62,20 @@
   text-decoration: none;
   flex: 1;
   min-width: 0;
+  overflow: hidden;
 }
 
 .logo {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   user-select: none;
+  min-width: 0;
 }
 
 .logo-mark {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   flex: none;
   filter: drop-shadow(0 2px 8px var(--accent-glow, rgba(229, 9, 20, 0.35)));
   transition: transform 180ms ease, filter 180ms ease;
@@ -85,28 +88,34 @@
 
 .logo-text {
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.logo-word {
-  font-weight: 850;
-  font-size: 1.15rem;
-  letter-spacing: 0.06em;
-  color: #ffffff;
+  align-items: flex-start;
+  gap: 3.5px;
   white-space: nowrap;
 }
 
-.logo-badge {
-  font-size: 0.625rem;
+.logo-word {
+  font-family: var(--font-brand, 'Outfit Variable', 'Outfit', sans-serif);
   font-weight: 800;
-  letter-spacing: 0.08em;
-  padding: 1.5px 5.5px;
-  border-radius: 4px;
-  background: var(--accent-soft, rgba(229, 9, 20, 0.16));
-  color: var(--accent, #e50914);
-  border: 1px solid color-mix(in oklab, var(--accent, #e50914) 30%, transparent);
-  line-height: 1.2;
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+  color: #ffffff;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.logo-badge {
+  font-family: var(--font-brand, 'Outfit Variable', 'Outfit', sans-serif);
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  color: #e50914;
+  background: transparent;
+  border: none;
+  padding: 0;
+  line-height: 1;
+  white-space: nowrap;
+  align-self: flex-start;
+  margin-top: 0.5px;
 }
 
 .sidebar.is-collapsed .logo-text {
@@ -117,9 +126,9 @@
 .sidebar-collapse-btn {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.07);
   color: #9ca3af;
@@ -517,6 +526,80 @@
   background: rgba(0, 0, 0, 0.75);
   z-index: 35;
   backdrop-filter: blur(6px);
+}
+
+/* Responsive auto-collapse between 761px and 1100px */
+@media (max-width: 1100px) and (min-width: 761px) {
+  .sidebar {
+    width: calc(var(--side-w, 76px) - 14px) !important;
+    margin: 12px 4px 12px 10px !important;
+    padding: 10px 6px !important;
+  }
+
+  .sidebar .sidebar-top {
+    flex-direction: column !important;
+    gap: 10px !important;
+    padding: 8px 4px 12px !important;
+    border-radius: 14px !important;
+  }
+
+  .sidebar .logo-text {
+    display: none !important;
+  }
+
+  .sidebar .sidebar-collapse-btn {
+    margin: 0 auto !important;
+  }
+
+  .sidebar .sidebar-section-divider {
+    display: none !important;
+  }
+
+  .sidebar .sidebar-group-surface {
+    padding: 4px 0 !important;
+    gap: 6px !important;
+  }
+
+  .sidebar .sidebar-group-label {
+    display: none !important;
+  }
+
+  .sidebar .sidebar-root-btn {
+    justify-content: center !important;
+    padding: 10px 0 !important;
+    min-height: 44px !important;
+    gap: 0 !important;
+  }
+
+  .sidebar .sidebar-item-label,
+  .sidebar .sidebar-item-chevron,
+  .sidebar .sidebar-item-badge,
+  .sidebar .sidebar-subnav {
+    display: none !important;
+  }
+
+  .sidebar .sidebar-root-btn:hover {
+    background: rgba(255, 255, 255, 0.08) !important;
+  }
+
+  .sidebar .sidebar-root-btn.is-active {
+    background: rgba(229, 9, 20, 0.16) !important;
+    border-color: rgba(229, 9, 20, 0.3) !important;
+  }
+
+  .sidebar .sidebar-root-btn.is-active::before {
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    bottom: auto !important;
+    height: 18px !important;
+    left: 2px !important;
+    width: 3.5px !important;
+    border-radius: 2px !important;
+  }
+
+  .sidebar .sidebar-settings-card {
+    padding: 3px 2px !important;
+  }
 }
 
 @media (max-width: 760px) {

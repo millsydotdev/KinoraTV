@@ -1,0 +1,282 @@
+/* Virtual Keyboard CSS for 10-foot remote navigation */
+.virtual-kb-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 250;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: virtualKbFadeIn 160ms var(--ease, ease-out);
+}
+
+@keyframes virtualKbFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.virtual-kb-card {
+  width: 100%;
+  max-width: 820px;
+  background: var(--surface-modal, #171a21);
+  border: 1px solid var(--border-standard, rgba(255, 255, 255, 0.12));
+  border-radius: var(--r-l, 16px);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.75), 0 0 32px rgba(0, 0, 0, 0.5);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.virtual-kb-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  padding-bottom: 12px;
+}
+
+.virtual-kb-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text, #ffffff);
+}
+
+.virtual-kb-title-icon {
+  color: var(--accent, #e50914);
+}
+
+.virtual-kb-close-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-s, 6px);
+  display: grid;
+  place-items: center;
+  color: var(--text-3, rgba(255, 255, 255, 0.5));
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.virtual-kb-close-btn:hover,
+.virtual-kb-close-btn:focus-visible {
+  color: var(--text, #ffffff);
+  background: var(--surface-2, rgba(255, 255, 255, 0.08));
+  border-color: var(--border-subtle, rgba(255, 255, 255, 0.15));
+  outline: none;
+}
+
+/* Text Display */
+.virtual-kb-display {
+  background: var(--surface-input, #0e1117);
+  border: 1px solid var(--border-standard, rgba(255, 255, 255, 0.15));
+  border-radius: var(--r-m, 10px);
+  padding: 14px 18px;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.virtual-kb-value {
+  font-family: var(--font-mono, monospace);
+  font-size: 1.15rem;
+  color: var(--text, #ffffff);
+  display: inline-flex;
+  align-items: center;
+}
+
+.virtual-kb-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.25em;
+  background: var(--accent, #e50914);
+  margin-left: 2px;
+  animation: virtualKbBlink 1s step-end infinite;
+}
+
+@keyframes virtualKbBlink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.virtual-kb-placeholder {
+  font-size: 0.95rem;
+  color: var(--text-3, rgba(255, 255, 255, 0.4));
+  font-style: italic;
+}
+
+/* URL Shortcut Row */
+.virtual-kb-shortcuts-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.virtual-kb-shortcut-btn {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.825rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.06));
+  color: var(--text-2, rgba(255, 255, 255, 0.85));
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+  border-radius: var(--r-s, 6px);
+  cursor: pointer;
+  transition: all 120ms ease;
+  outline: none;
+}
+
+.virtual-kb-shortcut-btn:hover,
+.virtual-kb-shortcut-btn:focus-visible {
+  background: var(--surface-3, rgba(255, 255, 255, 0.15));
+  border-color: var(--accent, #e50914);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+/* Key Grid */
+.virtual-kb-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.virtual-kb-row {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+
+.virtual-kb-key {
+  min-width: 44px;
+  height: 44px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono, monospace);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text, #ffffff);
+  background: var(--surface-elevated, #20242e);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+  border-radius: var(--r-s, 8px);
+  cursor: pointer;
+  transition: transform 100ms ease, background 100ms ease, border-color 100ms ease, box-shadow 100ms ease;
+  outline: none;
+  user-select: none;
+}
+
+.virtual-kb-key:hover,
+.virtual-kb-key:focus-visible {
+  background: var(--surface-selected, #2b3240);
+  border-color: var(--accent, #e50914);
+  box-shadow: 0 0 10px rgba(229, 9, 20, 0.35);
+  transform: scale(1.08);
+  z-index: 2;
+}
+
+.virtual-kb-key.is-active {
+  background: var(--accent, #e50914);
+  color: #ffffff;
+  border-color: #ffffff;
+}
+
+.virtual-kb-key-wide {
+  min-width: 72px;
+  font-family: inherit;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+}
+
+.virtual-kb-key-danger {
+  color: #ff5555;
+}
+
+.virtual-kb-key-danger:hover,
+.virtual-kb-key-danger:focus-visible {
+  border-color: #ff5555;
+  box-shadow: 0 0 10px rgba(255, 85, 85, 0.4);
+}
+
+/* Action Row */
+.virtual-kb-action-row {
+  margin-top: 6px;
+  gap: 8px;
+}
+
+.virtual-kb-action-btn {
+  height: 44px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-radius: var(--r-s, 8px);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+  background: var(--surface-elevated, #20242e);
+  color: var(--text, #ffffff);
+  cursor: pointer;
+  transition: all 120ms ease;
+  outline: none;
+}
+
+.virtual-kb-btn-clear {
+  color: #ff6666;
+}
+
+.virtual-kb-btn-clear:hover,
+.virtual-kb-btn-clear:focus-visible {
+  border-color: #ff5555;
+  background: rgba(255, 85, 85, 0.15);
+}
+
+.virtual-kb-btn-paste:hover,
+.virtual-kb-btn-paste:focus-visible {
+  border-color: var(--accent, #e50914);
+  background: var(--surface-3, rgba(255, 255, 255, 0.12));
+}
+
+.virtual-kb-btn-space {
+  flex: 1;
+  max-width: 260px;
+}
+
+.virtual-kb-btn-space:hover,
+.virtual-kb-btn-space:focus-visible {
+  border-color: var(--accent, #e50914);
+  background: var(--surface-3, rgba(255, 255, 255, 0.12));
+}
+
+.virtual-kb-btn-submit {
+  background: var(--accent, #e50914);
+  color: #ffffff;
+  border-color: transparent;
+  padding: 0 24px;
+  box-shadow: 0 4px 12px rgba(229, 9, 20, 0.3);
+}
+
+.virtual-kb-btn-submit:hover,
+.virtual-kb-btn-submit:focus-visible {
+  background: var(--accent-red-hover, #f40612);
+  transform: scale(1.04);
+  box-shadow: 0 6px 16px rgba(229, 9, 20, 0.45);
+}
