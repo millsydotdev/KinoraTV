@@ -111,3 +111,7 @@
   letter-spacing: 0.02em;
   white-space: nowrap;
 }
+
+.remote-hint-bar.remote-hint-with-audio {
+  bottom: 74px;
+}

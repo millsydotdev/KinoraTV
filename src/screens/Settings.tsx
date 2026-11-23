@@ -6,7 +6,7 @@ import { Icon, type IconName } from '../components/Icon'
 import { useToast } from '../components/Toast'
 import { PageHeader } from '../components/PageHeader'
 import { Segmented, Switch } from '../components/ui'
-import { getAppInfo, checkForUpdates, installUpdate, inNativeShell, getArtworkCacheStats, clearArtworkCache, retryFailedArtwork, type ArtworkCacheStats, type AppInfo, type UpdateCheckResult, APP_VERSION, APP_ENV, isStaging, isProduction, getVersionChannel, formatChannelName } from '../lib/native'
+import { getAppInfo, checkForUpdates, installUpdate, inNativeShell, getArtworkCacheStats, clearArtworkCache, retryFailedArtwork, type ArtworkCacheStats, type AppInfo, type UpdateCheckResult, APP_VERSION, APP_ENV, isStaging, isProduction, getVersionChannel, formatChannelName, getPlatformMode, setPlatformMode, type PlatformMode } from '../lib/native'
 import { CODEC_HELP, codecSupport } from '../lib/playback'
 import { ACCENTS, THEME_PRESETS, safeHex, type AccentName } from '../lib/theme'
 import { defaultPrefs, useStore, type Prefs } from '../state/store'
@@ -2330,6 +2330,17 @@ function DataSection() {
   const [encModalMode, setEncModalMode] = useState<'export' | 'restore' | null>(null)
   const [remoteModalOpen, setRemoteModalOpen] = useState(false)
   const [traktModalOpen, setTraktModalOpen] = useState(false)
+  const [platformMode, setPlatformModeState] = useState<PlatformMode>('standalone')
+
+  useEffect(() => {
+    let active = true
+    getPlatformMode().then((info) => {
+      if (active && info) setPlatformModeState(info.mode)
+    })
+    return () => {
+      active = false
+    }
+  }, [])
 
   const exportData = () => {
     const backup = {
@@ -2473,10 +2484,44 @@ function DataSection() {
         </Row>
       </Group>
 
-      <Group title="Wireless Remote Control">
-        <Row title="Mobile & Tablet Web Remote" hint="Control Kinora over local Wi-Fi from any smartphone or tablet browser without installing an app.">
-          <button type="button" className="btn btn-ghost btn-small" onClick={() => setRemoteModalOpen(true)}>
-            <Icon name="remote" size={16} />Mobile Remote
+      <Group title="Kinora Ecosystem & Platform Architecture">
+        <Row title="Platform Operating Mode" hint="Configure whether Kinora operates independently, acts as a home server, or connects to an existing server.">
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {(['standalone', 'server', 'client'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                className={`btn ${platformMode === m ? 'btn-primary' : 'btn-ghost'} btn-small`}
+                onClick={async () => {
+                  setPlatformModeState(m)
+                  await setPlatformMode(m)
+                  toast(`Switched to ${m.charAt(0).toUpperCase() + m.slice(1)} Mode`)
+                }}
+                style={{ textTransform: 'capitalize' }}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        </Row>
+        <Row
+          title={
+            platformMode === 'server'
+              ? 'Kinora Server Active'
+              : platformMode === 'client'
+              ? 'Kinora Network Client'
+              : 'Standalone Media Center'
+          }
+          hint={
+            platformMode === 'server'
+              ? 'Serving media sources, streaming services, and remote control access to connected smart TVs, phones, tablets, and authorized AI agents.'
+              : platformMode === 'client'
+              ? 'Connected to an existing central Kinora Server over your local network for shared playlists, guides, and watch progress.'
+              : 'Operating independently with local media sources, guide storage, and private playback calibration on this device.'
+          }
+        >
+          <button type="button" className="btn btn-secondary btn-small" onClick={() => setRemoteModalOpen(true)}>
+            <Icon name="remote" size={16} />Connected Devices Hub
           </button>
         </Row>
       </Group>

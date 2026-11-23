@@ -400,7 +400,7 @@ export function SeriesBrowse() {
   const sourceName = (id: string) => store.xtreamSources.find((s) => s.id === id)?.name ?? 'Provider'
 
   return (
-    <div className="streaming-page">
+    <div className="streaming-page series-screen">
       <PageHeader
         title={
           <div className="streaming-title-group">

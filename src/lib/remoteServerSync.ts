@@ -128,15 +128,44 @@ export function handleIncomingRemoteCommand(event: RemoteCommandEvent): void {
       break
 
     case 'mute':
+    case 'toggle_mute':
       dispatchKinoraCommand({ type: 'toggleMute', source: 'remote' })
       break
 
+    case 'vol_up':
+    case 'volume_up':
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', code: 'ArrowUp', bubbles: true }))
+      }
+      break
+
+    case 'vol_down':
+    case 'volume_down':
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', code: 'ArrowDown', bubbles: true }))
+      }
+      break
+
     case 'ch_up':
+    case 'channel_up':
       kinoraChangeChannel('up')
       break
 
     case 'ch_down':
+    case 'channel_down':
       kinoraChangeChannel('down')
+      break
+
+    case 'step_back':
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', code: 'ArrowLeft', bubbles: true }))
+      }
+      break
+
+    case 'step_forward':
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', bubbles: true }))
+      }
       break
 
     case 'subtitles':
@@ -151,11 +180,65 @@ export function handleIncomingRemoteCommand(event: RemoteCommandEvent): void {
       }
       break
 
+    case 'tune_channel': {
+      const channelId = typeof payload.channelId === 'string' ? payload.channelId : undefined
+      const channelNumber = typeof payload.channelNumber === 'number' ? payload.channelNumber : undefined
+      dispatchKinoraCommand({
+        type: 'changeChannel',
+        payload: { channelId, channelNumber },
+        source: 'remote',
+      })
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('kinora:tune_channel', { detail: payload }))
+      }
+      break
+    }
+
+    case 'input_text': {
+      if (typeof document !== 'undefined') {
+        const text = typeof payload.text === 'string' ? payload.text : ''
+        const active = document.activeElement as HTMLInputElement | HTMLTextAreaElement | null
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
+          active.value = text
+          active.dispatchEvent(new Event('input', { bubbles: true }))
+          active.dispatchEvent(new Event('change', { bubbles: true }))
+        } else {
+          // If no input is focused, open search with this query
+          window.location.hash = `#/search?q=${encodeURIComponent(text)}`
+        }
+      }
+      break
+    }
+
+    case 'keypad_digit':
     case 'digit': {
       const digit = payload.digit
-      if (typeof digit === 'number' && typeof window !== 'undefined') {
+      if (digit !== undefined && typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('kinora:numeric_zap', { detail: { digit } }))
         window.dispatchEvent(new KeyboardEvent('keydown', { key: String(digit), code: `Digit${digit}`, bubbles: true }))
+      }
+      break
+    }
+
+    case 'agent_search': {
+      if (typeof window !== 'undefined') {
+        const query = typeof payload.query === 'string' ? payload.query : ''
+        window.location.hash = `#/search?q=${encodeURIComponent(query)}`
+      }
+      break
+    }
+
+    case 'agent_tune': {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('kinora:tune_channel', { detail: payload }))
+      }
+      break
+    }
+
+    case 'agent_navigate': {
+      if (typeof window !== 'undefined') {
+        const dest = typeof payload.destination === 'string' ? payload.destination : '/'
+        window.location.hash = dest.startsWith('#') ? dest : `#${dest}`
       }
       break
     }

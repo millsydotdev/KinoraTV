@@ -53,6 +53,18 @@ describe('DLNA & UPnP Discovery and Casting', () => {
   })
 
   it('casting manager handles connection lifecycle and state transitions', async () => {
+    castingManager.registerDevice({
+      id: 'test-device-1',
+      name: 'Sony Bravia OLED',
+      protocol: 'dlna',
+      model: 'XR-65A80J',
+      location: 'http://192.168.1.55:8080/upnp/control/AVTransport',
+      ip: '192.168.1.55',
+      port: 8080,
+      status: 'available',
+      signalStrength: 95,
+    })
+
     const devices = castingManager.getDevices()
     expect(devices.length).toBeGreaterThan(0)
 

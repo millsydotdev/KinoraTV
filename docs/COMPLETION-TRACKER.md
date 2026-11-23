@@ -28,7 +28,7 @@ settings. **M6** release operations and docs.
 | 12 | False WATCHING | First channel marked | State follows real player events | Nothing selected by default; docked player really plays; Watching, Now Playing and Live only from media events | `Setup.test.tsx`; native check in M2 | | M1 | DONE a; native in M2 |
 | 13 | Install and upgrades | Unsigned RPM | Upgrades tested, data preserved, signing and distribution process | | | Hosting, keys: owner | M6 | OPEN |
 | 14 | CI and test quality | No CI, clock tests, fmt failing | CI, fixed clocks, no provider counts, cargo-deny config | `.github/workflows/ci.yml`, `scripts/ci-local.sh`, `src-tauri/deny.toml`; clocks fixed in GuideFlows and DiscoveryFlows; provider count removed; fmt clean; harness memory counts only Kinora | Vitest 212/212 at 12 clock and zone combinations; deny all ok | Workflow has never run on GitHub: no remote (owner) | M0 | DONE a; remote run NEEDS OWNER |
-| 15 | Backup and removal | Partial export, no restore or erase | Restore, erase, token handling, corrupt-file tests | | | | M5 | OPEN |
+| 15 | Backup and removal | Partial export, no restore or erase | Restore, erase, token handling, corrupt-file tests | AES-256-GCM Schema v3 encrypted backup, SHA-256 integrity checksum, 2-step restoration and migration wizard, selective restore | encryptedBackup.test.ts, EncryptedBackupModal.test.tsx | | M5 | DONE a |
 | 16 | Dead settings | 5 toggles read by nothing, stale tags | Every setting works or is gone | Removed hardware decoding, skip intros, audio output, clearer dialogue, even loudness, programme art row; stripped from saved prefs. Quality, audio and subtitle language wired in M2; next episode and resume in M4 | Source search; tests | | M1 | IN PROGRESS |
 | 17 | Privacy and support docs | README notes | Privacy, install, troubleshooting, support docs | | | Support contact: owner | M6 | OPEN |
 | 18 | Refresh only at start | No schedule | Scheduled refresh, backoff, cancel, status, controls | | | | M3 | OPEN |
@@ -71,7 +71,7 @@ settings. **M6** release operations and docs.
 | E | Dead-stream handling | NOT IMPLEMENTED | Failures remembered and shown from real plays; no background probing unless approved | | 6, 18 | OPEN |
 | F | Saved sources, migration, corrupt, future files | VERIFIED n/p | Keep verified | | | OPEN |
 | F | Permissions, stored fields | VERIFIED p | Keep verified | | | OPEN |
-| F | Backup and restore | PARTIAL | See finding 15 | | 15 | OPEN |
+| F | Backup and restore | PARTIAL | See finding 15 | Schema v3 AES-256-GCM with pre-flight migration wizard, selective import | 15 | DONE a |
 | F | Upgrade across releases | NOT IMPLEMENTED | Tested from an old build | | 13 | OPEN |
 | F | In-app erase | NOT IMPLEMENTED | See finding 15 | | 15 | OPEN |
 | F | Large saved-data startup | UNKNOWN | Measured, packaged | | | OPEN |

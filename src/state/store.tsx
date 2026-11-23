@@ -7,7 +7,7 @@ import { demoSources } from '../data/sources'
 import type { Channel, Collection, Library, Programme, Progress, Ref, Source, StreamVariant, XtreamTitle } from '../data/types'
 import {
   disconnectXtream, fetchGuide, fetchPlaylist, guideProgrammes, inNativeShell, isXtreamConnected, loadCatalogue, loadGuide, loadSources, loadXtreamCatalogue, loadXtreamSeries, readGuideFile, readPlaylistFile, refreshCatalogue, refreshXtream,
-  removeGuide as forgetGuide, saveSources, loadXtreamVodDetails, loadXtreamEpg,
+  removeGuide as forgetGuide, saveSources, loadXtreamVodDetails, loadXtreamEpg, updateRemoteChannels,
   dvrGetRecordings, dvrStartRecording, dvrStopRecording, dvrScheduleRecording, dvrCancelRecording, dvrDeleteRecording, dvrProtectRecording,
   dvrGetRules, dvrSaveRule, dvrDeleteRule, dvrGetConfig, dvrSaveConfig, dvrGetStorageInfo,
   type GuideSummary, type PlaylistReport, type SavedState, type SavedXtreamSource, type StorageNotice, type XtreamCatalogue, type XtreamEntry, type XtreamSeriesDetails,
@@ -631,6 +631,19 @@ function useStoreValue(
   )
   const channelIndex = useMemo(() => new Map(channels.flatMap((c) => [c.id, ...(c.memberIds ?? [])].map((id) => [id, c] as const))), [channels])
   const findChannel = useCallback((id: string): Channel | undefined => channelIndex.get(id), [channelIndex])
+
+  useEffect(() => {
+    if (channels.length > 0) {
+      const summaries = channels.slice(0, 300).map((c) => ({
+        id: c.id,
+        name: c.name,
+        number: c.number,
+        group: c.group,
+        logo: c.logoUrl,
+      }))
+      void updateRemoteChannels(summaries)
+    }
+  }, [channels])
 
   const getPreferredServer = useCallback(
     (channel: Channel): StreamVariant | undefined => {

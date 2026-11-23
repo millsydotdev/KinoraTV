@@ -1,20 +1,98 @@
-// remote_server.rs - Wireless LAN mobile remote control server for Kinora.
+// remote_server.rs - Wireless LAN mobile remote control and platform server for Kinora.
 // Serves touch-optimized web interface to phones and tablets on the local network.
+// Manages persistent trusted devices, capability-based security, and AI agent interfaces.
 // Strictly adheres to typography standards: zero em-dashes across all code and comments.
 
 use std::collections::HashSet;
-use std::net::{IpAddr, SocketAddr, UdpSocket};
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, oneshot, Mutex};
 
 pub const DEFAULT_REMOTE_PORT: u16 = 5198;
-const MAX_REQUEST_SIZE: usize = 64 * 1024;
+pub const DEFAULT_DISCOVERY_PORT: u16 = 5197;
+const MAX_REQUEST_SIZE: usize = 128 * 1024;
 const MAX_FAILED_ATTEMPTS: u32 = 5;
 const LOCKOUT_DURATION_SECS: u64 = 30;
+const MAX_AUDIT_LOG_ITEMS: usize = 100;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PlatformMode {
+    Standalone,
+    Server,
+    Client,
+}
+
+impl Default for PlatformMode {
+    fn default() -> Self {
+        Self::Standalone
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DeviceType {
+    Phone,
+    Tablet,
+    Tv,
+    RemoteWeb,
+    AiAgent,
+    DesktopClient,
+    Unknown,
+}
+
+impl Default for DeviceType {
+    fn default() -> Self {
+        Self::RemoteWeb
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DeviceCapability {
+    RemoteControl,
+    PlaybackControl,
+    InputText,
+    MediaBrowse,
+    MediaCast,
+    AiAgent,
+    ClientSync,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrustedDevice {
+    pub id: String,
+    pub name: String,
+    pub device_type: DeviceType,
+    pub capabilities: Vec<DeviceCapability>,
+    pub auth_token: String,
+    pub paired_at: u64,
+    pub last_seen_at: u64,
+    pub ip_address: Option<String>,
+    pub user_agent: Option<String>,
+    pub revoked: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuditedAction {
+    pub id: String,
+    pub timestamp: u64,
+    pub device_id: String,
+    pub device_name: String,
+    pub capability: String,
+    pub action: String,
+    pub details: String,
+    pub status: String,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -48,6 +126,17 @@ impl Default for RemotePlaybackState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RemoteChannelSummary {
+    pub id: String,
+    pub name: String,
+    pub number: Option<u32>,
+    pub group: Option<String>,
+    pub logo: Option<String>,
+    pub current_programme: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RemoteServerStatus {
     pub running: bool,
     pub port: u16,
@@ -55,6 +144,18 @@ pub struct RemoteServerStatus {
     pub pairing_pin: String,
     pub server_url: String,
     pub connected_clients: usize,
+    pub mode: PlatformMode,
+    pub trusted_devices_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlatformModeInfo {
+    pub mode: PlatformMode,
+    pub server_url: Option<String>,
+    pub is_server_active: bool,
+    pub trusted_devices_count: usize,
+    pub active_connections: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,17 +167,33 @@ pub struct RemoteCommandEvent {
     pub timestamp: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscoveredServer {
+    pub name: String,
+    pub ip: String,
+    pub port: u16,
+    pub version: String,
+    pub mode: String,
+}
+
 struct ServerInner {
+    data_dir: Option<PathBuf>,
     running: bool,
     port: u16,
     local_ip: String,
     pairing_pin: String,
-    auth_tokens: HashSet<String>,
+    mode: PlatformMode,
+    server_client_url: Option<String>,
+    trusted_devices: Vec<TrustedDevice>,
+    audit_log: Vec<AuditedAction>,
+    channels: Vec<RemoteChannelSummary>,
     failed_attempts: u32,
     lockout_until: Option<Instant>,
     playback_state: RemotePlaybackState,
     sse_senders: Vec<mpsc::UnboundedSender<String>>,
     shutdown_tx: Option<oneshot::Sender<()>>,
+    beacon_shutdown_tx: Option<oneshot::Sender<()>>,
 }
 
 #[derive(Clone)]
@@ -84,22 +201,40 @@ pub struct RemoteServerManager {
     inner: Arc<Mutex<ServerInner>>,
 }
 
+impl Default for RemoteServerManager {
+    fn default() -> Self {
+        Self::new(None)
+    }
+}
+
 impl RemoteServerManager {
-    pub fn new() -> Self {
+    pub fn new(data_dir: Option<PathBuf>) -> Self {
         let pin = generate_pairing_pin();
         let ip = detect_local_ip();
+        let loaded_devices = if let Some(ref dir) = data_dir {
+            load_trusted_devices_from_disk(dir)
+        } else {
+            Vec::new()
+        };
+
         Self {
             inner: Arc::new(Mutex::new(ServerInner {
+                data_dir,
                 running: false,
                 port: DEFAULT_REMOTE_PORT,
                 local_ip: ip,
                 pairing_pin: pin,
-                auth_tokens: HashSet::new(),
+                mode: PlatformMode::Standalone,
+                server_client_url: None,
+                trusted_devices: loaded_devices,
+                audit_log: Vec::new(),
+                channels: Vec::new(),
                 failed_attempts: 0,
                 lockout_until: None,
                 playback_state: RemotePlaybackState::default(),
                 sse_senders: Vec::new(),
                 shutdown_tx: None,
+                beacon_shutdown_tx: None,
             })),
         }
     }
@@ -107,14 +242,105 @@ impl RemoteServerManager {
     pub async fn get_status(&self) -> RemoteServerStatus {
         let state = self.inner.lock().await;
         let server_url = format!("http://{}:{}", state.local_ip, state.port);
+        let active_count = state.trusted_devices.iter().filter(|d| !d.revoked).count();
         RemoteServerStatus {
             running: state.running,
             port: state.port,
             local_ip: state.local_ip.clone(),
             pairing_pin: state.pairing_pin.clone(),
             server_url,
-            connected_clients: state.auth_tokens.len(),
+            connected_clients: active_count,
+            mode: state.mode,
+            trusted_devices_count: state.trusted_devices.len(),
         }
+    }
+
+    pub async fn get_platform_mode(&self) -> PlatformModeInfo {
+        let state = self.inner.lock().await;
+        let active_count = state.trusted_devices.iter().filter(|d| !d.revoked).count();
+        PlatformModeInfo {
+            mode: state.mode,
+            server_url: state.server_client_url.clone(),
+            is_server_active: state.running,
+            trusted_devices_count: state.trusted_devices.len(),
+            active_connections: active_count,
+        }
+    }
+
+    pub async fn set_platform_mode(&self, mode: PlatformMode, server_url: Option<String>) -> PlatformModeInfo {
+        let mut state = self.inner.lock().await;
+        state.mode = mode;
+        state.server_client_url = server_url;
+        let active_count = state.trusted_devices.iter().filter(|d| !d.revoked).count();
+        PlatformModeInfo {
+            mode: state.mode,
+            server_url: state.server_client_url.clone(),
+            is_server_active: state.running,
+            trusted_devices_count: state.trusted_devices.len(),
+            active_connections: active_count,
+        }
+    }
+
+    pub async fn get_trusted_devices(&self) -> Vec<TrustedDevice> {
+        let state = self.inner.lock().await;
+        state.trusted_devices.clone()
+    }
+
+    pub async fn revoke_device(&self, device_id: &str) -> bool {
+        let mut state = self.inner.lock().await;
+        let mut found = false;
+        let mut dev_name = "Unknown".to_string();
+        for dev in &mut state.trusted_devices {
+            if dev.id == device_id {
+                dev.revoked = true;
+                found = true;
+                dev_name = dev.name.clone();
+                break;
+            }
+        }
+        if found {
+            if let Some(ref dir) = state.data_dir {
+                save_trusted_devices_to_disk(dir, &state.trusted_devices);
+            }
+            record_audit_action(
+                &mut state.audit_log,
+                device_id,
+                &dev_name,
+                "DeviceManagement",
+                "RevokeDevice",
+                "Device authorization revoked",
+                "success",
+            );
+        }
+        found
+    }
+
+    pub async fn rename_device(&self, device_id: &str, new_name: &str) -> bool {
+        let mut state = self.inner.lock().await;
+        let mut found = false;
+        for dev in &mut state.trusted_devices {
+            if dev.id == device_id {
+                dev.name = new_name.trim().to_string();
+                found = true;
+                break;
+            }
+        }
+        if found {
+            if let Some(ref dir) = state.data_dir {
+                save_trusted_devices_to_disk(dir, &state.trusted_devices);
+            }
+        }
+        found
+    }
+
+    pub async fn get_audit_log(&self) -> Vec<AuditedAction> {
+        let state = self.inner.lock().await;
+        state.audit_log.clone()
+    }
+
+    pub async fn update_channels(&self, channels: Vec<RemoteChannelSummary>) {
+        let mut state = self.inner.lock().await;
+        state.channels = channels;
     }
 
     pub async fn update_playback_state(&self, new_state: RemotePlaybackState) {
@@ -128,20 +354,28 @@ impl RemoteServerManager {
         }
     }
 
-    pub async fn start<F>(&self, port: Option<u16>, custom_pin: Option<String>, on_command: F) -> Result<RemoteServerStatus, String>
+    pub async fn start<F>(
+        &self,
+        port: Option<u16>,
+        custom_pin: Option<String>,
+        on_command: F,
+    ) -> Result<RemoteServerStatus, String>
     where
         F: Fn(RemoteCommandEvent) + Send + Sync + 'static,
     {
         let mut state = self.inner.lock().await;
         if state.running {
             let server_url = format!("http://{}:{}", state.local_ip, state.port);
+            let active_count = state.trusted_devices.iter().filter(|d| !d.revoked).count();
             return Ok(RemoteServerStatus {
                 running: true,
                 port: state.port,
                 local_ip: state.local_ip.clone(),
                 pairing_pin: state.pairing_pin.clone(),
                 server_url,
-                connected_clients: state.auth_tokens.len(),
+                connected_clients: active_count,
+                mode: state.mode,
+                trusted_devices_count: state.trusted_devices.len(),
             });
         }
 
@@ -157,7 +391,7 @@ impl RemoteServerManager {
         let bind_addr = SocketAddr::from(([0, 0, 0, 0], chosen_port));
         let listener = TcpListener::bind(bind_addr)
             .await
-            .map_err(|e| format!("Failed to bind remote control server on port {chosen_port}: {e}"))?;
+            .map_err(|e| format!("Failed to bind server on port {chosen_port}: {e}"))?;
 
         let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
         state.shutdown_tx = Some(shutdown_tx);
@@ -190,14 +424,49 @@ impl RemoteServerManager {
             }
         });
 
+        // Start UDP LAN Discovery Beacon
+        let (beacon_tx, mut beacon_rx) = oneshot::channel();
+        state.beacon_shutdown_tx = Some(beacon_tx);
+        let beacon_ip = state.local_ip.clone();
+        let beacon_port = state.port;
+
+        tokio::spawn(async move {
+            let socket = match UdpSocket::bind("0.0.0.0:0") {
+                Ok(s) => {
+                    let _ = s.set_broadcast(true);
+                    s
+                }
+                Err(_) => return,
+            };
+            let broadcast_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(255, 255, 255, 255)), DEFAULT_DISCOVERY_PORT);
+            let beacon_payload = format!(
+                r#"{{"name":"Kinora Media Server","ip":"{}","port":{},"version":"0.6.0","mode":"server"}}"#,
+                beacon_ip, beacon_port
+            );
+            let beacon_bytes = format!("KINORA_BEACON_V1:{beacon_payload}").into_bytes();
+
+            loop {
+                let _ = socket.send_to(&beacon_bytes, broadcast_addr);
+                tokio::select! {
+                    _ = &mut beacon_rx => {
+                        break;
+                    }
+                    _ = tokio::time::sleep(Duration::from_secs(10)) => {}
+                }
+            }
+        });
+
         let server_url = format!("http://{}:{}", state.local_ip, state.port);
+        let active_count = state.trusted_devices.iter().filter(|d| !d.revoked).count();
         Ok(RemoteServerStatus {
             running: true,
             port: state.port,
             local_ip: state.local_ip.clone(),
             pairing_pin: state.pairing_pin.clone(),
             server_url,
-            connected_clients: state.auth_tokens.len(),
+            connected_clients: active_count,
+            mode: state.mode,
+            trusted_devices_count: state.trusted_devices.len(),
         })
     }
 
@@ -205,6 +474,9 @@ impl RemoteServerManager {
         let mut state = self.inner.lock().await;
         if let Some(tx) = state.shutdown_tx.take() {
             let _ = tx.send(());
+        }
+        if let Some(btx) = state.beacon_shutdown_tx.take() {
+            let _ = btx.send(());
         }
         state.running = false;
         state.sse_senders.clear();
@@ -232,6 +504,19 @@ pub fn generate_auth_token() -> String {
     "kinora-remote-auth-token-fallback".to_string()
 }
 
+pub fn generate_device_id() -> String {
+    let mut bytes = [0u8; 8];
+    if getrandom::fill(&mut bytes).is_ok() {
+        let mut hex = String::with_capacity(20);
+        hex.push_str("dev-");
+        for b in bytes {
+            hex.push_str(&format!("{:02x}", b));
+        }
+        return hex;
+    }
+    "dev-default".to_string()
+}
+
 pub fn detect_local_ip() -> String {
     if let Ok(socket) = UdpSocket::bind("0.0.0.0:0") {
         if socket.connect("8.8.8.8:80").is_ok() {
@@ -248,9 +533,121 @@ pub fn detect_local_ip() -> String {
     "127.0.0.1".to_string()
 }
 
+pub async fn discover_servers_on_lan(timeout_secs: u64) -> Vec<DiscoveredServer> {
+    tokio::task::spawn_blocking(move || {
+        let socket = match UdpSocket::bind(format!("0.0.0.0:{DEFAULT_DISCOVERY_PORT}")) {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+        let _ = socket.set_read_timeout(Some(Duration::from_secs(timeout_secs.max(1))));
+        let mut results = Vec::new();
+        let mut seen = HashSet::new();
+        let mut buf = [0u8; 2048];
+        let start = Instant::now();
+
+        while start.elapsed() < Duration::from_secs(timeout_secs.max(1)) {
+            if let Ok((len, src)) = socket.recv_from(&mut buf) {
+                let msg = String::from_utf8_lossy(&buf[..len]);
+                if let Some(json_str) = msg.strip_prefix("KINORA_BEACON_V1:") {
+                    if let Ok(server) = serde_json::from_str::<DiscoveredServer>(json_str) {
+                        let key = format!("{}:{}", server.ip, server.port);
+                        if seen.insert(key) {
+                            results.push(server);
+                        }
+                    } else if seen.insert(src.to_string()) {
+                        results.push(DiscoveredServer {
+                            name: "Kinora Server".to_string(),
+                            ip: src.ip().to_string(),
+                            port: DEFAULT_REMOTE_PORT,
+                            version: "0.6.0".to_string(),
+                            mode: "server".to_string(),
+                        });
+                    }
+                }
+            }
+        }
+        results
+    })
+    .await
+    .unwrap_or_default()
+}
+
+fn now_unix_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn record_audit_action(
+    log: &mut Vec<AuditedAction>,
+    device_id: &str,
+    device_name: &str,
+    capability: &str,
+    action: &str,
+    details: &str,
+    status: &str,
+) {
+    let entry = AuditedAction {
+        id: format!("aud-{}", now_unix_secs()),
+        timestamp: now_unix_secs(),
+        device_id: device_id.to_string(),
+        device_name: device_name.to_string(),
+        capability: capability.to_string(),
+        action: action.to_string(),
+        details: details.to_string(),
+        status: status.to_string(),
+    };
+    log.push(entry);
+    if log.len() > MAX_AUDIT_LOG_ITEMS {
+        log.remove(0);
+    }
+}
+
+fn load_trusted_devices_from_disk(data_dir: &Path) -> Vec<TrustedDevice> {
+    let file_path = data_dir.join("devices.json");
+    if let Ok(data) = fs::read_to_string(file_path) {
+        if let Ok(devices) = serde_json::from_str::<Vec<TrustedDevice>>(&data) {
+            return devices;
+        }
+    }
+    Vec::new()
+}
+
+fn save_trusted_devices_to_disk(data_dir: &Path, devices: &[TrustedDevice]) {
+    let _ = fs::create_dir_all(data_dir);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(data_dir, fs::Permissions::from_mode(0o700));
+    }
+
+    let file_path = data_dir.join("devices.json");
+    let temp_path = data_dir.join("devices.json.tmp");
+
+    if let Ok(json) = serde_json::to_string_pretty(devices) {
+        let mut options = OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+
+        if let Ok(mut file) = options.open(&temp_path) {
+            if file.write_all(json.as_bytes()).is_ok() && file.sync_all().is_ok() {
+                drop(file);
+                let _ = fs::rename(&temp_path, &file_path);
+            } else {
+                let _ = fs::remove_file(&temp_path);
+            }
+        }
+    }
+}
+
 async fn handle_connection<F>(
     mut stream: TcpStream,
-    _addr: SocketAddr,
+    addr: SocketAddr,
     manager: RemoteServerManager,
     on_command: Arc<F>,
 ) where
@@ -277,6 +674,7 @@ async fn handle_connection<F>(
 
     // Extract headers
     let mut auth_token = None;
+    let mut user_agent = None;
     for line in lines {
         if line.is_empty() {
             break;
@@ -284,12 +682,14 @@ async fn handle_connection<F>(
         let lower = line.to_lowercase();
         if lower.starts_with("authorization: bearer ") {
             auth_token = Some(line[21..].trim().to_string());
+        } else if lower.starts_with("user-agent:") {
+            user_agent = Some(line[11..].trim().to_string());
         }
     }
 
     // CORS preflight
     if method == "OPTIONS" {
-        let resp = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Authorization, Content-Type\r\n\r\n";
+        let resp = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, DELETE, OPTIONS\r\nAccess-Control-Allow-Headers: Authorization, Content-Type\r\n\r\n";
         let _ = stream.write_all(resp.as_bytes()).await;
         return;
     }
@@ -307,9 +707,9 @@ async fn handle_connection<F>(
         }
         ("POST", "/pair") => {
             let body = extract_body(&req_str);
-            let result = handle_pair_request(&manager, body).await;
+            let result = handle_pair_request(&manager, body, addr.ip().to_string(), user_agent).await;
             let (status_code, json_resp) = match result {
-                Ok(token) => (200, format!(r#"{{"ok":true,"token":"{token}"}}"#)),
+                Ok(pair_resp) => (200, serde_json::to_string(&pair_resp).unwrap_or_else(|_| r#"{"ok":true}"#.to_string())),
                 Err(err) => (401, format!(r#"{{"ok":false,"error":"{err}"}}"#)),
             };
             let resp = format!(
@@ -319,8 +719,26 @@ async fn handle_connection<F>(
             );
             let _ = stream.write_all(resp.as_bytes()).await;
         }
-        ("GET", "/status") => {
-            if !validate_token(&manager, auth_token.as_deref()).await {
+        ("GET", "/api/info") | ("GET", "/info") => {
+            let state = manager.inner.lock().await;
+            let info = serde_json::json!({
+                "appName": "Kinora",
+                "version": "0.6.0",
+                "mode": state.mode,
+                "localIp": state.local_ip,
+                "port": state.port,
+                "serverUrl": format!("http://{}:{}", state.local_ip, state.port)
+            });
+            let json = info.to_string();
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+                json.len(),
+                json
+            );
+            let _ = stream.write_all(resp.as_bytes()).await;
+        }
+        ("GET", "/api/status") | ("GET", "/status") => {
+            if !validate_token(&manager, auth_token.as_deref(), &[DeviceCapability::RemoteControl, DeviceCapability::PlaybackControl, DeviceCapability::MediaBrowse, DeviceCapability::AiAgent]).await {
                 send_unauthorized(&mut stream).await;
                 return;
             }
@@ -334,25 +752,83 @@ async fn handle_connection<F>(
             );
             let _ = stream.write_all(resp.as_bytes()).await;
         }
-        ("POST", "/command") => {
-            if !validate_token(&manager, auth_token.as_deref()).await {
+        ("GET", "/api/channels") => {
+            if !validate_token(&manager, auth_token.as_deref(), &[DeviceCapability::MediaBrowse, DeviceCapability::RemoteControl, DeviceCapability::AiAgent]).await {
                 send_unauthorized(&mut stream).await;
                 return;
             }
+
+            let state = manager.inner.lock().await;
+            let json = serde_json::to_string(&state.channels).unwrap_or_else(|_| "[]".to_string());
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+                json.len(),
+                json
+            );
+            let _ = stream.write_all(resp.as_bytes()).await;
+        }
+        ("GET", "/api/devices") => {
+            if !validate_token(&manager, auth_token.as_deref(), &[DeviceCapability::ClientSync]).await {
+                send_unauthorized(&mut stream).await;
+                return;
+            }
+
+            let state = manager.inner.lock().await;
+            let json = serde_json::to_string(&state.trusted_devices).unwrap_or_else(|_| "[]".to_string());
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+                json.len(),
+                json
+            );
+            let _ = stream.write_all(resp.as_bytes()).await;
+        }
+        ("GET", "/api/audit") => {
+            if !validate_token(&manager, auth_token.as_deref(), &[DeviceCapability::ClientSync, DeviceCapability::AiAgent]).await {
+                send_unauthorized(&mut stream).await;
+                return;
+            }
+
+            let state = manager.inner.lock().await;
+            let json = serde_json::to_string(&state.audit_log).unwrap_or_else(|_| "[]".to_string());
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+                json.len(),
+                json
+            );
+            let _ = stream.write_all(resp.as_bytes()).await;
+        }
+        ("POST", "/api/command") | ("POST", "/command") => {
+            let caller_opt = get_device_by_token(&manager, auth_token.as_deref()).await;
+            if caller_opt.is_none() {
+                send_unauthorized(&mut stream).await;
+                return;
+            }
+            let caller = caller_opt.unwrap();
 
             let body = extract_body(&req_str);
             if let Ok(cmd_obj) = serde_json::from_str::<serde_json::Value>(body) {
                 let cmd_str = cmd_obj.get("command").and_then(|v| v.as_str()).unwrap_or("noop").to_string();
                 let payload = cmd_obj.get("payload").cloned().unwrap_or(serde_json::Value::Null);
 
+                // Audit the command
+                {
+                    let mut state = manager.inner.lock().await;
+                    record_audit_action(
+                        &mut state.audit_log,
+                        &caller.id,
+                        &caller.name,
+                        "RemoteControl",
+                        &cmd_str,
+                        &payload.to_string(),
+                        "dispatched",
+                    );
+                }
+
                 let evt = RemoteCommandEvent {
                     command: cmd_str,
                     payload,
-                    client_id: auth_token.clone(),
-                    timestamp: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map(|d| d.as_secs())
-                        .unwrap_or(0),
+                    client_id: Some(caller.id),
+                    timestamp: now_unix_secs(),
                 };
 
                 on_command(evt);
@@ -364,8 +840,83 @@ async fn handle_connection<F>(
                 let _ = stream.write_all(err_resp.as_bytes()).await;
             }
         }
-        ("GET", "/events") => {
-            if !validate_token(&manager, auth_token.as_deref()).await {
+        ("POST", "/api/agent/command") => {
+            let caller_opt = get_device_by_token(&manager, auth_token.as_deref()).await;
+            if caller_opt.is_none() {
+                send_unauthorized(&mut stream).await;
+                return;
+            }
+            let caller = caller_opt.unwrap();
+            if !caller.capabilities.contains(&DeviceCapability::AiAgent) {
+                send_forbidden(&mut stream, "Device lacks AiAgent capability").await;
+                return;
+            }
+
+            let body = extract_body(&req_str);
+            if let Ok(cmd_obj) = serde_json::from_str::<serde_json::Value>(body) {
+                let action = cmd_obj.get("action").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
+                let payload = cmd_obj.get("payload").cloned().unwrap_or(serde_json::Value::Null);
+
+                {
+                    let mut state = manager.inner.lock().await;
+                    record_audit_action(
+                        &mut state.audit_log,
+                        &caller.id,
+                        &caller.name,
+                        "AiAgent",
+                        &action,
+                        &payload.to_string(),
+                        "executed",
+                    );
+                }
+
+                // Map agent action to appropriate event
+                let evt = RemoteCommandEvent {
+                    command: format!("agent_{action}"),
+                    payload,
+                    client_id: Some(caller.id),
+                    timestamp: now_unix_secs(),
+                };
+
+                on_command(evt);
+
+                let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{\"ok\":true}";
+                let _ = stream.write_all(resp.as_bytes()).await;
+            } else {
+                let err_resp = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: 26\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{\"error\":\"Invalid JSON\"}";
+                let _ = stream.write_all(err_resp.as_bytes()).await;
+            }
+        }
+        ("POST", "/api/input") => {
+            let caller_opt = get_device_by_token(&manager, auth_token.as_deref()).await;
+            if caller_opt.is_none() {
+                send_unauthorized(&mut stream).await;
+                return;
+            }
+            let caller = caller_opt.unwrap();
+
+            let body = extract_body(&req_str);
+            if let Ok(input_obj) = serde_json::from_str::<serde_json::Value>(body) {
+                let text = input_obj.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+                let evt = RemoteCommandEvent {
+                    command: "input_text".to_string(),
+                    payload: serde_json::json!({ "text": text }),
+                    client_id: Some(caller.id),
+                    timestamp: now_unix_secs(),
+                };
+
+                on_command(evt);
+
+                let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{\"ok\":true}";
+                let _ = stream.write_all(resp.as_bytes()).await;
+            } else {
+                let err_resp = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: 26\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{\"error\":\"Invalid JSON\"}";
+                let _ = stream.write_all(err_resp.as_bytes()).await;
+            }
+        }
+        ("GET", "/api/events") | ("GET", "/events") => {
+            if !validate_token(&manager, auth_token.as_deref(), &[DeviceCapability::RemoteControl, DeviceCapability::PlaybackControl, DeviceCapability::MediaBrowse, DeviceCapability::AiAgent]).await {
                 send_unauthorized(&mut stream).await;
                 return;
             }
@@ -414,18 +965,65 @@ fn extract_body(request: &str) -> &str {
     ""
 }
 
-async fn validate_token(manager: &RemoteServerManager, token: Option<&str>) -> bool {
+async fn get_device_by_token(manager: &RemoteServerManager, token: Option<&str>) -> Option<TrustedDevice> {
+    let tok = token?;
+    let mut state = manager.inner.lock().await;
+    for dev in &mut state.trusted_devices {
+        if dev.auth_token == tok && !dev.revoked {
+            dev.last_seen_at = now_unix_secs();
+            return Some(dev.clone());
+        }
+    }
+    None
+}
+
+async fn validate_token(manager: &RemoteServerManager, token: Option<&str>, required_caps: &[DeviceCapability]) -> bool {
     let tok = match token {
         Some(t) => t,
         None => return false,
     };
-    let state = manager.inner.lock().await;
-    state.auth_tokens.contains(tok)
+    let mut state = manager.inner.lock().await;
+    for dev in &mut state.trusted_devices {
+        if dev.auth_token == tok && !dev.revoked {
+            dev.last_seen_at = now_unix_secs();
+            if required_caps.is_empty() {
+                return true;
+            }
+            return required_caps.iter().any(|cap| dev.capabilities.contains(cap));
+        }
+    }
+    false
 }
 
-async fn handle_pair_request(manager: &RemoteServerManager, body_str: &str) -> Result<String, String> {
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PairResponse {
+    ok: bool,
+    token: String,
+    device_id: String,
+    device_name: String,
+    server_version: String,
+    capabilities: Vec<DeviceCapability>,
+}
+
+async fn handle_pair_request(
+    manager: &RemoteServerManager,
+    body_str: &str,
+    ip: String,
+    ua: Option<String>,
+) -> Result<PairResponse, String> {
     let parsed: serde_json::Value = serde_json::from_str(body_str).map_err(|_| "Malformed request body.".to_string())?;
     let pin_attempt = parsed.get("pin").and_then(|v| v.as_str()).unwrap_or("").trim();
+    let client_name = parsed.get("deviceName").and_then(|v| v.as_str()).unwrap_or("Mobile Remote").trim();
+    let dev_type_str = parsed.get("deviceType").and_then(|v| v.as_str()).unwrap_or("phone");
+
+    let device_type = match dev_type_str.to_lowercase().as_str() {
+        "tablet" => DeviceType::Tablet,
+        "tv" => DeviceType::Tv,
+        "aiagent" | "agent" => DeviceType::AiAgent,
+        "desktopclient" | "desktop" => DeviceType::DesktopClient,
+        _ => DeviceType::Phone,
+    };
 
     let mut state = manager.inner.lock().await;
 
@@ -443,9 +1041,69 @@ async fn handle_pair_request(manager: &RemoteServerManager, body_str: &str) -> R
     if pin_attempt == state.pairing_pin {
         state.failed_attempts = 0;
         state.lockout_until = None;
+
         let token = generate_auth_token();
-        state.auth_tokens.insert(token.clone());
-        Ok(token)
+        let device_id = generate_device_id();
+
+        let capabilities = match device_type {
+            DeviceType::AiAgent => vec![
+                DeviceCapability::AiAgent,
+                DeviceCapability::MediaBrowse,
+                DeviceCapability::PlaybackControl,
+                DeviceCapability::RemoteControl,
+            ],
+            DeviceType::DesktopClient => vec![
+                DeviceCapability::ClientSync,
+                DeviceCapability::MediaBrowse,
+                DeviceCapability::PlaybackControl,
+                DeviceCapability::MediaCast,
+            ],
+            _ => vec![
+                DeviceCapability::RemoteControl,
+                DeviceCapability::PlaybackControl,
+                DeviceCapability::InputText,
+                DeviceCapability::MediaBrowse,
+                DeviceCapability::MediaCast,
+            ],
+        };
+
+        let trusted = TrustedDevice {
+            id: device_id.clone(),
+            name: client_name.to_string(),
+            device_type,
+            capabilities: capabilities.clone(),
+            auth_token: token.clone(),
+            paired_at: now_unix_secs(),
+            last_seen_at: now_unix_secs(),
+            ip_address: Some(ip),
+            user_agent: ua,
+            revoked: false,
+        };
+
+        state.trusted_devices.push(trusted.clone());
+
+        if let Some(ref dir) = state.data_dir {
+            save_trusted_devices_to_disk(dir, &state.trusted_devices);
+        }
+
+        record_audit_action(
+            &mut state.audit_log,
+            &device_id,
+            client_name,
+            "Authentication",
+            "PairDevice",
+            "Device paired successfully via PIN",
+            "success",
+        );
+
+        Ok(PairResponse {
+            ok: true,
+            token,
+            device_id,
+            device_name: client_name.to_string(),
+            server_version: "0.6.0".to_string(),
+            capabilities,
+        })
     } else {
         state.failed_attempts += 1;
         if state.failed_attempts >= MAX_FAILED_ATTEMPTS {
@@ -460,6 +1118,16 @@ async fn handle_pair_request(manager: &RemoteServerManager, body_str: &str) -> R
 
 async fn send_unauthorized(stream: &mut TcpStream) {
     let resp = "HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nContent-Length: 35\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{\"ok\":false,\"error\":\"Unauthorized\"}";
+    let _ = stream.write_all(resp.as_bytes()).await;
+}
+
+async fn send_forbidden(stream: &mut TcpStream, reason: &str) {
+    let body = format!(r#"{{"ok":false,"error":"{reason}"}}"#);
+    let resp = format!(
+        "HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+        body.len(),
+        body
+    );
     let _ = stream.write_all(resp.as_bytes()).await;
 }
 
@@ -480,52 +1148,79 @@ pub fn get_embedded_remote_html() -> &'static str {
     .logo { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.02em; display: flex; align-items: center; gap: 8px; }
     .dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; box-shadow: 0 0 8px #10b981; }
     .btn-disconnect { background: transparent; border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 6px; padding: 4px 10px; font-size: 0.75rem; cursor: pointer; }
-    
+
+    /* Navigation Tabs */
+    .tab-bar { display: flex; background: rgba(255,255,255,0.03); border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .tab-btn { flex: 1; padding: 10px 0; background: transparent; border: none; color: #94a3b8; font-size: 0.825rem; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; transition: all 120ms ease; }
+    .tab-btn.active { color: #fff; border-bottom-color: #6366f1; background: rgba(99,102,241,0.08); }
+
     /* Pairing Screen */
     #pairingView { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center; }
-    .pairing-box { max-width: 320px; width: 100%; display: flex; flex-direction: column; gap: 16px; }
+    .pairing-box { max-width: 320px; width: 100%; display: flex; flex-direction: column; gap: 14px; }
     .pin-input { font-size: 2rem; font-weight: 700; letter-spacing: 0.4em; text-align: center; padding: 12px; background: rgba(255,255,255,0.08); border: 2px solid rgba(255,255,255,0.2); border-radius: 12px; color: #fff; outline: none; }
-    .btn-pair { background: #6366f1; border: none; color: #fff; padding: 14px; font-size: 1rem; font-weight: 600; border-radius: 12px; cursor: pointer; }
+    .name-input { font-size: 0.95rem; text-align: center; padding: 10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #fff; outline: none; }
+    .btn-pair { background: #6366f1; border: none; color: #fff; padding: 14px; font-size: 1rem; font-weight: 600; border-radius: 12px; cursor: pointer; margin-top: 6px; }
     .pair-error { color: #ef4444; font-size: 0.8125rem; min-height: 20px; }
 
-    /* Remote View */
-    #remoteView { flex: 1; display: flex; flex-direction: column; padding: 12px; gap: 12px; overflow-y: auto; }
-    
+    /* Views Container */
+    #mainViews { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .view-content { flex: 1; display: flex; flex-direction: column; padding: 12px; gap: 12px; overflow-y: auto; }
+
     /* Now Playing Card */
-    .now-playing { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; }
+    .now-playing { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
     .np-title { font-size: 0.95rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .np-channel { font-size: 0.75rem; color: #94a3b8; }
-    
+    .progress-bar { width: 100%; height: 4px; background: rgba(255,255,255,0.15); border-radius: 2px; overflow: hidden; }
+    .progress-fill { height: 100%; background: #6366f1; width: 0%; transition: width 200ms ease; }
+
     /* D-Pad Controller */
-    .dpad-container { display: flex; align-items: center; justify-content: center; margin: 8px 0; }
-    .dpad { width: 220px; height: 220px; position: relative; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-    .dpad-btn { position: absolute; background: rgba(255,255,255,0.08); border: none; color: #fff; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 12px; active: { background: rgba(99,102,241,0.5); } }
+    .dpad-container { display: flex; align-items: center; justify-content: center; margin: 4px 0; }
+    .dpad { width: 210px; height: 210px; position: relative; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+    .dpad-btn { position: absolute; background: rgba(255,255,255,0.08); border: none; color: #fff; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 12px; }
     .dpad-btn:active { background: rgba(99,102,241,0.4); transform: scale(0.95); }
-    .dpad-up { top: 12px; width: 64px; height: 50px; }
-    .dpad-down { bottom: 12px; width: 64px; height: 50px; }
-    .dpad-left { left: 12px; width: 50px; height: 64px; }
-    .dpad-right { right: 12px; width: 50px; height: 64px; }
-    .dpad-center { width: 72px; height: 72px; border-radius: 50%; background: #6366f1; font-weight: 700; font-size: 0.95rem; box-shadow: 0 4px 14px rgba(99,102,241,0.4); }
+    .dpad-up { top: 10px; width: 62px; height: 48px; }
+    .dpad-down { bottom: 10px; width: 62px; height: 48px; }
+    .dpad-left { left: 10px; width: 48px; height: 62px; }
+    .dpad-right { right: 10px; width: 48px; height: 62px; }
+    .dpad-center { width: 70px; height: 70px; border-radius: 50%; background: #6366f1; font-weight: 700; font-size: 0.95rem; box-shadow: 0 4px 14px rgba(99,102,241,0.4); }
     .dpad-center:active { transform: scale(0.92); }
 
     /* Key Clusters */
     .row-cluster { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-    .btn-action { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); color: #fff; padding: 14px 0; border-radius: 12px; font-size: 0.875rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 80ms ease; }
+    .btn-action { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); color: #fff; padding: 12px 0; border-radius: 12px; font-size: 0.875rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 80ms ease; }
     .btn-action:active { background: rgba(255,255,255,0.22); transform: scale(0.96); }
 
     /* Volume and Channel Rockers */
-    .rockers-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 4px; }
-    .rocker { display: flex; flex-direction: column; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; overflow: hidden; }
-    .rocker-btn { background: transparent; border: none; color: #fff; padding: 14px 0; font-size: 1.25rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .rockers-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 2px; }
+    .rocker { display: flex; flex-direction: column; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; overflow: hidden; }
+    .rocker-btn { background: transparent; border: none; color: #fff; padding: 12px 0; font-size: 1.2rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; }
     .rocker-btn:active { background: rgba(255,255,255,0.15); }
-    .rocker-label { text-align: center; font-size: 0.7rem; color: #94a3b8; padding: 4px 0; font-weight: 600; text-transform: uppercase; }
+    .rocker-label { text-align: center; font-size: 0.7rem; color: #94a3b8; padding: 2px 0; font-weight: 600; text-transform: uppercase; }
+
+    /* Keypad Grid */
+    .keypad-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 300px; margin: 0 auto; width: 100%; }
+    .key-btn { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); color: #fff; padding: 16px 0; font-size: 1.35rem; font-weight: 600; border-radius: 12px; cursor: pointer; }
+    .key-btn:active { background: rgba(99,102,241,0.5); }
+
+    /* Typing Card */
+    .typing-box { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+    .typing-input { padding: 12px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; color: #fff; font-size: 1rem; outline: none; }
+    .typing-btn { background: #6366f1; border: none; color: #fff; padding: 12px; border-radius: 8px; font-weight: 600; font-size: 0.95rem; cursor: pointer; }
+
+    /* Channel List */
+    .channel-search { padding: 10px 14px; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.15); border-radius: 10px; color: #fff; outline: none; width: 100%; font-size: 0.9rem; }
+    .channel-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; cursor: pointer; margin-bottom: 6px; }
+    .channel-item:active { background: rgba(99,102,241,0.2); border-color: #6366f1; }
+    .channel-num { font-weight: 700; color: #6366f1; margin-right: 10px; font-size: 0.9rem; min-width: 30px; }
+    .channel-title { font-weight: 600; font-size: 0.9rem; }
+    .channel-now { font-size: 0.75rem; color: #94a3b8; }
   </style>
 </head>
 <body>
   <header class="header">
     <div class="logo">
       <span class="dot"></span>
-      <span>Kinora TV Remote</span>
+      <span>Kinora Remote</span>
     </div>
     <button class="btn-disconnect" id="btnDisconnect" style="display:none;" onclick="disconnect()">Unpair</button>
   </header>
@@ -533,127 +1228,183 @@ pub fn get_embedded_remote_html() -> &'static str {
   <!-- Pairing PIN View -->
   <main id="pairingView">
     <div class="pairing-box">
-      <h2>Enter Pairing PIN</h2>
-      <p style="font-size:0.875rem;color:#94a3b8;">Enter the 4-digit PIN displayed on your Kinora TV screen to pair this device.</p>
+      <h2>Connect to Kinora</h2>
+      <p style="font-size:0.875rem;color:#94a3b8;">Enter the 4-digit pairing PIN shown on your Kinora screen.</p>
       <input type="text" id="pinInput" class="pin-input" pattern="[0-9]*" inputmode="numeric" maxlength="6" placeholder="0000" autofocus>
+      <input type="text" id="nameInput" class="name-input" placeholder="Device Name (e.g. Pixel Phone)">
       <div id="pairError" class="pair-error"></div>
-      <button class="btn-pair" onclick="pairWithPin()">Connect Remote</button>
+      <button class="btn-pair" onclick="pairWithPin()">Pair Device</button>
     </div>
   </main>
 
-  <!-- Active Remote View -->
-  <main id="remoteView" style="display:none;">
-    <div class="now-playing">
-      <div class="np-title" id="npTitle">Kinora TV</div>
-      <div class="np-channel" id="npChannel">Connected & Ready</div>
-    </div>
+  <!-- Active Remote View with Navigation Tabs -->
+  <div id="mainViews" style="display:none;">
+    <nav class="tab-bar">
+      <button class="tab-btn active" id="tabRemoteBtn" onclick="switchTab('remote')">Remote</button>
+      <button class="tab-btn" id="tabKeypadBtn" onclick="switchTab('keypad')">Input & Keypad</button>
+      <button class="tab-btn" id="tabChannelsBtn" onclick="switchTab('channels')">Channels</button>
+    </nav>
 
-    <!-- D-Pad Navigation -->
-    <div class="dpad-container">
-      <div class="dpad">
-        <button class="dpad-btn dpad-up" onclick="send('dpad_up')">▲</button>
-        <button class="dpad-btn dpad-left" onclick="send('dpad_left')">◀</button>
-        <button class="dpad-btn dpad-center" onclick="send('dpad_select')">OK</button>
-        <button class="dpad-btn dpad-right" onclick="send('dpad_right')">▶</button>
-        <button class="dpad-btn dpad-down" onclick="send('dpad_down')">▼</button>
+    <!-- Tab 1: Remote Control -->
+    <main id="viewRemote" class="view-content">
+      <div class="now-playing">
+        <div class="np-title" id="npTitle">Kinora TV</div>
+        <div class="np-channel" id="npChannel">Connected & Ready</div>
+        <div class="progress-bar"><div class="progress-fill" id="npProgress"></div></div>
       </div>
-    </div>
 
-    <!-- Top Navigation Actions -->
-    <div class="row-cluster">
-      <button class="btn-action" onclick="send('back')">Back</button>
-      <button class="btn-action" onclick="send('home')">Home</button>
-      <button class="btn-action" onclick="send('guide')">Guide</button>
-    </div>
-
-    <!-- Playback Controls -->
-    <div class="row-cluster">
-      <button class="btn-action" onclick="send('seek_back')">« -10s</button>
-      <button class="btn-action" style="background:#6366f1;" onclick="send('toggle_play')">⏯ Play</button>
-      <button class="btn-action" onclick="send('seek_forward')">+10s »</button>
-    </div>
-
-    <!-- Rockers: Volume and Channel -->
-    <div class="rockers-grid">
-      <div class="rocker">
-        <button class="rocker-btn" onclick="send('vol_up')">+</button>
-        <div class="rocker-label">VOL</div>
-        <button class="rocker-btn" onclick="send('vol_down')">-</button>
+      <div class="dpad-container">
+        <div class="dpad">
+          <button class="dpad-btn dpad-up" onclick="sendCmd('dpad_up')">&#9650;</button>
+          <button class="dpad-btn dpad-down" onclick="sendCmd('dpad_down')">&#9660;</button>
+          <button class="dpad-btn dpad-left" onclick="sendCmd('dpad_left')">&#9664;</button>
+          <button class="dpad-btn dpad-right" onclick="sendCmd('dpad_right')">&#9654;</button>
+          <button class="dpad-center" onclick="sendCmd('dpad_select')">OK</button>
+        </div>
       </div>
-      <div class="rocker">
-        <button class="rocker-btn" onclick="send('ch_up')">▲</button>
-        <div class="rocker-label">CH</div>
-        <button class="rocker-btn" onclick="send('ch_down')">▼</button>
-      </div>
-    </div>
 
-    <div class="row-cluster">
-      <button class="btn-action" onclick="send('mute')">Mute</button>
-      <button class="btn-action" onclick="send('subtitles')">CC</button>
-      <button class="btn-action" onclick="send('aspect')">Aspect</button>
-    </div>
-  </main>
+      <div class="row-cluster">
+        <button class="btn-action" onclick="sendCmd('back')">Back</button>
+        <button class="btn-action" onclick="sendCmd('home')">Home</button>
+        <button class="btn-action" id="btnPlayPause" onclick="sendCmd('play_pause')">Play/Pause</button>
+      </div>
+
+      <div class="row-cluster">
+        <button class="btn-action" onclick="sendCmd('step_back')">-10s</button>
+        <button class="btn-action" onclick="sendCmd('step_forward')">+30s</button>
+        <button class="btn-action" onclick="sendCmd('toggle_mute')">Mute</button>
+      </div>
+
+      <div class="rockers-grid">
+        <div class="rocker">
+          <button class="rocker-btn" onclick="sendCmd('volume_up')">+</button>
+          <div class="rocker-label">Volume</div>
+          <button class="rocker-btn" onclick="sendCmd('volume_down')">-</button>
+        </div>
+        <div class="rocker">
+          <button class="rocker-btn" onclick="sendCmd('channel_up')">&#9650;</button>
+          <div class="rocker-label">Channel</div>
+          <button class="rocker-btn" onclick="sendCmd('channel_down')">&#9660;</button>
+        </div>
+      </div>
+    </main>
+
+    <!-- Tab 2: Keyboard & Number Keypad -->
+    <main id="viewKeypad" class="view-content" style="display:none;">
+      <div class="typing-box">
+        <label style="font-size:0.85rem;font-weight:600;color:#cbd5e1;">Type to Kinora TV</label>
+        <input type="text" id="typeInput" class="typing-input" placeholder="Search title or type query...">
+        <button class="typing-btn" onclick="sendTypedText()">Send to TV</button>
+      </div>
+
+      <div style="text-align:center;font-size:0.8rem;color:#94a3b8;margin-top:6px;">Direct Channel Keypad</div>
+      <div class="keypad-grid">
+        <button class="key-btn" onclick="sendDigit('1')">1</button>
+        <button class="key-btn" onclick="sendDigit('2')">2</button>
+        <button class="key-btn" onclick="sendDigit('3')">3</button>
+        <button class="key-btn" onclick="sendDigit('4')">4</button>
+        <button class="key-btn" onclick="sendDigit('5')">5</button>
+        <button class="key-btn" onclick="sendDigit('6')">6</button>
+        <button class="key-btn" onclick="sendDigit('7')">7</button>
+        <button class="key-btn" onclick="sendDigit('8')">8</button>
+        <button class="key-btn" onclick="sendDigit('9')">9</button>
+        <button class="key-btn" onclick="sendCmd('back')">&#9003;</button>
+        <button class="key-btn" onclick="sendDigit('0')">0</button>
+        <button class="key-btn" onclick="sendCmd('dpad_select')">Enter</button>
+      </div>
+    </main>
+
+    <!-- Tab 3: Channels Browser -->
+    <main id="viewChannels" class="view-content" style="display:none;">
+      <input type="text" id="channelFilter" class="channel-search" placeholder="Search channels..." oninput="filterChannels()">
+      <div id="channelsList" style="margin-top:8px;"></div>
+    </main>
+  </div>
 
   <script>
-    let authToken = localStorage.getItem('kinora_remote_token');
-    let eventSource = null;
+    let authToken = localStorage.getItem('kinora_token') || null;
+    let sseSource = null;
+    let channelsData = [];
 
-    function haptic() {
-      if (navigator.vibrate) navigator.vibrate(25);
-    }
+    window.addEventListener('load', () => {
+      if (authToken) {
+        showRemote();
+      } else {
+        showPairing();
+      }
+    });
 
-    async function pairWithPin() {
-      const pin = document.getElementById('pinInput').value.trim();
-      const errEl = document.getElementById('pairError');
-      errEl.textContent = '';
-      if (!pin) {
-        errEl.textContent = 'Please enter PIN';
-        return;
-      }
-      try {
-        const res = await fetch('/pair', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pin })
-        });
-        const data = await res.json();
-        if (data.ok && data.token) {
-          authToken = data.token;
-          localStorage.setItem('kinora_remote_token', authToken);
-          showRemote();
-        } else {
-          errEl.textContent = data.error || 'Pairing failed';
-        }
-      } catch (e) {
-        errEl.textContent = 'Connection to Kinora failed';
-      }
+    function showPairing() {
+      document.getElementById('pairingView').style.display = 'flex';
+      document.getElementById('mainViews').style.display = 'none';
+      document.getElementById('btnDisconnect').style.display = 'none';
+      if (sseSource) { sseSource.close(); sseSource = null; }
     }
 
     function showRemote() {
       document.getElementById('pairingView').style.display = 'none';
-      document.getElementById('remoteView').style.display = 'flex';
+      document.getElementById('mainViews').style.display = 'flex';
       document.getElementById('btnDisconnect').style.display = 'block';
-      startEvents();
+      connectSse();
+      fetchChannels();
+    }
+
+    function switchTab(tab) {
+      document.getElementById('tabRemoteBtn').classList.toggle('active', tab === 'remote');
+      document.getElementById('tabKeypadBtn').classList.toggle('active', tab === 'keypad');
+      document.getElementById('tabChannelsBtn').classList.toggle('active', tab === 'channels');
+
+      document.getElementById('viewRemote').style.display = tab === 'remote' ? 'flex' : 'none';
+      document.getElementById('viewKeypad').style.display = tab === 'keypad' ? 'flex' : 'none';
+      document.getElementById('viewChannels').style.display = tab === 'channels' ? 'block' : 'none';
+
+      if (tab === 'channels' && channelsData.length === 0) {
+        fetchChannels();
+      }
+    }
+
+    async function pairWithPin() {
+      const pin = document.getElementById('pinInput').value.trim();
+      const deviceName = document.getElementById('nameInput').value.trim() || 'Mobile Remote';
+      const errBox = document.getElementById('pairError');
+      errBox.innerText = '';
+
+      if (pin.length < 4) {
+        errBox.innerText = 'PIN must be at least 4 digits.';
+        return;
+      }
+
+      try {
+        const res = await fetch('/pair', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin, deviceName, deviceType: 'phone' })
+        });
+        const data = await res.json();
+        if (data.ok && data.token) {
+          authToken = data.token;
+          localStorage.setItem('kinora_token', authToken);
+          showRemote();
+        } else {
+          errBox.innerText = data.error || 'Pairing failed. Check PIN.';
+        }
+      } catch (e) {
+        errBox.innerText = 'Connection error. Are you on the same Wi-Fi?';
+      }
     }
 
     function disconnect() {
-      authToken = null;
-      localStorage.removeItem('kinora_remote_token');
-      if (eventSource) {
-        eventSource.close();
-        eventSource = null;
+      if (confirm('Disconnect this remote?')) {
+        authToken = null;
+        localStorage.removeItem('kinora_token');
+        showPairing();
       }
-      document.getElementById('remoteView').style.display = 'none';
-      document.getElementById('pairingView').style.display = 'flex';
-      document.getElementById('btnDisconnect').style.display = 'none';
-      document.getElementById('pinInput').value = '';
     }
 
-    async function send(command, payload = {}) {
-      haptic();
+    async function sendCmd(command, payload = {}) {
       if (!authToken) return;
       try {
-        const res = await fetch('/command', {
+        const res = await fetch('/api/command', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -667,32 +1418,96 @@ pub fn get_embedded_remote_html() -> &'static str {
       } catch (e) {}
     }
 
-    function startEvents() {
-      if (eventSource) eventSource.close();
+    async function sendTypedText() {
+      const input = document.getElementById('typeInput');
+      const text = input.value;
+      if (!text || !authToken) return;
+      try {
+        await fetch('/api/input', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + authToken
+          },
+          body: JSON.stringify({ text })
+        });
+        input.value = '';
+      } catch (e) {}
+    }
+
+    function sendDigit(d) {
+      sendCmd('keypad_digit', { digit: d });
+    }
+
+    async function fetchChannels() {
       if (!authToken) return;
-      eventSource = new EventSource('/events?token=' + encodeURIComponent(authToken));
-      eventSource.onmessage = (e) => {
+      try {
+        const res = await fetch('/api/channels', {
+          headers: { 'Authorization': 'Bearer ' + authToken }
+        });
+        if (res.ok) {
+          channelsData = await res.json();
+          renderChannels(channelsData);
+        }
+      } catch (e) {}
+    }
+
+    function renderChannels(list) {
+      const box = document.getElementById('channelsList');
+      if (!list || list.length === 0) {
+        box.innerHTML = '<div style="color:#94a3b8;font-size:0.85rem;text-align:center;padding:20px;">No channels found on TV.</div>';
+        return;
+      }
+      box.innerHTML = list.map(c => `
+        <div class="channel-item" onclick="tuneToChannel('${c.id}', ${c.number || 0})">
+          <div>
+            <span class="channel-num">${c.number ? '#' + c.number : ''}</span>
+            <span class="channel-title">${escapeHtml(c.name)}</span>
+            <div class="channel-now">${escapeHtml(c.currentProgramme || c.group || 'Live')}</div>
+          </div>
+          <button style="background:#6366f1;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:0.75rem;cursor:pointer;">Watch</button>
+        </div>
+      `).join('');
+    }
+
+    function filterChannels() {
+      const q = document.getElementById('channelFilter').value.toLowerCase();
+      const filtered = channelsData.filter(c => (c.name || '').toLowerCase().includes(q) || (c.group || '').toLowerCase().includes(q));
+      renderChannels(filtered);
+    }
+
+    function tuneToChannel(channelId, channelNumber) {
+      sendCmd('tune_channel', { channelId, channelNumber });
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function connectSse() {
+      if (sseSource) sseSource.close();
+      sseSource = new EventSource('/api/events?token=' + encodeURIComponent(authToken || ''));
+      sseSource.onmessage = (e) => {
         try {
           const state = JSON.parse(e.data);
-          if (state.title) document.getElementById('npTitle').textContent = state.title;
-          if (state.channelName) {
-            document.getElementById('npChannel').textContent = (state.channelNumber ? '#' + state.channelNumber + ' ' : '') + state.channelName;
-          } else if (state.subtitle) {
-            document.getElementById('npChannel').textContent = state.subtitle;
-          }
+          updatePlaybackUi(state);
         } catch (err) {}
       };
-      eventSource.onerror = () => {
-        // Will automatically retry
+      sseSource.onerror = () => {
+        if (sseSource) sseSource.close();
+        setTimeout(connectSse, 4000);
       };
     }
 
-    // Auto-login on load if token present
-    window.addEventListener('DOMContentLoaded', () => {
-      if (authToken) {
-        showRemote();
+    function updatePlaybackUi(state) {
+      document.getElementById('npTitle').innerText = state.title || 'Kinora TV';
+      document.getElementById('npChannel').innerText = state.channelName ? `${state.channelName} (${state.channelNumber || ''})` : (state.subtitle || 'Connected');
+      if (state.durationSec > 0) {
+        const pct = Math.min(100, Math.max(0, (state.positionSec / state.durationSec) * 100));
+        document.getElementById('npProgress').style.width = pct + '%';
       }
-    });
+    }
   </script>
 </body>
 </html>"##
@@ -725,11 +1540,12 @@ mod tests {
 
     #[tokio::test]
     async fn manager_initial_status_and_lifecycle() {
-        let mgr = RemoteServerManager::new();
+        let mgr = RemoteServerManager::new(None);
         let status = mgr.get_status().await;
         assert!(!status.running);
         assert_eq!(status.port, DEFAULT_REMOTE_PORT);
         assert_eq!(status.pairing_pin.len(), 4);
+        assert_eq!(status.mode, PlatformMode::Standalone);
 
         let test_state = RemotePlaybackState {
             title: "Planet Earth".to_string(),
@@ -750,21 +1566,212 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pairing_logic_enforces_pin_and_rate_limits() {
-        let mgr = RemoteServerManager::new();
+    async fn pairing_logic_enforces_pin_and_creates_trusted_device() {
+        let mgr = RemoteServerManager::new(None);
         let pin = {
             let state = mgr.inner.lock().await;
             state.pairing_pin.clone()
         };
 
-        // Correct PIN
-        let good_res = handle_pair_request(&mgr, &format!(r#"{{"pin":"{pin}"}}"#)).await;
+        // Correct PIN with client metadata
+        let good_res = handle_pair_request(
+            &mgr,
+            &format!(r#"{{"pin":"{pin}","deviceName":"Test Phone","deviceType":"phone"}}"#),
+            "192.168.1.10".to_string(),
+            Some("Mozilla/5.0".to_string()),
+        )
+        .await;
         assert!(good_res.is_ok());
-        let token = good_res.unwrap();
-        assert_eq!(token.len(), 32);
+        let pair_resp = good_res.unwrap();
+        assert_eq!(pair_resp.token.len(), 32);
+        assert_eq!(pair_resp.device_name, "Test Phone");
+        assert!(pair_resp.capabilities.contains(&DeviceCapability::RemoteControl));
+
+        // Verify trusted device was added
+        let devices = mgr.get_trusted_devices().await;
+        assert_eq!(devices.len(), 1);
+        assert_eq!(devices[0].name, "Test Phone");
+        assert_eq!(devices[0].device_type, DeviceType::Phone);
+        assert!(!devices[0].revoked);
 
         // Incorrect PIN
-        let bad_res = handle_pair_request(&mgr, r#"{"pin":"0000"}"#).await;
+        let bad_res = handle_pair_request(
+            &mgr,
+            r#"{"pin":"0000"}"#,
+            "192.168.1.10".to_string(),
+            None,
+        )
+        .await;
         assert!(bad_res.is_err());
+    }
+
+    #[tokio::test]
+    async fn device_revocation_and_audit_logging() {
+        let mgr = RemoteServerManager::new(None);
+        let pin = {
+            let state = mgr.inner.lock().await;
+            state.pairing_pin.clone()
+        };
+
+        let pair_resp = handle_pair_request(
+            &mgr,
+            &format!(r#"{{"pin":"{pin}","deviceName":"Revokable iPad","deviceType":"tablet"}}"#),
+            "192.168.1.20".to_string(),
+            None,
+        )
+        .await
+        .unwrap();
+
+        // Validate token works
+        let is_valid = validate_token(&mgr, Some(&pair_resp.token), &[DeviceCapability::RemoteControl]).await;
+        assert!(is_valid);
+
+        // Revoke device
+        let revoked = mgr.revoke_device(&pair_resp.device_id).await;
+        assert!(revoked);
+
+        // Token should now be refused
+        let is_valid_after = validate_token(&mgr, Some(&pair_resp.token), &[DeviceCapability::RemoteControl]).await;
+        assert!(!is_valid_after);
+
+        // Audit log should contain Pair and Revoke entries
+        let audit = mgr.get_audit_log().await;
+        assert!(audit.iter().any(|a| a.action == "PairDevice"));
+        assert!(audit.iter().any(|a| a.action == "RevokeDevice"));
+    }
+
+    #[tokio::test]
+    async fn ai_agent_pairing_and_capability_assignment() {
+        let mgr = RemoteServerManager::new(None);
+        let pin = {
+            let state = mgr.inner.lock().await;
+            state.pairing_pin.clone()
+        };
+
+        let pair_resp = handle_pair_request(
+            &mgr,
+            &format!(r#"{{"pin":"{pin}","deviceName":"Local Jarvis Agent","deviceType":"aiAgent"}}"#),
+            "127.0.0.1".to_string(),
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert!(pair_resp.capabilities.contains(&DeviceCapability::AiAgent));
+        assert!(pair_resp.capabilities.contains(&DeviceCapability::MediaBrowse));
+    }
+
+    #[tokio::test]
+    async fn trusted_devices_file_persistence_roundtrip() {
+        let temp_dir = std::env::temp_dir().join(format!("kinora-dev-test-{}", now_unix_secs()));
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let mgr = RemoteServerManager::new(Some(temp_dir.clone()));
+        let pin = {
+            let state = mgr.inner.lock().await;
+            state.pairing_pin.clone()
+        };
+
+        let pair_resp = handle_pair_request(
+            &mgr,
+            &format!(r#"{{"pin":"{pin}","deviceName":"Living Room Tablet","deviceType":"tablet"}}"#),
+            "192.168.1.55".to_string(),
+            None,
+        )
+        .await
+        .unwrap();
+
+        // Check device was saved to disk
+        let saved_devices = load_trusted_devices_from_disk(&temp_dir);
+        assert_eq!(saved_devices.len(), 1);
+        assert_eq!(saved_devices[0].id, pair_resp.device_id);
+        assert_eq!(saved_devices[0].name, "Living Room Tablet");
+
+        // Create a new manager instance pointing to the same directory
+        let mgr2 = RemoteServerManager::new(Some(temp_dir.clone()));
+        let devices2 = mgr2.get_trusted_devices().await;
+        assert_eq!(devices2.len(), 1);
+        assert_eq!(devices2[0].name, "Living Room Tablet");
+
+        // Clean up
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[tokio::test]
+    async fn rename_device_updates_name_and_persists() {
+        let temp_dir = std::env::temp_dir().join(format!("kinora-dev-rename-test-{}", now_unix_secs()));
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let mgr = RemoteServerManager::new(Some(temp_dir.clone()));
+        let pin = {
+            let state = mgr.inner.lock().await;
+            state.pairing_pin.clone()
+        };
+
+        let pair_resp = handle_pair_request(
+            &mgr,
+            &format!(r#"{{"pin":"{pin}","deviceName":"Old Name","deviceType":"phone"}}"#),
+            "192.168.1.60".to_string(),
+            None,
+        )
+        .await
+        .unwrap();
+
+        let renamed = mgr.rename_device(&pair_resp.device_id, "New Friendly Name").await;
+        assert!(renamed);
+
+        let devices = mgr.get_trusted_devices().await;
+        assert_eq!(devices[0].name, "New Friendly Name");
+
+        let disk_devices = load_trusted_devices_from_disk(&temp_dir);
+        assert_eq!(disk_devices[0].name, "New Friendly Name");
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[tokio::test]
+    async fn platform_mode_transitions() {
+        let mgr = RemoteServerManager::new(None);
+        let initial_mode = mgr.get_platform_mode().await;
+        assert_eq!(initial_mode.mode, PlatformMode::Standalone);
+        assert!(!initial_mode.is_server_active);
+
+        let server_mode = mgr.set_platform_mode(PlatformMode::Server, None).await;
+        assert_eq!(server_mode.mode, PlatformMode::Server);
+
+        let client_mode = mgr
+            .set_platform_mode(PlatformMode::Client, Some("http://192.168.1.100:5198".to_string()))
+            .await;
+        assert_eq!(client_mode.mode, PlatformMode::Client);
+        assert_eq!(client_mode.server_url.as_deref(), Some("http://192.168.1.100:5198"));
+    }
+
+    #[tokio::test]
+    async fn remote_channel_summary_cache() {
+        let mgr = RemoteServerManager::new(None);
+        let channels = vec![
+            RemoteChannelSummary {
+                id: "ch-1".to_string(),
+                name: "BBC One HD".to_string(),
+                number: Some(101),
+                group: Some("National".to_string()),
+                logo: None,
+                current_programme: Some("News at Six".to_string()),
+            },
+            RemoteChannelSummary {
+                id: "ch-2".to_string(),
+                name: "ITV1".to_string(),
+                number: Some(102),
+                group: Some("National".to_string()),
+                logo: None,
+                current_programme: Some("Coronation Street".to_string()),
+            },
+        ];
+
+        mgr.update_channels(channels).await;
+        let inner = mgr.inner.lock().await;
+        assert_eq!(inner.channels.len(), 2);
+        assert_eq!(inner.channels[0].name, "BBC One HD");
+        assert_eq!(inner.channels[0].current_programme.as_deref(), Some("News at Six"));
     }
 }

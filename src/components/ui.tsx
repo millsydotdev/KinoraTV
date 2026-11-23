@@ -91,18 +91,28 @@ export function Art({
     if (eager || typeof IntersectionObserver === 'undefined' || !containerRef.current) {
       startLoad()
     } else {
+      let started = false
+      const trigger = () => {
+        if (!started) {
+          started = true
+          startLoad()
+        }
+      }
       const observer = new IntersectionObserver(
         ([entry]) => {
           if (entry?.isIntersecting) {
             observer.disconnect()
-            startLoad()
+            trigger()
           }
         },
-        { rootMargin: '240px' },
+        { rootMargin: '400px' },
       )
       observer.observe(containerRef.current)
+      // Safety fallback: if IntersectionObserver does not fire within 600ms (e.g. inside horizontal rails or programmatic scroll), trigger load
+      const timer = setTimeout(trigger, 600)
       return () => {
         active = false
+        clearTimeout(timer)
         observer.disconnect()
       }
     }
@@ -327,18 +337,27 @@ export function ProgrammeArt({
     if (eager || typeof IntersectionObserver === 'undefined' || !containerRef.current) {
       load()
     } else {
+      let started = false
+      const trigger = () => {
+        if (!started) {
+          started = true
+          load()
+        }
+      }
       const observer = new IntersectionObserver(
         ([entry]) => {
           if (entry?.isIntersecting) {
             observer.disconnect()
-            load()
+            trigger()
           }
         },
-        { rootMargin: '160px' },
+        { rootMargin: '300px' },
       )
       observer.observe(containerRef.current)
+      const timer = setTimeout(trigger, 600)
       return () => {
         active = false
+        clearTimeout(timer)
         observer.disconnect()
       }
     }

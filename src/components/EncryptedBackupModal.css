@@ -12,7 +12,7 @@
 
 .enc-backup-modal {
   width: 100%;
-  max-width: 520px;
+  max-width: 540px;
   display: flex;
   flex-direction: column;
   background-color: var(--panel, #12141a);
@@ -62,7 +62,7 @@
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1.15rem;
 }
 
 .enc-backup-note {
@@ -101,6 +101,75 @@
 .enc-backup-error {
   font-size: 0.8rem;
   color: #f87171;
+}
+
+.enc-wizard-step {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent, #6366f1);
+}
+
+.enc-inspection-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+  margin: 0.25rem 0;
+}
+
+.enc-stat-card {
+  padding: 0.6rem 0.8rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border, #2a2e3d);
+  border-radius: var(--radius-sm, 6px);
+  display: flex;
+  flex-direction: column;
+}
+
+.enc-stat-val {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--fg, #ffffff);
+}
+
+.enc-stat-lbl {
+  font-size: 0.725rem;
+  color: var(--fg-dim, #9ca3af);
+}
+
+.enc-options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.enc-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+  color: var(--fg, #ffffff);
+  cursor: pointer;
+}
+
+.enc-checkbox-row input[type="checkbox"] {
+  accent-color: var(--accent, #6366f1);
+  cursor: pointer;
+}
+
+.enc-warning-box {
+  padding: 0.6rem 0.85rem;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: var(--radius-sm, 6px);
+  font-size: 0.8rem;
+  color: #fbbf24;
+  line-height: 1.4;
 }
 
 .enc-backup-footer {

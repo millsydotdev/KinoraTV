@@ -44,6 +44,7 @@ import { OfflineBanner } from './components/OfflineBanner'
 import { WhatsNewModal, hasSeenWhatsNew } from './components/WhatsNewModal'
 import { AmbientScreensaver } from './components/AmbientScreensaver'
 import { RemoteControlModal } from './components/RemoteControlModal'
+import { RemoteHintBar } from './components/RemoteHintBar'
 import { TraktSettingsModal } from './components/TraktSettingsModal'
 import { DownloadsModal } from './components/DownloadsModal'
 import { downloadRef } from './data/refs'
@@ -448,6 +449,17 @@ function Shell() {
           sleepTimerRemaining={mediaLibrary.sleepTimerRemaining}
           onSetSleepTimer={mediaLibrary.setSleepTimer}
           onUpdateLyrics={mediaLibrary.updateAudioLyrics}
+        />
+      )}
+      {prefs.viewMode === 'tv' && !inPlayer && (
+        <RemoteHintBar
+          red="Live Guide"
+          green="Channels"
+          yellow="Audio"
+          blue="Settings"
+          ok="Select"
+          back="Back"
+          className={!inPlayer && mediaLibrary.currentAudio ? 'remote-hint-with-audio' : ''}
         />
       )}
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />

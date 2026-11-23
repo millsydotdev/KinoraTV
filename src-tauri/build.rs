@@ -104,6 +104,14 @@ fn main() {
             "discover_dlna_renderers",
             "cast_dlna_media",
             "control_dlna_playback",
+            "get_trusted_devices",
+            "revoke_trusted_device",
+            "rename_trusted_device",
+            "get_platform_mode",
+            "set_platform_mode",
+            "get_audit_log",
+            "update_remote_channels",
+            "discover_kinora_servers",
         ]),
     ))
     .expect("failed to run the Tauri build script");

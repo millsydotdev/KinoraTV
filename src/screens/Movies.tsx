@@ -50,7 +50,7 @@ export function NoTitles({ kind, disabledSources, emptyCatalogue }: { kind: 'fil
   const isEmptyCat = emptyCatalogue ?? (hasEnabled && (isMovies ? store.xtreamCatalogue.movies.length === 0 : store.xtreamCatalogue.series.length === 0))
 
   return (
-    <div className="streaming-page">
+    <div className="streaming-page movies-screen">
       <PageHeader
         title={isMovies ? 'Movies' : 'TV Shows'}
         searchPlaceholder={isMovies ? 'Search movies...' : 'Search TV shows...'}
@@ -639,7 +639,7 @@ export function Movies() {
   )
 
   return (
-    <div className="streaming-page">
+    <div className="streaming-page movies-screen">
       <PageHeader
         title={
           <div className="streaming-title-group">

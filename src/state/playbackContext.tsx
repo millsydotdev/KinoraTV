@@ -37,6 +37,7 @@ import { artworkEngine } from '../data/artworkEngine'
 import { broadcastRemotePlaybackState } from '../lib/remoteServerSync'
 import { scrobbleMedia } from '../lib/trakt'
 import { type EdlEntry, parseEdl, findActiveEdlCut } from '../lib/edlParser'
+import { LiveReconnectController } from '../lib/reconnectController'
 
 export interface ActiveStreamItem {
   ref?: string
@@ -184,6 +185,30 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const lastProgressTimeRef = useRef<number>(Date.now())
   const lastCurrentTimeRef = useRef<number>(0)
 
+  const reconnectControllerRef = useRef<LiveReconnectController | null>(null)
+  if (!reconnectControllerRef.current) {
+    reconnectControllerRef.current = new LiveReconnectController({
+      maxAttempts: 5,
+      baseDelayMs: 1000,
+      maxDelayMs: 16000,
+      backoffFactor: 2,
+      stallTimeoutMs: 10000,
+    })
+  }
+
+  useEffect(() => {
+    const ctrl = reconnectControllerRef.current
+    if (!ctrl) return
+    return ctrl.subscribe((s) => {
+      setRetryAttempt(s.attempt)
+      if (s.nextRetryInMs) {
+        setRetryTimerRemaining(Math.ceil(s.nextRetryInMs / 1000))
+      } else if (s.status === 'connected' || s.status === 'idle') {
+        setRetryTimerRemaining(null)
+      }
+    })
+  }, [])
+
   const streamOptions = useMemo(() => {
     const userAgent = activeStream?.httpUserAgent || prefs.customUserAgent || undefined
     const referrer = activeStream?.httpReferrer || prefs.customReferrer || undefined
@@ -207,6 +232,17 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     combinedPrefs
   )
 
+  useEffect(() => {
+    const handleOnline = () => {
+      if (playback.state.status === 'error' && playback.state.canRetry) {
+        reconnectControllerRef.current?.cancel()
+        playback.retry()
+      }
+    }
+    window.addEventListener('online', handleOnline)
+    return () => window.removeEventListener('online', handleOnline)
+  }, [playback.state.status, playback.state.canRetry, playback.retry])
+
   const isTimeshiftDelayed = timeshiftOffsetSecs > 0
 
   const playStream = useCallback((item: ActiveStreamItem) => {
@@ -218,6 +254,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       return item
     })
     artworkEngine.setPlaybackActive(true)
+    reconnectControllerRef.current?.cancel()
     setAttemptedServers(new Set())
     setFallbackNotice(null)
     setRetryAttempt(0)
@@ -244,6 +281,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       })
     }
     artworkEngine.setPlaybackActive(false)
+    reconnectControllerRef.current?.cancel()
     setActiveStream(null)
     setPipMode('hidden')
     setFallbackNotice(null)
@@ -350,6 +388,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   // Automated exponential backoff retry for stream errors
   useEffect(() => {
     if (playback.state.status === 'playing') {
+      reconnectControllerRef.current?.onPlaybackSuccess()
       setRetryAttempt(0)
       setRetryTimerRemaining(null)
       if (retryIntervalRef.current) window.clearInterval(retryIntervalRef.current)
@@ -381,12 +420,14 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
 
   const retry = useCallback(() => {
     if (retryIntervalRef.current) window.clearInterval(retryIntervalRef.current)
+    reconnectControllerRef.current?.cancel()
     setRetryTimerRemaining(null)
     playback.retry()
   }, [playback])
 
   const cancelRetry = useCallback(() => {
     if (retryIntervalRef.current) window.clearInterval(retryIntervalRef.current)
+    reconnectControllerRef.current?.cancel()
     setRetryTimerRemaining(null)
     setRetryAttempt(5)
   }, [])
@@ -458,6 +499,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         lastCurrentTimeRef.current = el.currentTime
         lastProgressTimeRef.current = Date.now()
         clearStallTimer()
+        reconnectControllerRef.current?.clearStall()
         setWatchdogState('healthy')
       }
       if (activeStream?.ref && !activeStream.isLive && el.duration > 0) {
@@ -486,6 +528,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
 
     const onPlaying = () => {
       clearStallTimer()
+      reconnectControllerRef.current?.clearStall()
       setWatchdogState('healthy')
       lastProgressTimeRef.current = Date.now()
       lastCurrentTimeRef.current = el.currentTime
@@ -494,6 +537,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     const onWaitingOrStalled = () => {
       if (el.paused) return
       setWatchdogState('buffering')
+      reconnectControllerRef.current?.onStall(() => triggerAutoRecovery())
       if (stallTimerRef.current === null) {
         stallTimerRef.current = window.setTimeout(() => {
           triggerAutoRecovery()

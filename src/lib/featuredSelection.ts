@@ -337,7 +337,11 @@ function buildLiveSlide(
 
   const rawArt = p?.art || (hasGenuineProgrammeArt(p) && !p?.icon?.includes('imgur.com') ? p?.icon : undefined) || undefined
   const landscapeStill = normalizeProgrammeArt(rawArt, '16:9')
-  const isTitleCover = Boolean(rawArt && (/\/cover$|title[-_]logo|wordmark/i.test(rawArt) && !rawArt.includes('/16-9')))
+  const isTransparentWordmark = Boolean(
+    rawArt &&
+    /\/logos?\/|title[-_]logo|wordmark|clearart|\.svg/i.test(rawArt) &&
+    !/cover|poster|backdrop|still|thumb/i.test(rawArt)
+  )
 
   return {
     id: c.id,
@@ -349,7 +353,7 @@ function buildLiveSlide(
     badgeIcon: 'tv',
     art: landscapeStill,
     backdropUrl: landscapeStill,
-    logoUrl: isTitleCover ? rawArt : undefined,
+    logoUrl: isTransparentWordmark ? rawArt : undefined,
     channel: c,
     programme: p,
     channelMarkText: c.mark.text,

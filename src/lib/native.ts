@@ -2654,6 +2654,68 @@ export interface RemoteServerStatus {
   pairingPin: string
   serverUrl: string
   connectedClients: number
+  mode?: PlatformMode
+  trustedDevicesCount?: number
+}
+
+export type PlatformMode = 'standalone' | 'server' | 'client'
+export type DeviceType = 'phone' | 'tablet' | 'tv' | 'remoteWeb' | 'aiAgent' | 'desktopClient' | 'unknown'
+export type DeviceCapability =
+  | 'remoteControl'
+  | 'playbackControl'
+  | 'inputText'
+  | 'mediaBrowse'
+  | 'mediaCast'
+  | 'aiAgent'
+  | 'clientSync'
+
+export interface TrustedDevice {
+  id: string
+  name: string
+  deviceType: DeviceType
+  capabilities: DeviceCapability[]
+  authToken: string
+  pairedAt: number
+  lastSeenAt: number
+  ipAddress?: string | null
+  userAgent?: string | null
+  revoked: boolean
+}
+
+export interface AuditedAction {
+  id: string
+  timestamp: number
+  deviceId: string
+  deviceName: string
+  capability: string
+  action: string
+  details: string
+  status: string
+}
+
+export interface RemoteChannelSummary {
+  id: string
+  name: string
+  number?: number | null
+  group?: string | null
+  logo?: string | null
+  currentProgramme?: string | null
+}
+
+export interface DiscoveredServer {
+  name: string
+  ip: string
+  port: number
+  version: string
+  mode: string
+}
+
+export interface PlatformModeInfo {
+  mode: PlatformMode
+  serverUrl?: string | null
+  isServerActive: boolean
+  trustedDevicesCount: number
+  activeConnections: number
 }
 
 export interface RemoteCommandEvent {
@@ -2672,6 +2734,8 @@ export async function startRemoteServer(port?: number, pin?: string): Promise<Re
       pairingPin: pin || '7492',
       serverUrl: `http://127.0.0.1:${port || 5198}`,
       connectedClients: 0,
+      mode: 'server',
+      trustedDevicesCount: 0,
     }
   }
   try {
@@ -2701,6 +2765,8 @@ export async function getRemoteServerStatus(): Promise<RemoteServerStatus | null
       pairingPin: '7492',
       serverUrl: 'http://127.0.0.1:5198',
       connectedClients: 0,
+      mode: 'standalone',
+      trustedDevicesCount: 0,
     }
   }
   try {
@@ -2717,6 +2783,94 @@ export async function updateRemotePlaybackState(state: RemotePlaybackState): Pro
     return true
   } catch {
     return false
+  }
+}
+
+export async function getTrustedDevices(): Promise<TrustedDevice[]> {
+  if (!isTauri()) return []
+  try {
+    return await invoke<TrustedDevice[]>('get_trusted_devices')
+  } catch {
+    return []
+  }
+}
+
+export async function revokeTrustedDevice(deviceId: string): Promise<boolean> {
+  if (!isTauri()) return true
+  try {
+    return await invoke<boolean>('revoke_trusted_device', { deviceId })
+  } catch {
+    return false
+  }
+}
+
+export async function renameTrustedDevice(deviceId: string, newName: string): Promise<boolean> {
+  if (!isTauri()) return true
+  try {
+    return await invoke<boolean>('rename_trusted_device', { deviceId, newName })
+  } catch {
+    return false
+  }
+}
+
+export async function getPlatformMode(): Promise<PlatformModeInfo | null> {
+  if (!isTauri()) {
+    return {
+      mode: 'standalone',
+      serverUrl: null,
+      isServerActive: false,
+      trustedDevicesCount: 0,
+      activeConnections: 0,
+    }
+  }
+  try {
+    return await invoke<PlatformModeInfo>('get_platform_mode')
+  } catch {
+    return null
+  }
+}
+
+export async function setPlatformMode(mode: PlatformMode, serverUrl?: string | null): Promise<PlatformModeInfo | null> {
+  if (!isTauri()) {
+    return {
+      mode,
+      serverUrl: serverUrl || null,
+      isServerActive: mode === 'server',
+      trustedDevicesCount: 0,
+      activeConnections: 0,
+    }
+  }
+  try {
+    return await invoke<PlatformModeInfo>('set_platform_mode', { mode, serverUrl })
+  } catch {
+    return null
+  }
+}
+
+export async function getAuditLog(): Promise<AuditedAction[]> {
+  if (!isTauri()) return []
+  try {
+    return await invoke<AuditedAction[]>('get_audit_log')
+  } catch {
+    return []
+  }
+}
+
+export async function updateRemoteChannels(channels: RemoteChannelSummary[]): Promise<boolean> {
+  if (!isTauri()) return true
+  try {
+    return await invoke<boolean>('update_remote_channels', { channels })
+  } catch {
+    return false
+  }
+}
+
+export async function discoverKinoraServers(timeoutSecs?: number): Promise<DiscoveredServer[]> {
+  if (!isTauri()) return []
+  try {
+    return await invoke<DiscoveredServer[]>('discover_kinora_servers', { timeoutSecs })
+  } catch {
+    return []
   }
 }
 

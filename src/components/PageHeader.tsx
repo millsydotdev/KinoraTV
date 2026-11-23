@@ -11,6 +11,7 @@ import { useNotifications } from './Notifications'
 import { BackgroundTaskTrigger } from './BackgroundTaskCenter'
 import { CastModal } from './CastModal'
 import { useCasting } from '../lib/casting/manager'
+import { VirtualKeyboard } from './VirtualKeyboard'
 import './PageHeader.css'
 
 export const NavMenuContext = createContext<() => void>(() => undefined)
@@ -84,6 +85,7 @@ function HeaderProfileMenu() {
   const [pinTargetId, setPinTargetId] = useState<string | null>(null)
   const [enteredPin, setEnteredPin] = useState('')
   const [pinError, setPinError] = useState<string | null>(null)
+  const [pinVkOpen, setPinVkOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
 
@@ -319,7 +321,16 @@ function HeaderProfileMenu() {
                   {pinError}
                 </div>
               )}
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-small"
+                  onClick={() => setPinVkOpen(true)}
+                  title="Open On-Screen Number Keypad"
+                >
+                  <Icon name="keyboard" size={14} />
+                  Keypad
+                </button>
                 <button
                   type="button"
                   className="btn btn-secondary btn-small"
@@ -337,6 +348,34 @@ function HeaderProfileMenu() {
             </form>
           </div>
         </div>
+      )}
+
+      {pinVkOpen && (
+        <VirtualKeyboard
+          open={pinVkOpen}
+          value={enteredPin}
+          onChange={(val) => {
+            setEnteredPin(val)
+            setPinError(null)
+          }}
+          onSubmit={() => {
+            setPinVkOpen(false)
+            if (pinTargetId && enteredPin.trim()) {
+              const res = switchProfileWithPin(pinTargetId, enteredPin)
+              if (res.success) {
+                setPinTargetId(null)
+                setEnteredPin('')
+                setPinError(null)
+              } else {
+                setPinError(res.error ?? 'Invalid PIN')
+              }
+            }
+          }}
+          onClose={() => setPinVkOpen(false)}
+          title="Enter Parental PIN"
+          placeholder="Enter 4-digit PIN..."
+          urlMode={false}
+        />
       )}
     </div>
   )

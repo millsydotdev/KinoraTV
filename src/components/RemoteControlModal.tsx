@@ -1,5 +1,5 @@
-// RemoteControlModal.tsx - Wireless mobile remote control pairing interface.
-// Shows 4-digit pairing PIN, inline QR code, local Wi-Fi URL, and server controls.
+// RemoteControlModal.tsx - Wireless mobile remote control and trusted device management hub.
+// Shows 4-digit pairing PIN, inline QR code, local Wi-Fi URL, connected devices, and audit log.
 // Strictly adheres to project typography standards: zero em-dashes across all code and comments.
 
 import { useEffect, useState, useMemo } from 'react'
@@ -8,7 +8,12 @@ import {
   getRemoteServerStatus,
   startRemoteServer,
   stopRemoteServer,
+  getTrustedDevices,
+  revokeTrustedDevice,
+  getAuditLog,
   type RemoteServerStatus,
+  type TrustedDevice,
+  type AuditedAction,
 } from '../lib/native'
 import { generateQrMatrix, qrMatrixToSvgPath } from '../lib/qrCode'
 import './RemoteControlModal.css'
@@ -20,10 +25,13 @@ export interface RemoteControlModalProps {
 
 export function RemoteControlModal({ open, onClose }: RemoteControlModalProps) {
   const [status, setStatus] = useState<RemoteServerStatus | null>(null)
+  const [devices, setDevices] = useState<TrustedDevice[]>([])
+  const [auditLog, setAuditLog] = useState<AuditedAction[]>([])
+  const [activeTab, setActiveTab] = useState<'pairing' | 'devices' | 'audit'>('pairing')
   const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(false)
 
-  // Load status on open
+  // Load status and data on open
   useEffect(() => {
     if (!open) return
     let active = true
@@ -39,6 +47,12 @@ export function RemoteControlModal({ open, onClose }: RemoteControlModalProps) {
           setStatus(res)
         }
       }
+
+      const devList = await getTrustedDevices()
+      if (active) setDevices(devList)
+
+      const audits = await getAuditLog()
+      if (active) setAuditLog(audits)
     }
 
     load()
@@ -104,8 +118,18 @@ export function RemoteControlModal({ open, onClose }: RemoteControlModalProps) {
     }
   }
 
+  const handleRevokeDevice = async (deviceId: string) => {
+    const ok = await revokeTrustedDevice(deviceId)
+    if (ok) {
+      setDevices(devices.map((d) => (d.id === deviceId ? { ...d, revoked: true } : d)))
+      const audits = await getAuditLog()
+      setAuditLog(audits)
+    }
+  }
+
   const isRunning = status?.running ?? false
-  const clientCount = status?.connectedClients ?? 0
+  const activeDevices = devices.filter((d) => !d.revoked)
+  const clientCount = status?.connectedClients ?? activeDevices.length
 
   return (
     <div className="remote-modal-backdrop" onClick={onClose} role="dialog" aria-modal="true">
@@ -113,7 +137,7 @@ export function RemoteControlModal({ open, onClose }: RemoteControlModalProps) {
         <div className="remote-modal-header">
           <div className="remote-modal-title">
             <Icon name="remote" size={20} />
-            <span>Wireless Remote Control</span>
+            <span>Wireless Remote Control & Connected Devices</span>
           </div>
           <button
             type="button"
@@ -124,6 +148,30 @@ export function RemoteControlModal({ open, onClose }: RemoteControlModalProps) {
             <Icon name="x" size={18} />
           </button>
         </div>
+
+        <nav className="remote-tab-bar">
+          <button
+            type="button"
+            className={`remote-tab-btn ${activeTab === 'pairing' ? 'active' : ''}`}
+            onClick={() => setActiveTab('pairing')}
+          >
+            Pairing & QR Code
+          </button>
+          <button
+            type="button"
+            className={`remote-tab-btn ${activeTab === 'devices' ? 'active' : ''}`}
+            onClick={() => setActiveTab('devices')}
+          >
+            Trusted Devices ({activeDevices.length})
+          </button>
+          <button
+            type="button"
+            className={`remote-tab-btn ${activeTab === 'audit' ? 'active' : ''}`}
+            onClick={() => setActiveTab('audit')}
+          >
+            Audit Log
+          </button>
+        </nav>
 
         <div className="remote-modal-body">
           <div className="remote-status-banner">
@@ -139,62 +187,132 @@ export function RemoteControlModal({ open, onClose }: RemoteControlModalProps) {
             </div>
           </div>
 
-          {isRunning && status ? (
-            <div className="remote-pairing-section">
-              <div className="remote-qr-container" title="Scan with mobile camera to open remote">
-                {qrSvgData ? (
-                  <svg
-                    viewBox={`0 0 ${qrSvgData.totalSize} ${qrSvgData.totalSize}`}
-                    shapeRendering="crispEdges"
-                  >
-                    <path d={qrSvgData.path} fill="#0d0f14" />
-                  </svg>
-                ) : (
-                  <Icon name="radar" size={48} />
-                )}
-              </div>
+          {activeTab === 'pairing' ? (
+            <>
+              {isRunning && status ? (
+                <div className="remote-pairing-section">
+                  <div className="remote-qr-container" title="Scan with mobile camera to open remote">
+                    {qrSvgData ? (
+                      <svg
+                        viewBox={`0 0 ${qrSvgData.totalSize} ${qrSvgData.totalSize}`}
+                        shapeRendering="crispEdges"
+                      >
+                        <path d={qrSvgData.path} fill="#0d0f14" />
+                      </svg>
+                    ) : (
+                      <Icon name="radar" size={48} />
+                    )}
+                  </div>
 
-              <div className="remote-details-column">
-                <div className="remote-pin-block">
-                  <span className="remote-pin-label">4-Digit Pairing PIN</span>
-                  <span className="remote-pin-display">{status.pairingPin}</span>
-                </div>
+                  <div className="remote-details-column">
+                    <div className="remote-pin-block">
+                      <span className="remote-pin-label">4-Digit Pairing PIN</span>
+                      <span className="remote-pin-display">{status.pairingPin}</span>
+                    </div>
 
-                <div className="remote-url-block">
-                  <span className="remote-pin-label">Browser Address</span>
-                  <div className="remote-url-input-wrap">
-                    <input
-                      type="text"
-                      className="remote-url-input"
-                      value={status.serverUrl}
-                      readOnly
-                    />
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-small"
-                      onClick={handleCopyUrl}
-                      title="Copy URL"
-                    >
-                      <Icon name={copied ? 'checkCircle' : 'copy'} size={14} />
-                      {copied ? 'Copied' : 'Copy'}
-                    </button>
+                    <div className="remote-url-block">
+                      <span className="remote-pin-label">Browser Address</span>
+                      <div className="remote-url-input-wrap">
+                        <input
+                          type="text"
+                          className="remote-url-input"
+                          value={status.serverUrl}
+                          readOnly
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-small"
+                          onClick={handleCopyUrl}
+                          title="Copy URL"
+                        >
+                          <Icon name={copied ? 'checkCircle' : 'copy'} size={14} />
+                          {copied ? 'Copied' : 'Copy'}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-muted)' }}>
+                  Server is currently inactive. Click Start Server below to enable remote access and device pairing.
+                </div>
+              )}
+
+              <div className="remote-instructions">
+                <ol>
+                  <li>Ensure your smartphone, tablet, or AI agent is on the same local Wi-Fi.</li>
+                  <li>Scan the QR code or open the browser address shown above.</li>
+                  <li>Enter the 4-digit PIN on your device to complete secure pairing.</li>
+                </ol>
               </div>
+            </>
+          ) : activeTab === 'devices' ? (
+            <div className="remote-devices-list">
+              {devices.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-muted)' }}>
+                  No trusted devices paired yet. Scan the QR code from any phone or tablet to connect.
+                </div>
+              ) : (
+                devices.map((dev) => (
+                  <div key={dev.id} className="device-item-card">
+                    <div className="device-info-left">
+                      <div className="device-name-row">
+                        <span>{dev.name}</span>
+                        <span className="device-badge">{dev.deviceType}</span>
+                        {dev.revoked && <span style={{ color: '#ef4444', fontSize: '0.75rem' }}>(Revoked)</span>}
+                      </div>
+                      <div className="device-meta-row">
+                        <span>IP: {dev.ipAddress || 'LAN'}</span> &bull;{' '}
+                        <span>Capabilities: {dev.capabilities.join(', ')}</span>
+                      </div>
+                    </div>
+                    {!dev.revoked && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-small"
+                        onClick={() => handleRevokeDevice(dev.id)}
+                        style={{ color: '#ef4444' }}
+                        title="Revoke device access"
+                      >
+                        Revoke
+                      </button>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
           ) : (
-            <div style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-muted)' }}>
-              Remote server is currently inactive. Click Start below to enable local Wi-Fi control.
+            <div className="remote-audit-container">
+              {auditLog.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-muted)' }}>
+                  No audit actions recorded in this session.
+                </div>
+              ) : (
+                <table className="audit-table">
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Device</th>
+                      <th>Action</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {auditLog.slice(-15).reverse().map((a) => (
+                      <tr key={a.id}>
+                        <td>{new Date(a.timestamp * 1000).toLocaleTimeString()}</td>
+                        <td>{a.deviceName}</td>
+                        <td>{a.action}</td>
+                        <td style={{ color: a.status === 'success' || a.status === 'dispatched' ? '#10b981' : '#f59e0b' }}>
+                          {a.status}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           )}
-
-          <div className="remote-instructions">
-            <ol>
-              <li>Ensure your smartphone or tablet is connected to the same Wi-Fi network.</li>
-              <li>Scan the QR code with your camera app or open the browser address above.</li>
-              <li>Enter the 4-digit PIN on your phone to connect and start controlling playback.</li>
-            </ol>
-          </div>
         </div>
 
         <div className="remote-modal-footer">

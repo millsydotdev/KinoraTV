@@ -29,6 +29,12 @@ import { SmartCollectionModal } from '../components/SmartCollectionModal'
 import { buildUnifiedMediaCatalog } from '../lib/smartCollections'
 import { artworkEngine } from '../data/artworkEngine'
 import { VoiceSearchButton } from '../components/VoiceSearchButton'
+import { VirtualKeyboard } from '../components/VirtualKeyboard'
+import {
+  scoreMatrixItem,
+  normalizeSearchString,
+  type MatrixItem,
+} from '../lib/globalSearchMatrix'
 import './Search.css'
 
 interface SavedSearch {
@@ -61,12 +67,21 @@ export function Search() {
   const [params, setParams] = useSearchParams()
   // The input owns its text; the URL follows it, so fast typing never waits on navigation.
   const [q, setQ] = useState(() => params.get('q') ?? '')
+
+  useEffect(() => {
+    const urlQ = params.get('q')
+    if (urlQ !== null && urlQ !== q) {
+      setQ(urlQ)
+      setShowSuggestions(false)
+    }
+  }, [params])
   const filter = (params.get('type') ?? 'all') as Group | 'all'
   const [hdOnly, setHdOnly] = useState(false)
   const [scope, setScope] = useState<'all' | 'library' | 'guide'>('all')
   const [sortBy, setSortBy] = useState<'relevance' | 'newest' | 'title'>('relevance')
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [smartModalOpen, setSmartModalOpen] = useState(false)
+  const [vkOpen, setVkOpen] = useState(false)
   const input = useRef<HTMLInputElement>(null)
   const results = useRef<HTMLDivElement>(null)
   const needle = q.trim().toLowerCase()
@@ -535,11 +550,32 @@ export function Search() {
       groups[g].reverse()
     }
   } else if (sortBy === 'relevance' && needle) {
+    const qNorm = normalizeSearchString(needle)
     for (const g of order) {
       groups[g].sort((a, b) => {
-        const aExact = a.title.toLowerCase() === needle ? -2 : a.title.toLowerCase().startsWith(needle) ? -1 : 0
-        const bExact = b.title.toLowerCase() === needle ? -2 : b.title.toLowerCase().startsWith(needle) ? -1 : 0
-        return aExact - bExact
+        const itemA: MatrixItem = {
+          id: a.key,
+          ref: a.key,
+          title: a.title,
+          cleanTitle: a.title,
+          mediaType: g === 'films' ? 'film' : g === 'series' ? 'series' : g === 'channels' ? 'channel' : g === 'episodes' ? 'episode' : 'resource',
+          genres: [],
+          to: a.to,
+          subText: a.sub,
+          isFavourite: library.favourites.includes(a.key),
+        }
+        const itemB: MatrixItem = {
+          id: b.key,
+          ref: b.key,
+          title: b.title,
+          cleanTitle: b.title,
+          mediaType: g === 'films' ? 'film' : g === 'series' ? 'series' : g === 'channels' ? 'channel' : g === 'episodes' ? 'episode' : 'resource',
+          genres: [],
+          to: b.to,
+          subText: b.sub,
+          isFavourite: library.favourites.includes(b.key),
+        }
+        return scoreMatrixItem(itemB, qNorm) - scoreMatrixItem(itemA, qNorm)
       })
     }
   }
@@ -641,6 +677,15 @@ export function Search() {
               setParams({ q: query })
             }}
           />
+          <button
+            type="button"
+            className="icon-btn vk-toggle-btn"
+            onClick={() => setVkOpen(true)}
+            aria-label="Open on-screen keyboard"
+            title="Open on-screen remote keyboard"
+          >
+            <Icon name="keyboard" />
+          </button>
           {q && (
             <button type="button" className="icon-btn" onClick={() => { setQ(''); input.current?.focus() }} aria-label="Clear search">
               <Icon name="close" />
@@ -895,6 +940,23 @@ export function Search() {
           const searchTerm = firstKeywordRule ? String(firstKeywordRule.value) : firstGenreRule ? String(firstGenreRule.value) : col.name
           setQ(searchTerm)
         }}
+      />
+      <VirtualKeyboard
+        open={vkOpen}
+        value={q}
+        onChange={(val) => {
+          setQ(val)
+          setParams(val ? { q: val } : {})
+          setShowSuggestions(true)
+        }}
+        onSubmit={() => {
+          setVkOpen(false)
+          input.current?.focus()
+        }}
+        onClose={() => setVkOpen(false)}
+        title="Search Catalogue & Guide"
+        placeholder="Enter title, channel or genre..."
+        urlMode={false}
       />
     </div>
     </>

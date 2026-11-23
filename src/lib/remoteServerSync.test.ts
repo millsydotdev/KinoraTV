@@ -128,6 +128,45 @@ describe('remoteServerSync', () => {
     window.removeEventListener('kinora:numeric_zap', zapSpy)
   })
 
+  it('handles remote input_text, tune_channel and agent commands', () => {
+    const tuneSpy = vi.fn()
+    window.addEventListener('kinora:tune_channel', tuneSpy)
+
+    handleIncomingRemoteCommand({
+      command: 'tune_channel',
+      payload: { channelId: 'ch-99', channelNumber: 105 },
+      timestamp: Date.now(),
+    })
+    expect(tuneSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: { channelId: 'ch-99', channelNumber: 105 } })
+    )
+
+    handleIncomingRemoteCommand({
+      command: 'agent_tune',
+      payload: { channelId: 'ch-42' },
+      timestamp: Date.now(),
+    })
+    expect(tuneSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: { channelId: 'ch-42' } })
+    )
+
+    handleIncomingRemoteCommand({
+      command: 'input_text',
+      payload: { text: 'nature documentary' },
+      timestamp: Date.now(),
+    })
+    expect(window.location.hash).toContain('nature%20documentary')
+
+    handleIncomingRemoteCommand({
+      command: 'agent_search',
+      payload: { query: 'planet earth' },
+      timestamp: Date.now(),
+    })
+    expect(window.location.hash).toContain('planet%20earth')
+
+    window.removeEventListener('kinora:tune_channel', tuneSpy)
+  })
+
   it('broadcasts playback state updates to native layer', async () => {
     const updateSpy = vi.spyOn(nativeModule, 'updateRemotePlaybackState').mockResolvedValue(true)
 

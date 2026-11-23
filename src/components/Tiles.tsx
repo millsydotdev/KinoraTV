@@ -190,7 +190,7 @@ export function PosterCard({ to, title, art, posterUrl, artworkKey, focus = 50, 
     imdbId,
     year,
   })
-  const effectiveArt = resolved.src || ''
+  const effectiveArt = resolved.src || posterUrl || art || ''
   return (
     <>
       <Link to={to} className="card card-poster" aria-label={line ? `${title}, ${line}` : title} onContextMenu={onContextMenu}>
@@ -602,7 +602,7 @@ export function WideCard({ to, title, sub, art, backdropUrl, artworkKey, focus =
     type: artType,
     providerArt: backdropUrl || art,
   })
-  const effectiveArt = resolved.src || ''
+  const effectiveArt = resolved.src || backdropUrl || art || ''
   return (
     <>
       <Link to={to} className="card card-wide" aria-label={sub ? `${title}, ${sub}` : title} onContextMenu={onContextMenu}>

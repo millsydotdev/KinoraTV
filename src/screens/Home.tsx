@@ -56,14 +56,24 @@ function HomeHero({
   // Guard against title logos, wordmarks, or portrait covers being enlarged to fill the hero background.
   // Backdrops must strictly be genuine landscape visuals.
   const candidateHeroArt = resolvedHero.src || currentSlide?.backdropUrl || currentSlide?.art
-  const isTitleGraphicOrCover = Boolean(
+  const isInvalidBackdrop = Boolean(
     candidateHeroArt && (
-      /\/logos?\/|title[-_]logo|wordmark|clearart|\/cover$|poster|folder\.jpg/i.test(candidateHeroArt) &&
-      !candidateHeroArt.includes('/16-9')
+      /\/logos?\/|title[-_]logo|wordmark|clearart/i.test(candidateHeroArt) ||
+      (/\/cover$|poster|folder\.jpg/i.test(candidateHeroArt) && !candidateHeroArt.includes('/16-9') && !candidateHeroArt.includes('backdrop'))
     )
   )
-  const effectiveHeroArt = isTitleGraphicOrCover ? null : candidateHeroArt
-  const heroTitleLogo = currentSlide?.logoUrl || (isTitleGraphicOrCover && !candidateHeroArt?.includes('/cover') ? candidateHeroArt : null)
+  const effectiveHeroArt = isInvalidBackdrop ? null : candidateHeroArt
+
+  // Only genuine transparent wordmarks and clearart graphics can serve as hero title logos.
+  // Posters, album covers, and photographic stills must never be used as title logos.
+  const isWordmarkLogo = (url?: string | null): boolean => {
+    if (!url) return false
+    if (/poster|cover|backdrop|still|thumb|fanart|banner|folder|\.jpg|\.jpeg/i.test(url)) return false
+    return /\/logos?\/|title[-_]logo|wordmark|clearart|\.svg/i.test(url)
+  }
+  const heroTitleLogo = isWordmarkLogo(currentSlide?.logoUrl)
+    ? currentSlide?.logoUrl
+    : (isWordmarkLogo(candidateHeroArt) ? candidateHeroArt : null)
 
   const inLibrary = currentSlide ? (
     currentSlide.kind === 'live'
@@ -116,8 +126,17 @@ function HomeHero({
         </span>
         {heroTitleLogo ? (
           <div className="home-hero-title-graphic-wrapper">
-            <img src={heroTitleLogo} alt={currentSlide?.title ?? ''} className="home-hero-title-logo" />
-            <h1 id="hero-title" className="sr-only">
+            <img
+              src={heroTitleLogo}
+              alt={currentSlide?.title ?? ''}
+              className="home-hero-title-logo"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none'
+                const fallbackH1 = document.getElementById('hero-title')
+                if (fallbackH1) fallbackH1.classList.remove('sr-only')
+              }}
+            />
+            <h1 id="hero-title" className="home-hero-main-title sr-only">
               {currentSlide?.title ?? (previewChannel?.name ? `${previewChannel.name} Live` : 'Kinora')}
             </h1>
           </div>

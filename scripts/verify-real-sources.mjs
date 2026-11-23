@@ -122,25 +122,33 @@ async function run() {
     };
 
     const nav = async (p) => {
+      const targetPath = p.split('?')[0];
       const target = JSON.stringify(p);
-      const res = await js(`
-        const to = ${target};
-        try {
-          if (window.__kinora_navigate) {
-            window.__kinora_navigate(to);
-            return { ok: true, via: '__kinora_navigate', href: location.href };
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const res = await js(`
+          const to = ${target};
+          try {
+            if (window.__kinora_navigate) {
+              window.__kinora_navigate(to);
+              return { ok: true, via: '__kinora_navigate', href: location.href, path: location.pathname };
+            }
+            history.pushState({}, '', to);
+            window.dispatchEvent(new PopStateEvent('popstate'));
+            return { ok: true, via: 'pushState', href: location.href, path: location.pathname };
+          } catch (e) {
+            return { ok: false, err: String(e) };
           }
-          history.pushState({}, '', to);
-          window.dispatchEvent(new PopStateEvent('popstate'));
-          return { ok: true, via: 'pushState', href: location.href };
-        } catch (e) {
-          return { ok: false, err: String(e) };
+        `);
+        console.log(`nav to ${p} attempt ${attempt + 1}:`, res);
+        const reached = await until(`location.pathname === ${JSON.stringify(targetPath)}`, 8000);
+        if (reached) {
+          await wait(1000);
+          return;
         }
-      `);
-      console.log('nav to', p, 'result:', res);
-      await wait(2000);
-      const after = await js(`return { href: location.href, path: location.pathname, hasSearchPage: Boolean(document.querySelector('.page.search')) }`);
-      console.log('after nav to', p, 'state:', after);
+        await wait(1000);
+      }
+      const after = await js(`return { href: location.href, path: location.pathname }`);
+      console.log(`Warning: after nav to ${p}, actual path is:`, after?.path);
     };
 
     const setWindowRect = async (width, height) => {
@@ -319,16 +327,15 @@ async function run() {
     // 5. Real Movie Detail Screen (Night of the Living Dead)
     console.log('Capturing [05-movie-detail-real-1080p.png]...');
     await nav('/movies/night-of-the-living-dead');
-    await until(`Boolean(document.querySelector('.detail-hero-backdrop, .movie-detail-hero, h1'))`, 15000);
-    // Wait until rich metadata has populated and poster image is fully rendered and loaded
-    await until(`Boolean(document.querySelector('.detail-hero-poster-wrap img') && document.querySelector('.detail-hero-poster-wrap img').complete && document.querySelector('.detail-hero-poster-wrap img').naturalWidth > 0)`, 25000);
-    await wait(1500);
+    await until(`Boolean(document.querySelector('.detail, .detail-backdrop, h1.title-xl, .detail-hero'))`, 15000);
+    await waitForImages(8000);
+    await wait(2000);
     await captureShot('05-movie-detail-real-1080p.png', 'Movie Detail 1080p');
 
     // 6. Real Series Detail Screen (The Beverly Hillbillies)
     console.log('Capturing [06-series-detail-real-1080p.png]...');
     await nav('/series/beverly-hillbillies');
-    await until(`Boolean(document.querySelector('.detail, .detail-hero, h1'))`, 15000);
+    await until(`Boolean(document.querySelector('.detail, .detail-hero, h1.title-xl'))`, 15000);
     await waitForImages(8000);
     await wait(2000);
     await captureShot('06-series-detail-real-1080p.png', 'Series Detail 1080p');
@@ -344,25 +351,25 @@ async function run() {
         window.scrollTo({ top: 680, behavior: 'instant' });
       }
     `);
-    await until(`Boolean(document.querySelector('.episode-still img, .season-poster-thumb img') && (document.querySelector('.episode-still img') || document.querySelector('.season-poster-thumb img')).complete && (document.querySelector('.episode-still img') || document.querySelector('.season-poster-thumb img')).naturalWidth > 0)`, 20000);
+    await until(`Boolean(document.querySelector('.episode-still img, .season-poster-thumb img, .episode-card') && (document.querySelector('.episode-still img, .season-poster-thumb img') ? (document.querySelector('.episode-still img, .season-poster-thumb img').complete && document.querySelector('.episode-still img, .season-poster-thumb img').naturalWidth > 0) : true))`, 20000);
     await wait(1500);
     await captureShot('07-series-seasons-episodes-real-1080p.png', 'Series Seasons and Episodes 1080p');
 
     // 8. Search Results
     console.log('Capturing [08-search-results-real-1080p.png]...');
     await nav('/search?q=living');
-    await until(`Boolean(document.querySelector('.search-input, .results-films, .card.result'))`, 15000);
+    await until(`Boolean(document.querySelector('.search-input, .results-films, .card.result, .page.search'))`, 15000);
     await js(`
       const input = document.querySelector('.search-input');
       if (input) {
         input.value = 'living';
         input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
         input.blur();
-        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       }
       document.body.click();
     `);
-    await until(`!document.querySelector('.search-autocomplete-dropdown')`, 5000);
+    await until(`Boolean(document.querySelector('.results-films, .card.result, .results-count'))`, 10000);
     await waitForImages(8000);
     await wait(2000);
     await captureShot('08-search-results-real-1080p.png', 'Search Results 1080p');

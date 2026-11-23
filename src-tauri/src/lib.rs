@@ -1065,6 +1065,77 @@ async fn update_remote_playback_state(
     Ok(())
 }
 
+/// Returns all persistent trusted devices paired with this Kinora instance.
+#[tauri::command]
+async fn get_trusted_devices(
+    manager: tauri::State<'_, remote_server::RemoteServerManager>,
+) -> Result<Vec<remote_server::TrustedDevice>, String> {
+    Ok(manager.get_trusted_devices().await)
+}
+
+/// Revokes authorization for a paired mobile or client device.
+#[tauri::command]
+async fn revoke_trusted_device(
+    device_id: String,
+    manager: tauri::State<'_, remote_server::RemoteServerManager>,
+) -> Result<bool, String> {
+    Ok(manager.revoke_device(&device_id).await)
+}
+
+/// Renames a trusted device for clear identification in the UI.
+#[tauri::command]
+async fn rename_trusted_device(
+    device_id: String,
+    new_name: String,
+    manager: tauri::State<'_, remote_server::RemoteServerManager>,
+) -> Result<bool, String> {
+    Ok(manager.rename_device(&device_id, &new_name).await)
+}
+
+/// Retrieves the current platform execution mode (Standalone, Server, or Client).
+#[tauri::command]
+async fn get_platform_mode(
+    manager: tauri::State<'_, remote_server::RemoteServerManager>,
+) -> Result<remote_server::PlatformModeInfo, String> {
+    Ok(manager.get_platform_mode().await)
+}
+
+/// Updates the platform mode between Standalone, Server, and Client.
+#[tauri::command]
+async fn set_platform_mode(
+    mode: remote_server::PlatformMode,
+    server_url: Option<String>,
+    manager: tauri::State<'_, remote_server::RemoteServerManager>,
+) -> Result<remote_server::PlatformModeInfo, String> {
+    Ok(manager.set_platform_mode(mode, server_url).await)
+}
+
+/// Retrieves the security audit trail of remote and AI agent commands.
+#[tauri::command]
+async fn get_audit_log(
+    manager: tauri::State<'_, remote_server::RemoteServerManager>,
+) -> Result<Vec<remote_server::AuditedAction>, String> {
+    Ok(manager.get_audit_log().await)
+}
+
+/// Pushes channel summaries into the server cache for mobile remote browsing.
+#[tauri::command]
+async fn update_remote_channels(
+    channels: Vec<remote_server::RemoteChannelSummary>,
+    manager: tauri::State<'_, remote_server::RemoteServerManager>,
+) -> Result<bool, String> {
+    manager.update_channels(channels).await;
+    Ok(true)
+}
+
+/// Scans the local network for running Kinora servers via UDP discovery beacons.
+#[tauri::command]
+async fn discover_kinora_servers(
+    timeout_secs: Option<u64>,
+) -> Result<Vec<remote_server::DiscoveredServer>, String> {
+    Ok(remote_server::discover_servers_on_lan(timeout_secs.unwrap_or(2)).await)
+}
+
 /// The page origin allowed to read `kstream` responses: the dev server in `tauri dev`, otherwise
 /// the bundled app's origin (verified as `tauri://localhost` on Linux in the D4A spike).
 fn app_origin(config: &tauri::Config) -> String {
@@ -1097,8 +1168,8 @@ pub fn run() {
             app.manage(artwork::ArtworkStore::new(dir.clone()));
             app.manage(xtream::Providers::new(dir));
             app.manage(stalker::StalkerEngine::new(app_data.clone()));
-            app.manage(downloader::DownloadEngine::new(app_data));
-            app.manage(remote_server::RemoteServerManager::new());
+            app.manage(downloader::DownloadEngine::new(app_data.clone()));
+            app.manage(remote_server::RemoteServerManager::new(app_data));
             app.manage(stream::Streams::new(
                 fetch::Policy::default(),
                 stream::Limits::default(),
@@ -1302,7 +1373,15 @@ pub fn run() {
             get_downloads,
             discover_dlna_renderers,
             cast_dlna_media,
-            control_dlna_playback
+            control_dlna_playback,
+            get_trusted_devices,
+            revoke_trusted_device,
+            rename_trusted_device,
+            get_platform_mode,
+            set_platform_mode,
+            get_audit_log,
+            update_remote_channels,
+            discover_kinora_servers
         ])
         .run(tauri::generate_context!());
 

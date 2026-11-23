@@ -114,20 +114,76 @@ describe('RemoteControlModal', () => {
     expect(host.textContent).toContain('Server Stopped')
   })
 
-  it('allows regenerating the PIN', async () => {
+  it('allows switching to trusted devices tab and revoking a device', async () => {
+    const mockDevice: nativeModule.TrustedDevice = {
+      id: 'dev-123',
+      name: 'Test iPhone',
+      deviceType: 'phone',
+      capabilities: ['remoteControl', 'playbackControl'],
+      authToken: 'token-abc',
+      pairedAt: 1700000000,
+      lastSeenAt: 1700000100,
+      ipAddress: '192.168.1.50',
+      revoked: false,
+    }
+
+    vi.spyOn(nativeModule, 'getTrustedDevices').mockResolvedValue([mockDevice])
+    const revokeSpy = vi.spyOn(nativeModule, 'revokeTrustedDevice').mockResolvedValue(true)
+
     await act(async () => {
       root.render(<RemoteControlModal open={true} onClose={() => {}} />)
     })
 
-    const buttons = Array.from(host.querySelectorAll('button'))
-    const newPinBtn = buttons.find((b) => b.textContent?.includes('New PIN'))
-    expect(newPinBtn).toBeDefined()
+    const devTabBtn = Array.from(host.querySelectorAll<HTMLButtonElement>('.remote-tab-btn')).find((b) =>
+      b.textContent?.includes('Trusted Devices')
+    )
+    expect(devTabBtn).toBeDefined()
 
     await act(async () => {
-      newPinBtn?.click()
+      devTabBtn?.click()
     })
 
-    expect(nativeModule.stopRemoteServer).toHaveBeenCalled()
-    expect(nativeModule.startRemoteServer).toHaveBeenCalled()
+    expect(host.textContent).toContain('Test iPhone')
+    expect(host.textContent).toContain('192.168.1.50')
+
+    const revokeBtn = host.querySelector<HTMLButtonElement>('button[title="Revoke device access"]')
+    expect(revokeBtn).not.toBeNull()
+
+    await act(async () => {
+      revokeBtn?.click()
+    })
+
+    expect(revokeSpy).toHaveBeenCalledWith('dev-123')
+  })
+
+  it('allows switching to audit log tab', async () => {
+    const mockAudit: nativeModule.AuditedAction = {
+      id: 'aud-1',
+      timestamp: 1700000000,
+      deviceId: 'dev-123',
+      deviceName: 'Test Phone',
+      capability: 'RemoteControl',
+      action: 'dpad_select',
+      details: '{}',
+      status: 'success',
+    }
+
+    vi.spyOn(nativeModule, 'getAuditLog').mockResolvedValue([mockAudit])
+
+    await act(async () => {
+      root.render(<RemoteControlModal open={true} onClose={() => {}} />)
+    })
+
+    const auditTabBtn = Array.from(host.querySelectorAll<HTMLButtonElement>('.remote-tab-btn')).find((b) =>
+      b.textContent?.includes('Audit Log')
+    )
+    expect(auditTabBtn).toBeDefined()
+
+    await act(async () => {
+      auditTabBtn?.click()
+    })
+
+    expect(host.textContent).toContain('dpad_select')
+    expect(host.textContent).toContain('Test Phone')
   })
 })

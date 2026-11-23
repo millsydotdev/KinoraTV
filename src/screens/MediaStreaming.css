@@ -652,6 +652,11 @@
   aspect-ratio: 2 / 3;
 }
 
+.streaming-card-poster .streaming-card-art img {
+  object-fit: cover;
+  object-position: center 15%;
+}
+
 .streaming-card-art {
   position: absolute;
   inset: 0;

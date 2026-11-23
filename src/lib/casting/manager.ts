@@ -14,50 +14,26 @@ import {
   controlDlnaPlayback,
 } from '../native'
 
-const DEFAULT_DISCOVERED_DEVICES: CastDevice[] = [
-  {
-    id: 'cast-living-room',
-    name: 'Living Room TV',
-    protocol: 'chromecast',
-    model: 'Chromecast with Google TV',
-    location: 'Living Room',
-    ip: '192.168.1.102',
-    port: 8009,
-    status: 'available',
-    signalStrength: 95,
-  },
-  {
-    id: 'cast-apple-tv-bedroom',
-    name: 'Bedroom Apple TV',
-    protocol: 'airplay',
-    model: 'Apple TV 4K',
-    location: 'Bedroom',
-    ip: '192.168.1.108',
-    port: 7000,
-    status: 'available',
-    signalStrength: 88,
-  },
-  {
-    id: 'cast-smart-display-study',
-    name: 'Office Smart Display',
-    protocol: 'dlna',
-    model: 'DLNA / UPnP AV MediaRenderer',
-    location: 'Study',
-    ip: '192.168.1.115',
-    port: 8080,
-    status: 'available',
-    signalStrength: 92,
-  },
-]
-
 class CastingManager {
-  private devices: CastDevice[] = [...DEFAULT_DISCOVERED_DEVICES]
+  private devices: CastDevice[] = []
   private session: CastSession | null = null
   private listeners = new Set<() => void>()
   private isScanning = false
 
   public getDevices(): CastDevice[] {
     return [...this.devices]
+  }
+
+  public setDevices(devices: CastDevice[]): void {
+    this.devices = [...devices]
+    this.notify()
+  }
+
+  public registerDevice(device: CastDevice): void {
+    if (!this.devices.some((d) => d.id === device.id)) {
+      this.devices.push(device)
+      this.notify()
+    }
   }
 
   public getSession(): CastSession | null {
@@ -86,38 +62,33 @@ class CastingManager {
     try {
       if (isTauri()) {
         const discovered = await discoverDlnaRenderers()
-        if (discovered.length > 0) {
-          const dlnaDevices: CastDevice[] = discovered.map((d) => ({
-            id: d.id,
-            name: d.name,
-            protocol: 'dlna' as const,
-            model: `${d.manufacturer} ${d.model}`.trim(),
-            location: d.avTransportUrl || d.location,
-            ip: d.ip,
-            port: d.port,
-            status: 'available' as const,
-            signalStrength: 95,
-          }))
+        const dlnaDevices: CastDevice[] = discovered.map((d) => ({
+          id: d.id,
+          name: d.name,
+          protocol: 'dlna' as const,
+          model: `${d.manufacturer} ${d.model}`.trim(),
+          location: d.avTransportUrl || d.location,
+          ip: d.ip,
+          port: d.port,
+          status: 'available' as const,
+          signalStrength: 95,
+        }))
 
-          // Merge discovered with defaults without duplicating by id
-          const existingIds = new Set(dlnaDevices.map((d) => d.id))
-          const nonDupeDefaults = DEFAULT_DISCOVERED_DEVICES.filter((d) => !existingIds.has(d.id))
-          this.devices = [...dlnaDevices, ...nonDupeDefaults]
-          this.isScanning = false
-          this.notify()
-          return
-        }
+        this.devices = dlnaDevices
+        this.isScanning = false
+        this.notify()
+        return
       }
     } catch {
-      // Graceful fallback to default discovered set
+      // Discard errors on network discovery
     }
 
     // Default LAN discovery sweep outside native or when no devices respond
     setTimeout(() => {
       this.isScanning = false
-      this.devices = [...DEFAULT_DISCOVERED_DEVICES]
+      this.devices = []
       this.notify()
-    }, 1200)
+    }, 800)
   }
 
   public async connect(device: CastDevice, media?: CastMedia): Promise<boolean> {
