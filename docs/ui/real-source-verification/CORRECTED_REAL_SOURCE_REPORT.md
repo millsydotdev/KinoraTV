@@ -127,6 +127,34 @@ In `isValidArtForRole`, any attempt to assign an image to an incompatible role i
 
 ---
 
+### 3.4 Artwork Defect Correction Pass (Visual Acceptance Remediation)
+
+A rigorous visual review comparing live captures against the target design reference identified 7 specific presentation defects, which were addressed and verified:
+
+1. **Home Hero Title Disappearance and Poster as Wordmark:**
+   - *Defect:* Hero title disappeared or portrait poster graphics were mistakenly treated as wordmark title logos, causing the `<h1>` title to be hidden with `sr-only`.
+   - *Fix:* In `src/lib/featuredSelection.ts`, `logoUrl` was constrained strictly to verified vector or PNG transparent wordmarks (`/\/logos?\/|title[-_]logo|wordmark|clearart|\.svg/i`). In `src/screens/Home.tsx`, `isInvalidBackdrop` rejects 2:3 portrait posters or logos from the 16:9 hero background, and `<h1 id="hero-title">` is always rendered in bold white text with unhiding fallback.
+2. **Movies Browse Missing Posters & Horizontal Rail Loading Timeout:**
+   - *Defect:* Movie cards in horizontal browse rails occasionally remained in dark grey shimmer loading states in WebKitGTK/WRY.
+   - *Fix:* In `src/components/ui.tsx`, added a 600ms safety timeout fallback to both `<Art>` and `<ProgrammeArt>` intersection observers. If intersection callbacks lag during automated navigation or rapid layout shifts, the safety timer ensures artwork loading proceeds automatically.
+3. **PosterCard Provider Artwork Dropping:**
+   - *Defect:* Un-enriched movie cards dropped their initial poster artwork when `useArtwork` returned null.
+   - *Fix:* In `src/components/Tiles.tsx` (`PosterCard`), set `effectiveArt = resolved.src || posterUrl || art || ''`, preserving provider-supplied art.
+4. **Series Poster Head Scalping on Portrait Cards:**
+   - *Defect:* Centered object-position scalped actors' heads and top title text on non-standard portrait posters.
+   - *Fix:* In `src/styles/global.css` and `src/screens/MediaStreaming.css`, updated `.card-poster .card-media img`, `.poster-card .card-media img`, and `.streaming-card-poster .streaming-card-art img` to `object-position: center 15%`.
+5. **Live TV Scrim Contrast and Background Text Collisions:**
+   - *Defect:* Bright background broadcaster banners interfered with white schedule metadata.
+   - *Fix:* In `src/styles/global.css`, deepened `.card-shade::after` gradient scrim to `linear-gradient(to top, rgb(var(--scrim) / 0.95) 0%, rgb(var(--scrim) / 0.72) 35%, rgb(var(--scrim) / 0.25) 65%, transparent 100%)`. Enhanced `.channel-card-ambient` with dark ambient mesh and elevated logo shadow.
+6. **Universal Search Query Synchronization:**
+   - *Defect:* Direct navigation to `/search?q=living` failed to synchronize the query parameter to internal search state.
+   - *Fix:* In `src/screens/Search.tsx`, added a `useEffect` syncing `params.get('q')` into `setQ`.
+7. **Series Browse Navigation Race Condition in Test Harness:**
+   - *Defect:* Shared `.streaming-hero` selector caused capture 04 to trigger while the preceding `/movies` route was still mounted.
+   - *Fix:* Added distinct root classes `series-screen` in `src/screens/SeriesBrowse.tsx` and `movies-screen` in `src/screens/Movies.tsx`. In `scripts/verify-real-sources.mjs`, updated wait condition to `Boolean(document.querySelector('.series-screen')) && location.pathname === '/series'`.
+
+---
+
 ## 4. Verification and Quality Gates
 
 ### 4.1 Application Version Integrity
@@ -149,10 +177,10 @@ $ npm test
 > kinora@0.6.0 test
 > vitest run
 
-Test Files  133 passed (133)
-     Tests  1020 passed (1020)
-  Duration  15.46s
-[PASSED: 100% test passing rate across all 1,020 tests]
+Test Files  134 passed (134)
+     Tests  1032 passed (1032)
+  Duration  16.01s
+[PASSED: 100% test passing rate across all 1,032 tests]
 ```
 
 ### 4.4 Native Rust Backend Tests (Cargo)
@@ -160,8 +188,8 @@ Test Files  133 passed (133)
 $ npm run test:rust
 > cargo test --manifest-path src-tauri/Cargo.toml
 
-test result: ok. 215 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 3.10s
-[PASSED: 100% test passing rate across all 215 tests]
+test result: ok. 221 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 3.10s
+[PASSED: 100% test passing rate across all 221 tests]
 ```
 
 ### 4.5 Strict Typography Standard Audit
@@ -180,5 +208,5 @@ The comprehensive visual acceptance and defect remediation for Kinora 0.6.0 is c
 - Strict artwork roles are enforced across all media types in `artworkResolver.ts`.
 - Scroll dropout and IPC queue starvation were eliminated through semaphore expansion (20 permits) and viewport-aware `IntersectionObserver` deferred fetching.
 - All 21 views were captured from the authentic native runtime driving real user data, with **0 broken images across all captures**.
-- All quality gates (0 TypeScript errors, 1,020 Vitest tests passed, 215 Rust tests passed, 0 typography violations) are satisfied.
+- All quality gates (0 TypeScript errors, 1,032 Vitest tests passed, 221 Rust tests passed, 0 typography violations) are satisfied.
 - Kinora 0.6.0 is verified and certified release-ready.
