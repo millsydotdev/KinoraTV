@@ -418,6 +418,11 @@
   color: #ffffff;
   letter-spacing: 0.03em;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  min-width: 68px;
+  text-align: right;
+  display: inline-block;
+  flex: none;
 }
 
 .menu-btn {

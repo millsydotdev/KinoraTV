@@ -313,14 +313,18 @@ async function run() {
     // 3. Movies Browse Screen
     console.log('Capturing [03-movies-browse-real-1080p.png]...');
     await nav('/movies');
-    await until(`Boolean(document.querySelector('.streaming-hero, .card-poster, .browse-grid, .movies-screen'))`, 15000);
+    await until(`Boolean(document.querySelector('.movies-screen')) && location.pathname === '/movies'`, 15000);
+    await js(`window.scrollTo({ top: 0, behavior: 'instant' });`);
+    await waitForImages(8000);
     await wait(2000);
     await captureShot('03-movies-browse-real-1080p.png', 'Movies Browse 1080p');
 
     // 4. Series Browse Screen
     console.log('Capturing [04-series-browse-real-1080p.png]...');
     await nav('/series');
-    await until(`Boolean(document.querySelector('.streaming-hero, .card-poster, .browse-grid, .series-screen'))`, 15000);
+    await until(`Boolean(document.querySelector('.series-screen')) && location.pathname === '/series'`, 15000);
+    await js(`window.scrollTo({ top: 0, behavior: 'instant' });`);
+    await waitForImages(8000);
     await wait(2000);
     await captureShot('04-series-browse-real-1080p.png', 'Series Browse 1080p');
 
@@ -413,7 +417,9 @@ async function run() {
     // 14. TV Mode Movies (1920x1080)
     console.log('Capturing [14-movies-tv-mode-real-1080p.png]...');
     await nav('/movies');
-    await until(`Boolean(document.querySelector('.streaming-hero, .card-poster, .browse-grid, .movies-screen'))`, 15000);
+    await until(`Boolean(document.querySelector('.movies-screen')) && location.pathname === '/movies'`, 15000);
+    await js(`window.scrollTo({ top: 0, behavior: 'instant' });`);
+    await waitForImages(8000);
     await wait(2000);
     await captureShot('14-movies-tv-mode-real-1080p.png', 'TV Mode Movies 1080p');
     await disableTvMode();
