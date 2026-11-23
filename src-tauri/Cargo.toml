@@ -11,12 +11,20 @@ publish = false
 name = "kinora_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[[bin]]
+name = "kinora"
+path = "src/main.rs"
+
+[[bin]]
+name = "kinora-server"
+path = "src/bin/kinora_server.rs"
+
 [build-dependencies]
-tauri-build = { version = "2.7.4", features = [] }
+tauri-build = { version = "2.7.4", features = [], optional = true }
 
 [dependencies]
-tauri = { version = "2.12.5", features = [] }
-tauri-plugin-updater = "2"
+tauri = { version = "2.12.5", features = [], optional = true }
+tauri-plugin-updater = { version = "2", optional = true }
 serde = { version = "1", features = ["derive"] }
 # Already in the tree through Tauri: reads and writes the saved-sources file (sources.rs).
 serde_json = "1"
@@ -44,6 +52,8 @@ openssl = "0.10"
 libc = "0.2"
 
 [features]
+default = ["desktop"]
+desktop = ["dep:tauri", "dep:tauri-plugin-updater", "dep:tauri-build"]
 # Lets dev builds (`tauri dev`) fetch from 127.0.0.1 so native smoke tests can play local fixtures.
 # Refuses to compile without Tauri's `dev` cfg, so it can never reach a release or bundled app.
 loopback-fixtures = []

@@ -8,41 +8,62 @@
 //! `guides.rs` and `xmltv.rs`) and the public source catalogue (`load_catalogue`,
 //! `refresh_catalogue`, see `catalogue.rs`).
 
+#![cfg_attr(not(feature = "desktop"), allow(dead_code))]
+
+#[cfg(feature = "desktop")]
 mod artwork;
 mod catalogue;
+#[cfg(feature = "desktop")]
 mod dash;
 mod dlna;
+#[cfg(feature = "desktop")]
 mod downloader;
+#[cfg(feature = "desktop")]
 mod dvr;
 mod fetch;
 mod guides;
+mod headless;
 mod hls;
 mod ingest;
+pub mod lan_proxy;
+#[cfg(feature = "desktop")]
 mod local_media;
 mod m3u;
+#[cfg(feature = "desktop")]
 mod metadata_vault;
+#[cfg(feature = "desktop")]
 pub mod parking;
+#[cfg(feature = "desktop")]
 mod pin;
 mod remote_server;
 mod sources;
+#[cfg(feature = "desktop")]
 mod stalker;
+#[cfg(feature = "desktop")]
 mod stream;
+#[cfg(feature = "desktop")]
 mod updater;
 mod xmltv;
+#[cfg(feature = "desktop")]
 mod xtream;
 
-use serde::Serialize;
-use tauri::Manager;
+pub use headless::{default_server_data_dir, hydrate_headless_sources, run_headless_server};
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ChannelLogo {
-    mime_type: &'static str,
-    bytes: Vec<u8>,
-}
+#[cfg(feature = "desktop")]
+mod desktop {
+    use super::*;
+    use serde::Serialize;
+    use tauri::Manager;
 
-#[cfg(test)]
-use artwork::{detect_raster_mime as logo_mime, is_region_block};
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ChannelLogo {
+        mime_type: &'static str,
+        bytes: Vec<u8>,
+    }
+
+    #[cfg(test)]
+    pub(crate) use artwork::{detect_raster_mime as logo_mime, is_region_block};
 
 /// Fetches a small raster playlist logo through the guarded artwork service.
 #[tauri::command]
@@ -628,7 +649,7 @@ pub struct AppInfo {
     pub data_dir: Option<String>,
 }
 
-fn build_info(name: &str, version: &str) -> AppInfo {
+pub(crate) fn build_info(name: &str, version: &str) -> AppInfo {
     AppInfo {
         name: name.to_owned(),
         version: version.to_owned(),
@@ -698,6 +719,28 @@ async fn open_stream(
 #[tauri::command]
 fn close_stream(session: u64, streams: tauri::State<'_, stream::Streams>) {
     streams.close(session);
+}
+
+/// Opens a proxied stream on a paired LAN Kinora Server and returns an opaque `kstream` URL.
+#[tauri::command]
+async fn open_client_server_stream(
+    server_url: String,
+    auth_token: String,
+    channel_id: String,
+    bridge: tauri::State<'_, lan_proxy::ClientLanStreamBridge>,
+) -> Result<lan_proxy::OpenedClientServerStream, String> {
+    bridge
+        .open_from_server(&server_url, &auth_token, &channel_id)
+        .await
+}
+
+/// Ends a Client-to-Server LAN playback bridge session.
+#[tauri::command]
+fn close_client_server_stream(
+    session: u64,
+    bridge: tauri::State<'_, lan_proxy::ClientLanStreamBridge>,
+) {
+    bridge.close(session);
 }
 
 /// Reads the saved playlist sources (and why, if they could not be used as they were). When the file
@@ -1171,111 +1214,6 @@ fn app_origin(config: &tauri::Config) -> String {
     }
 }
 
-/// Resolves default server data directory for headless / daemon operation.
-pub fn default_server_data_dir() -> std::path::PathBuf {
-    if let Ok(path) = std::env::var("KINORA_DATA_DIR") {
-        return std::path::PathBuf::from(path);
-    }
-    if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
-        return std::path::PathBuf::from(xdg).join("kinora");
-    }
-    if let Ok(home) = std::env::var("HOME") {
-        return std::path::PathBuf::from(home).join(".local/share/kinora");
-    }
-    std::path::PathBuf::from("./.kinora-server-data")
-}
-
-/// Runs Kinora in headless server mode without initializing WebKitGTK or GUI windows.
-/// Suitable for Linux home servers, Raspberry Pi, NAS, and Docker containers.
-pub fn run_headless_server(port: Option<u16>, custom_pin: Option<String>) {
-    let rt = match tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-    {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("Failed to initialize Tokio runtime: {e}");
-            std::process::exit(1);
-        }
-    };
-
-    rt.block_on(async {
-        let data_dir = default_server_data_dir();
-        let sources_dir = data_dir.join("sources");
-        let manager = remote_server::RemoteServerManager::new(Some(data_dir.clone()));
-
-        // If saved sources exist, load them into the manager
-        let store = sources::Store::new(Some(sources_dir));
-        let loaded = store.load();
-        let mut remote_sources = Vec::new();
-        let mut remote_channels = Vec::new();
-
-        for src in loaded.saved.sources {
-            remote_sources.push(remote_server::RemoteSourceSummary {
-                id: src.id.clone(),
-                label: src.label,
-                origin: match src.origin {
-                    sources::Origin::Url => "url".to_string(),
-                    sources::Origin::File => "file".to_string(),
-                },
-                channel_count: src.channels.len(),
-                kind: "playlist".to_string(),
-            });
-
-            for ch in src.channels {
-                remote_channels.push(remote_server::RemoteChannelSummary {
-                    id: format!("{}~{}", src.id, ch.key),
-                    name: ch.name,
-                    number: ch.chno,
-                    group: ch.group,
-                    logo: ch.logo,
-                    current_programme: None,
-                    stream_url: None,
-                });
-            }
-        }
-
-        if !remote_sources.is_empty() {
-            manager.update_sources(remote_sources).await;
-        }
-        if !remote_channels.is_empty() {
-            manager.update_channels(remote_channels).await;
-        }
-
-        // Set platform mode to Server
-        manager.set_platform_mode(remote_server::PlatformMode::Server, None).await;
-
-        let status = match manager.start(port, custom_pin, |event| {
-            println!("[Kinora Server] Dispatched remote event: {}", event.command);
-        }).await {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("Kinora server failed to start: {e}");
-                std::process::exit(1);
-            }
-        };
-
-        println!("============================================================");
-        println!("  Kinora Media Server v0.6.0 (Headless Mode)");
-        println!("============================================================");
-        println!("  Web Remote & Client API:  {}", status.server_url);
-        println!("  UDP Discovery Beacon:     Port 5197 (Broadcast)");
-        println!("  Pairing PIN:              {}", status.pairing_pin);
-        println!("  Storage Directory:        {}", data_dir.display());
-        println!("============================================================");
-        println!("  Ready for connections. Press Ctrl+C to stop.");
-        println!("============================================================");
-
-        if let Err(e) = tokio::signal::ctrl_c().await {
-            eprintln!("Error listening for shutdown signal: {e}");
-        }
-
-        println!("\nShutting down Kinora Media Server...");
-        manager.stop().await;
-        println!("Server stopped cleanly.");
-    });
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let result = tauri::Builder::default()
@@ -1294,7 +1232,23 @@ pub fn run() {
             app.manage(xtream::Providers::new(dir));
             app.manage(stalker::StalkerEngine::new(app_data.clone()));
             app.manage(downloader::DownloadEngine::new(app_data.clone()));
-            app.manage(remote_server::RemoteServerManager::new(app_data));
+            let remote_mgr = remote_server::RemoteServerManager::new(app_data);
+            let remote_mgr_boot = remote_mgr.clone();
+            app.manage(remote_mgr);
+            let remote_app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                use tauri::Emitter;
+                let info = remote_mgr_boot.get_platform_mode().await;
+                if info.mode == remote_server::PlatformMode::Server {
+                    let emit_handle = remote_app_handle.clone();
+                    let _ = remote_mgr_boot
+                        .start(None, None, move |event| {
+                            let _ = emit_handle.emit("kinora:remote_command", event);
+                        })
+                        .await;
+                }
+            });
+            app.manage(lan_proxy::ClientLanStreamBridge::new(origin.clone()));
             app.manage(stream::Streams::new(
                 fetch::Policy::default(),
                 stream::Limits::default(),
@@ -1391,6 +1345,27 @@ pub fn run() {
                     responder.respond(downloader::into_response(reply));
                     return;
                 }
+                if uri_path.starts_with("/server-stream/") {
+                    let bridge = app.state::<lan_proxy::ClientLanStreamBridge>();
+                    let header =
+                        |name: &str| request.headers().get(name).and_then(|v| v.to_str().ok());
+                    let ranges: Vec<&str> = request
+                        .headers()
+                        .get_all("range")
+                        .iter()
+                        .filter_map(|v| v.to_str().ok())
+                        .collect();
+                    let reply = bridge
+                        .serve(
+                            request.method().as_str(),
+                            uri_path,
+                            header("origin"),
+                            &ranges,
+                        )
+                        .await;
+                    responder.respond(lan_proxy::into_tauri_response(reply));
+                    return;
+                }
                 let streams = app.state::<stream::Streams>();
                 let header = |name: &str| request.headers().get(name).and_then(|v| v.to_str().ok());
                 let ranges: Vec<&str> = request
@@ -1456,6 +1431,8 @@ pub fn run() {
             parse_playlist_text,
             open_stream,
             close_stream,
+            open_client_server_stream,
+            close_client_server_stream,
             load_sources,
             save_sources,
             fetch_guide,
@@ -1518,10 +1495,14 @@ pub fn run() {
         std::process::exit(1);
     }
 }
+} // mod desktop
 
-#[cfg(test)]
+#[cfg(feature = "desktop")]
+pub use desktop::run;
+
+#[cfg(all(test, feature = "desktop"))]
 mod tests {
-    use super::*;
+    use super::desktop::*;
 
     #[test]
     fn imgur_region_banner_is_not_a_logo() {

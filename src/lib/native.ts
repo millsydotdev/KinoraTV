@@ -2947,6 +2947,31 @@ export interface DlnaDevice {
   renderingControlUrl?: string | null
 }
 
+/** Opens a proxied stream on a paired LAN Kinora Server through the native kstream bridge. */
+export async function openClientServerStream(
+  serverUrl: string,
+  authToken: string,
+  channelId: string
+): Promise<OpenedStream | null> {
+  if (!isTauri()) return null
+  const raw = await invoke<{ url: string; session: number; format: 'hls' | 'dash' | 'direct' }>(
+    'open_client_server_stream',
+    { serverUrl, authToken, channelId }
+  )
+  if (!raw || typeof raw.url !== 'string' || typeof raw.session !== 'number') return null
+  return {
+    url: raw.url,
+    session: raw.session,
+    format: raw.format === 'direct' ? 'direct' : raw.format === 'dash' ? 'dash' : 'hls',
+  }
+}
+
+/** Closes a Client-to-Server LAN playback bridge session. */
+export async function closeClientServerStream(session: number): Promise<void> {
+  if (!isTauri()) return
+  await invoke('close_client_server_stream', { session }).catch(() => {})
+}
+
 /** Discovers DLNA / UPnP MediaRenderer devices across the local subnet. */
 export async function discoverDlnaRenderers(): Promise<DlnaDevice[]> {
   if (!isTauri()) return []

@@ -58,12 +58,26 @@ const MAX_REFERENCE: usize = 4096;
 /// `kstream://localhost/<handle>`: verified in the D4A spike as the address WebKitGTK serves.
 pub const HANDLE_BASE: &str = "kstream://localhost/";
 
-/// Rewrites `text` (fetched from `base`, at `depth`) so every reference is a handle from `mint`.
+/// Rewrites `text` (fetched from `base`, at `depth`) so every reference is a handle from `mint`
+/// prefixed with `HANDLE_BASE`.
 pub fn rewrite(
     text: &str,
     base: &Url,
     depth: u8,
     limits: Limits,
+    mint: &mut dyn FnMut(Url, Kind) -> Result<String, MintError>,
+) -> Result<String, RewriteError> {
+    rewrite_with_base(text, base, depth, limits, HANDLE_BASE, mint)
+}
+
+/// Rewrites `text` (fetched from `base`, at `depth`) so every reference is a handle from `mint`
+/// prefixed with `handle_base`.
+pub fn rewrite_with_base(
+    text: &str,
+    base: &Url,
+    depth: u8,
+    limits: Limits,
+    handle_base: &str,
     mint: &mut dyn FnMut(Url, Kind) -> Result<String, MintError>,
 ) -> Result<String, RewriteError> {
     let text = text.strip_prefix('\u{feff}').unwrap_or(text);
@@ -92,7 +106,7 @@ pub fn rewrite(
         }
         let url = resolve(base, raw)?;
         mint(url, kind)
-            .map(|h| format!("{HANDLE_BASE}{h}"))
+            .map(|h| format!("{handle_base}{h}"))
             .map_err(RewriteError::Mint)
     };
 

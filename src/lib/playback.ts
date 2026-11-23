@@ -4,7 +4,7 @@
 // or starting a request never counts as playing. Nothing waits forever: starting and buffering are
 // both bounded, and a timeout tears the attempt down and says so.
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
-import { closeStream, IngestError, openM3uCatchup, openStream, openXtreamCatchup, type StreamOptions } from './native'
+import { closeClientServerStream, closeStream, inNativeShell, IngestError, openClientServerStream, openM3uCatchup, openStream, openXtreamCatchup, type StreamOptions } from './native'
 import { clientSyncManager } from './clientSync'
 
 export type PlaybackStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'buffering' | 'error' | 'unsupported'
@@ -158,6 +158,8 @@ export function useStreamPlayback(streamUrl: string | null, video: RefObject<HTM
     // Everything below belongs to this channel and attempt; once superseded it must not touch state.
     let live = true
     let session: number | null = null
+    let isClientServerSession = false
+    let remoteProxySessionKey: string | null = null
     let hls: { destroy: () => void } | null = null
     const set = (s: PlaybackState) => { if (live) setCurrent(s) }
     set(LOADING)
@@ -171,7 +173,14 @@ export function useStreamPlayback(streamUrl: string | null, video: RefObject<HTM
       hls?.destroy()
       hls = null
       hlsRef.current = null
-      if (session !== null) void closeStream(session)
+      if (session !== null) {
+        if (isClientServerSession) void closeClientServerStream(session)
+        else void closeStream(session)
+      }
+      if (remoteProxySessionKey) {
+        void clientSyncManager.closeServerStream(remoteProxySessionKey)
+        remoteProxySessionKey = null
+      }
       session = null
     }
     const arm = (ms: number, message: () => PlaybackState) => {
@@ -239,14 +248,23 @@ export function useStreamPlayback(streamUrl: string | null, video: RefObject<HTM
           opened = await openXtreamCatchup(sourceId, streamId, startTimestamp, durationMins)
         } else if (streamUrl.startsWith('client-sync://')) {
           const channelId = streamUrl.replace('client-sync://', '')
-          const resolved = await clientSyncManager.resolveStreamUrl(channelId)
-          if (!resolved) {
+          const syncState = clientSyncManager.getState()
+          if (!syncState.serverUrl || !syncState.authToken) {
             disarm()
-            return set(state('error', 'Unable to resolve stream from Kinora server.'))
+            return set(state('error', 'Connect to a Kinora Server first to play this channel.'))
           }
-          opened = prefsRef.current.streamOptions
-            ? await openStream(resolved, prefsRef.current.streamOptions)
-            : await openStream(resolved)
+          if (inNativeShell()) {
+            opened = await openClientServerStream(syncState.serverUrl, syncState.authToken, channelId)
+            isClientServerSession = true
+          } else {
+            const proxied = await clientSyncManager.openServerStream(channelId)
+            if (!proxied) {
+              disarm()
+              return set(state('error', 'Unable to open proxied stream on Kinora server.', true))
+            }
+            remoteProxySessionKey = proxied.sessionKey
+            opened = { url: proxied.streamUrl, session: 0, format: proxied.format }
+          }
         } else {
           opened = prefsRef.current.streamOptions
             ? await openStream(streamUrl, prefsRef.current.streamOptions)
@@ -257,8 +275,13 @@ export function useStreamPlayback(streamUrl: string | null, video: RefObject<HTM
         return set(fromOpenError(e))
       }
       if (!opened) { disarm(); return set(state('unsupported', 'Playback needs the Kinora desktop app.')) }
-      if (!live) return void closeStream(opened.session) // left or switched while Rust was opening
-      session = opened.session
+      if (!live) {
+        if (isClientServerSession) void closeClientServerStream(opened.session)
+        else if (remoteProxySessionKey) void clientSyncManager.closeServerStream(remoteProxySessionKey)
+        else void closeStream(opened.session)
+        return
+      }
+      session = remoteProxySessionKey ? null : opened.session
       if (opened.format === 'direct') {
         el.src = opened.url
         const tryPlay = () => el.play().catch((e: unknown) => {
@@ -356,7 +379,13 @@ export function useStreamPlayback(streamUrl: string | null, video: RefObject<HTM
       hlsRef.current = null
       el.removeAttribute('src')
       el.load()
-      if (session !== null) void closeStream(session)
+      if (session !== null) {
+        if (isClientServerSession) void closeClientServerStream(session)
+        else void closeStream(session)
+      }
+      if (remoteProxySessionKey) {
+        void clientSyncManager.closeServerStream(remoteProxySessionKey)
+      }
     }
   }, [streamUrl, attempt, video])
 

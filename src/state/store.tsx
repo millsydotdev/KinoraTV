@@ -6,7 +6,7 @@ import { realLibrary } from '../lib/migrate'
 import { demoSources } from '../data/sources'
 import type { Channel, Collection, Library, Programme, Progress, Ref, Source, StreamVariant, XtreamTitle } from '../data/types'
 import {
-  disconnectXtream, fetchGuide, fetchPlaylist, guideProgrammes, inNativeShell, isXtreamConnected, loadCatalogue, loadGuide, loadSources, loadXtreamCatalogue, loadXtreamSeries, readGuideFile, readPlaylistFile, refreshCatalogue, refreshXtream,
+  disconnectXtream, fetchGuide, fetchPlaylist, getPlatformMode, guideProgrammes, inNativeShell, isXtreamConnected, loadCatalogue, loadGuide, loadSources, loadXtreamCatalogue, loadXtreamSeries, readGuideFile, readPlaylistFile, refreshCatalogue, refreshXtream,
   removeGuide as forgetGuide, saveSources, loadXtreamVodDetails, loadXtreamEpg, updateRemoteChannels, updateRemoteSources, updateRemoteLibrary,
   dvrGetRecordings, dvrStartRecording, dvrStopRecording, dvrScheduleRecording, dvrCancelRecording, dvrDeleteRecording, dvrProtectRecording,
   dvrGetRules, dvrSaveRule, dvrDeleteRule, dvrGetConfig, dvrSaveConfig, dvrGetStorageInfo,
@@ -25,7 +25,7 @@ import { useUserPreferencesStore } from './userPreferences'
 import { useProfiles } from './profiles'
 import { filterKidSafeChannels, filterKidSafeProgrammes, filterKidSafeXtreamTitles, isProgrammeKidSafe } from '../lib/kidsMode'
 import { PlaybackProvider } from './playbackContext'
-import { useClientSync } from '../lib/clientSync'
+import { clientSyncManager, useClientSync } from '../lib/clientSync'
 
 export type { Collection, Library, Progress, Ref, XtreamTitle }
 
@@ -295,6 +295,23 @@ function useStoreValue(
   const { activeProfile, isKidsMode } = useProfiles()
   const profileId = activeProfile?.id ?? 'default'
   const clientSync = useClientSync()
+
+  // Auto-reconnect to the paired Kinora Server on startup when running in Client mode.
+  useEffect(() => {
+    let active = true
+    const current = clientSyncManager.getState()
+    if (!current.serverUrl || !current.authToken || current.status !== 'disconnected') return
+    void getPlatformMode().then((info) => {
+      if (!active) return
+      const savedMode = info?.mode ?? (typeof localStorage !== 'undefined' ? localStorage.getItem('kinora.platform.mode.v1') : null)
+      if (savedMode === 'client') {
+        void clientSyncManager.connect()
+      }
+    })
+    return () => {
+      active = false
+    }
+  }, [])
 
   const [realLib, setRealLibState] = useState<Library>(() => loadProfileLibrary(profileId))
 

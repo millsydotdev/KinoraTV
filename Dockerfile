@@ -120,6 +120,23 @@ COPY --chown=developer:developer . .
 CMD ["bash", "scripts/quality-gate.sh"]
 
 # ==============================================================================
+# Stage 4: Headless Server Compiler (Zero WebKitGTK / GUI dependencies)
+# ==============================================================================
+FROM rust:1.90-bookworm AS server-builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY package.json ./
+COPY src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/build.rs ./src-tauri/
+COPY src-tauri/src ./src-tauri/src
+
+RUN cargo build --manifest-path src-tauri/Cargo.toml --release --no-default-features --bin kinora-server
+
+# ==============================================================================
 # Target: server (Headless Kinora Media Server for Always-on Linux / NAS / Docker)
 # ==============================================================================
 FROM debian:bookworm-slim AS server
@@ -136,6 +153,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+COPY --from=server-builder /app/src-tauri/target/release/kinora-server /usr/local/bin/kinora-server
+
 RUN useradd -m -s /bin/bash -u 1000 kinora \
     && mkdir -p /data && chown -R kinora:kinora /app /data
 
@@ -143,7 +162,7 @@ USER kinora
 
 ENV KINORA_MODE=server \
     KINORA_DATA_DIR=/data \
-    PORT=5198
+    KINORA_PORT=5198
 
 EXPOSE 5198
 EXPOSE 5197/udp
@@ -151,4 +170,4 @@ EXPOSE 5197/udp
 HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:5198/api/info || exit 1
 
-CMD ["echo", "Kinora Headless Media Server ready"]
+ENTRYPOINT ["/usr/local/bin/kinora-server"]

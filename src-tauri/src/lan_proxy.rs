@@ -1,0 +1,932 @@
+//! Server-side guarded LAN stream proxy and Tauri client LAN stream bridge.
+//!
+//! Server side (`LanStreamProxy`):
+//! - Keeps upstream provider URLs and credentials strictly on the Kinora Server.
+//! - Fetches upstream playlists and media through `fetch.rs` (proxies off, guarded DNS,
+//!   per-redirect re-checking, bounded size and memory budget).
+//! - Rewrites HLS playlists via `hls::rewrite_with_base` so every rendition, segment,
+//!   init map, and AES-128 key becomes `/api/stream/h/<session_key>/<handle>`.
+//! - Ties every session to a `device_id` so device revocation terminates active streams immediately.
+//!
+//! Client side (`ClientLanStreamBridge`):
+//! - Lets a Tauri desktop app in Client mode play streams from its paired LAN Kinora Server
+//!   through `kstream://localhost/server-stream/<session_key>/<handle>` without loosening
+//!   `tauri.conf.json` CSP or adding LAN bypasses to `fetch.rs`.
+
+use std::collections::{HashMap, VecDeque};
+use std::net::IpAddr;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use reqwest::Url;
+use serde::{Deserialize, Serialize};
+use tokio::sync::Semaphore;
+
+use crate::dlna::is_safe_lan_ip;
+use crate::fetch::{self, Policy};
+use crate::hls::{self, Kind, MintError, RewriteError};
+use crate::ingest::ErrorCode;
+
+const MAX_LAN_SESSIONS: usize = 8;
+const MAX_HANDLES_PER_SESSION: usize = 2_000;
+const MAX_URIS_PER_PLAYLIST: usize = 10_000;
+const MAX_VARIANTS: usize = 32;
+const PLAYLIST_MAX_BYTES: usize = 4 * 1024 * 1024;
+const SEGMENT_MAX_BYTES: usize = 32 * 1024 * 1024;
+const KEY_MAX_BYTES: usize = 1024;
+const SESSION_BUDGET_BYTES: usize = 64 * 1024 * 1024;
+const CONCURRENT_PER_SESSION: usize = 6;
+const PLAYLIST_TIMEOUT: Duration = Duration::from_secs(12);
+const SEGMENT_TIMEOUT: Duration = Duration::from_secs(45);
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const IDLE_TIMEOUT: Duration = Duration::from_secs(15);
+
+const PLAYLIST_TYPE: &str = "application/vnd.apple.mpegurl";
+
+const DIRECT_MEDIA: &[&str] = &[
+    ".ts", ".mp4", ".m4v", ".mkv", ".webm", ".avi", ".mov", ".flv", ".mp3", ".aac", ".m4a",
+];
+
+const MEDIA_TYPES: &[&str] = &[
+    "video/mp2t",
+    "video/mp4",
+    "video/webm",
+    "video/x-matroska",
+    "video/quicktime",
+    "video/x-msvideo",
+    "audio/mp4",
+    "audio/aac",
+    "audio/mpeg",
+    "audio/ogg",
+    "audio/wav",
+    "video/iso.segment",
+    "application/octet-stream",
+];
+
+fn random_hex_128() -> String {
+    let mut bytes = [0u8; 16];
+    getrandom::fill(&mut bytes).expect("operating system random source is unavailable");
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn is_valid_hex_token(s: &str) -> bool {
+    s.len() == 32 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+fn safe_media_type(ct: Option<&str>) -> &'static str {
+    let raw = ct
+        .unwrap_or_default()
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    MEDIA_TYPES
+        .iter()
+        .copied()
+        .find(|&allowed| allowed == raw)
+        .unwrap_or("application/octet-stream")
+}
+
+/// Returned when opening a proxied LAN stream on the Kinora Server.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenedLanStream {
+    pub session_key: String,
+    pub root_handle: String,
+    pub proxy_path: String,
+    pub format: String,
+}
+
+/// HTTP-like response produced by the LAN stream proxy or client bridge.
+pub struct ProxyReply {
+    pub status: u16,
+    pub content_type: String,
+    pub content_range: Option<String>,
+    pub extra_headers: Vec<(&'static str, String)>,
+    pub body: Vec<u8>,
+}
+
+impl ProxyReply {
+    fn error(status: u16, message: &str) -> Self {
+        Self {
+            status,
+            content_type: "text/plain; charset=utf-8".to_string(),
+            content_range: None,
+            extra_headers: Vec::new(),
+            body: message.as_bytes().to_vec(),
+        }
+    }
+}
+
+struct ProxyEntry {
+    url: Url,
+    kind: Kind,
+}
+
+struct LanSession {
+    device_id: String,
+    handles: HashMap<String, ProxyEntry>,
+    by_url: HashMap<(String, Kind), String>,
+    order: VecDeque<String>,
+    client: reqwest::Client,
+    requests: Arc<Semaphore>,
+    budget: Arc<Semaphore>,
+    policy: Policy,
+}
+
+#[derive(Clone)]
+pub struct LanStreamProxy {
+    sessions: Arc<Mutex<HashMap<String, LanSession>>>,
+    session_order: Arc<Mutex<VecDeque<String>>>,
+    policy: Policy,
+}
+
+impl Default for LanStreamProxy {
+    fn default() -> Self {
+        Self::new(Policy::default())
+    }
+}
+
+impl LanStreamProxy {
+    pub fn new(policy: Policy) -> Self {
+        Self {
+            sessions: Arc::new(Mutex::new(HashMap::new())),
+            session_order: Arc::new(Mutex::new(VecDeque::new())),
+            policy,
+        }
+    }
+
+    /// Opens a guarded proxy session for `raw_url` bound to `device_id`.
+    /// Upstream addresses and credentials never leave the server.
+    pub fn open(&self, device_id: &str, raw_url: &str) -> Result<OpenedLanStream, String> {
+        let base_url = raw_url.split('|').next().unwrap_or(raw_url).trim();
+        let url = fetch::check_url(base_url, &self.policy).map_err(|e| e.message)?;
+
+        let path_lower = url.path().to_ascii_lowercase();
+        let root_kind = if DIRECT_MEDIA.iter().any(|ext| path_lower.ends_with(ext)) {
+            Kind::Direct
+        } else {
+            Kind::Playlist { depth: 0 }
+        };
+
+        let stream_policy = Policy {
+            connect_timeout: CONNECT_TIMEOUT,
+            read_timeout: Some(IDLE_TIMEOUT),
+            total_timeout: SEGMENT_TIMEOUT,
+            ..self.policy.clone()
+        };
+
+        let client = fetch::guarded_client(&stream_policy).map_err(|e| e.message)?;
+        let session_key = random_hex_128();
+        let root_handle = random_hex_128();
+
+        let mut handles = HashMap::new();
+        let mut by_url = HashMap::new();
+        by_url.insert((url.to_string(), root_kind), root_handle.clone());
+        handles.insert(
+            root_handle.clone(),
+            ProxyEntry {
+                url,
+                kind: root_kind,
+            },
+        );
+
+        let session = LanSession {
+            device_id: device_id.to_string(),
+            handles,
+            by_url,
+            order: VecDeque::new(),
+            client,
+            requests: Arc::new(Semaphore::new(CONCURRENT_PER_SESSION)),
+            budget: Arc::new(Semaphore::new(SESSION_BUDGET_BYTES)),
+            policy: stream_policy,
+        };
+
+        let mut sessions = self.sessions.lock().unwrap_or_else(|p| p.into_inner());
+        let mut order = self.session_order.lock().unwrap_or_else(|p| p.into_inner());
+
+        // Replace any existing session owned by the same device so one client cannot exhaust slots.
+        let prev_keys: Vec<String> = sessions
+            .iter()
+            .filter(|(_, s)| s.device_id == device_id)
+            .map(|(k, _)| k.clone())
+            .collect();
+        for k in prev_keys {
+            sessions.remove(&k);
+            order.retain(|item| item != &k);
+        }
+
+        // Enforce global session cap, evicting oldest first.
+        while sessions.len() >= MAX_LAN_SESSIONS {
+            if let Some(old_key) = order.pop_front() {
+                sessions.remove(&old_key);
+            } else {
+                break;
+            }
+        }
+
+        sessions.insert(session_key.clone(), session);
+        order.push_back(session_key.clone());
+
+        let format = match root_kind {
+            Kind::Direct => "direct",
+            _ => "hls",
+        };
+
+        Ok(OpenedLanStream {
+            proxy_path: format!("/api/stream/h/{session_key}/{root_handle}"),
+            session_key,
+            root_handle,
+            format: format.to_string(),
+        })
+    }
+
+    /// Returns the owning device_id for `session_key`, if the session exists.
+    pub fn session_owner(&self, session_key: &str) -> Option<String> {
+        if !is_valid_hex_token(session_key) {
+            return None;
+        }
+        let sessions = self.sessions.lock().unwrap_or_else(|p| p.into_inner());
+        sessions.get(session_key).map(|s| s.device_id.clone())
+    }
+
+    /// Closes a session if it belongs to `device_id`.
+    pub fn close(&self, session_key: &str, device_id: &str) -> bool {
+        let mut sessions = self.sessions.lock().unwrap_or_else(|p| p.into_inner());
+        let owns = sessions
+            .get(session_key)
+            .is_some_and(|s| s.device_id == device_id);
+        if owns {
+            sessions.remove(session_key);
+            let mut order = self.session_order.lock().unwrap_or_else(|p| p.into_inner());
+            order.retain(|k| k != session_key);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Immediately terminates every active stream session owned by a revoked device.
+    pub fn revoke_device(&self, device_id: &str) {
+        let mut sessions = self.sessions.lock().unwrap_or_else(|p| p.into_inner());
+        let mut order = self.session_order.lock().unwrap_or_else(|p| p.into_inner());
+        let to_remove: Vec<String> = sessions
+            .iter()
+            .filter(|(_, s)| s.device_id == device_id)
+            .map(|(k, _)| k.clone())
+            .collect();
+        for k in to_remove {
+            sessions.remove(&k);
+            order.retain(|item| item != &k);
+        }
+    }
+
+    fn mint(&self, session_key: &str, url: Url, kind: Kind) -> Result<String, MintError> {
+        let url = fetch::check_url(url.as_str(), &self.policy).map_err(|_| MintError::Blocked)?;
+        let mut sessions = self.sessions.lock().unwrap_or_else(|p| p.into_inner());
+        let session = sessions.get_mut(session_key).ok_or(MintError::Gone)?;
+
+        let key = (url.to_string(), kind);
+        if let Some(existing) = session.by_url.get(&key) {
+            return Ok(existing.clone());
+        }
+
+        while session.handles.len() >= MAX_HANDLES_PER_SESSION {
+            if let Some(old) = session.order.pop_front() {
+                if let Some(entry) = session.handles.remove(&old) {
+                    session.by_url.remove(&(entry.url.to_string(), entry.kind));
+                }
+            } else {
+                break;
+            }
+        }
+
+        let handle = random_hex_128();
+        session.order.push_back(handle.clone());
+        session.by_url.insert(key, handle.clone());
+        session.handles.insert(handle.clone(), ProxyEntry { url, kind });
+        Ok(handle)
+    }
+
+    /// Serves one proxied HLS playlist, segment, key, or direct media resource.
+    pub async fn serve(
+        &self,
+        session_key: &str,
+        handle: &str,
+        range: Option<&str>,
+    ) -> ProxyReply {
+        if !is_valid_hex_token(session_key) || !is_valid_hex_token(handle) {
+            return ProxyReply::error(404, "Stream resource not found.");
+        }
+
+        let (url, kind, client, requests, budget, policy) = {
+            let sessions = self.sessions.lock().unwrap_or_else(|p| p.into_inner());
+            let Some(session) = sessions.get(session_key) else {
+                return ProxyReply::error(410, "Stream session has ended.");
+            };
+            let Some(entry) = session.handles.get(handle) else {
+                return ProxyReply::error(404, "Stream resource not found.");
+            };
+            (
+                entry.url.clone(),
+                entry.kind,
+                session.client.clone(),
+                session.requests.clone(),
+                session.budget.clone(),
+                session.policy.clone(),
+            )
+        };
+
+        let Ok(_req_permit) = requests.acquire_owned().await else {
+            return ProxyReply::error(503, "Stream proxy is busy.");
+        };
+
+        let (max_bytes, timeout, allow_range) = match kind {
+            Kind::Playlist { .. } => (PLAYLIST_MAX_BYTES, PLAYLIST_TIMEOUT, false),
+            Kind::Key => (KEY_MAX_BYTES, PLAYLIST_TIMEOUT, false),
+            Kind::Segment | Kind::Init | Kind::Direct => (SEGMENT_MAX_BYTES, SEGMENT_TIMEOUT, true),
+            Kind::Manifest | Kind::Prefix => (PLAYLIST_MAX_BYTES, PLAYLIST_TIMEOUT, false),
+        };
+
+        let range_arg = if allow_range { range } else { None };
+        let fetched = match fetch::fetch_media(
+            &client, &url, &policy, range_arg, timeout, max_bytes, &budget,
+        )
+        .await
+        {
+            Ok(f) => f,
+            Err(err) => {
+                let status = match err.code {
+                    ErrorCode::Blocked | ErrorCode::InvalidUrl => 403,
+                    ErrorCode::Timeout => 504,
+                    ErrorCode::Busy => 503,
+                    ErrorCode::TooLarge => 413,
+                    _ => 502,
+                };
+                return ProxyReply::error(status, &err.message);
+            }
+        };
+
+        match kind {
+            Kind::Playlist { depth } => {
+                let Ok(text) = std::str::from_utf8(&fetched.body) else {
+                    // Non-UTF8 binary media (e.g. direct MPEG-TS on an extensionless URL).
+                    let ct = safe_media_type(fetched.content_type.as_deref());
+                    return ProxyReply {
+                        status: fetched.status,
+                        content_type: ct.to_string(),
+                        content_range: fetched.content_range,
+                        extra_headers: Vec::new(),
+                        body: fetched.body,
+                    };
+                };
+
+                let base_prefix = format!("/api/stream/h/{session_key}/");
+                let hls_limits = hls::Limits {
+                    max_uris: MAX_URIS_PER_PLAYLIST,
+                    max_variants: MAX_VARIANTS,
+                };
+                let rewritten = hls::rewrite_with_base(
+                    text,
+                    &fetched.final_url,
+                    depth,
+                    hls_limits,
+                    &base_prefix,
+                    &mut |target_url, target_kind| self.mint(session_key, target_url, target_kind),
+                );
+
+                match rewritten {
+                    Ok(playlist_text) => ProxyReply {
+                        status: 200,
+                        content_type: PLAYLIST_TYPE.to_string(),
+                        content_range: None,
+                        extra_headers: Vec::new(),
+                        body: playlist_text.into_bytes(),
+                    },
+                    Err(RewriteError::NotHls) => {
+                        ProxyReply::error(415, "Upstream stream is not a supported HLS playlist.")
+                    }
+                    Err(RewriteError::Drm) => {
+                        ProxyReply::error(415, "DRM-protected streams are not supported.")
+                    }
+                    Err(RewriteError::Unsupported(reason)) => {
+                        ProxyReply::error(415, &format!("Unsupported HLS feature: {reason}."))
+                    }
+                    Err(RewriteError::TooMany(what)) => {
+                        ProxyReply::error(413, &format!("Playlist has too many {what}."))
+                    }
+                    Err(RewriteError::Mint(MintError::Blocked)) => {
+                        ProxyReply::error(403, "A stream reference points to a blocked address.")
+                    }
+                    Err(RewriteError::Mint(MintError::Gone)) => {
+                        ProxyReply::error(410, "Stream session has ended.")
+                    }
+                }
+            }
+            Kind::Key => ProxyReply {
+                status: 200,
+                content_type: "application/octet-stream".to_string(),
+                content_range: None,
+                extra_headers: Vec::new(),
+                body: fetched.body,
+            },
+            _ => ProxyReply {
+                status: fetched.status,
+                content_type: safe_media_type(fetched.content_type.as_deref()).to_string(),
+                content_range: fetched.content_range,
+                extra_headers: Vec::new(),
+                body: fetched.body,
+            },
+        }
+    }
+}
+
+/// Validates that a client-configured Kinora Server URL points to a safe LAN IP address.
+pub fn validate_lan_server_url(raw_url: &str) -> Result<Url, String> {
+    let parsed = Url::parse(raw_url.trim()).map_err(|_| "Invalid Kinora Server URL.".to_string())?;
+    let scheme = parsed.scheme();
+    if scheme != "http" && scheme != "https" {
+        return Err("Kinora Server URL must use http or https.".to_string());
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err("Kinora Server URL must not embed credentials.".to_string());
+    }
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| "Kinora Server URL is missing a host.".to_string())?;
+
+    let ip: IpAddr = host
+        .trim_matches(|c| c == '[' || c == ']')
+        .parse()
+        .map_err(|_| "Kinora Server address must be a local network IP address.".to_string())?;
+
+    let allow_loopback = cfg!(test) || (cfg!(dev) && cfg!(feature = "loopback-fixtures"));
+    if !is_safe_lan_ip(ip) && !(allow_loopback && ip.is_loopback()) {
+        return Err("Kinora Server address must be on the local network.".to_string());
+    }
+
+    Ok(parsed)
+}
+
+struct ActiveClientLanSession {
+    id: u64,
+    server_base: String,
+    session_key: String,
+    client: reqwest::Client,
+}
+
+/// Returned to the React webview when opening a stream from a paired LAN Kinora Server.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenedClientServerStream {
+    pub url: String,
+    pub session: u64,
+    pub format: String,
+}
+
+/// Tauri desktop client bridge that proxies `kstream://localhost/server-stream/<key>/<handle>`
+/// exclusively to the paired LAN Kinora Server without loosening CSP or `fetch.rs`.
+pub struct ClientLanStreamBridge {
+    active: Mutex<Option<ActiveClientLanSession>>,
+    next_id: Mutex<u64>,
+    origin: String,
+}
+
+impl ClientLanStreamBridge {
+    pub fn new(origin: String) -> Self {
+        Self {
+            active: Mutex::new(None),
+            next_id: Mutex::new(1),
+            origin,
+        }
+    }
+
+    fn build_lan_client() -> Result<reqwest::Client, String> {
+        reqwest::Client::builder()
+            .no_proxy()
+            .referer(false)
+            .redirect(reqwest::redirect::Policy::none())
+            .connect_timeout(CONNECT_TIMEOUT)
+            .timeout(SEGMENT_TIMEOUT)
+            .build()
+            .map_err(|_| "Failed to initialize LAN stream client.".to_string())
+    }
+
+    /// Calls `POST <server_url>/api/stream/open` on the paired Kinora Server and binds a local
+    /// `kstream://localhost/server-stream/<session_key>/<root_handle>` address for playback.
+    pub async fn open_from_server(
+        &self,
+        server_url: &str,
+        auth_token: &str,
+        channel_id: &str,
+    ) -> Result<OpenedClientServerStream, String> {
+        let parsed = validate_lan_server_url(server_url)?;
+        let server_base = format!(
+            "{}://{}{}",
+            parsed.scheme(),
+            parsed.host_str().unwrap_or_default(),
+            parsed.port().map(|p| format!(":{p}")).unwrap_or_default()
+        );
+
+        let client = Self::build_lan_client()?;
+        let open_endpoint = format!("{server_base}/api/stream/open");
+        let resp = client
+            .post(&open_endpoint)
+            .header("Authorization", format!("Bearer {}", auth_token.trim()))
+            .header("Content-Type", "application/json")
+            .body(serde_json::json!({ "channelId": channel_id }).to_string())
+            .send()
+            .await
+            .map_err(|_| "Unable to reach Kinora Server to open stream.".to_string())?;
+
+        if !resp.status().is_success() {
+            let status = resp.status().as_u16();
+            return Err(match status {
+                401 => "Device authorization rejected by Kinora Server.".to_string(),
+                403 => "Device lacks streaming permission on Kinora Server.".to_string(),
+                404 => "Channel stream is unavailable on Kinora Server.".to_string(),
+                _ => format!("Kinora Server could not open stream (HTTP {status})."),
+            });
+        }
+
+        let body_bytes = resp
+            .bytes()
+            .await
+            .map_err(|_| "Failed to read stream response from Kinora Server.".to_string())?;
+        let parsed_resp: serde_json::Value = serde_json::from_slice(&body_bytes)
+            .map_err(|_| "Malformed stream response from Kinora Server.".to_string())?;
+
+        let session_key = parsed_resp
+            .get("sessionKey")
+            .and_then(|v| v.as_str())
+            .filter(|s| is_valid_hex_token(s))
+            .ok_or_else(|| "Kinora Server returned an invalid stream session key.".to_string())?
+            .to_string();
+
+        let proxy_path = parsed_resp
+            .get("proxyPath")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "Kinora Server did not return a proxy stream path.".to_string())?;
+
+        let expected_prefix = format!("/api/stream/h/{session_key}/");
+        let root_handle = proxy_path
+            .strip_prefix(&expected_prefix)
+            .filter(|h| is_valid_hex_token(h))
+            .ok_or_else(|| "Kinora Server returned an invalid stream handle.".to_string())?
+            .to_string();
+
+        let format = match parsed_resp.get("format").and_then(|v| v.as_str()) {
+            Some("direct") => "direct".to_string(),
+            _ => "hls".to_string(),
+        };
+
+        let id = {
+            let mut next = self.next_id.lock().unwrap_or_else(|p| p.into_inner());
+            let cur = *next;
+            *next += 1;
+            cur
+        };
+
+        {
+            let mut active = self.active.lock().unwrap_or_else(|p| p.into_inner());
+            *active = Some(ActiveClientLanSession {
+                id,
+                server_base,
+                session_key: session_key.clone(),
+                client,
+            });
+        }
+
+        Ok(OpenedClientServerStream {
+            url: format!("kstream://localhost/server-stream/{session_key}/{root_handle}"),
+            session: id,
+            format,
+        })
+    }
+
+    pub fn close(&self, session: u64) {
+        let mut active = self.active.lock().unwrap_or_else(|p| p.into_inner());
+        if active.as_ref().is_some_and(|s| s.id == session) {
+            *active = None;
+        }
+    }
+
+    /// Serves `kstream://localhost/server-stream/<session_key>/<handle>` by fetching only from
+    /// the active paired LAN Kinora Server and rewriting playlist prefixes for `kstream://`.
+    pub async fn serve(
+        &self,
+        method: &str,
+        uri_path: &str,
+        origin: Option<&str>,
+        ranges: &[&str],
+    ) -> ProxyReply {
+        let cors_headers = vec![
+            ("Access-Control-Allow-Origin", self.origin.clone()),
+            ("Vary", "Origin".to_string()),
+            ("Cache-Control", "no-store".to_string()),
+            ("X-Content-Type-Options", "nosniff".to_string()),
+        ];
+
+        if let Some(req_origin) = origin {
+            if req_origin != self.origin {
+                return ProxyReply {
+                    status: 403,
+                    content_type: "text/plain; charset=utf-8".to_string(),
+                    content_range: None,
+                    extra_headers: cors_headers,
+                    body: b"Forbidden origin.".to_vec(),
+                };
+            }
+        }
+
+        if method == "OPTIONS" {
+            let mut hdrs = cors_headers;
+            hdrs.push(("Access-Control-Allow-Methods", "GET, OPTIONS".to_string()));
+            hdrs.push(("Access-Control-Allow-Headers", "Range".to_string()));
+            return ProxyReply {
+                status: 204,
+                content_type: "text/plain; charset=utf-8".to_string(),
+                content_range: None,
+                extra_headers: hdrs,
+                body: Vec::new(),
+            };
+        }
+
+        if method != "GET" {
+            return ProxyReply {
+                status: 405,
+                content_type: "text/plain; charset=utf-8".to_string(),
+                content_range: None,
+                extra_headers: cors_headers,
+                body: b"Method not allowed.".to_vec(),
+            };
+        }
+
+        let Some(rest) = uri_path.strip_prefix("/server-stream/") else {
+            return ProxyReply {
+                status: 404,
+                content_type: "text/plain; charset=utf-8".to_string(),
+                content_range: None,
+                extra_headers: cors_headers,
+                body: b"Not found.".to_vec(),
+            };
+        };
+
+        let Some((session_key, handle)) = rest.split_once('/') else {
+            return ProxyReply {
+                status: 404,
+                content_type: "text/plain; charset=utf-8".to_string(),
+                content_range: None,
+                extra_headers: cors_headers,
+                body: b"Not found.".to_vec(),
+            };
+        };
+
+        if !is_valid_hex_token(session_key) || !is_valid_hex_token(handle) {
+            return ProxyReply {
+                status: 404,
+                content_type: "text/plain; charset=utf-8".to_string(),
+                content_range: None,
+                extra_headers: cors_headers,
+                body: b"Invalid stream handle.".to_vec(),
+            };
+        }
+
+        let (server_base, client) = {
+            let active = self.active.lock().unwrap_or_else(|p| p.into_inner());
+            let Some(sess) = active.as_ref().filter(|s| s.session_key == session_key) else {
+                return ProxyReply {
+                    status: 410,
+                    content_type: "text/plain; charset=utf-8".to_string(),
+                    content_range: None,
+                    extra_headers: cors_headers,
+                    body: b"Stream session has ended.".to_vec(),
+                };
+            };
+            (sess.server_base.clone(), sess.client.clone())
+        };
+
+        let target = format!("{server_base}/api/stream/h/{session_key}/{handle}");
+        let mut req = client.get(&target);
+        if let Some(range) = ranges.first() {
+            req = req.header("Range", *range);
+        }
+
+        let resp = match req.send().await {
+            Ok(r) => r,
+            Err(_) => {
+                return ProxyReply {
+                    status: 502,
+                    content_type: "text/plain; charset=utf-8".to_string(),
+                    content_range: None,
+                    extra_headers: cors_headers,
+                    body: b"Kinora Server stream unreachable.".to_vec(),
+                };
+            }
+        };
+
+        let status = resp.status().as_u16();
+        let content_type = resp
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("application/octet-stream")
+            .to_string();
+        let content_range = resp
+            .headers()
+            .get("content-range")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+
+        let bytes = match resp.bytes().await {
+            Ok(b) if b.len() <= SEGMENT_MAX_BYTES => b.to_vec(),
+            Ok(_) => {
+                return ProxyReply {
+                    status: 413,
+                    content_type: "text/plain; charset=utf-8".to_string(),
+                    content_range: None,
+                    extra_headers: cors_headers,
+                    body: b"Stream segment exceeded limit.".to_vec(),
+                };
+            }
+            Err(_) => {
+                return ProxyReply {
+                    status: 502,
+                    content_type: "text/plain; charset=utf-8".to_string(),
+                    content_range: None,
+                    extra_headers: cors_headers,
+                    body: b"Failed to read stream bytes from Kinora Server.".to_vec(),
+                };
+            }
+        };
+
+        let body = if content_type.contains("mpegurl") {
+            let text = String::from_utf8_lossy(&bytes);
+            rewrite_lan_playlist_for_kstream(&text, session_key).into_bytes()
+        } else {
+            bytes
+        };
+
+        ProxyReply {
+            status,
+            content_type,
+            content_range,
+            extra_headers: cors_headers,
+            body,
+        }
+    }
+}
+
+/// Rewrites server-side `/api/stream/h/<session_key>/` paths in an HLS playlist into
+/// `kstream://localhost/server-stream/<session_key>/` paths for Tauri WebKitGTK playback.
+pub fn rewrite_lan_playlist_for_kstream(playlist: &str, session_key: &str) -> String {
+    let from = format!("/api/stream/h/{session_key}/");
+    let to = format!("kstream://localhost/server-stream/{session_key}/");
+    playlist.replace(&from, &to)
+}
+
+#[cfg(feature = "desktop")]
+pub fn into_tauri_response(reply: ProxyReply) -> tauri::http::Response<Vec<u8>> {
+    let mut builder = tauri::http::Response::builder()
+        .status(reply.status)
+        .header("Content-Type", reply.content_type);
+    if let Some(cr) = reply.content_range {
+        builder = builder.header("Content-Range", cr);
+    }
+    for (k, v) in reply.extra_headers {
+        builder = builder.header(k, v);
+    }
+    builder.body(reply.body).unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::SocketAddr;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    async fn start_fixture_http_server(
+        routes: HashMap<String, (&'static str, Vec<u8>)>,
+    ) -> SocketAddr {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let routes = Arc::new(routes);
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut sock, _)) = listener.accept().await else {
+                    break;
+                };
+                let routes = routes.clone();
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 4096];
+                    let Ok(n) = sock.read(&mut buf).await else {
+                        return;
+                    };
+                    let req = String::from_utf8_lossy(&buf[..n]);
+                    let path = req
+                        .lines()
+                        .next()
+                        .and_then(|l| l.split_whitespace().nth(1))
+                        .unwrap_or("/");
+                    if let Some((ct, body)) = routes.get(path) {
+                        let hdr = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: {ct}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                            body.len()
+                        );
+                        let _ = sock.write_all(hdr.as_bytes()).await;
+                        let _ = sock.write_all(body).await;
+                    } else {
+                        let _ = sock
+                            .write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                            .await;
+                    }
+                });
+            }
+        });
+        addr
+    }
+
+    #[test]
+    fn production_policy_blocks_private_and_loopback_upstream() {
+        let proxy = LanStreamProxy::default();
+        assert!(proxy.open("dev-1", "http://127.0.0.1:8080/live.m3u8").is_err());
+        assert!(proxy.open("dev-1", "http://192.168.1.50/secret.m3u8").is_err());
+        assert!(proxy.open("dev-1", "http://169.254.169.254/latest/meta-data").is_err());
+    }
+
+    #[tokio::test]
+    async fn lan_proxy_rewrites_hls_and_hides_upstream_credentials() {
+        let mut routes = HashMap::new();
+        routes.insert(
+            "/secret-token/index.m3u8".to_string(),
+            (
+                "application/vnd.apple.mpegurl",
+                b"#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:4\n#EXTINF:4.0,\nseg1.ts?key=supersecret\n".to_vec(),
+            ),
+        );
+        routes.insert(
+            "/secret-token/seg1.ts?key=supersecret".to_string(),
+            ("video/mp2t", b"TS_SEGMENT_BYTES_OK".to_vec()),
+        );
+        let addr = start_fixture_http_server(routes).await;
+
+        let mut test_policy = Policy::default();
+        test_policy.allow_loopback = true;
+        let proxy = LanStreamProxy::new(test_policy);
+
+        let opened = proxy
+            .open("dev-tablet", &format!("http://{addr}/secret-token/index.m3u8"))
+            .unwrap();
+        assert_eq!(opened.format, "hls");
+        assert!(opened.proxy_path.starts_with("/api/stream/h/"));
+        assert!(!opened.proxy_path.contains("secret-token"));
+
+        let playlist_reply = proxy
+            .serve(&opened.session_key, &opened.root_handle, None)
+            .await;
+        assert_eq!(playlist_reply.status, 200);
+        assert_eq!(playlist_reply.content_type, PLAYLIST_TYPE);
+        let playlist_text = String::from_utf8(playlist_reply.body).unwrap();
+        assert!(!playlist_text.contains("secret-token"));
+        assert!(!playlist_text.contains("supersecret"));
+        assert!(!playlist_text.contains(&addr.to_string()));
+
+        let seg_line = playlist_text
+            .lines()
+            .find(|l| l.starts_with("/api/stream/h/"))
+            .expect("rewritten segment URL present");
+        let seg_handle = seg_line.rsplit('/').next().unwrap();
+
+        let seg_reply = proxy.serve(&opened.session_key, seg_handle, None).await;
+        assert_eq!(seg_reply.status, 200);
+        assert_eq!(seg_reply.content_type, "video/mp2t");
+        assert_eq!(seg_reply.body, b"TS_SEGMENT_BYTES_OK");
+
+        // Revoking the device immediately ends the stream session.
+        proxy.revoke_device("dev-tablet");
+        let after_revoke = proxy
+            .serve(&opened.session_key, &opened.root_handle, None)
+            .await;
+        assert_eq!(after_revoke.status, 410);
+    }
+
+    #[test]
+    fn validates_lan_server_urls_and_rewrites_kstream_playlists() {
+        assert!(validate_lan_server_url("http://192.168.1.50:5198").is_ok());
+        assert!(validate_lan_server_url("http://10.0.0.12:5198").is_ok());
+        assert!(validate_lan_server_url("http://169.254.169.254:80").is_err());
+        assert!(validate_lan_server_url("http://8.8.8.8:5198").is_err());
+        assert!(validate_lan_server_url("http://user:pass@192.168.1.50:5198").is_err());
+        assert!(validate_lan_server_url("ftp://192.168.1.50:5198").is_err());
+
+        let key = "0123456789abcdef0123456789abcdef";
+        let input = format!("#EXTM3U\n/api/stream/h/{key}/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n");
+        let rewritten = rewrite_lan_playlist_for_kstream(&input, key);
+        assert_eq!(
+            rewritten,
+            format!("#EXTM3U\nkstream://localhost/server-stream/{key}/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n")
+        );
+    }
+}

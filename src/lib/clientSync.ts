@@ -363,26 +363,60 @@ class ClientSyncManager {
     }
   }
 
-  public async resolveStreamUrl(channelId: string): Promise<string | null> {
+  public async openServerStream(channelId: string): Promise<{
+    streamUrl: string
+    sessionKey: string
+    proxyPath: string
+    format: 'hls' | 'direct'
+  } | null> {
     const { serverUrl, authToken } = this.state
     if (!serverUrl || !authToken) return null
 
     try {
-      const res = await fetch(
-        `${serverUrl}/api/stream/resolve?channelId=${encodeURIComponent(channelId)}`,
-        {
-          headers: { Authorization: `Bearer ${authToken}` },
-        }
-      )
+      const res = await fetch(`${serverUrl}/api/stream/open`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ channelId }),
+      })
       if (!res.ok) return null
       const data = await res.json()
-      if (data.ok && typeof data.streamUrl === 'string') {
-        return data.streamUrl
+      if (data.ok && typeof data.streamUrl === 'string' && typeof data.sessionKey === 'string') {
+        return {
+          streamUrl: data.streamUrl,
+          sessionKey: data.sessionKey,
+          proxyPath: typeof data.proxyPath === 'string' ? data.proxyPath : '',
+          format: data.format === 'direct' ? 'direct' : 'hls',
+        }
       }
       return null
     } catch {
       return null
     }
+  }
+
+  public async closeServerStream(sessionKey: string): Promise<void> {
+    const { serverUrl, authToken } = this.state
+    if (!serverUrl || !authToken || !sessionKey) return
+    try {
+      await fetch(`${serverUrl}/api/stream/close`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ sessionKey }),
+      })
+    } catch {
+      // Best-effort close on disconnect or channel switch
+    }
+  }
+
+  public async resolveStreamUrl(channelId: string): Promise<string | null> {
+    const opened = await this.openServerStream(channelId)
+    return opened ? opened.streamUrl : null
   }
 }
 

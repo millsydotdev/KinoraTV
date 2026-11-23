@@ -6,7 +6,7 @@ import { Icon, type IconName } from '../components/Icon'
 import { useToast } from '../components/Toast'
 import { PageHeader } from '../components/PageHeader'
 import { Segmented, Switch } from '../components/ui'
-import { getAppInfo, checkForUpdates, installUpdate, inNativeShell, getArtworkCacheStats, clearArtworkCache, retryFailedArtwork, type ArtworkCacheStats, type AppInfo, type UpdateCheckResult, APP_VERSION, APP_ENV, isStaging, isProduction, getVersionChannel, formatChannelName, getPlatformMode, setPlatformMode, discoverKinoraServers, type PlatformMode } from '../lib/native'
+import { getAppInfo, checkForUpdates, installUpdate, inNativeShell, getArtworkCacheStats, clearArtworkCache, retryFailedArtwork, type ArtworkCacheStats, type AppInfo, type UpdateCheckResult, APP_VERSION, APP_ENV, isStaging, isProduction, getVersionChannel, formatChannelName, getPlatformMode, setPlatformMode, startRemoteServer, discoverKinoraServers, type PlatformMode } from '../lib/native'
 import { useClientSync } from '../lib/clientSync'
 import { useVoiceAndAgentControl } from '../lib/voiceAndAgent'
 import { CODEC_HELP, codecSupport } from '../lib/playback'
@@ -2342,7 +2342,15 @@ function DataSection() {
   useEffect(() => {
     let active = true
     getPlatformMode().then((info) => {
-      if (active && info) setPlatformModeState(info.mode)
+      if (active && info) {
+        setPlatformModeState(info.mode)
+        if (info.serverUrl) setServerTargetUrl((prev) => prev || info.serverUrl || '')
+      } else if (active) {
+        const saved = localStorage.getItem('kinora.platform.mode.v1')
+        if (saved === 'standalone' || saved === 'server' || saved === 'client') {
+          setPlatformModeState(saved)
+        }
+      }
     })
     return () => {
       active = false
@@ -2501,8 +2509,24 @@ function DataSection() {
                 className={`btn ${platformMode === m ? 'btn-primary' : 'btn-ghost'} btn-small`}
                 onClick={async () => {
                   setPlatformModeState(m)
-                  await setPlatformMode(m)
-                  toast(`Switched to ${m.charAt(0).toUpperCase() + m.slice(1)} Mode`)
+                  try {
+                    localStorage.setItem('kinora.platform.mode.v1', m)
+                  } catch {}
+                  await setPlatformMode(m, m === 'client' ? (serverTargetUrl.trim() || undefined) : undefined)
+                  if (m === 'server') {
+                    clientSync.disconnect()
+                    const started = await startRemoteServer()
+                    if (started?.running) {
+                      toast(`Kinora Server active on ${started.serverUrl}`)
+                    } else {
+                      toast('Switched to Server Mode')
+                    }
+                  } else if (m === 'standalone') {
+                    clientSync.disconnect()
+                    toast('Switched to Standalone Mode')
+                  } else {
+                    toast('Switched to Client Mode')
+                  }
                 }}
                 style={{ textTransform: 'capitalize' }}
               >
@@ -2564,9 +2588,14 @@ function DataSection() {
                   className="btn btn-primary btn-small"
                   disabled={!serverTargetUrl || !serverTargetPin || clientSync.status === 'connecting'}
                   onClick={async () => {
-                    const ok = await clientSync.pairWithServer(serverTargetUrl, serverTargetPin)
-                    if (ok) toast('Connected to Kinora Server')
-                    else toast(clientSync.error || 'Connection failed')
+                    const cleanUrl = serverTargetUrl.trim().replace(/\/+$/, '')
+                    const ok = await clientSync.pairWithServer(cleanUrl, serverTargetPin)
+                    if (ok) {
+                      await setPlatformMode('client', cleanUrl)
+                      toast('Connected to Kinora Server')
+                    } else {
+                      toast(clientSync.error || 'Connection failed')
+                    }
                   }}
                 >
                   {clientSync.status === 'connecting' ? 'Connecting...' : 'Connect'}

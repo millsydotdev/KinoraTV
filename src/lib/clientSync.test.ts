@@ -147,23 +147,47 @@ describe('clientSyncManager', () => {
     }))
   })
 
-  it('resolves authenticated stream URL from server', async () => {
+  it('opens and closes a proxied stream session on the server without exposing upstream URLs', async () => {
     clientSyncManager.setServerConfig('http://192.168.1.50:5198', 'tok-abc')
 
+    const proxyUrl = 'http://192.168.1.50:5198/api/stream/h/0123456789abcdef0123456789abcdef/fedcba9876543210fedcba9876543210'
     const fetchSpy = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ ok: true, channelId: 'ch-1', streamUrl: 'https://example.com/live/ch1.m3u8' }),
+      json: async () => ({
+        ok: true,
+        channelId: 'ch-1',
+        sessionKey: '0123456789abcdef0123456789abcdef',
+        proxyPath: '/api/stream/h/0123456789abcdef0123456789abcdef/fedcba9876543210fedcba9876543210',
+        streamUrl: proxyUrl,
+        format: 'hls',
+      }),
     } as Response)
     globalThis.fetch = fetchSpy
 
-    const streamUrl = await clientSyncManager.resolveStreamUrl('ch-1')
-    expect(streamUrl).toBe('https://example.com/live/ch1.m3u8')
+    const opened = await clientSyncManager.openServerStream('ch-1')
+    expect(opened?.streamUrl).toBe(proxyUrl)
+    expect(opened?.sessionKey).toBe('0123456789abcdef0123456789abcdef')
+    expect(opened?.format).toBe('hls')
     expect(fetchSpy).toHaveBeenCalledWith(
-      'http://192.168.1.50:5198/api/stream/resolve?channelId=ch-1',
+      'http://192.168.1.50:5198/api/stream/open',
       expect.objectContaining({
+        method: 'POST',
         headers: expect.objectContaining({
           Authorization: 'Bearer tok-abc',
         }),
+        body: JSON.stringify({ channelId: 'ch-1' }),
+      })
+    )
+
+    const resolvedUrl = await clientSyncManager.resolveStreamUrl('ch-1')
+    expect(resolvedUrl).toBe(proxyUrl)
+
+    await clientSyncManager.closeServerStream('0123456789abcdef0123456789abcdef')
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'http://192.168.1.50:5198/api/stream/close',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ sessionKey: '0123456789abcdef0123456789abcdef' }),
       })
     )
   })

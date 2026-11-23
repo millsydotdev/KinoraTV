@@ -129,7 +129,8 @@ services:
     environment:
       - KINORA_MODE=server
       - KINORA_DATA_DIR=/data
-      - SERVER_PORT=5198
+      - KINORA_PORT=5198
+      - KINORA_PIN=${KINORA_PIN:-}
     volumes:
       - server-data:/data
     restart: unless-stopped

@@ -231,6 +231,7 @@ struct ServerInner {
 #[derive(Clone)]
 pub struct RemoteServerManager {
     inner: Arc<Mutex<ServerInner>>,
+    stream_proxy: crate::lan_proxy::LanStreamProxy,
 }
 
 impl Default for RemoteServerManager {
@@ -239,25 +240,60 @@ impl Default for RemoteServerManager {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PlatformConfig {
+    pub mode: PlatformMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pairing_pin: Option<String>,
+}
+
 impl RemoteServerManager {
     pub fn new(data_dir: Option<PathBuf>) -> Self {
-        let pin = generate_pairing_pin();
+        Self::with_stream_policy(data_dir, crate::fetch::Policy::default())
+    }
+
+    pub fn with_stream_policy(data_dir: Option<PathBuf>, policy: crate::fetch::Policy) -> Self {
         let ip = detect_local_ip();
-        let loaded_devices = if let Some(ref dir) = data_dir {
-            load_trusted_devices_from_disk(dir)
+        let (loaded_devices, loaded_cfg) = if let Some(ref dir) = data_dir {
+            (
+                load_trusted_devices_from_disk(dir),
+                load_platform_config_from_disk(dir),
+            )
         } else {
-            Vec::new()
+            (Vec::new(), None)
         };
+
+        let pin = loaded_cfg
+            .as_ref()
+            .and_then(|c| c.pairing_pin.as_ref())
+            .filter(|p| p.trim().len() >= 4)
+            .cloned()
+            .unwrap_or_else(generate_pairing_pin);
+        let port = loaded_cfg
+            .as_ref()
+            .and_then(|c| c.port)
+            .filter(|&p| p > 0)
+            .unwrap_or(DEFAULT_REMOTE_PORT);
+        let mode = loaded_cfg
+            .as_ref()
+            .map(|c| c.mode)
+            .unwrap_or(PlatformMode::Standalone);
+        let server_client_url = loaded_cfg.and_then(|c| c.server_url);
 
         Self {
             inner: Arc::new(Mutex::new(ServerInner {
                 data_dir,
                 running: false,
-                port: DEFAULT_REMOTE_PORT,
+                port,
                 local_ip: ip,
                 pairing_pin: pin,
-                mode: PlatformMode::Standalone,
-                server_client_url: None,
+                mode,
+                server_client_url,
                 trusted_devices: loaded_devices,
                 audit_log: Vec::new(),
                 channels: Vec::new(),
@@ -270,6 +306,7 @@ impl RemoteServerManager {
                 shutdown_tx: None,
                 beacon_shutdown_tx: None,
             })),
+            stream_proxy: crate::lan_proxy::LanStreamProxy::new(policy),
         }
     }
 
@@ -305,6 +342,7 @@ impl RemoteServerManager {
         let mut state = self.inner.lock().await;
         state.mode = mode;
         state.server_client_url = server_url;
+        persist_platform_config(&state);
         let active_count = state.trusted_devices.iter().filter(|d| !d.revoked).count();
         PlatformModeInfo {
             mode: state.mode,
@@ -333,6 +371,7 @@ impl RemoteServerManager {
             }
         }
         if found {
+            self.stream_proxy.revoke_device(device_id);
             if let Some(ref dir) = state.data_dir {
                 save_trusted_devices_to_disk(dir, &state.trusted_devices);
             }
@@ -347,6 +386,14 @@ impl RemoteServerManager {
             );
         }
         found
+    }
+
+    pub async fn is_device_active(&self, device_id: &str) -> bool {
+        let state = self.inner.lock().await;
+        state
+            .trusted_devices
+            .iter()
+            .any(|d| d.id == device_id && !d.revoked)
     }
 
     pub async fn rename_device(&self, device_id: &str, new_name: &str) -> bool {
@@ -435,13 +482,21 @@ impl RemoteServerManager {
             });
         }
 
-        let chosen_port = port.unwrap_or(DEFAULT_REMOTE_PORT);
+        let chosen_port = port.unwrap_or(state.port);
+        let mut cfg_changed = false;
         if let Some(pin) = custom_pin {
             if pin.trim().len() >= 4 {
                 state.pairing_pin = pin.trim().to_string();
+                cfg_changed = true;
             }
         }
-        state.port = chosen_port;
+        if state.port != chosen_port {
+            state.port = chosen_port;
+            cfg_changed = true;
+        }
+        if cfg_changed {
+            persist_platform_config(&state);
+        }
         state.local_ip = detect_local_ip();
 
         let bind_addr = SocketAddr::from(([0, 0, 0, 0], chosen_port));
@@ -672,6 +727,55 @@ fn broadcast_sse_envelope(state: &mut ServerInner, event_type: &str, data: serde
     }
 }
 
+fn persist_platform_config(state: &ServerInner) {
+    if let Some(ref dir) = state.data_dir {
+        let cfg = PlatformConfig {
+            mode: state.mode,
+            server_url: state.server_client_url.clone(),
+            port: Some(state.port),
+            pairing_pin: Some(state.pairing_pin.clone()),
+        };
+        save_platform_config_to_disk(dir, &cfg);
+    }
+}
+
+fn load_platform_config_from_disk(data_dir: &Path) -> Option<PlatformConfig> {
+    let file_path = data_dir.join("platform_config.json");
+    let data = fs::read_to_string(file_path).ok()?;
+    serde_json::from_str::<PlatformConfig>(&data).ok()
+}
+
+fn save_platform_config_to_disk(data_dir: &Path, cfg: &PlatformConfig) {
+    let _ = fs::create_dir_all(data_dir);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(data_dir, fs::Permissions::from_mode(0o700));
+    }
+
+    let file_path = data_dir.join("platform_config.json");
+    let temp_path = data_dir.join("platform_config.json.tmp");
+
+    if let Ok(json) = serde_json::to_string_pretty(cfg) {
+        let mut options = OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+
+        if let Ok(mut file) = options.open(&temp_path) {
+            if file.write_all(json.as_bytes()).is_ok() && file.sync_all().is_ok() {
+                drop(file);
+                let _ = fs::rename(&temp_path, &file_path);
+            } else {
+                let _ = fs::remove_file(&temp_path);
+            }
+        }
+    }
+}
+
 fn load_trusted_devices_from_disk(data_dir: &Path) -> Vec<TrustedDevice> {
     let file_path = data_dir.join("devices.json");
     if let Ok(data) = fs::read_to_string(file_path) {
@@ -743,6 +847,8 @@ async fn handle_connection<F>(
     // Extract headers
     let mut auth_token = None;
     let mut user_agent = None;
+    let mut range_header = None;
+    let mut host_header = None;
     for line in lines {
         if line.is_empty() {
             break;
@@ -752,6 +858,10 @@ async fn handle_connection<F>(
             auth_token = Some(line[21..].trim().to_string());
         } else if lower.starts_with("user-agent:") {
             user_agent = Some(line[11..].trim().to_string());
+        } else if lower.starts_with("range:") {
+            range_header = Some(line[6..].trim().to_string());
+        } else if lower.starts_with("host:") {
+            host_header = Some(line[5..].trim().to_string());
         }
     }
 
@@ -768,7 +878,7 @@ async fn handle_connection<F>(
 
     // CORS preflight
     if method == "OPTIONS" {
-        let resp = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, DELETE, OPTIONS\r\nAccess-Control-Allow-Headers: Authorization, Content-Type\r\n\r\n";
+        let resp = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, DELETE, OPTIONS\r\nAccess-Control-Allow-Headers: Authorization, Content-Type, Range\r\n\r\n";
         let _ = stream.write_all(resp.as_bytes()).await;
         return;
     }
@@ -851,6 +961,48 @@ async fn handle_connection<F>(
             );
             let _ = stream.write_all(resp.as_bytes()).await;
         }
+        ("POST", "/api/stream/open") => {
+            let caller_opt = get_device_by_token(&manager, auth_token.as_deref()).await;
+            if caller_opt.is_none() {
+                send_unauthorized(&mut stream).await;
+                return;
+            }
+            let caller = caller_opt.unwrap();
+            if !caller.capabilities.contains(&DeviceCapability::ClientSync)
+                && !caller.capabilities.contains(&DeviceCapability::PlaybackControl)
+            {
+                send_forbidden(&mut stream, "Device lacks ClientSync or PlaybackControl capability").await;
+                return;
+            }
+
+            let body = extract_body(&req_str);
+            let target_cid = serde_json::from_str::<serde_json::Value>(body)
+                .ok()
+                .and_then(|v| v.get("channelId").and_then(|c| c.as_str()).map(|s| s.to_string()));
+
+            handle_open_proxy_stream(&mut stream, &manager, &caller, target_cid, host_header.as_deref()).await;
+        }
+        ("POST", "/api/stream/close") => {
+            let caller_opt = get_device_by_token(&manager, auth_token.as_deref()).await;
+            if caller_opt.is_none() {
+                send_unauthorized(&mut stream).await;
+                return;
+            }
+            let caller = caller_opt.unwrap();
+            let body = extract_body(&req_str);
+            let session_key = serde_json::from_str::<serde_json::Value>(body)
+                .ok()
+                .and_then(|v| v.get("sessionKey").and_then(|s| s.as_str()).map(|s| s.to_string()))
+                .unwrap_or_default();
+            let closed = manager.stream_proxy.close(&session_key, &caller.id);
+            let json_body = serde_json::json!({ "ok": closed }).to_string();
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+                json_body.len(),
+                json_body
+            );
+            let _ = stream.write_all(resp.as_bytes()).await;
+        }
         ("GET", p) if p.starts_with("/api/stream/resolve") => {
             let caller_opt = get_device_by_token(&manager, auth_token.as_deref()).await;
             if caller_opt.is_none() {
@@ -858,7 +1010,9 @@ async fn handle_connection<F>(
                 return;
             }
             let caller = caller_opt.unwrap();
-            if !caller.capabilities.contains(&DeviceCapability::ClientSync) && !caller.capabilities.contains(&DeviceCapability::PlaybackControl) {
+            if !caller.capabilities.contains(&DeviceCapability::ClientSync)
+                && !caller.capabilities.contains(&DeviceCapability::PlaybackControl)
+            {
                 send_forbidden(&mut stream, "Device lacks ClientSync or PlaybackControl capability").await;
                 return;
             }
@@ -867,38 +1021,66 @@ async fn handle_connection<F>(
             for pair in query_str.split('&') {
                 if let Some((k, v)) = pair.split_once('=') {
                     if k == "channelId" && !v.is_empty() {
-                        target_cid = Some(v.to_string());
+                        target_cid = Some(percent_decode_simple(v));
                         break;
                     }
                 }
             }
 
-            let state = manager.inner.lock().await;
-            let found_stream = target_cid.as_deref().and_then(|cid| {
-                state.channels.iter().find(|c| c.id == cid).and_then(|c| c.stream_url.clone())
-            });
+            handle_open_proxy_stream(&mut stream, &manager, &caller, target_cid, host_header.as_deref()).await;
+        }
+        ("GET", p) if p.starts_with("/api/stream/h/") => {
+            let rest = &p["/api/stream/h/".len()..];
+            let Some((session_key, handle)) = rest.split_once('/') else {
+                let err = "HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\nNot Found";
+                let _ = stream.write_all(err.as_bytes()).await;
+                return;
+            };
 
-            if let Some(stream_url) = found_stream {
-                let json_body = serde_json::json!({
-                    "ok": true,
-                    "channelId": target_cid.unwrap_or_default(),
-                    "streamUrl": stream_url
-                }).to_string();
-                let resp = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
-                    json_body.len(),
-                    json_body
-                );
-                let _ = stream.write_all(resp.as_bytes()).await;
-            } else {
-                let err_body = r#"{"ok":false,"error":"Channel or stream not found"}"#;
-                let resp = format!(
-                    "HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
-                    err_body.len(),
-                    err_body
-                );
-                let _ = stream.write_all(resp.as_bytes()).await;
+            let Some(owner_id) = manager.stream_proxy.session_owner(session_key) else {
+                let err = "HTTP/1.1 410 Gone\r\nContent-Length: 24\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\nStream session has ended";
+                let _ = stream.write_all(err.as_bytes()).await;
+                return;
+            };
+
+            if !manager.is_device_active(&owner_id).await {
+                manager.stream_proxy.revoke_device(&owner_id);
+                send_forbidden(&mut stream, "Device authorization has been revoked").await;
+                return;
             }
+
+            let reply = manager
+                .stream_proxy
+                .serve(session_key, handle, range_header.as_deref())
+                .await;
+
+            let reason = match reply.status {
+                200 => "OK",
+                206 => "Partial Content",
+                403 => "Forbidden",
+                404 => "Not Found",
+                410 => "Gone",
+                413 => "Payload Too Large",
+                415 => "Unsupported Media Type",
+                502 => "Bad Gateway",
+                503 => "Service Unavailable",
+                504 => "Gateway Timeout",
+                _ => "Error",
+            };
+
+            let mut hdr = format!(
+                "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n",
+                reply.status,
+                reason,
+                reply.content_type,
+                reply.body.len()
+            );
+            if let Some(cr) = reply.content_range {
+                hdr.push_str(&format!("Content-Range: {cr}\r\n"));
+            }
+            hdr.push_str("\r\n");
+            let _ = stream.write_all(hdr.as_bytes()).await;
+            let _ = stream.write_all(&reply.body).await;
         }
         ("GET", "/api/sources") => {
             if !validate_token(&manager, auth_token.as_deref(), &[DeviceCapability::MediaBrowse, DeviceCapability::ClientSync, DeviceCapability::AiAgent]).await {
@@ -1474,6 +1656,108 @@ async fn send_forbidden(stream: &mut TcpStream, reason: &str) {
         body
     );
     let _ = stream.write_all(resp.as_bytes()).await;
+}
+
+fn percent_decode_simple(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(hex) = std::str::from_utf8(&bytes[i + 1..i + 3]) {
+                if let Ok(val) = u8::from_str_radix(hex, 16) {
+                    out.push(val);
+                    i += 3;
+                    continue;
+                }
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).to_string()
+}
+
+async fn handle_open_proxy_stream(
+    stream: &mut TcpStream,
+    manager: &RemoteServerManager,
+    caller: &TrustedDevice,
+    target_cid: Option<String>,
+    host_header: Option<&str>,
+) {
+    let (found_stream, local_ip, port) = {
+        let state = manager.inner.lock().await;
+        let found = target_cid.as_deref().and_then(|cid| {
+            state
+                .channels
+                .iter()
+                .find(|c| c.id == cid)
+                .and_then(|c| c.stream_url.clone())
+        });
+        (found, state.local_ip.clone(), state.port)
+    };
+
+    let Some(upstream_url) = found_stream else {
+        let err_body = r#"{"ok":false,"error":"Channel or stream not found"}"#;
+        let resp = format!(
+            "HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+            err_body.len(),
+            err_body
+        );
+        let _ = stream.write_all(resp.as_bytes()).await;
+        return;
+    };
+
+    let cid_str = target_cid.unwrap_or_default();
+    match manager.stream_proxy.open(&caller.id, &upstream_url) {
+        Ok(opened) => {
+            {
+                let mut state = manager.inner.lock().await;
+                record_audit_action(
+                    &mut state.audit_log,
+                    &caller.id,
+                    &caller.name,
+                    "ClientSync",
+                    "OpenProxyStream",
+                    &format!("channelId={cid_str}"),
+                    "success",
+                );
+            }
+            let host_authority = host_header
+                .map(|h| h.trim().to_string())
+                .filter(|h| !h.is_empty() && !h.contains('/') && !h.contains('@'))
+                .unwrap_or_else(|| format!("{local_ip}:{port}"));
+            let proxy_url = format!("http://{host_authority}{}", opened.proxy_path);
+            let json_body = serde_json::json!({
+                "ok": true,
+                "channelId": cid_str,
+                "sessionKey": opened.session_key,
+                "proxyPath": opened.proxy_path,
+                "streamUrl": proxy_url,
+                "format": opened.format
+            })
+            .to_string();
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+                json_body.len(),
+                json_body
+            );
+            let _ = stream.write_all(resp.as_bytes()).await;
+        }
+        Err(reason) => {
+            let json_body = serde_json::json!({
+                "ok": false,
+                "error": reason
+            })
+            .to_string();
+            let resp = format!(
+                "HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+                json_body.len(),
+                json_body
+            );
+            let _ = stream.write_all(resp.as_bytes()).await;
+        }
+    }
 }
 
 pub fn get_embedded_remote_html() -> &'static str {
@@ -2177,5 +2461,170 @@ mod tests {
         mgr.update_channels(channels).await;
         let inner = mgr.inner.lock().await;
         assert_eq!(inner.channels[0].stream_url.as_deref(), Some("https://example.com/live/ch1.m3u8"));
+    }
+
+    #[tokio::test]
+    async fn platform_config_persists_across_restarts() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "kinora_platform_cfg_test_{}",
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let mgr = RemoteServerManager::new(Some(temp_dir.clone()));
+        mgr.set_platform_mode(PlatformMode::Client, Some("http://192.168.1.42:5198".to_string()))
+            .await;
+
+        let reloaded = RemoteServerManager::new(Some(temp_dir.clone()));
+        let info = reloaded.get_platform_mode().await;
+        assert_eq!(info.mode, PlatformMode::Client);
+        assert_eq!(info.server_url.as_deref(), Some("http://192.168.1.42:5198"));
+
+        reloaded.set_platform_mode(PlatformMode::Server, None).await;
+        let reloaded_server = RemoteServerManager::new(Some(temp_dir.clone()));
+        let srv_info = reloaded_server.get_platform_mode().await;
+        assert_eq!(srv_info.mode, PlatformMode::Server);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[tokio::test]
+    async fn end_to_end_guarded_lan_stream_proxy_over_http() {
+        // 1. Start a local upstream HLS fixture server carrying a secret token in its URL.
+        let upstream = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_addr = upstream.local_addr().unwrap();
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut sock, _)) = upstream.accept().await else {
+                    break;
+                };
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 4096];
+                    let Ok(n) = sock.read(&mut buf).await else {
+                        return;
+                    };
+                    let req = String::from_utf8_lossy(&buf[..n]);
+                    let path = req
+                        .lines()
+                        .next()
+                        .and_then(|l| l.split_whitespace().nth(1))
+                        .unwrap_or("/");
+                    if path == "/private-user/live.m3u8" {
+                        let body = "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:4\n#EXTINF:4.0,\nchunk0.ts?auth=topsecret\n";
+                        let resp = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/vnd.apple.mpegurl\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                            body.len(),
+                            body
+                        );
+                        let _ = sock.write_all(resp.as_bytes()).await;
+                    } else if path == "/private-user/chunk0.ts?auth=topsecret" {
+                        let body = b"MPEGTS_PROXIED_OK";
+                        let hdr = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: video/mp2t\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                            body.len()
+                        );
+                        let _ = sock.write_all(hdr.as_bytes()).await;
+                        let _ = sock.write_all(body).await;
+                    }
+                });
+            }
+        });
+
+        // 2. Pick a free local port for the Kinora Server and start it with test loopback policy.
+        let probe = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let srv_port = probe.local_addr().unwrap().port();
+        drop(probe);
+
+        let mut policy = crate::fetch::Policy::default();
+        policy.allow_loopback = true;
+        let mgr = RemoteServerManager::with_stream_policy(None, policy);
+        mgr.update_channels(vec![RemoteChannelSummary {
+            id: "ch-live-1".to_string(),
+            name: "Live One".to_string(),
+            number: Some(1),
+            group: Some("News".to_string()),
+            logo: None,
+            current_programme: None,
+            stream_url: Some(format!("http://{upstream_addr}/private-user/live.m3u8")),
+        }])
+        .await;
+
+        let status = mgr.start(Some(srv_port), Some("482910".to_string()), |_| {}).await.unwrap();
+        assert!(status.running);
+
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let base = format!("http://127.0.0.1:{srv_port}");
+
+        // 3. Pair a desktop client device.
+        let pair_json: serde_json::Value = client
+            .post(format!("{base}/pair"))
+            .header("Content-Type", "application/json")
+            .body(r#"{"pin":"482910","deviceName":"Bedroom TV","deviceType":"desktopClient"}"#)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let token = pair_json["token"].as_str().unwrap().to_string();
+        let device_id = pair_json["deviceId"].as_str().unwrap().to_string();
+
+        // 4. Open a proxied stream: response must NOT expose upstream URL or credentials.
+        let open_json: serde_json::Value = client
+            .post(format!("{base}/api/stream/open"))
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Content-Type", "application/json")
+            .body(r#"{"channelId":"ch-live-1"}"#)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(open_json["ok"], true);
+        let proxy_path = open_json["proxyPath"].as_str().unwrap().to_string();
+        assert!(proxy_path.starts_with("/api/stream/h/"));
+        assert!(!open_json.to_string().contains("private-user"));
+        assert!(!open_json.to_string().contains(&upstream_addr.to_string()));
+
+        // 5. Fetch rewritten playlist through proxy and follow rewritten segment handle.
+        let playlist = client
+            .get(format!("{base}{proxy_path}"))
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+        assert!(playlist.contains("#EXTM3U"));
+        assert!(!playlist.contains("topsecret"));
+        assert!(!playlist.contains("private-user"));
+
+        let seg_path = playlist
+            .lines()
+            .find(|l| l.starts_with("/api/stream/h/"))
+            .expect("rewritten segment path");
+        let seg_bytes = client
+            .get(format!("{base}{seg_path}"))
+            .send()
+            .await
+            .unwrap()
+            .bytes()
+            .await
+            .unwrap();
+        assert_eq!(seg_bytes.as_ref(), b"MPEGTS_PROXIED_OK");
+
+        // 6. Revoking the device immediately cuts off the proxied stream.
+        assert!(mgr.revoke_device(&device_id).await);
+        let revoked_status = client
+            .get(format!("{base}{proxy_path}"))
+            .send()
+            .await
+            .unwrap()
+            .status()
+            .as_u16();
+        assert!(revoked_status == 403 || revoked_status == 410);
+
+        mgr.stop().await;
     }
 }
