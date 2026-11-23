@@ -246,18 +246,27 @@ export function useStreamPlayback(streamUrl: string | null, video: RefObject<HTM
           const startTimestamp = parseInt(parts[1] || '0', 10)
           const durationMins = parseInt(parts[2] || '60', 10)
           opened = await openXtreamCatchup(sourceId, streamId, startTimestamp, durationMins)
-        } else if (streamUrl.startsWith('client-sync://')) {
-          const channelId = streamUrl.replace('client-sync://', '')
+        } else if (streamUrl.startsWith('client-sync://') || streamUrl.startsWith('client-sync-media://')) {
+          const isMedia = streamUrl.startsWith('client-sync-media://')
+          const targetId = isMedia
+            ? streamUrl.replace('client-sync-media://', '')
+            : streamUrl.replace('client-sync://', '')
           const syncState = clientSyncManager.getState()
           if (!syncState.serverUrl || !syncState.authToken) {
             disarm()
-            return set(state('error', 'Connect to a Kinora Server first to play this channel.'))
+            return set(state('error', 'Connect to a Kinora Server first to play this item.'))
           }
           if (inNativeShell()) {
-            opened = await openClientServerStream(syncState.serverUrl, syncState.authToken, channelId)
+            opened = await openClientServerStream(
+              syncState.serverUrl,
+              syncState.authToken,
+              isMedia ? { mediaId: targetId } : { channelId: targetId },
+            )
             isClientServerSession = true
           } else {
-            const proxied = await clientSyncManager.openServerStream(channelId)
+            const proxied = isMedia
+              ? await clientSyncManager.openServerMediaStream(targetId)
+              : await clientSyncManager.openServerStream(targetId)
             if (!proxied) {
               disarm()
               return set(state('error', 'Unable to open proxied stream on Kinora server.', true))

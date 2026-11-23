@@ -50,6 +50,8 @@ describe('clientSyncManager', () => {
     const mockChannels = [{ id: 'ch-1', name: 'BBC One', number: 101 }]
     const mockSources = [{ id: 'src-1', label: 'M3U Main', origin: 'url', channelCount: 1, kind: 'playlist' }]
     const mockLibrary = { favourites: ['ch-1'], watchlist: [], watchProgress: [] }
+    const mockEpg = [{ channelId: 'ch-1', title: 'News at Six', start: 1000, stop: 2000 }]
+    const mockMedia = [{ id: 'mov-1', kind: 'movie', title: 'Solaris', year: 1972, genres: ['Sci-Fi'], artworkKey: 'poster:mov-1' }]
 
     globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
       if (url.endsWith('/pair')) {
@@ -82,6 +84,18 @@ describe('clientSyncManager', () => {
           json: async () => mockLibrary,
         } as Response
       }
+      if (url.endsWith('/api/epg')) {
+        return {
+          ok: true,
+          json: async () => mockEpg,
+        } as Response
+      }
+      if (url.endsWith('/api/media')) {
+        return {
+          ok: true,
+          json: async () => mockMedia,
+        } as Response
+      }
       return { ok: true, json: async () => ({ ok: true }) } as Response
     })
 
@@ -94,6 +108,10 @@ describe('clientSyncManager', () => {
     expect(state.serverInfo?.appName).toBe('Kinora')
     expect(state.channels.length).toBe(1)
     expect(state.sources.length).toBe(1)
+    expect(state.epg.length).toBe(1)
+    expect(state.epg[0]?.title).toBe('News at Six')
+    expect(state.media.length).toBe(1)
+    expect(state.media[0]?.title).toBe('Solaris')
     expect(state.library?.favourites).toContain('ch-1')
   })
 
@@ -190,5 +208,37 @@ describe('clientSyncManager', () => {
         body: JSON.stringify({ sessionKey: '0123456789abcdef0123456789abcdef' }),
       })
     )
+  })
+
+  it('opens proxied media stream and builds authenticated artwork URL', async () => {
+    clientSyncManager.setServerConfig('http://192.168.1.50:5198', 'tok-abc')
+
+    const proxyUrl = 'http://192.168.1.50:5198/api/stream/h/0123456789abcdef0123456789abcdef/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        mediaId: 'mov-1',
+        sessionKey: '0123456789abcdef0123456789abcdef',
+        proxyPath: '/api/stream/h/0123456789abcdef0123456789abcdef/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        streamUrl: proxyUrl,
+        format: 'direct',
+      }),
+    } as Response)
+    globalThis.fetch = fetchSpy
+
+    const opened = await clientSyncManager.openServerMediaStream('mov-1')
+    expect(opened?.format).toBe('direct')
+    expect(opened?.streamUrl).toBe(proxyUrl)
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'http://192.168.1.50:5198/api/stream/open',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ mediaId: 'mov-1' }),
+      })
+    )
+
+    const artUrl = await clientSyncManager.fetchServerArtwork('poster:mov-1')
+    expect(artUrl).toBe('http://192.168.1.50:5198/api/artwork?key=poster%3Amov-1&token=tok-abc')
   })
 })

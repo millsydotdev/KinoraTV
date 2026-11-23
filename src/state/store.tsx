@@ -7,7 +7,7 @@ import { demoSources } from '../data/sources'
 import type { Channel, Collection, Library, Programme, Progress, Ref, Source, StreamVariant, XtreamTitle } from '../data/types'
 import {
   disconnectXtream, fetchGuide, fetchPlaylist, getPlatformMode, guideProgrammes, inNativeShell, isXtreamConnected, loadCatalogue, loadGuide, loadSources, loadXtreamCatalogue, loadXtreamSeries, readGuideFile, readPlaylistFile, refreshCatalogue, refreshXtream,
-  removeGuide as forgetGuide, saveSources, loadXtreamVodDetails, loadXtreamEpg, updateRemoteChannels, updateRemoteSources, updateRemoteLibrary,
+  removeGuide as forgetGuide, saveSources, loadXtreamVodDetails, loadXtreamEpg, updateRemoteChannels, updateRemoteSources, updateRemoteLibrary, updateRemoteEpg, updateRemoteMedia,
   dvrGetRecordings, dvrStartRecording, dvrStopRecording, dvrScheduleRecording, dvrCancelRecording, dvrDeleteRecording, dvrProtectRecording,
   dvrGetRules, dvrSaveRule, dvrDeleteRule, dvrGetConfig, dvrSaveConfig, dvrGetStorageInfo,
   type GuideSummary, type PlaylistReport, type SavedState, type SavedXtreamSource, type StorageNotice, type XtreamCatalogue, type XtreamEntry, type XtreamSeriesDetails,
@@ -701,6 +701,7 @@ function useStoreValue(
   }, [playlists])
 
   useEffect(() => {
+    if (clientSync.status === 'connected') return
     const watchProgress = Object.entries(library.progress || {}).map(([ref, p]) => ({
       itemRef: ref,
       title: ref,
@@ -713,7 +714,126 @@ function useStoreValue(
       watchlist: library.watchlist || [],
       watchProgress,
     })
-  }, [library])
+  }, [library, clientSync.status])
+
+  useEffect(() => {
+    if (clientSync.status === 'connected') return
+    const todayMap = days.get(today)
+    if (!todayMap || todayMap.size === 0) return
+    const epgList: {
+      channelId: string
+      title: string
+      subtitle?: string | null
+      description?: string | null
+      start: number
+      stop: number
+      category?: string | null
+      episode?: string | null
+    }[] = []
+    for (const [channelId, progs] of todayMap.entries()) {
+      for (const p of progs) {
+        epgList.push({
+          channelId,
+          title: p.title,
+          subtitle: p.subtitle ?? null,
+          description: p.desc || null,
+          start: p.start,
+          stop: p.stop,
+          category: p.category || null,
+          episode: p.episode ?? null,
+        })
+        if (epgList.length >= 5000) break
+      }
+      if (epgList.length >= 5000) break
+    }
+    if (epgList.length > 0) {
+      void updateRemoteEpg(epgList)
+    }
+  }, [days, today, clientSync.status])
+
+  useEffect(() => {
+    if (clientSync.status === 'connected') return
+    if (xtreamCatalogue.movies.length === 0 && xtreamCatalogue.series.length === 0) return
+    const items = [
+      ...xtreamCatalogue.movies.slice(0, 1500).map((m) => ({
+        id: `${m.sourceId}:${m.id}`,
+        kind: 'movie',
+        title: m.name,
+        year: m.year ?? null,
+        overview: m.plot ?? null,
+        genres: m.categoryName ? [m.categoryName] : [],
+        rating: m.rating ?? null,
+        artworkKey: m.artworkKey || null,
+        sourceId: m.sourceId,
+      })),
+      ...xtreamCatalogue.series.slice(0, 1500).map((s) => ({
+        id: `${s.sourceId}:${s.id}`,
+        kind: 'series',
+        title: s.name,
+        year: s.year ?? null,
+        overview: s.plot ?? null,
+        genres: s.categoryName ? [s.categoryName] : [],
+        rating: s.rating ?? null,
+        artworkKey: s.artworkKey || null,
+        sourceId: s.sourceId,
+      })),
+    ]
+    void updateRemoteMedia(items)
+  }, [xtreamCatalogue.movies, xtreamCatalogue.series, clientSync.status])
+
+  const clientEpgByChannel = useMemo(() => {
+    const map = new Map<string, Programme[]>()
+    if (clientSync.status !== 'connected' || clientSync.epg.length === 0) return map
+    for (const p of clientSync.epg) {
+      const list = map.get(p.channelId) ?? []
+      list.push({
+        id: `${p.channelId}@${p.start}`,
+        channelId: p.channelId,
+        start: p.start,
+        stop: p.stop,
+        title: p.title,
+        subtitle: p.subtitle ?? null,
+        desc: p.description ?? '',
+        category: p.category ?? 'General',
+        episode: p.episode ?? null,
+      })
+      map.set(p.channelId, list)
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => a.start - b.start)
+    }
+    return map
+  }, [clientSync.status, clientSync.epg])
+
+  const effectiveXtreamCatalogue = useMemo<XtreamCatalogueState>(() => {
+    if (clientSync.status === 'connected' && clientSync.media.length > 0) {
+      const movies: XtreamTitle[] = []
+      const series: XtreamTitle[] = []
+      for (const m of clientSync.media) {
+        const entry: XtreamTitle = {
+          id: m.id,
+          name: m.title,
+          categoryId: null,
+          categoryName: m.genres[0] ?? 'Server Library',
+          year: m.year ?? null,
+          rating: m.rating ?? null,
+          plot: m.overview ?? null,
+          extension: 'mp4',
+          artworkKey: m.artworkKey ?? '',
+          sourceId: 'kinora-server',
+          kind: m.kind === 'series' ? 'series' : 'movie',
+        }
+        if (m.kind === 'series') series.push(entry)
+        else movies.push(entry)
+      }
+      return {
+        ...xtreamCatalogue,
+        movies,
+        series,
+      }
+    }
+    return xtreamCatalogue
+  }, [clientSync.status, clientSync.media, xtreamCatalogue])
 
   const getPreferredServer = useCallback(
     (channel: Channel): StreamVariant | undefined => {
@@ -730,6 +850,12 @@ function useStoreValue(
   )
   const guide = useMemo(() => {
     const listed = (c: Channel, day: number) => {
+      if (c.sourceId === 'kinora-server') {
+        const synced = clientEpgByChannel.get(c.id)
+        if (!synced?.length) return []
+        const nextDay = addDays(day, 1)
+        return synced.filter((p) => p.stop > day && p.start < nextDay)
+      }
       const programmes = days.get(day)
       if (!programmes) return []
       for (const id of c.memberIds ?? [c.id]) {
@@ -766,10 +892,10 @@ function useStoreValue(
       /** Why a playlist channel has guide data or not; `undefined` for demo channels. */
       guideMatch: (c: Channel): GuideMatch | undefined => channelMatch(c),
       /** False while a day's programmes are still being fetched. */
-      guideDayLoaded: (day: number) => queries.length === 0 || days.has(day),
+      guideDayLoaded: (day: number) => queries.length === 0 || days.has(day) || clientSync.status === 'connected',
       requestGuideDay,
     }
-  }, [days, isKidsMode, matches, queries, requestGuideDay])
+  }, [clientEpgByChannel, clientSync.status, days, isKidsMode, matches, queries, requestGuideDay])
   const playlistActions = useMemo(() => {
     const run = (id: string, load: () => Promise<PlaylistReport | null>) => runImport(setPlaylists, id, ++lastOp.current, load)
     return {
@@ -1151,7 +1277,7 @@ function useStoreValue(
 
   return {
     library, prefs, setPref, sources: demoActive ? src.sources : [], ...actions, catalogue, ...catalogueActions,
-    setupDone: setup.done || playlists.length > 0 || guides.length > 0 || xtreamSources.length > 0,
+    setupDone: setup.done || playlists.length > 0 || guides.length > 0 || xtreamSources.length > 0 || clientSync.status === 'connected',
     finishSetup: () => setSetup({ done: true }),
     restartSetup: () => setSetup({ done: false }),
     playlists, ...playlistActions, restored, storageNotice, guides, mappings, ...guideActions, ...guide,
@@ -1160,11 +1286,11 @@ function useStoreValue(
     xtreamSources,
     xtreamCatalogue: isKidsMode
       ? {
-          ...xtreamCatalogue,
-          movies: filterKidSafeXtreamTitles(xtreamCatalogue.movies, true),
-          series: filterKidSafeXtreamTitles(xtreamCatalogue.series, true),
+          ...effectiveXtreamCatalogue,
+          movies: filterKidSafeXtreamTitles(effectiveXtreamCatalogue.movies, true),
+          series: filterKidSafeXtreamTitles(effectiveXtreamCatalogue.series, true),
         }
-      : xtreamCatalogue,
+      : effectiveXtreamCatalogue,
     xtreamSeriesDetails, ...xtreamActions,
     recordings,
     seriesRules,

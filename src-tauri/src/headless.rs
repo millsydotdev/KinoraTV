@@ -3,10 +3,11 @@
 //! Runs the central Kinora server without initializing WebKitGTK, GTK, or any desktop window,
 //! suitable for Linux home servers, Raspberry Pi, NAS devices, and Docker containers.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crate::{fetch, ingest, remote_server, sources};
+use crate::{fetch, guides, ingest, remote_server, sources};
 
 const REFRESH_INTERVAL: Duration = Duration::from_secs(30 * 60);
 
@@ -181,6 +182,114 @@ pub async fn hydrate_sources_list(
     (total_channels, playable_count)
 }
 
+/// Loads cached XMLTV guides (`guide-<id>.json`) from `sources_dir`, matches them against
+/// saved playlist channels and hand mappings, and populates the server's EPG cache for the
+/// current 24-hour window so LAN clients and mobile remotes immediately receive guide data.
+pub async fn hydrate_headless_epg(
+    sources_dir: &Path,
+    manager: &remote_server::RemoteServerManager,
+) -> usize {
+    let store = sources::Store::new(Some(sources_dir.to_path_buf()));
+    let loaded = store.load();
+    if loaded.saved.guides.is_empty() || loaded.saved.sources.is_empty() {
+        return 0;
+    }
+
+    let guide_store = guides::GuideStore::new(Some(sources_dir.to_path_buf()));
+    let mut queries = Vec::new();
+    let mut lookup: HashMap<(String, String), Vec<String>> = HashMap::new();
+
+    for guide in &loaded.saved.guides {
+        if guide_store.load(&guide.id).ok().flatten().is_none() {
+            continue;
+        }
+        let mut requested_ids = Vec::new();
+        for src in &loaded.saved.sources {
+            if !guide.playlists.is_empty() && !guide.playlists.iter().any(|p| p == &src.id) {
+                continue;
+            }
+            for ch in &src.channels {
+                let chan_id = format!("{}~{}", src.id, ch.key);
+                let hand = loaded
+                    .saved
+                    .mappings
+                    .iter()
+                    .find(|m| m.channel == chan_id && m.guide == guide.id)
+                    .map(|m| m.xmltv_id.clone());
+                let ask_id = hand.or_else(|| ch.tvg_id.clone());
+                if let Some(id_val) = ask_id {
+                    requested_ids.push(id_val.clone());
+                    lookup
+                        .entry((guide.id.clone(), id_val))
+                        .or_default()
+                        .push(chan_id);
+                }
+            }
+        }
+        if !requested_ids.is_empty() {
+            queries.push(guides::Query {
+                guide: guide.id.clone(),
+                ids: requested_ids,
+            });
+        }
+    }
+
+    if queries.is_empty() {
+        return 0;
+    }
+
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    let from_ms = now_ms.saturating_sub(2 * 3_600_000);
+    let to_ms = now_ms.saturating_add(24 * 3_600_000);
+
+    let Ok(answers) = guide_store.query(&queries, from_ms, to_ms) else {
+        return 0;
+    };
+
+    let mut remote_epg = Vec::new();
+    for ans in answers {
+        if !ans.loaded {
+            continue;
+        }
+        let mut guide_chan_to_kinora: HashMap<String, Vec<String>> = HashMap::new();
+        for m in ans.matches {
+            if let Some(matched_guide_chan) = m.channel {
+                if let Some(kinora_ids) = lookup.get(&(ans.guide.clone(), m.id)) {
+                    guide_chan_to_kinora
+                        .entry(matched_guide_chan)
+                        .or_default()
+                        .extend(kinora_ids.iter().cloned());
+                }
+            }
+        }
+        for listed in ans.programmes {
+            if let Some(kinora_ids) = guide_chan_to_kinora.get(&listed.channel) {
+                for chan_id in kinora_ids {
+                    remote_epg.push(remote_server::RemoteEpgProgramme {
+                        channel_id: chan_id.clone(),
+                        title: listed.programme.title.clone(),
+                        subtitle: listed.programme.subtitle.clone(),
+                        description: listed.programme.desc.clone(),
+                        start: listed.programme.start,
+                        stop: listed.programme.stop,
+                        category: listed.programme.category.clone(),
+                        episode: listed.programme.episode.clone(),
+                    });
+                }
+            }
+        }
+    }
+
+    let count = remote_epg.len();
+    if count > 0 {
+        manager.update_epg(remote_epg).await;
+    }
+    count
+}
+
 /// Runs Kinora in headless server mode without initializing WebKitGTK or GUI windows.
 pub fn run_headless_server(port: Option<u16>, custom_pin: Option<String>) {
     let rt = match tokio::runtime::Builder::new_multi_thread()
@@ -199,9 +308,10 @@ pub fn run_headless_server(port: Option<u16>, custom_pin: Option<String>) {
         let sources_dir = data_dir.join("sources");
         let manager = remote_server::RemoteServerManager::new(Some(data_dir.clone()));
 
-        // Load cached metadata immediately so endpoints respond right away.
+        // Load cached metadata and cached XMLTV guides immediately so endpoints respond right away.
         let (cached_sources, cached_channels) =
             load_cached_sources_into_server(&sources_dir, &manager).await;
+        let cached_epg = hydrate_headless_epg(&sources_dir, &manager).await;
 
         // Ensure platform mode is persisted as Server.
         manager
@@ -229,8 +339,8 @@ pub fn run_headless_server(port: Option<u16>, custom_pin: Option<String>) {
         println!("  Pairing PIN:              {}", status.pairing_pin);
         println!("  Storage Directory:        {}", data_dir.display());
         println!(
-            "  Cached Catalogue:         {} sources, {} channels",
-            cached_sources, cached_channels
+            "  Cached Catalogue:         {} sources, {} channels, {} EPG entries",
+            cached_sources, cached_channels, cached_epg
         );
         println!("============================================================");
         println!("  Ready for connections. Press Ctrl+C to stop.");
@@ -245,10 +355,11 @@ pub fn run_headless_server(port: Option<u16>, custom_pin: Option<String>) {
             loop {
                 let (total, playable) =
                     hydrate_headless_sources(&hydrate_dir, &hydrate_mgr, &policy).await;
-                if total > 0 {
+                let epg_count = hydrate_headless_epg(&hydrate_dir, &hydrate_mgr).await;
+                if total > 0 || epg_count > 0 {
                     println!(
-                        "[Kinora Server] Catalogue hydrated: {} total channels ({} playable via proxy)",
-                        total, playable
+                        "[Kinora Server] Catalogue hydrated: {} channels ({} playable via proxy), {} EPG entries",
+                        total, playable, epg_count
                     );
                 }
                 tokio::select! {

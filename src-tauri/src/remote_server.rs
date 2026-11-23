@@ -2893,4 +2893,166 @@ mod tests {
 
         mgr.stop().await;
     }
+
+    #[tokio::test]
+    async fn end_to_end_epg_media_and_artwork_endpoints() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "kinora_sync_cat_test_{}",
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let probe = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let srv_port = probe.local_addr().unwrap().port();
+        drop(probe);
+
+        let mgr = RemoteServerManager::new(Some(temp_dir.clone()));
+
+        // Seed a valid PNG into the server's ArtworkStore cache.
+        let png_bytes = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde";
+        mgr.artwork_store.write_cached("poster:mov-42", png_bytes);
+
+        let now_ms = (now_unix_secs() as i64) * 1000;
+        mgr.update_channels(vec![RemoteChannelSummary {
+            id: "ch-1".to_string(),
+            name: "BBC One".to_string(),
+            number: Some(1),
+            group: Some("National".to_string()),
+            logo: None,
+            current_programme: None,
+            stream_url: None,
+        }])
+        .await;
+
+        mgr.update_epg(vec![
+            RemoteEpgProgramme {
+                channel_id: "ch-1".to_string(),
+                title: "Evening News".to_string(),
+                subtitle: Some("Live bulletin".to_string()),
+                description: Some("Headlines".to_string()),
+                start: now_ms - 600_000,
+                stop: now_ms + 1_200_000,
+                category: Some("News".to_string()),
+                episode: None,
+            },
+            RemoteEpgProgramme {
+                channel_id: "ch-2".to_string(),
+                title: "Other Show".to_string(),
+                subtitle: None,
+                description: None,
+                start: now_ms - 600_000,
+                stop: now_ms + 1_200_000,
+                category: None,
+                episode: None,
+            },
+        ])
+        .await;
+
+        mgr.update_media(vec![
+            RemoteMediaItem {
+                id: "mov-42".to_string(),
+                kind: "movie".to_string(),
+                title: "Blade Runner".to_string(),
+                year: Some(1982),
+                overview: Some("Sci-fi classic".to_string()),
+                genres: vec!["Sci-Fi".to_string()],
+                rating: Some(8.1),
+                duration_secs: Some(7020),
+                artwork_key: Some("poster:mov-42".to_string()),
+                backdrop_key: None,
+                source_id: Some("xt-1".to_string()),
+                stream_url: Some("https://provider.example/user/pass/42.mp4".to_string()),
+            },
+            RemoteMediaItem {
+                id: "ser-9".to_string(),
+                kind: "series".to_string(),
+                title: "Planet Earth".to_string(),
+                year: Some(2006),
+                overview: None,
+                genres: vec!["Documentary".to_string()],
+                rating: Some(9.4),
+                duration_secs: None,
+                artwork_key: None,
+                backdrop_key: None,
+                source_id: Some("xt-1".to_string()),
+                stream_url: None,
+            },
+        ])
+        .await;
+
+        mgr.start(Some(srv_port), Some("619283".to_string()), |_| {})
+            .await
+            .unwrap();
+
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let base = format!("http://127.0.0.1:{srv_port}");
+
+        let pair_json: serde_json::Value = client
+            .post(format!("{base}/pair"))
+            .header("Content-Type", "application/json")
+            .body(r#"{"pin":"619283","deviceName":"Living Room Client","deviceType":"desktopClient"}"#)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let token = pair_json["token"].as_str().unwrap().to_string();
+
+        // 1. /api/channels enriches currentProgramme from live EPG.
+        let channels: serde_json::Value = client
+            .get(format!("{base}/api/channels"))
+            .header("Authorization", format!("Bearer {token}"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(channels[0]["currentProgramme"], "Evening News");
+
+        // 2. /api/epg filters by channelId.
+        let epg: serde_json::Value = client
+            .get(format!("{base}/api/epg?channelId=ch-1"))
+            .header("Authorization", format!("Bearer {token}"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(epg.as_array().unwrap().len(), 1);
+        assert_eq!(epg[0]["title"], "Evening News");
+
+        // 3. /api/media filters by kind & search query and strips streamUrl.
+        let media: serde_json::Value = client
+            .get(format!("{base}/api/media?kind=movie&q=blade"))
+            .header("Authorization", format!("Bearer {token}"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(media.as_array().unwrap().len(), 1);
+        assert_eq!(media[0]["title"], "Blade Runner");
+        assert!(media[0].get("streamUrl").is_none());
+        assert!(!media.to_string().contains("provider.example"));
+
+        // 4. /api/artwork serves cached PNG bytes and rejects unknown/traversal keys with 404.
+        let art = crate::lan_proxy::fetch_server_artwork(&base, &token, "poster:mov-42")
+            .await
+            .unwrap()
+            .expect("cached PNG returned");
+        assert_eq!(art.mime_type, "image/png");
+        assert_eq!(art.bytes, png_bytes);
+
+        let missing = crate::lan_proxy::fetch_server_artwork(&base, &token, "../../etc/passwd")
+            .await
+            .unwrap();
+        assert!(missing.is_none());
+
+        mgr.stop().await;
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
 }
