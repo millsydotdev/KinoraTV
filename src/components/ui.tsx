@@ -428,6 +428,10 @@ export function ChannelMark({ channel, size = 40 }: { channel: Channel; size?: n
       setLogo(custom.dataUrl)
       return () => { active = false }
     }
+    if (channel.logoUrl && channel.logoUrl.startsWith('data:')) {
+      setLogo(channel.logoUrl)
+      return () => { active = false }
+    }
     const load = () => {
       void loadChannelLogo(channel.logoUrl, channel.id, channel.tvgId).then((data) => {
         if (active) {

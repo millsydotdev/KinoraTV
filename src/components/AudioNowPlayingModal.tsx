@@ -25,9 +25,24 @@ export interface AudioNowPlayingModalProps {
   onUpdateLyrics?: (lyrics: string) => void
 }
 
-export type EqualizerPreset = 'Flat' | 'Bass Boost' | 'Vocal' | 'Acoustic' | 'Club'
+export type EqualizerPreset =
+  | 'Flat'
+  | 'Bass Boost'
+  | 'Treble Boost'
+  | 'Vocal'
+  | 'Spoken Word'
+  | 'Acoustic'
+  | 'Club'
 
-const EQ_PRESETS: EqualizerPreset[] = ['Flat', 'Bass Boost', 'Vocal', 'Acoustic', 'Club']
+export const EQ_PRESETS: EqualizerPreset[] = [
+  'Flat',
+  'Bass Boost',
+  'Treble Boost',
+  'Vocal',
+  'Spoken Word',
+  'Acoustic',
+  'Club',
+]
 
 export function AudioNowPlayingModal({
   isOpen,

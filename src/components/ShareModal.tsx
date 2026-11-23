@@ -23,27 +23,45 @@ interface ShareModalProps {
   item: ShareItem | null
 }
 
-function getCanonicalOrigin(): string {
+export function getCanonicalOrigin(): string {
   if (typeof window === 'undefined') return 'https://kinora.tv'
   const hostname = window.location.hostname
   const protocol = window.location.protocol
+  const port = window.location.port
   if (
     protocol === 'tauri:' ||
     protocol === 'asset:' ||
     hostname === 'localhost' ||
     hostname === '127.0.0.1' ||
     hostname === '[::1]' ||
-    hostname.endsWith('.localhost')
+    hostname.endsWith('.localhost') ||
+    port === '5199' ||
+    port === '5173' ||
+    port === '3000'
   ) {
     return 'https://kinora.tv'
   }
   return window.location.origin
 }
 
+export function buildKinoraDeepLink(deepLinkPath?: string): { webUrl: string; appSchemeUrl: string } {
+  const origin = getCanonicalOrigin()
+  const rawPath = deepLinkPath
+    ? deepLinkPath
+    : typeof window !== 'undefined'
+      ? `${window.location.pathname}${window.location.search}`
+      : '/'
+  const normalizedPath = rawPath.startsWith('/') ? rawPath : `/${rawPath}`
+  const webUrl = `${origin}${normalizedPath}`
+  const appSchemeUrl = `kinora://${normalizedPath.replace(/^\/+/, '')}`
+  return { webUrl, appSchemeUrl }
+}
+
 export function ShareModal({ open, onClose, item }: ShareModalProps) {
   const toast = useToast()
   const dialogRef = useRef<HTMLDialogElement>(null)
-  const [copiedType, setCopiedType] = useState<'imdb' | 'kinora' | null>(null)
+  const [copiedType, setCopiedType] = useState<'imdb' | 'kinora' | 'app' | null>(null)
+  const [linkFormat, setLinkFormat] = useState<'web' | 'app'>('web')
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -63,12 +81,9 @@ export function ShareModal({ open, onClose, item }: ShareModalProps) {
 
   if (!open || !item) return null
 
-  const origin = getCanonicalOrigin()
-  const kinoraUrl = item.deepLinkPath
-    ? `${origin}${item.deepLinkPath.startsWith('/') ? '' : '/'}${item.deepLinkPath}`
-    : typeof window !== 'undefined'
-      ? `${origin}${window.location.pathname}${window.location.search}`
-      : origin
+  const { webUrl, appSchemeUrl } = buildKinoraDeepLink(item.deepLinkPath)
+  const activeKinoraUrl = linkFormat === 'web' ? webUrl : appSchemeUrl
+  const kinoraUrl = webUrl
   const imdbUrl = item.imdbId ? `https://www.imdb.com/title/${item.imdbId}/` : null
   const canNativeShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function'
 
@@ -88,9 +103,21 @@ export function ShareModal({ open, onClose, item }: ShareModalProps) {
   const copyKinora = async () => {
     try {
       if (navigator.clipboard) {
-        await navigator.clipboard.writeText(kinoraUrl)
+        await navigator.clipboard.writeText(webUrl)
         setCopiedType('kinora')
-        toast('Kinora link copied to clipboard')
+        toast('Kinora web link copied to clipboard')
+      }
+    } catch {
+      toast('Failed to copy to clipboard')
+    }
+  }
+
+  const copyAppScheme = async () => {
+    try {
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(appSchemeUrl)
+        setCopiedType('app')
+        toast('Kinora app link (kinora://) copied to clipboard')
       }
     } catch {
       toast('Failed to copy to clipboard')
@@ -233,22 +260,40 @@ export function ShareModal({ open, onClose, item }: ShareModalProps) {
 
         {/* Kinora Link */}
         <div className="share-section">
-          <h5 className="share-section-title">Kinora Deep Link</h5>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <h5 className="share-section-title" style={{ margin: 0 }}>Kinora Deep Link</h5>
+            <div className="share-link-format-pills" role="radiogroup" aria-label="Link format">
+              <button
+                type="button"
+                className={`share-pill-btn ${linkFormat === 'web' ? 'is-active' : ''}`}
+                onClick={() => setLinkFormat('web')}
+              >
+                Web (https)
+              </button>
+              <button
+                type="button"
+                className={`share-pill-btn ${linkFormat === 'app' ? 'is-active' : ''}`}
+                onClick={() => setLinkFormat('app')}
+              >
+                App (kinora://)
+              </button>
+            </div>
+          </div>
           <div className="share-url-row">
             <input
               type="text"
               readOnly
-              value={kinoraUrl}
+              value={activeKinoraUrl}
               className="share-url-input"
               aria-label="Kinora share URL"
             />
             <button
               type="button"
-              className={`btn btn-primary btn-sm ${copiedType === 'kinora' ? 'is-success' : ''}`}
-              onClick={copyKinora}
+              className={`btn btn-primary btn-sm ${copiedType === 'kinora' || copiedType === 'app' ? 'is-success' : ''}`}
+              onClick={linkFormat === 'web' ? copyKinora : copyAppScheme}
             >
-              <Icon name={copiedType === 'kinora' ? 'check' : 'copy'} size={14} />
-              {copiedType === 'kinora' ? 'Copied!' : 'Copy Link'}
+              <Icon name={copiedType === 'kinora' || copiedType === 'app' ? 'check' : 'copy'} size={14} />
+              {copiedType === 'kinora' || copiedType === 'app' ? 'Copied!' : 'Copy Link'}
             </button>
           </div>
         </div>

@@ -12,7 +12,10 @@ import {
   discoverDlnaRenderers,
   castDlnaMedia,
   controlDlnaPlayback,
+  discoverKinoraServers,
+  getTrustedDevices,
 } from '../native'
+import { clientSyncManager } from '../clientSync'
 
 class CastingManager {
   private devices: CastDevice[] = []
@@ -61,8 +64,13 @@ class CastingManager {
 
     try {
       if (isTauri()) {
-        const discovered = await discoverDlnaRenderers()
-        const dlnaDevices: CastDevice[] = discovered.map((d) => ({
+        const [discoveredDlna, discoveredKinora, trustedDevs] = await Promise.all([
+          discoverDlnaRenderers().catch(() => []),
+          discoverKinoraServers(1).catch(() => []),
+          getTrustedDevices().catch(() => []),
+        ])
+
+        const dlnaDevices: CastDevice[] = discoveredDlna.map((d) => ({
           id: d.id,
           name: d.name,
           protocol: 'dlna' as const,
@@ -74,7 +82,34 @@ class CastingManager {
           signalStrength: 95,
         }))
 
-        this.devices = dlnaDevices
+        const kinoraDevices: CastDevice[] = discoveredKinora.map((s) => ({
+          id: `kinora-${s.ip}:${s.port}`,
+          name: `${s.name} (Kinora TV)`,
+          protocol: 'kinora' as const,
+          model: `Kinora v${s.version} (${s.mode})`,
+          location: `http://${s.ip}:${s.port}`,
+          ip: s.ip,
+          port: s.port,
+          status: 'available' as const,
+          signalStrength: 100,
+        }))
+
+        for (const td of trustedDevs) {
+          if (!td.revoked && td.capabilities.some((c) => c.toLowerCase().includes('cast'))) {
+            if (!kinoraDevices.some((kd) => kd.name.includes(td.name))) {
+              kinoraDevices.push({
+                id: td.id,
+                name: `${td.name} (Trusted)`,
+                protocol: 'kinora' as const,
+                model: `Paired ${td.deviceType}`,
+                status: 'available' as const,
+                signalStrength: 90,
+              })
+            }
+          }
+        }
+
+        this.devices = [...kinoraDevices, ...dlnaDevices]
         this.isScanning = false
         this.notify()
         return
@@ -95,7 +130,23 @@ class CastingManager {
     this.devices = this.devices.map((d) => (d.id === device.id ? { ...d, status: 'connecting' } : d))
     this.notify()
 
-    if (isTauri() && device.protocol === 'dlna' && media) {
+    if (device.protocol === 'kinora' && media) {
+      try {
+        const targetUrl = device.location || (device.ip && device.port ? `http://${device.ip}:${device.port}` : '')
+        if (targetUrl) {
+          await clientSyncManager.castMedia(targetUrl, {
+            title: media.title,
+            streamUrl: media.streamUrl,
+            subtitle: media.subtitle,
+            position: media.position,
+            isLive: media.live,
+            artUrl: media.artUrl,
+          })
+        }
+      } catch {
+        // Continue to maintain local cast session state
+      }
+    } else if (isTauri() && device.protocol === 'dlna' && media) {
       try {
         const controlUrl = device.location || `http://${device.ip}:${device.port}/upnp/control/AVTransport`
         await castDlnaMedia(controlUrl, media.streamUrl, media.title)

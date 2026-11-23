@@ -164,6 +164,18 @@ describe('remoteServerSync', () => {
     })
     expect(window.location.hash).toContain('planet%20earth')
 
+    const castSpy = vi.fn()
+    window.addEventListener('kinora:cast_media', castSpy)
+    handleIncomingRemoteCommand({
+      command: 'cast_media',
+      payload: { title: 'Test Film', streamUrl: 'http://test.com/stream.m3u8' },
+      timestamp: Date.now(),
+    })
+    expect(castSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: expect.objectContaining({ title: 'Test Film' }) })
+    )
+    window.removeEventListener('kinora:cast_media', castSpy)
+
     window.removeEventListener('kinora:tune_channel', tuneSpy)
   })
 

@@ -2,9 +2,35 @@ import { useEffect, useRef, useState } from 'react'
 import { isTauri, openStream, closeStream } from '../lib/native'
 import { Icon } from './Icon'
 import { Art } from './ui'
-import { AudioNowPlayingModal, type EqualizerPreset } from './AudioNowPlayingModal'
+import { AudioNowPlayingModal, type EqualizerPreset, EQ_PRESETS } from './AudioNowPlayingModal'
 import type { AudioTrackState } from '../state/mediaLibrary'
 import './AudioPlayerBar.css'
+
+export interface EqGains {
+  bass: number
+  mid: number
+  treble: number
+}
+
+export function getEqPresetGains(preset: EqualizerPreset): EqGains {
+  switch (preset) {
+    case 'Bass Boost':
+      return { bass: 6, mid: 0, treble: -1 }
+    case 'Treble Boost':
+      return { bass: -2, mid: 0, treble: 6 }
+    case 'Vocal':
+      return { bass: -3, mid: 4, treble: 2 }
+    case 'Spoken Word':
+      return { bass: -5, mid: 5, treble: 1 }
+    case 'Acoustic':
+      return { bass: 2, mid: 1, treble: 3 }
+    case 'Club':
+      return { bass: 5, mid: 2, treble: 4 }
+    case 'Flat':
+    default:
+      return { bass: 0, mid: 0, treble: 0 }
+  }
+}
 
 interface AudioPlayerBarProps {
   track: AudioTrackState | null
@@ -58,7 +84,7 @@ export function AudioPlayerBar({
   const [eqPreset, setEqPreset] = useState<EqualizerPreset>(() => {
     try {
       const saved = localStorage.getItem('kinora.audio_eq_preset.v1')
-      if (saved && ['Flat', 'Bass Boost', 'Vocal', 'Acoustic', 'Club'].includes(saved)) {
+      if (saved && EQ_PRESETS.includes(saved as EqualizerPreset)) {
         return saved as EqualizerPreset
       }
     } catch {}
@@ -135,34 +161,10 @@ export function AudioPlayerBar({
       ctx.resume().catch(() => {})
     }
 
-    switch (eqPreset) {
-      case 'Bass Boost':
-        bass.gain.value = 6
-        mid.gain.value = 0
-        treble.gain.value = -1
-        break
-      case 'Vocal':
-        bass.gain.value = -3
-        mid.gain.value = 4
-        treble.gain.value = 2
-        break
-      case 'Acoustic':
-        bass.gain.value = 2
-        mid.gain.value = 1
-        treble.gain.value = 3
-        break
-      case 'Club':
-        bass.gain.value = 5
-        mid.gain.value = 2
-        treble.gain.value = 4
-        break
-      case 'Flat':
-      default:
-        bass.gain.value = 0
-        mid.gain.value = 0
-        treble.gain.value = 0
-        break
-    }
+    const gains = getEqPresetGains(eqPreset)
+    bass.gain.value = gains.bass
+    mid.gain.value = gains.mid
+    treble.gain.value = gains.treble
   }, [eqPreset, isPlaying])
 
   useEffect(() => {

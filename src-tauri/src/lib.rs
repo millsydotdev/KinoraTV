@@ -1128,6 +1128,26 @@ async fn update_remote_channels(
     Ok(true)
 }
 
+/// Pushes sources summaries into the server cache for connected client synchronization.
+#[tauri::command]
+async fn update_remote_sources(
+    sources: Vec<remote_server::RemoteSourceSummary>,
+    manager: tauri::State<'_, remote_server::RemoteServerManager>,
+) -> Result<bool, String> {
+    manager.update_sources(sources).await;
+    Ok(true)
+}
+
+/// Pushes shared library state into the server cache for connected client synchronization.
+#[tauri::command]
+async fn update_remote_library(
+    library: remote_server::RemoteLibrarySummary,
+    manager: tauri::State<'_, remote_server::RemoteServerManager>,
+) -> Result<bool, String> {
+    manager.update_library(library).await;
+    Ok(true)
+}
+
 /// Scans the local network for running Kinora servers via UDP discovery beacons.
 #[tauri::command]
 async fn discover_kinora_servers(
@@ -1381,6 +1401,8 @@ pub fn run() {
             set_platform_mode,
             get_audit_log,
             update_remote_channels,
+            update_remote_sources,
+            update_remote_library,
             discover_kinora_servers
         ])
         .run(tauri::generate_context!());

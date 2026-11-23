@@ -6,7 +6,9 @@ import { Icon, type IconName } from '../components/Icon'
 import { useToast } from '../components/Toast'
 import { PageHeader } from '../components/PageHeader'
 import { Segmented, Switch } from '../components/ui'
-import { getAppInfo, checkForUpdates, installUpdate, inNativeShell, getArtworkCacheStats, clearArtworkCache, retryFailedArtwork, type ArtworkCacheStats, type AppInfo, type UpdateCheckResult, APP_VERSION, APP_ENV, isStaging, isProduction, getVersionChannel, formatChannelName, getPlatformMode, setPlatformMode, type PlatformMode } from '../lib/native'
+import { getAppInfo, checkForUpdates, installUpdate, inNativeShell, getArtworkCacheStats, clearArtworkCache, retryFailedArtwork, type ArtworkCacheStats, type AppInfo, type UpdateCheckResult, APP_VERSION, APP_ENV, isStaging, isProduction, getVersionChannel, formatChannelName, getPlatformMode, setPlatformMode, discoverKinoraServers, type PlatformMode } from '../lib/native'
+import { useClientSync } from '../lib/clientSync'
+import { useVoiceAndAgentControl } from '../lib/voiceAndAgent'
 import { CODEC_HELP, codecSupport } from '../lib/playback'
 import { ACCENTS, THEME_PRESETS, safeHex, type AccentName } from '../lib/theme'
 import { defaultPrefs, useStore, type Prefs } from '../state/store'
@@ -2331,6 +2333,11 @@ function DataSection() {
   const [remoteModalOpen, setRemoteModalOpen] = useState(false)
   const [traktModalOpen, setTraktModalOpen] = useState(false)
   const [platformMode, setPlatformModeState] = useState<PlatformMode>('standalone')
+  const clientSync = useClientSync()
+  const [serverTargetUrl, setServerTargetUrl] = useState(clientSync.serverUrl || '')
+  const [serverTargetPin, setServerTargetPin] = useState('')
+  const voiceControl = useVoiceAndAgentControl()
+  const [testAgentCommand, setTestAgentCommand] = useState('')
 
   useEffect(() => {
     let active = true
@@ -2523,6 +2530,133 @@ function DataSection() {
           <button type="button" className="btn btn-secondary btn-small" onClick={() => setRemoteModalOpen(true)}>
             <Icon name="remote" size={16} />Connected Devices Hub
           </button>
+        </Row>
+        {platformMode === 'client' && (
+          <Row
+            title="Server Connection"
+            hint={
+              clientSync.status === 'connected'
+                ? `Connected to ${clientSync.serverUrl} (${clientSync.sources.length} sources, ${clientSync.channels.length} channels synced)`
+                : 'Enter the network address and pairing PIN of your central Kinora Server.'
+            }
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', maxWidth: '440px' }}>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="http://192.168.1.50:5198"
+                  value={serverTargetUrl}
+                  onChange={(e) => setServerTargetUrl(e.target.value)}
+                  className="input-text"
+                  style={{ flex: 1, padding: '6px 10px', fontSize: '13px' }}
+                />
+                <input
+                  type="text"
+                  placeholder="PIN"
+                  maxLength={6}
+                  value={serverTargetPin}
+                  onChange={(e) => setServerTargetPin(e.target.value)}
+                  className="input-text"
+                  style={{ width: '70px', padding: '6px 10px', fontSize: '13px', textAlign: 'center' }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-primary btn-small"
+                  disabled={!serverTargetUrl || !serverTargetPin || clientSync.status === 'connecting'}
+                  onClick={async () => {
+                    const ok = await clientSync.pairWithServer(serverTargetUrl, serverTargetPin)
+                    if (ok) toast('Connected to Kinora Server')
+                    else toast(clientSync.error || 'Connection failed')
+                  }}
+                >
+                  {clientSync.status === 'connecting' ? 'Connecting...' : 'Connect'}
+                </button>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-small"
+                  onClick={async () => {
+                    toast('Scanning local network for Kinora servers...')
+                    const found = await discoverKinoraServers(2)
+                    if (found.length > 0 && found[0]) {
+                      const srv = found[0]
+                      setServerTargetUrl(`http://${srv.ip}:${srv.port}`)
+                      toast(`Found ${srv.name} at ${srv.ip}:${srv.port}`)
+                    } else {
+                      toast('No Kinora servers detected on local network')
+                    }
+                  }}
+                >
+                  <Icon name="search" size={14} />Scan LAN
+                </button>
+                {clientSync.status === 'connected' && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-small"
+                    onClick={async () => {
+                      await clientSync.syncAll()
+                      toast('Synchronized with Kinora Server')
+                    }}
+                  >
+                    <Icon name="refresh" size={14} />Sync Now
+                  </button>
+                )}
+                {clientSync.status === 'connected' && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-small"
+                    onClick={() => {
+                      clientSync.disconnect()
+                      toast('Disconnected from Kinora Server')
+                    }}
+                  >
+                    Disconnect
+                  </button>
+                )}
+              </div>
+            </div>
+          </Row>
+        )}
+        <Row
+          title="Intelligent AI & Voice Integration"
+          hint="Capability-scoped service interfaces for AI agents and local voice models. Microphone hardware remains inactive until an approved voice engine is configured."
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '440px', width: '100%' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <input
+                type="text"
+                placeholder="Try command: 'open guide' or 'tune to 101'"
+                value={testAgentCommand}
+                onChange={(e) => setTestAgentCommand(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && testAgentCommand.trim()) {
+                    e.preventDefault()
+                    voiceControl.processNaturalCommand(testAgentCommand.trim()).then((res) => {
+                      toast(res.message)
+                    })
+                  }
+                }}
+                className="input-text"
+                style={{ flex: 1, padding: '6px 10px', fontSize: '13px' }}
+              />
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                disabled={!testAgentCommand.trim()}
+                onClick={() => {
+                  voiceControl.processNaturalCommand(testAgentCommand.trim()).then((res) => {
+                    toast(res.message)
+                  })
+                }}
+              >
+                Execute
+              </button>
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-3)' }}>
+              Provider: {voiceControl.providerName} (Hardware idle)
+            </div>
+          </div>
         </Row>
       </Group>
 

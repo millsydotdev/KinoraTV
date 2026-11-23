@@ -2865,6 +2865,46 @@ export async function updateRemoteChannels(channels: RemoteChannelSummary[]): Pr
   }
 }
 
+export interface RemoteSourceSummary {
+  id: string
+  label: string
+  origin: string
+  channelCount: number
+  kind: string
+}
+
+export interface RemoteWatchProgressItem {
+  itemRef: string
+  title: string
+  position: number
+  duration: number
+  updatedAt: number
+}
+
+export interface RemoteLibrarySummary {
+  favourites: string[]
+  watchlist: string[]
+  watchProgress: RemoteWatchProgressItem[]
+}
+
+export async function updateRemoteSources(sources: RemoteSourceSummary[]): Promise<boolean> {
+  if (!isTauri()) return true
+  try {
+    return await invoke<boolean>('update_remote_sources', { sources })
+  } catch {
+    return false
+  }
+}
+
+export async function updateRemoteLibrary(library: RemoteLibrarySummary): Promise<boolean> {
+  if (!isTauri()) return true
+  try {
+    return await invoke<boolean>('update_remote_library', { library })
+  } catch {
+    return false
+  }
+}
+
 export async function discoverKinoraServers(timeoutSecs?: number): Promise<DiscoveredServer[]> {
   if (!isTauri()) return []
   try {

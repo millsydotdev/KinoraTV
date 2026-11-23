@@ -25,6 +25,7 @@ import { movies, series } from '../data/catalog'
 import { LocalMediaTab } from './LocalMediaTab'
 import { ArtworkLibraryScreen } from './ArtworkLibraryScreen'
 import { ViewingHabitsTab } from './ViewingHabitsTab'
+import { CollectionCoverMontage } from '../components/CollectionCoverMontage'
 import './LocalMediaTab.css'
 import './Library.css'
 
@@ -611,25 +612,17 @@ function SavedList({ list }: { list: 'watchlist' | 'favourites' }) {
 }
 
 function CollectionCards({ collections, onOpen }: { collections: Collection[]; onOpen: (id: string) => void }) {
-  const { findChannel, programmeAt, demoTitles, xtreamCatalogue } = useStore()
-  const findMovie = (sId: string, id: string) => xtreamCatalogue.movies.find((m) => m.sourceId === sId && m.id === id)
-  const findSeries = (sId: string, id: string) => xtreamCatalogue.series.find((s) => s.sourceId === sId && s.id === id)
   return (
     <ul className="collection-cards">
-      {collections.map((c) => {
-        const art = resolveAll(c.items, Date.now(), findChannel, programmeAt, demoTitles, findMovie, findSeries).slice(0, 3)
-        return (
-          <li key={c.id}>
-            <button type="button" className="card collection-card" onClick={() => onOpen(c.id)}>
-              <span className={`collection-stack n${art.length}`} aria-hidden="true">
-                {art.length === 0 ? <span className="collection-empty"><Icon name="folder" /></span> : art.map((r) => <Art key={r.ref} src={r.art} focus={r.focus} />)}
-              </span>
-              <strong>{c.name}</strong>
-              <span className="faint">{c.items.length} {c.items.length === 1 ? 'title' : 'titles'}</span>
-            </button>
-          </li>
-        )
-      })}
+      {collections.map((c) => (
+        <li key={c.id}>
+          <button type="button" className="card collection-card" onClick={() => onOpen(c.id)}>
+            <CollectionCoverMontage items={c.items} />
+            <strong>{c.name}</strong>
+            <span className="faint">{c.items.length} {c.items.length === 1 ? 'title' : 'titles'}</span>
+          </button>
+        </li>
+      ))}
     </ul>
   )
 }

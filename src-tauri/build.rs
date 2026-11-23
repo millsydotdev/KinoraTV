@@ -111,6 +111,8 @@ fn main() {
             "set_platform_mode",
             "get_audit_log",
             "update_remote_channels",
+            "update_remote_sources",
+            "update_remote_library",
             "discover_kinora_servers",
         ]),
     ))

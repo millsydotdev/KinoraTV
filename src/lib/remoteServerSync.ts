@@ -243,6 +243,29 @@ export function handleIncomingRemoteCommand(event: RemoteCommandEvent): void {
       break
     }
 
+    case 'cast_media': {
+      const streamUrl = typeof payload.streamUrl === 'string' ? payload.streamUrl : ''
+      const title = typeof payload.title === 'string' ? payload.title : 'Cast Media'
+      const subtitle = typeof payload.subtitle === 'string' ? payload.subtitle : undefined
+      const isLive = Boolean(payload.isLive)
+      if (streamUrl) {
+        dispatchKinoraCommand({
+          type: 'playMedia',
+          payload: {
+            streamUrl,
+            title,
+            subtitle,
+            isLive,
+          },
+          source: 'remote',
+        })
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('kinora:cast_media', { detail: payload }))
+      }
+      break
+    }
+
     default:
       console.warn('Unknown remote control command:', cmd)
       break

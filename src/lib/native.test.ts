@@ -576,7 +576,7 @@ describe('platform and device management boundary', () => {
   })
 
   it('handles audit log and remote channels updates', async () => {
-    const { getAuditLog, updateRemoteChannels, discoverKinoraServers } = await import('./native')
+    const { getAuditLog, updateRemoteChannels, updateRemoteSources, updateRemoteLibrary, discoverKinoraServers } = await import('./native')
 
     shell.inside = true
     shell.invoke.mockResolvedValueOnce([
@@ -601,6 +601,20 @@ describe('platform and device management boundary', () => {
       { id: 'ch-1', name: 'BBC One', number: 101 },
     ])
     expect(updated).toBe(true)
+
+    shell.invoke.mockResolvedValueOnce(true)
+    const updatedSources = await updateRemoteSources([
+      { id: 'src-1', label: 'UK Freeview', origin: 'https://example.com/playlist.m3u', channelCount: 40, kind: 'playlist' },
+    ])
+    expect(updatedSources).toBe(true)
+
+    shell.invoke.mockResolvedValueOnce(true)
+    const updatedLib = await updateRemoteLibrary({
+      favourites: ['ch-1'],
+      watchlist: ['mov-1'],
+      watchProgress: [{ itemRef: 'mov-1', title: 'Movie 1', position: 100, duration: 5000, updatedAt: 1700000000 }],
+    })
+    expect(updatedLib).toBe(true)
 
     shell.invoke.mockResolvedValueOnce([
       {

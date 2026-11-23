@@ -137,6 +137,34 @@ pub struct RemoteChannelSummary {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RemoteSourceSummary {
+    pub id: String,
+    pub label: String,
+    pub origin: String,
+    pub channel_count: usize,
+    pub kind: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteLibrarySummary {
+    pub favourites: Vec<String>,
+    pub watchlist: Vec<String>,
+    pub watch_progress: Vec<RemoteWatchProgressItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteWatchProgressItem {
+    pub item_ref: String,
+    pub title: String,
+    pub position: f64,
+    pub duration: f64,
+    pub updated_at: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RemoteServerStatus {
     pub running: bool,
     pub port: u16,
@@ -188,6 +216,8 @@ struct ServerInner {
     trusted_devices: Vec<TrustedDevice>,
     audit_log: Vec<AuditedAction>,
     channels: Vec<RemoteChannelSummary>,
+    sources: Vec<RemoteSourceSummary>,
+    library: RemoteLibrarySummary,
     failed_attempts: u32,
     lockout_until: Option<Instant>,
     playback_state: RemotePlaybackState,
@@ -229,6 +259,8 @@ impl RemoteServerManager {
                 trusted_devices: loaded_devices,
                 audit_log: Vec::new(),
                 channels: Vec::new(),
+                sources: Vec::new(),
+                library: RemoteLibrarySummary::default(),
                 failed_attempts: 0,
                 lockout_until: None,
                 playback_state: RemotePlaybackState::default(),
@@ -341,6 +373,28 @@ impl RemoteServerManager {
     pub async fn update_channels(&self, channels: Vec<RemoteChannelSummary>) {
         let mut state = self.inner.lock().await;
         state.channels = channels;
+    }
+
+    pub async fn update_sources(&self, sources: Vec<RemoteSourceSummary>) {
+        let mut state = self.inner.lock().await;
+        state.sources = sources;
+    }
+
+    #[allow(dead_code)]
+    pub async fn get_sources(&self) -> Vec<RemoteSourceSummary> {
+        let state = self.inner.lock().await;
+        state.sources.clone()
+    }
+
+    pub async fn update_library(&self, library: RemoteLibrarySummary) {
+        let mut state = self.inner.lock().await;
+        state.library = library;
+    }
+
+    #[allow(dead_code)]
+    pub async fn get_library(&self) -> RemoteLibrarySummary {
+        let state = self.inner.lock().await;
+        state.library.clone()
     }
 
     pub async fn update_playback_state(&self, new_state: RemotePlaybackState) {
@@ -604,6 +658,18 @@ fn record_audit_action(
     }
 }
 
+fn broadcast_sse_envelope(state: &mut ServerInner, event_type: &str, data: serde_json::Value) {
+    let envelope = serde_json::json!({
+        "type": event_type,
+        "data": data,
+        "timestamp": now_unix_secs()
+    });
+    if let Ok(json) = serde_json::to_string(&envelope) {
+        let msg = format!("data: {json}\n\n");
+        state.sse_senders.retain(|sender| sender.send(msg.clone()).is_ok());
+    }
+}
+
 fn load_trusted_devices_from_disk(data_dir: &Path) -> Vec<TrustedDevice> {
     let file_path = data_dir.join("devices.json");
     if let Ok(data) = fs::read_to_string(file_path) {
@@ -753,13 +819,43 @@ async fn handle_connection<F>(
             let _ = stream.write_all(resp.as_bytes()).await;
         }
         ("GET", "/api/channels") => {
-            if !validate_token(&manager, auth_token.as_deref(), &[DeviceCapability::MediaBrowse, DeviceCapability::RemoteControl, DeviceCapability::AiAgent]).await {
+            if !validate_token(&manager, auth_token.as_deref(), &[DeviceCapability::MediaBrowse, DeviceCapability::RemoteControl, DeviceCapability::ClientSync, DeviceCapability::AiAgent]).await {
                 send_unauthorized(&mut stream).await;
                 return;
             }
 
             let state = manager.inner.lock().await;
             let json = serde_json::to_string(&state.channels).unwrap_or_else(|_| "[]".to_string());
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+                json.len(),
+                json
+            );
+            let _ = stream.write_all(resp.as_bytes()).await;
+        }
+        ("GET", "/api/sources") => {
+            if !validate_token(&manager, auth_token.as_deref(), &[DeviceCapability::MediaBrowse, DeviceCapability::ClientSync, DeviceCapability::AiAgent]).await {
+                send_unauthorized(&mut stream).await;
+                return;
+            }
+
+            let state = manager.inner.lock().await;
+            let json = serde_json::to_string(&state.sources).unwrap_or_else(|_| "[]".to_string());
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+                json.len(),
+                json
+            );
+            let _ = stream.write_all(resp.as_bytes()).await;
+        }
+        ("GET", "/api/library") => {
+            if !validate_token(&manager, auth_token.as_deref(), &[DeviceCapability::MediaBrowse, DeviceCapability::ClientSync, DeviceCapability::AiAgent]).await {
+                send_unauthorized(&mut stream).await;
+                return;
+            }
+
+            let state = manager.inner.lock().await;
+            let json = serde_json::to_string(&state.library).unwrap_or_else(|_| "{}".to_string());
             let resp = format!(
                 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
                 json.len(),
@@ -915,8 +1011,190 @@ async fn handle_connection<F>(
                 let _ = stream.write_all(err_resp.as_bytes()).await;
             }
         }
+        ("POST", "/api/sync/progress") => {
+            let caller_opt = get_device_by_token(&manager, auth_token.as_deref()).await;
+            if caller_opt.is_none() {
+                send_unauthorized(&mut stream).await;
+                return;
+            }
+            let caller = caller_opt.unwrap();
+            if !caller.capabilities.contains(&DeviceCapability::ClientSync) {
+                send_forbidden(&mut stream, "Device lacks ClientSync capability").await;
+                return;
+            }
+
+            let body = extract_body(&req_str);
+            if let Ok(prog_obj) = serde_json::from_str::<serde_json::Value>(body) {
+                let item_ref = prog_obj.get("itemRef").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let title = prog_obj.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let position = prog_obj.get("position").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                let duration = prog_obj.get("duration").and_then(|v| v.as_f64()).unwrap_or(0.0);
+
+                if !item_ref.is_empty() {
+                    let mut state = manager.inner.lock().await;
+                    let now = now_unix_secs();
+                    if let Some(existing) = state.library.watch_progress.iter_mut().find(|p| p.item_ref == item_ref) {
+                        existing.position = position;
+                        existing.duration = duration;
+                        existing.updated_at = now;
+                    } else {
+                        state.library.watch_progress.push(RemoteWatchProgressItem {
+                            item_ref: item_ref.clone(),
+                            title: title.clone(),
+                            position,
+                            duration,
+                            updated_at: now,
+                        });
+                    }
+
+                    record_audit_action(
+                        &mut state.audit_log,
+                        &caller.id,
+                        &caller.name,
+                        "ClientSync",
+                        "SyncProgress",
+                        &format!("Updated progress for {item_ref}: {position}/{duration}s"),
+                        "success",
+                    );
+
+                    broadcast_sse_envelope(
+                        &mut state,
+                        "sync_progress",
+                        serde_json::json!({
+                            "itemRef": item_ref,
+                            "title": title,
+                            "position": position,
+                            "duration": duration,
+                            "updatedAt": now
+                        }),
+                    );
+                }
+
+                let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{\"ok\":true}";
+                let _ = stream.write_all(resp.as_bytes()).await;
+            } else {
+                let err_resp = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: 26\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{\"error\":\"Invalid JSON\"}";
+                let _ = stream.write_all(err_resp.as_bytes()).await;
+            }
+        }
+        ("POST", "/api/sync/library") => {
+            let caller_opt = get_device_by_token(&manager, auth_token.as_deref()).await;
+            if caller_opt.is_none() {
+                send_unauthorized(&mut stream).await;
+                return;
+            }
+            let caller = caller_opt.unwrap();
+            if !caller.capabilities.contains(&DeviceCapability::ClientSync) {
+                send_forbidden(&mut stream, "Device lacks ClientSync capability").await;
+                return;
+            }
+
+            let body = extract_body(&req_str);
+            if let Ok(lib_obj) = serde_json::from_str::<serde_json::Value>(body) {
+                let action = lib_obj.get("action").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let id = lib_obj.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+                if !id.is_empty() {
+                    let mut state = manager.inner.lock().await;
+                    match action.as_str() {
+                        "toggle_favourite" => {
+                            if let Some(pos) = state.library.favourites.iter().position(|f| f == &id) {
+                                state.library.favourites.remove(pos);
+                            } else {
+                                state.library.favourites.push(id.clone());
+                            }
+                        }
+                        "toggle_watchlist" => {
+                            if let Some(pos) = state.library.watchlist.iter().position(|w| w == &id) {
+                                state.library.watchlist.remove(pos);
+                            } else {
+                                state.library.watchlist.push(id.clone());
+                            }
+                        }
+                        _ => {}
+                    }
+
+                    record_audit_action(
+                        &mut state.audit_log,
+                        &caller.id,
+                        &caller.name,
+                        "ClientSync",
+                        &action,
+                        &format!("Toggled {id}"),
+                        "success",
+                    );
+
+                    let favs = state.library.favourites.clone();
+                    let watch = state.library.watchlist.clone();
+                    broadcast_sse_envelope(
+                        &mut state,
+                        "sync_library",
+                        serde_json::json!({
+                            "action": action,
+                            "id": id,
+                            "favourites": favs,
+                            "watchlist": watch
+                        }),
+                    );
+                }
+
+                let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{\"ok\":true}";
+                let _ = stream.write_all(resp.as_bytes()).await;
+            } else {
+                let err_resp = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: 26\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{\"error\":\"Invalid JSON\"}";
+                let _ = stream.write_all(err_resp.as_bytes()).await;
+            }
+        }
+        ("POST", "/api/cast") => {
+            let caller_opt = get_device_by_token(&manager, auth_token.as_deref()).await;
+            if caller_opt.is_none() {
+                send_unauthorized(&mut stream).await;
+                return;
+            }
+            let caller = caller_opt.unwrap();
+            if !caller.capabilities.contains(&DeviceCapability::MediaCast)
+                && !caller.capabilities.contains(&DeviceCapability::PlaybackControl)
+                && !caller.capabilities.contains(&DeviceCapability::RemoteControl)
+            {
+                send_forbidden(&mut stream, "Device lacks MediaCast capability").await;
+                return;
+            }
+
+            let body = extract_body(&req_str);
+            if let Ok(cast_obj) = serde_json::from_str::<serde_json::Value>(body) {
+                let title = cast_obj.get("title").and_then(|v| v.as_str()).unwrap_or("Media").to_string();
+
+                {
+                    let mut state = manager.inner.lock().await;
+                    record_audit_action(
+                        &mut state.audit_log,
+                        &caller.id,
+                        &caller.name,
+                        "MediaCast",
+                        "CastMedia",
+                        &format!("Received media cast: {title}"),
+                        "dispatched",
+                    );
+                }
+
+                let evt = RemoteCommandEvent {
+                    command: "cast_media".to_string(),
+                    payload: cast_obj,
+                    client_id: Some(caller.id),
+                    timestamp: now_unix_secs(),
+                };
+
+                on_command(evt);
+
+                let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{\"ok\":true}";
+                let _ = stream.write_all(resp.as_bytes()).await;
+            } else {
+                let err_resp = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: 26\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{\"error\":\"Invalid JSON\"}";
+                let _ = stream.write_all(err_resp.as_bytes()).await;
+            }
+        }
         ("GET", "/api/events") | ("GET", "/events") => {
-            if !validate_token(&manager, auth_token.as_deref(), &[DeviceCapability::RemoteControl, DeviceCapability::PlaybackControl, DeviceCapability::MediaBrowse, DeviceCapability::AiAgent]).await {
+            if !validate_token(&manager, auth_token.as_deref(), &[DeviceCapability::RemoteControl, DeviceCapability::PlaybackControl, DeviceCapability::MediaBrowse, DeviceCapability::ClientSync, DeviceCapability::MediaCast, DeviceCapability::AiAgent]).await {
                 send_unauthorized(&mut stream).await;
                 return;
             }
@@ -1773,5 +2051,42 @@ mod tests {
         assert_eq!(inner.channels.len(), 2);
         assert_eq!(inner.channels[0].name, "BBC One HD");
         assert_eq!(inner.channels[0].current_programme.as_deref(), Some("News at Six"));
+    }
+
+    #[tokio::test]
+    async fn remote_sources_and_library_cache() {
+        let mgr = RemoteServerManager::new(None);
+        let sources = vec![
+            RemoteSourceSummary {
+                id: "src-1".to_string(),
+                label: "UK Freeview".to_string(),
+                origin: "https://example.com/playlist.m3u".to_string(),
+                channel_count: 42,
+                kind: "playlist".to_string(),
+            },
+        ];
+        mgr.update_sources(sources).await;
+        let fetched_sources = mgr.get_sources().await;
+        assert_eq!(fetched_sources.len(), 1);
+        assert_eq!(fetched_sources[0].label, "UK Freeview");
+        assert_eq!(fetched_sources[0].channel_count, 42);
+
+        let library = RemoteLibrarySummary {
+            favourites: vec!["ch-1".to_string(), "mov-1".to_string()],
+            watchlist: vec!["mov-2".to_string()],
+            watch_progress: vec![RemoteWatchProgressItem {
+                item_ref: "mov-1".to_string(),
+                title: "Night of the Living Dead".to_string(),
+                position: 150.0,
+                duration: 5800.0,
+                updated_at: 1700000000,
+            }],
+        };
+        mgr.update_library(library).await;
+        let fetched_library = mgr.get_library().await;
+        assert_eq!(fetched_library.favourites.len(), 2);
+        assert_eq!(fetched_library.watchlist.len(), 1);
+        assert_eq!(fetched_library.watch_progress.len(), 1);
+        assert_eq!(fetched_library.watch_progress[0].position, 150.0);
     }
 }

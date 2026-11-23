@@ -7,7 +7,7 @@ import { demoSources } from '../data/sources'
 import type { Channel, Collection, Library, Programme, Progress, Ref, Source, StreamVariant, XtreamTitle } from '../data/types'
 import {
   disconnectXtream, fetchGuide, fetchPlaylist, guideProgrammes, inNativeShell, isXtreamConnected, loadCatalogue, loadGuide, loadSources, loadXtreamCatalogue, loadXtreamSeries, readGuideFile, readPlaylistFile, refreshCatalogue, refreshXtream,
-  removeGuide as forgetGuide, saveSources, loadXtreamVodDetails, loadXtreamEpg, updateRemoteChannels,
+  removeGuide as forgetGuide, saveSources, loadXtreamVodDetails, loadXtreamEpg, updateRemoteChannels, updateRemoteSources, updateRemoteLibrary,
   dvrGetRecordings, dvrStartRecording, dvrStopRecording, dvrScheduleRecording, dvrCancelRecording, dvrDeleteRecording, dvrProtectRecording,
   dvrGetRules, dvrSaveRule, dvrDeleteRule, dvrGetConfig, dvrSaveConfig, dvrGetStorageInfo,
   type GuideSummary, type PlaylistReport, type SavedState, type SavedXtreamSource, type StorageNotice, type XtreamCatalogue, type XtreamEntry, type XtreamSeriesDetails,
@@ -644,6 +644,34 @@ function useStoreValue(
       void updateRemoteChannels(summaries)
     }
   }, [channels])
+
+  useEffect(() => {
+    if (playlists.length > 0) {
+      const srcSummaries = playlists.map((p) => ({
+        id: p.id,
+        label: p.label,
+        origin: p.origin === 'url' ? (p.url || p.label) : p.label,
+        channelCount: p.channels.length,
+        kind: 'playlist',
+      }))
+      void updateRemoteSources(srcSummaries)
+    }
+  }, [playlists])
+
+  useEffect(() => {
+    const watchProgress = Object.entries(library.progress || {}).map(([ref, p]) => ({
+      itemRef: ref,
+      title: ref,
+      position: p.pos,
+      duration: p.dur,
+      updatedAt: p.at,
+    }))
+    void updateRemoteLibrary({
+      favourites: library.favourites || [],
+      watchlist: library.watchlist || [],
+      watchProgress,
+    })
+  }, [library])
 
   const getPreferredServer = useCallback(
     (channel: Channel): StreamVariant | undefined => {
