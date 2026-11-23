@@ -146,4 +146,25 @@ describe('clientSyncManager', () => {
       }),
     }))
   })
+
+  it('resolves authenticated stream URL from server', async () => {
+    clientSyncManager.setServerConfig('http://192.168.1.50:5198', 'tok-abc')
+
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, channelId: 'ch-1', streamUrl: 'https://example.com/live/ch1.m3u8' }),
+    } as Response)
+    globalThis.fetch = fetchSpy
+
+    const streamUrl = await clientSyncManager.resolveStreamUrl('ch-1')
+    expect(streamUrl).toBe('https://example.com/live/ch1.m3u8')
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'http://192.168.1.50:5198/api/stream/resolve?channelId=ch-1',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer tok-abc',
+        }),
+      })
+    )
+  })
 })

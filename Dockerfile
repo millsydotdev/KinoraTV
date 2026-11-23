@@ -118,3 +118,37 @@ COPY --chown=developer:developer . .
 
 # Default command runs the master quality gate
 CMD ["bash", "scripts/quality-gate.sh"]
+
+# ==============================================================================
+# Target: server (Headless Kinora Media Server for Always-on Linux / NAS / Docker)
+# ==============================================================================
+FROM debian:bookworm-slim AS server
+
+LABEL maintainer="millsydotdev" \
+      description="Kinora Headless Media Server (v0.6.0)" \
+      version="0.6.0"
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+RUN useradd -m -s /bin/bash -u 1000 kinora \
+    && mkdir -p /data && chown -R kinora:kinora /app /data
+
+USER kinora
+
+ENV KINORA_MODE=server \
+    KINORA_DATA_DIR=/data \
+    PORT=5198
+
+EXPOSE 5198
+EXPOSE 5197/udp
+
+HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:5198/api/info || exit 1
+
+CMD ["echo", "Kinora Headless Media Server ready"]

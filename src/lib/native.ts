@@ -2700,6 +2700,7 @@ export interface RemoteChannelSummary {
   group?: string | null
   logo?: string | null
   currentProgramme?: string | null
+  streamUrl?: string | null
 }
 
 export interface DiscoveredServer {

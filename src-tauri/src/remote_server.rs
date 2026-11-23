@@ -133,6 +133,8 @@ pub struct RemoteChannelSummary {
     pub group: Option<String>,
     pub logo: Option<String>,
     pub current_programme: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stream_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -736,7 +738,7 @@ async fn handle_connection<F>(
     let method = parts.next().unwrap_or("GET");
     let full_path = parts.next().unwrap_or("/");
 
-    let (path, _query) = full_path.split_once('?').unwrap_or((full_path, ""));
+    let (path, query_str) = full_path.split_once('?').unwrap_or((full_path, ""));
 
     // Extract headers
     let mut auth_token = None;
@@ -750,6 +752,17 @@ async fn handle_connection<F>(
             auth_token = Some(line[21..].trim().to_string());
         } else if lower.starts_with("user-agent:") {
             user_agent = Some(line[11..].trim().to_string());
+        }
+    }
+
+    if auth_token.is_none() && !query_str.is_empty() {
+        for pair in query_str.split('&') {
+            if let Some((k, v)) = pair.split_once('=') {
+                if k == "token" && !v.is_empty() {
+                    auth_token = Some(v.to_string());
+                    break;
+                }
+            }
         }
     }
 
@@ -825,13 +838,67 @@ async fn handle_connection<F>(
             }
 
             let state = manager.inner.lock().await;
-            let json = serde_json::to_string(&state.channels).unwrap_or_else(|_| "[]".to_string());
+            let sanitized: Vec<RemoteChannelSummary> = state.channels.iter().map(|c| {
+                let mut s = c.clone();
+                s.stream_url = None;
+                s
+            }).collect();
+            let json = serde_json::to_string(&sanitized).unwrap_or_else(|_| "[]".to_string());
             let resp = format!(
                 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
                 json.len(),
                 json
             );
             let _ = stream.write_all(resp.as_bytes()).await;
+        }
+        ("GET", p) if p.starts_with("/api/stream/resolve") => {
+            let caller_opt = get_device_by_token(&manager, auth_token.as_deref()).await;
+            if caller_opt.is_none() {
+                send_unauthorized(&mut stream).await;
+                return;
+            }
+            let caller = caller_opt.unwrap();
+            if !caller.capabilities.contains(&DeviceCapability::ClientSync) && !caller.capabilities.contains(&DeviceCapability::PlaybackControl) {
+                send_forbidden(&mut stream, "Device lacks ClientSync or PlaybackControl capability").await;
+                return;
+            }
+
+            let mut target_cid: Option<String> = None;
+            for pair in query_str.split('&') {
+                if let Some((k, v)) = pair.split_once('=') {
+                    if k == "channelId" && !v.is_empty() {
+                        target_cid = Some(v.to_string());
+                        break;
+                    }
+                }
+            }
+
+            let state = manager.inner.lock().await;
+            let found_stream = target_cid.as_deref().and_then(|cid| {
+                state.channels.iter().find(|c| c.id == cid).and_then(|c| c.stream_url.clone())
+            });
+
+            if let Some(stream_url) = found_stream {
+                let json_body = serde_json::json!({
+                    "ok": true,
+                    "channelId": target_cid.unwrap_or_default(),
+                    "streamUrl": stream_url
+                }).to_string();
+                let resp = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+                    json_body.len(),
+                    json_body
+                );
+                let _ = stream.write_all(resp.as_bytes()).await;
+            } else {
+                let err_body = r#"{"ok":false,"error":"Channel or stream not found"}"#;
+                let resp = format!(
+                    "HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+                    err_body.len(),
+                    err_body
+                );
+                let _ = stream.write_all(resp.as_bytes()).await;
+            }
         }
         ("GET", "/api/sources") => {
             if !validate_token(&manager, auth_token.as_deref(), &[DeviceCapability::MediaBrowse, DeviceCapability::ClientSync, DeviceCapability::AiAgent]).await {
@@ -2035,6 +2102,7 @@ mod tests {
                 group: Some("National".to_string()),
                 logo: None,
                 current_programme: Some("News at Six".to_string()),
+                stream_url: None,
             },
             RemoteChannelSummary {
                 id: "ch-2".to_string(),
@@ -2043,6 +2111,7 @@ mod tests {
                 group: Some("National".to_string()),
                 logo: None,
                 current_programme: Some("Coronation Street".to_string()),
+                stream_url: None,
             },
         ];
 
@@ -2088,5 +2157,25 @@ mod tests {
         assert_eq!(fetched_library.watchlist.len(), 1);
         assert_eq!(fetched_library.watch_progress.len(), 1);
         assert_eq!(fetched_library.watch_progress[0].position, 150.0);
+    }
+
+    #[tokio::test]
+    async fn remote_channel_stream_url_resolution() {
+        let mgr = RemoteServerManager::new(None);
+        let channels = vec![
+            RemoteChannelSummary {
+                id: "ch-test-1".to_string(),
+                name: "Test Stream HD".to_string(),
+                number: Some(101),
+                group: Some("Test".to_string()),
+                logo: None,
+                current_programme: None,
+                stream_url: Some("https://example.com/live/ch1.m3u8".to_string()),
+            },
+        ];
+
+        mgr.update_channels(channels).await;
+        let inner = mgr.inner.lock().await;
+        assert_eq!(inner.channels[0].stream_url.as_deref(), Some("https://example.com/live/ch1.m3u8"));
     }
 }

@@ -362,6 +362,28 @@ class ClientSyncManager {
       // EventSource reconnects automatically on network hiccups
     }
   }
+
+  public async resolveStreamUrl(channelId: string): Promise<string | null> {
+    const { serverUrl, authToken } = this.state
+    if (!serverUrl || !authToken) return null
+
+    try {
+      const res = await fetch(
+        `${serverUrl}/api/stream/resolve?channelId=${encodeURIComponent(channelId)}`,
+        {
+          headers: { Authorization: `Bearer ${authToken}` },
+        }
+      )
+      if (!res.ok) return null
+      const data = await res.json()
+      if (data.ok && typeof data.streamUrl === 'string') {
+        return data.streamUrl
+      }
+      return null
+    } catch {
+      return null
+    }
+  }
 }
 
 export const clientSyncManager = new ClientSyncManager()
@@ -374,6 +396,7 @@ export function useClientSync(): ClientSyncState & {
   syncWatchProgress: (itemRef: string, title: string, position: number, duration: number) => Promise<boolean>
   toggleLibraryItem: (action: 'toggle_favourite' | 'toggle_watchlist', id: string) => Promise<boolean>
   castMedia: (targetUrl: string, media: { title: string; streamUrl: string; subtitle?: string; position?: number; isLive?: boolean; artUrl?: string }) => Promise<boolean>
+  resolveStreamUrl: (channelId: string) => Promise<string | null>
 } {
   const [state, setState] = useState(() => clientSyncManager.getState())
 
@@ -392,5 +415,6 @@ export function useClientSync(): ClientSyncState & {
     syncWatchProgress: (ref, title, pos, dur) => clientSyncManager.syncWatchProgress(ref, title, pos, dur),
     toggleLibraryItem: (action, id) => clientSyncManager.toggleLibraryItem(action, id),
     castMedia: (url, media) => clientSyncManager.castMedia(url, media),
+    resolveStreamUrl: (channelId) => clientSyncManager.resolveStreamUrl(channelId),
   }
 }

@@ -1171,6 +1171,111 @@ fn app_origin(config: &tauri::Config) -> String {
     }
 }
 
+/// Resolves default server data directory for headless / daemon operation.
+pub fn default_server_data_dir() -> std::path::PathBuf {
+    if let Ok(path) = std::env::var("KINORA_DATA_DIR") {
+        return std::path::PathBuf::from(path);
+    }
+    if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
+        return std::path::PathBuf::from(xdg).join("kinora");
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        return std::path::PathBuf::from(home).join(".local/share/kinora");
+    }
+    std::path::PathBuf::from("./.kinora-server-data")
+}
+
+/// Runs Kinora in headless server mode without initializing WebKitGTK or GUI windows.
+/// Suitable for Linux home servers, Raspberry Pi, NAS, and Docker containers.
+pub fn run_headless_server(port: Option<u16>, custom_pin: Option<String>) {
+    let rt = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Failed to initialize Tokio runtime: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    rt.block_on(async {
+        let data_dir = default_server_data_dir();
+        let sources_dir = data_dir.join("sources");
+        let manager = remote_server::RemoteServerManager::new(Some(data_dir.clone()));
+
+        // If saved sources exist, load them into the manager
+        let store = sources::Store::new(Some(sources_dir));
+        let loaded = store.load();
+        let mut remote_sources = Vec::new();
+        let mut remote_channels = Vec::new();
+
+        for src in loaded.saved.sources {
+            remote_sources.push(remote_server::RemoteSourceSummary {
+                id: src.id.clone(),
+                label: src.label,
+                origin: match src.origin {
+                    sources::Origin::Url => "url".to_string(),
+                    sources::Origin::File => "file".to_string(),
+                },
+                channel_count: src.channels.len(),
+                kind: "playlist".to_string(),
+            });
+
+            for ch in src.channels {
+                remote_channels.push(remote_server::RemoteChannelSummary {
+                    id: format!("{}~{}", src.id, ch.key),
+                    name: ch.name,
+                    number: ch.chno,
+                    group: ch.group,
+                    logo: ch.logo,
+                    current_programme: None,
+                    stream_url: None,
+                });
+            }
+        }
+
+        if !remote_sources.is_empty() {
+            manager.update_sources(remote_sources).await;
+        }
+        if !remote_channels.is_empty() {
+            manager.update_channels(remote_channels).await;
+        }
+
+        // Set platform mode to Server
+        manager.set_platform_mode(remote_server::PlatformMode::Server, None).await;
+
+        let status = match manager.start(port, custom_pin, |event| {
+            println!("[Kinora Server] Dispatched remote event: {}", event.command);
+        }).await {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("Kinora server failed to start: {e}");
+                std::process::exit(1);
+            }
+        };
+
+        println!("============================================================");
+        println!("  Kinora Media Server v0.6.0 (Headless Mode)");
+        println!("============================================================");
+        println!("  Web Remote & Client API:  {}", status.server_url);
+        println!("  UDP Discovery Beacon:     Port 5197 (Broadcast)");
+        println!("  Pairing PIN:              {}", status.pairing_pin);
+        println!("  Storage Directory:        {}", data_dir.display());
+        println!("============================================================");
+        println!("  Ready for connections. Press Ctrl+C to stop.");
+        println!("============================================================");
+
+        if let Err(e) = tokio::signal::ctrl_c().await {
+            eprintln!("Error listening for shutdown signal: {e}");
+        }
+
+        println!("\nShutting down Kinora Media Server...");
+        manager.stop().await;
+        println!("Server stopped cleanly.");
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let result = tauri::Builder::default()

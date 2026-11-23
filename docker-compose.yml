@@ -115,8 +115,29 @@ services:
       - npm-cache:/home/developer/.npm
     command: ["npm", "run", "tauri:build", "--", "--no-sign"]
 
+  # ============================================================================
+  # 5. Kinora Headless Media Server
+  # ============================================================================
+  server:
+    build:
+      context: .
+      target: server
+    container_name: kinora-server
+    ports:
+      - "${SERVER_PORT:-5198}:5198"
+      - "${DISCOVERY_PORT:-5197}:5197/udp"
+    environment:
+      - KINORA_MODE=server
+      - KINORA_DATA_DIR=/data
+      - SERVER_PORT=5198
+    volumes:
+      - server-data:/data
+    restart: unless-stopped
+
 volumes:
   cargo-cache:
     name: kinora-cargo-cache
   npm-cache:
     name: kinora-npm-cache
+  server-data:
+    name: kinora-server-data

@@ -5,6 +5,7 @@
 // both bounded, and a timeout tears the attempt down and says so.
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { closeStream, IngestError, openM3uCatchup, openStream, openXtreamCatchup, type StreamOptions } from './native'
+import { clientSyncManager } from './clientSync'
 
 export type PlaybackStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'buffering' | 'error' | 'unsupported'
 
@@ -236,6 +237,16 @@ export function useStreamPlayback(streamUrl: string | null, video: RefObject<HTM
           const startTimestamp = parseInt(parts[1] || '0', 10)
           const durationMins = parseInt(parts[2] || '60', 10)
           opened = await openXtreamCatchup(sourceId, streamId, startTimestamp, durationMins)
+        } else if (streamUrl.startsWith('client-sync://')) {
+          const channelId = streamUrl.replace('client-sync://', '')
+          const resolved = await clientSyncManager.resolveStreamUrl(channelId)
+          if (!resolved) {
+            disarm()
+            return set(state('error', 'Unable to resolve stream from Kinora server.'))
+          }
+          opened = prefsRef.current.streamOptions
+            ? await openStream(resolved, prefsRef.current.streamOptions)
+            : await openStream(resolved)
         } else {
           opened = prefsRef.current.streamOptions
             ? await openStream(streamUrl, prefsRef.current.streamOptions)

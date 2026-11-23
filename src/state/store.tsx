@@ -25,6 +25,7 @@ import { useUserPreferencesStore } from './userPreferences'
 import { useProfiles } from './profiles'
 import { filterKidSafeChannels, filterKidSafeProgrammes, filterKidSafeXtreamTitles, isProgrammeKidSafe } from '../lib/kidsMode'
 import { PlaybackProvider } from './playbackContext'
+import { useClientSync } from '../lib/clientSync'
 
 export type { Collection, Library, Progress, Ref, XtreamTitle }
 
@@ -293,6 +294,7 @@ function useStoreValue(
 ) {
   const { activeProfile, isKidsMode } = useProfiles()
   const profileId = activeProfile?.id ?? 'default'
+  const clientSync = useClientSync()
 
   const [realLib, setRealLibState] = useState<Library>(() => loadProfileLibrary(profileId))
 
@@ -621,10 +623,32 @@ function useStoreValue(
     ...xtreamSources.map((x) => ({ id: x.id, name: x.name, origin: 'xtream' })),
   ], [playlists, xtreamSources])
 
-  const rawChannels = useMemo(
-    () => demoActive ? playlistChannels : combineChannels(allChannels, allSources, matches),
-    [demoActive, playlistChannels, allChannels, allSources, matches],
-  )
+  const clientChannels = useMemo<Channel[]>(() => {
+    if (clientSync.status !== 'connected' || clientSync.channels.length === 0) return []
+    return clientSync.channels.map((c, idx) => ({
+      id: c.id,
+      name: c.name,
+      number: c.number ?? idx + 1,
+      group: c.group ?? 'Server Channels',
+      categories: c.group ? [c.group] : ['General'],
+      logoUrl: c.logo || null,
+      mark: { text: c.name.slice(0, 3).toUpperCase(), tone: 'accent' },
+      streamUrl: `client-sync://${c.id}`,
+      streamDisplay: 'Kinora Server Stream',
+      hd: true,
+      sourceId: 'kinora-server',
+      tvgId: null,
+      isRadio: false,
+      resolution: 'HD',
+    }))
+  }, [clientSync.status, clientSync.channels])
+
+  const rawChannels = useMemo(() => {
+    if (clientSync.status === 'connected' && clientChannels.length > 0) {
+      return clientChannels
+    }
+    return demoActive ? playlistChannels : combineChannels(allChannels, allSources, matches)
+  }, [clientSync.status, clientChannels, demoActive, playlistChannels, allChannels, allSources, matches])
   const channels = useMemo(
     () => isKidsMode ? filterKidSafeChannels(rawChannels, true) : rawChannels,
     [rawChannels, isKidsMode],
@@ -633,17 +657,18 @@ function useStoreValue(
   const findChannel = useCallback((id: string): Channel | undefined => channelIndex.get(id), [channelIndex])
 
   useEffect(() => {
-    if (channels.length > 0) {
+    if (channels.length > 0 && clientSync.status !== 'connected') {
       const summaries = channels.slice(0, 300).map((c) => ({
         id: c.id,
         name: c.name,
         number: c.number,
         group: c.group,
         logo: c.logoUrl,
+        streamUrl: c.streamUrl ?? undefined,
       }))
       void updateRemoteChannels(summaries)
     }
-  }, [channels])
+  }, [channels, clientSync.status])
 
   useEffect(() => {
     if (playlists.length > 0) {
@@ -930,8 +955,18 @@ function useStoreValue(
   const setPref = useCallback(<K extends keyof Prefs>(key: K, value: Prefs[K]) => setPrefs((p) => ({ ...p, [key]: value })), [setPrefs])
 
   const actions = useMemo(() => ({
-    toggleFavourite: (ref: Ref) => setLibrary((l) => ({ ...l, favourites: toggleIn(l.favourites, ref) })),
-    toggleWatchlist: (ref: Ref) => setLibrary((l) => ({ ...l, watchlist: toggleIn(l.watchlist, ref) })),
+    toggleFavourite: (ref: Ref) => {
+      setLibrary((l) => ({ ...l, favourites: toggleIn(l.favourites, ref) }))
+      if (clientSync.status === 'connected') {
+        void clientSync.toggleLibraryItem('toggle_favourite', String(ref))
+      }
+    },
+    toggleWatchlist: (ref: Ref) => {
+      setLibrary((l) => ({ ...l, watchlist: toggleIn(l.watchlist, ref) }))
+      if (clientSync.status === 'connected') {
+        void clientSync.toggleLibraryItem('toggle_watchlist', String(ref))
+      }
+    },
     setWatched: (refs: Ref[], watched: boolean) =>
       setLibrary((l) => {
         const rest = l.watched.filter((r) => !refs.includes(r))
@@ -939,8 +974,12 @@ function useStoreValue(
         if (watched) for (const r of refs) delete progress[r]
         return { ...l, watched: watched ? [...refs, ...rest] : rest, progress }
       }),
-    setProgress: (ref: Ref, pos: number, dur: number) =>
-      setLibrary((l) => ({ ...l, progress: { ...l.progress, [ref]: { pos, dur, at: Date.now() } } })),
+    setProgress: (ref: Ref, pos: number, dur: number) => {
+      setLibrary((l) => ({ ...l, progress: { ...l.progress, [ref]: { pos, dur, at: Date.now() } } }))
+      if (clientSync.status === 'connected') {
+        void clientSync.syncWatchProgress(String(ref), String(ref), pos, dur)
+      }
+    },
     removeProgress: (ref: Ref) =>
       setLibrary((l) => {
         const progress = { ...l.progress }
@@ -1091,7 +1130,7 @@ function useStoreValue(
         return false
       })
     },
-  }), [refreshDvrState, recordings])
+  }), [refreshDvrState, recordings, clientSync])
 
   return {
     library, prefs, setPref, sources: demoActive ? src.sources : [], ...actions, catalogue, ...catalogueActions,
