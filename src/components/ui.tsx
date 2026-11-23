@@ -3,7 +3,7 @@ import type { Channel, Programme } from '../data/types'
 import { Icon, type IconName } from './Icon'
 import { inNativeShell, loadCachedArtwork, loadChannelLogo, loadProgrammeArtwork } from '../lib/native'
 import { getCustomArtwork } from '../state/customArtwork'
-import { artworkEngine } from '../data/artworkEngine'
+import { artworkEngine, isGenericOrPromoGraphic } from '../data/artworkEngine'
 import { clock } from '../lib/time'
 
 /** Artwork with explicit loading and failed states, so a missing image never leaves a blank hole. */

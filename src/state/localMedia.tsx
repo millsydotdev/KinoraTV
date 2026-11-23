@@ -5,6 +5,7 @@ import {
   saveLocalLibrary,
   deleteLocalLibrary,
   scanLocalLibrary,
+  checkLocalMediaChanges,
   getLocalMediaCatalogue,
   getStorageVolumesInfo,
   selectLocalMediaFolder,
@@ -25,6 +26,7 @@ export interface LocalMediaState {
   removeLibrary: (id: string) => Promise<boolean>
   scanLibrary: (id: string) => Promise<LocalScanResult | null>
   scanAllLibraries: () => Promise<void>
+  checkForChanges: () => Promise<LocalScanResult[]>
   chooseFolder: (defaultPath?: string) => Promise<string | null>
   refreshStorage: () => Promise<void>
   refreshCatalogue: () => Promise<void>
@@ -90,6 +92,29 @@ export function LocalMediaProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     reloadAll()
+  }, [reloadAll])
+
+  // Real-time filesystem watcher listener for newly added, modified, or removed media
+  useEffect(() => {
+    let unlisten: (() => void) | undefined
+    if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+      import('@tauri-apps/api/event')
+        .then(({ listen }) => {
+          listen<LocalScanResult[]>('kinora:local_media_changed', (event) => {
+            if (event.payload && event.payload.length > 0) {
+              reloadAll()
+            }
+          })
+            .then((fn) => {
+              unlisten = fn
+            })
+            .catch(() => {})
+        })
+        .catch(() => {})
+    }
+    return () => {
+      if (unlisten) unlisten()
+    }
   }, [reloadAll])
 
   useEffect(() => {
@@ -168,6 +193,18 @@ export function LocalMediaProvider({ children }: { children: ReactNode }) {
     }
   }, [libraries, scanLibrary])
 
+  const checkForChanges = useCallback(async (): Promise<LocalScanResult[]> => {
+    try {
+      const results = await checkLocalMediaChanges()
+      if (results && results.length > 0) {
+        await reloadAll()
+      }
+      return results
+    } catch {
+      return []
+    }
+  }, [reloadAll])
+
   const chooseFolder = useCallback(async (defaultPath?: string): Promise<string | null> => {
     return selectLocalMediaFolder(defaultPath)
   }, [])
@@ -183,6 +220,7 @@ export function LocalMediaProvider({ children }: { children: ReactNode }) {
     removeLibrary,
     scanLibrary,
     scanAllLibraries,
+    checkForChanges,
     chooseFolder,
     refreshStorage,
     refreshCatalogue,
@@ -202,6 +240,7 @@ const defaultLocalMediaState: LocalMediaState = {
   removeLibrary: async () => false,
   scanLibrary: async () => null,
   scanAllLibraries: async () => {},
+  checkForChanges: async () => [],
   chooseFolder: async () => null,
   refreshStorage: async () => {},
   refreshCatalogue: async () => {},

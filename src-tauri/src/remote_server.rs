@@ -167,6 +167,51 @@ pub struct RemoteWatchProgressItem {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RemoteEpgProgramme {
+    pub channel_id: String,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subtitle: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub start: i64,
+    pub stop: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub episode: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteMediaItem {
+    pub id: String,
+    /// "movie" | "series" | "local"
+    pub kind: String,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub year: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overview: Option<String>,
+    #[serde(default)]
+    pub genres: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rating: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_secs: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artwork_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backdrop_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_id: Option<String>,
+    /// Kept strictly in server RAM; stripped before returning from `GET /api/media`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stream_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RemoteServerStatus {
     pub running: bool,
     pub port: u16,
@@ -220,6 +265,8 @@ struct ServerInner {
     channels: Vec<RemoteChannelSummary>,
     sources: Vec<RemoteSourceSummary>,
     library: RemoteLibrarySummary,
+    epg: Vec<RemoteEpgProgramme>,
+    media: Vec<RemoteMediaItem>,
     failed_attempts: u32,
     lockout_until: Option<Instant>,
     playback_state: RemotePlaybackState,
@@ -232,6 +279,7 @@ struct ServerInner {
 pub struct RemoteServerManager {
     inner: Arc<Mutex<ServerInner>>,
     stream_proxy: crate::lan_proxy::LanStreamProxy,
+    artwork_store: Arc<crate::artwork::ArtworkStore>,
 }
 
 impl Default for RemoteServerManager {
@@ -285,6 +333,8 @@ impl RemoteServerManager {
             .unwrap_or(PlatformMode::Standalone);
         let server_client_url = loaded_cfg.and_then(|c| c.server_url);
 
+        let artwork_dir = data_dir.as_ref().map(|d| d.join("sources"));
+
         Self {
             inner: Arc::new(Mutex::new(ServerInner {
                 data_dir,
@@ -299,6 +349,8 @@ impl RemoteServerManager {
                 channels: Vec::new(),
                 sources: Vec::new(),
                 library: RemoteLibrarySummary::default(),
+                epg: Vec::new(),
+                media: Vec::new(),
                 failed_attempts: 0,
                 lockout_until: None,
                 playback_state: RemotePlaybackState::default(),
@@ -307,6 +359,7 @@ impl RemoteServerManager {
                 beacon_shutdown_tx: None,
             })),
             stream_proxy: crate::lan_proxy::LanStreamProxy::new(policy),
+            artwork_store: Arc::new(crate::artwork::ArtworkStore::new(artwork_dir)),
         }
     }
 
@@ -444,6 +497,34 @@ impl RemoteServerManager {
     pub async fn get_library(&self) -> RemoteLibrarySummary {
         let state = self.inner.lock().await;
         state.library.clone()
+    }
+
+    pub async fn update_epg(&self, mut programmes: Vec<RemoteEpgProgramme>) {
+        if programmes.len() > 25_000 {
+            programmes.truncate(25_000);
+        }
+        let mut state = self.inner.lock().await;
+        state.epg = programmes;
+    }
+
+    #[allow(dead_code)]
+    pub async fn get_epg(&self) -> Vec<RemoteEpgProgramme> {
+        let state = self.inner.lock().await;
+        state.epg.clone()
+    }
+
+    pub async fn update_media(&self, mut items: Vec<RemoteMediaItem>) {
+        if items.len() > 10_000 {
+            items.truncate(10_000);
+        }
+        let mut state = self.inner.lock().await;
+        state.media = items;
+    }
+
+    #[allow(dead_code)]
+    pub async fn get_media(&self) -> Vec<RemoteMediaItem> {
+        let state = self.inner.lock().await;
+        state.media.clone()
     }
 
     pub async fn update_playback_state(&self, new_state: RemotePlaybackState) {
@@ -947,10 +1028,18 @@ async fn handle_connection<F>(
                 return;
             }
 
+            let now_ms = (now_unix_secs() as i64).saturating_mul(1000);
             let state = manager.inner.lock().await;
             let sanitized: Vec<RemoteChannelSummary> = state.channels.iter().map(|c| {
                 let mut s = c.clone();
                 s.stream_url = None;
+                if s.current_programme.is_none() {
+                    s.current_programme = state
+                        .epg
+                        .iter()
+                        .find(|p| p.channel_id == s.id && p.start <= now_ms && now_ms < p.stop)
+                        .map(|p| p.title.clone());
+                }
                 s
             }).collect();
             let json = serde_json::to_string(&sanitized).unwrap_or_else(|_| "[]".to_string());
@@ -960,6 +1049,155 @@ async fn handle_connection<F>(
                 json
             );
             let _ = stream.write_all(resp.as_bytes()).await;
+        }
+        ("GET", "/api/epg") => {
+            if !validate_token(&manager, auth_token.as_deref(), &[DeviceCapability::MediaBrowse, DeviceCapability::RemoteControl, DeviceCapability::ClientSync, DeviceCapability::AiAgent]).await {
+                send_unauthorized(&mut stream).await;
+                return;
+            }
+
+            let mut filter_channel: Option<String> = None;
+            let mut filter_from: Option<i64> = None;
+            let mut filter_to: Option<i64> = None;
+            for pair in query_str.split('&') {
+                if let Some((k, v)) = pair.split_once('=') {
+                    if v.is_empty() {
+                        continue;
+                    }
+                    match k {
+                        "channelId" => filter_channel = Some(percent_decode_simple(v)),
+                        "from" => filter_from = v.parse::<i64>().ok(),
+                        "to" => filter_to = v.parse::<i64>().ok(),
+                        _ => {}
+                    }
+                }
+            }
+
+            let state = manager.inner.lock().await;
+            let filtered: Vec<&RemoteEpgProgramme> = state
+                .epg
+                .iter()
+                .filter(|p| {
+                    if let Some(ref cid) = filter_channel {
+                        if &p.channel_id != cid {
+                            return false;
+                        }
+                    }
+                    if let Some(from) = filter_from {
+                        if p.stop <= from {
+                            return false;
+                        }
+                    }
+                    if let Some(to) = filter_to {
+                        if p.start >= to {
+                            return false;
+                        }
+                    }
+                    true
+                })
+                .take(10_000)
+                .collect();
+
+            let json = serde_json::to_string(&filtered).unwrap_or_else(|_| "[]".to_string());
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+                json.len(),
+                json
+            );
+            let _ = stream.write_all(resp.as_bytes()).await;
+        }
+        ("GET", "/api/media") => {
+            if !validate_token(&manager, auth_token.as_deref(), &[DeviceCapability::MediaBrowse, DeviceCapability::ClientSync, DeviceCapability::AiAgent]).await {
+                send_unauthorized(&mut stream).await;
+                return;
+            }
+
+            let mut filter_kind: Option<String> = None;
+            let mut filter_q: Option<String> = None;
+            for pair in query_str.split('&') {
+                if let Some((k, v)) = pair.split_once('=') {
+                    if v.is_empty() {
+                        continue;
+                    }
+                    match k {
+                        "kind" => filter_kind = Some(percent_decode_simple(v).to_ascii_lowercase()),
+                        "q" => filter_q = Some(percent_decode_simple(v).to_ascii_lowercase()),
+                        _ => {}
+                    }
+                }
+            }
+
+            let state = manager.inner.lock().await;
+            let sanitized: Vec<RemoteMediaItem> = state
+                .media
+                .iter()
+                .filter(|m| {
+                    if let Some(ref kind) = filter_kind {
+                        if !m.kind.eq_ignore_ascii_case(kind) {
+                            return false;
+                        }
+                    }
+                    if let Some(ref q) = filter_q {
+                        if !m.title.to_ascii_lowercase().contains(q) {
+                            return false;
+                        }
+                    }
+                    true
+                })
+                .take(2_000)
+                .map(|m| {
+                    let mut clean = m.clone();
+                    clean.stream_url = None;
+                    clean
+                })
+                .collect();
+
+            let json = serde_json::to_string(&sanitized).unwrap_or_else(|_| "[]".to_string());
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+                json.len(),
+                json
+            );
+            let _ = stream.write_all(resp.as_bytes()).await;
+        }
+        ("GET", "/api/artwork") => {
+            if !validate_token(&manager, auth_token.as_deref(), &[DeviceCapability::MediaBrowse, DeviceCapability::RemoteControl, DeviceCapability::ClientSync, DeviceCapability::AiAgent]).await {
+                send_unauthorized(&mut stream).await;
+                return;
+            }
+
+            let mut art_key: Option<String> = None;
+            for pair in query_str.split('&') {
+                if let Some((k, v)) = pair.split_once('=') {
+                    if k == "key" && !v.is_empty() {
+                        art_key = Some(percent_decode_simple(v));
+                        break;
+                    }
+                }
+            }
+
+            let cached = art_key
+                .as_deref()
+                .filter(|k| !k.is_empty() && k.len() <= 256)
+                .and_then(|k| manager.artwork_store.read_cached(k));
+
+            if let Some(art) = cached {
+                let hdr = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: private, max-age=3600\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n",
+                    art.mime_type,
+                    art.bytes.len()
+                );
+                let _ = stream.write_all(hdr.as_bytes()).await;
+                let _ = stream.write_all(&art.bytes).await;
+            } else {
+                let err = r#"{"ok":false,"error":"Artwork not cached"}"#;
+                let resp = format!(
+                    "HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+                    err.len(),
+                    err
+                );
+                let _ = stream.write_all(resp.as_bytes()).await;
+            }
         }
         ("POST", "/api/stream/open") => {
             let caller_opt = get_device_by_token(&manager, auth_token.as_deref()).await;
@@ -976,11 +1214,23 @@ async fn handle_connection<F>(
             }
 
             let body = extract_body(&req_str);
-            let target_cid = serde_json::from_str::<serde_json::Value>(body)
-                .ok()
+            let parsed_body = serde_json::from_str::<serde_json::Value>(body).ok();
+            let target_cid = parsed_body
+                .as_ref()
                 .and_then(|v| v.get("channelId").and_then(|c| c.as_str()).map(|s| s.to_string()));
+            let target_mid = parsed_body
+                .as_ref()
+                .and_then(|v| v.get("mediaId").and_then(|c| c.as_str()).map(|s| s.to_string()));
 
-            handle_open_proxy_stream(&mut stream, &manager, &caller, target_cid, host_header.as_deref()).await;
+            handle_open_proxy_stream(
+                &mut stream,
+                &manager,
+                &caller,
+                target_cid,
+                target_mid,
+                host_header.as_deref(),
+            )
+            .await;
         }
         ("POST", "/api/stream/close") => {
             let caller_opt = get_device_by_token(&manager, auth_token.as_deref()).await;
@@ -1027,7 +1277,7 @@ async fn handle_connection<F>(
                 }
             }
 
-            handle_open_proxy_stream(&mut stream, &manager, &caller, target_cid, host_header.as_deref()).await;
+            handle_open_proxy_stream(&mut stream, &manager, &caller, target_cid, None, host_header.as_deref()).await;
         }
         ("GET", p) if p.starts_with("/api/stream/h/") => {
             let rest = &p["/api/stream/h/".len()..];
@@ -1683,22 +1933,31 @@ async fn handle_open_proxy_stream(
     manager: &RemoteServerManager,
     caller: &TrustedDevice,
     target_cid: Option<String>,
+    target_mid: Option<String>,
     host_header: Option<&str>,
 ) {
     let (found_stream, local_ip, port) = {
         let state = manager.inner.lock().await;
-        let found = target_cid.as_deref().and_then(|cid| {
+        let found = if let Some(ref cid) = target_cid {
             state
                 .channels
                 .iter()
-                .find(|c| c.id == cid)
+                .find(|c| &c.id == cid)
                 .and_then(|c| c.stream_url.clone())
-        });
+        } else if let Some(ref mid) = target_mid {
+            state
+                .media
+                .iter()
+                .find(|m| &m.id == mid)
+                .and_then(|m| m.stream_url.clone())
+        } else {
+            None
+        };
         (found, state.local_ip.clone(), state.port)
     };
 
     let Some(upstream_url) = found_stream else {
-        let err_body = r#"{"ok":false,"error":"Channel or stream not found"}"#;
+        let err_body = r#"{"ok":false,"error":"Channel or media stream not found"}"#;
         let resp = format!(
             "HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
             err_body.len(),
@@ -1708,7 +1967,13 @@ async fn handle_open_proxy_stream(
         return;
     };
 
-    let cid_str = target_cid.unwrap_or_default();
+    let target_label = if let Some(ref cid) = target_cid {
+        format!("channelId={cid}")
+    } else if let Some(ref mid) = target_mid {
+        format!("mediaId={mid}")
+    } else {
+        "unknown".to_string()
+    };
     match manager.stream_proxy.open(&caller.id, &upstream_url) {
         Ok(opened) => {
             {
@@ -1719,7 +1984,7 @@ async fn handle_open_proxy_stream(
                     &caller.name,
                     "ClientSync",
                     "OpenProxyStream",
-                    &format!("channelId={cid_str}"),
+                    &target_label,
                     "success",
                 );
             }
@@ -1730,7 +1995,8 @@ async fn handle_open_proxy_stream(
             let proxy_url = format!("http://{host_authority}{}", opened.proxy_path);
             let json_body = serde_json::json!({
                 "ok": true,
-                "channelId": cid_str,
+                "channelId": target_cid.unwrap_or_default(),
+                "mediaId": target_mid.unwrap_or_default(),
                 "sessionKey": opened.session_key,
                 "proxyPath": opened.proxy_path,
                 "streamUrl": proxy_url,

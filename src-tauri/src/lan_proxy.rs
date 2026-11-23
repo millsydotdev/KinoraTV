@@ -519,7 +519,8 @@ impl ClientLanStreamBridge {
         &self,
         server_url: &str,
         auth_token: &str,
-        channel_id: &str,
+        channel_id: Option<&str>,
+        media_id: Option<&str>,
     ) -> Result<OpenedClientServerStream, String> {
         let parsed = validate_lan_server_url(server_url)?;
         let server_base = format!(
@@ -529,13 +530,21 @@ impl ClientLanStreamBridge {
             parsed.port().map(|p| format!(":{p}")).unwrap_or_default()
         );
 
+        let payload = if let Some(cid) = channel_id {
+            serde_json::json!({ "channelId": cid })
+        } else if let Some(mid) = media_id {
+            serde_json::json!({ "mediaId": mid })
+        } else {
+            return Err("Either channelId or mediaId is required.".to_string());
+        };
+
         let client = Self::build_lan_client()?;
         let open_endpoint = format!("{server_base}/api/stream/open");
         let resp = client
             .post(&open_endpoint)
             .header("Authorization", format!("Bearer {}", auth_token.trim()))
             .header("Content-Type", "application/json")
-            .body(serde_json::json!({ "channelId": channel_id }).to_string())
+            .body(payload.to_string())
             .send()
             .await
             .map_err(|_| "Unable to reach Kinora Server to open stream.".to_string())?;
@@ -776,6 +785,73 @@ impl ClientLanStreamBridge {
             body,
         }
     }
+}
+
+/// Fetches a cached raster artwork asset from a paired LAN Kinora Server (`GET /api/artwork`)
+/// with strict LAN IP validation, no redirects, 4 MiB cap, and raster magic-byte verification.
+pub async fn fetch_server_artwork(
+    server_url: &str,
+    auth_token: &str,
+    artwork_key: &str,
+) -> Result<Option<crate::artwork::Artwork>, String> {
+    let trimmed_key = artwork_key.trim();
+    if trimmed_key.is_empty() || trimmed_key.len() > 256 {
+        return Ok(None);
+    }
+
+    let parsed = validate_lan_server_url(server_url)?;
+    let server_base = format!(
+        "{}://{}{}",
+        parsed.scheme(),
+        parsed.host_str().unwrap_or_default(),
+        parsed.port().map(|p| format!(":{p}")).unwrap_or_default()
+    );
+
+    let mut url = Url::parse(&format!("{server_base}/api/artwork"))
+        .map_err(|_| "Invalid artwork endpoint.".to_string())?;
+    url.query_pairs_mut().append_pair("key", trimmed_key);
+
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .referer(false)
+        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|_| "Failed to initialize artwork client.".to_string())?;
+
+    let resp = client
+        .get(url)
+        .header("Authorization", format!("Bearer {}", auth_token.trim()))
+        .send()
+        .await
+        .map_err(|_| "Unable to reach Kinora Server for artwork.".to_string())?;
+
+    if resp.status().as_u16() == 404 {
+        return Ok(None);
+    }
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Kinora Server refused artwork request (HTTP {}).",
+            resp.status().as_u16()
+        ));
+    }
+
+    const MAX_ARTWORK_BYTES: usize = 4 * 1024 * 1024;
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|_| "Failed to read artwork bytes.".to_string())?;
+    if bytes.len() > MAX_ARTWORK_BYTES {
+        return Ok(None);
+    }
+    let Some(mime_type) = crate::artwork::detect_raster_mime(&bytes) else {
+        return Ok(None);
+    };
+    Ok(Some(crate::artwork::Artwork {
+        mime_type,
+        bytes: bytes.to_vec(),
+    }))
 }
 
 /// Rewrites server-side `/api/stream/h/<session_key>/` paths in an HLS playlist into

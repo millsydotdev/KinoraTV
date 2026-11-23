@@ -105,7 +105,7 @@
   align-items: center;
   gap: 10px;
   height: 38px;
-  width: clamp(220px, 22vw, 440px);
+  width: clamp(160px, 16vw, 260px);
   padding: 0 14px;
   border-radius: 999px;
   background: rgba(18, 22, 28, 0.9);
@@ -114,10 +114,11 @@
   color: #8c93a3;
   font-size: 0.865rem;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
-  transition: border-color 150ms var(--ease), background 150ms var(--ease), box-shadow 150ms var(--ease);
+  transition: width 200ms var(--ease), border-color 150ms var(--ease), background 150ms var(--ease), box-shadow 150ms var(--ease);
 }
 
 .search-pill-form:focus-within {
+  width: clamp(240px, 22vw, 360px);
   border-color: rgba(229, 9, 20, 0.6);
   background: rgba(22, 26, 34, 0.98);
   box-shadow: 0 0 0 2px rgba(229, 9, 20, 0.25), 0 8px 24px rgba(0, 0, 0, 0.45);

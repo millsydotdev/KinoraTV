@@ -88,6 +88,7 @@ fn main() {
             "save_local_library",
             "delete_local_library",
             "scan_local_library",
+            "check_local_media_changes",
             "get_local_media_catalogue",
             "get_storage_volumes_info",
             "select_local_media_folder",
@@ -119,6 +120,9 @@ fn main() {
             "update_remote_channels",
             "update_remote_sources",
             "update_remote_library",
+            "update_remote_epg",
+            "update_remote_media",
+            "fetch_client_server_artwork",
             "discover_kinora_servers",
         ]),
     ))

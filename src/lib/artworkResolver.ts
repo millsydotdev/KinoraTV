@@ -17,7 +17,7 @@
  */
 
 import { getCustomArtwork, type CustomArtworkType } from '../state/customArtwork'
-import { artworkEngine, type ArtworkType } from '../data/artworkEngine'
+import { artworkEngine, isGenericOrPromoGraphic, type ArtworkType } from '../data/artworkEngine'
 import { curatedMovies, curatedSeries } from '../data/catalog'
 import { loadMetadataConfig } from '../data/metadataProviders'
 
@@ -179,6 +179,7 @@ export function isValidArtForRole(url: string | null | undefined, targetRole: Ar
     if (/\/logos?\/|title[-_]logo|wordmark|clearart/i.test(trimmed)) return false
     if (/\/cover$|poster|folder\.jpg/i.test(trimmed) && !trimmed.includes('/16-9')) return false
     if (/\/tv-logo\/|\/channel-logo\/|channel_icon/i.test(trimmed)) return false
+    if (isGenericOrPromoGraphic(trimmed)) return false
   }
 
   // Posters and season art (2:3 portrait): never accept wide backdrops or channel logos

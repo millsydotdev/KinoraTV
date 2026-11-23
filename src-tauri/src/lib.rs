@@ -10,7 +10,6 @@
 
 #![cfg_attr(not(feature = "desktop"), allow(dead_code))]
 
-#[cfg(feature = "desktop")]
 mod artwork;
 mod catalogue;
 #[cfg(feature = "desktop")]
@@ -726,12 +725,32 @@ fn close_stream(session: u64, streams: tauri::State<'_, stream::Streams>) {
 async fn open_client_server_stream(
     server_url: String,
     auth_token: String,
-    channel_id: String,
+    channel_id: Option<String>,
+    media_id: Option<String>,
     bridge: tauri::State<'_, lan_proxy::ClientLanStreamBridge>,
 ) -> Result<lan_proxy::OpenedClientServerStream, String> {
     bridge
-        .open_from_server(&server_url, &auth_token, &channel_id)
+        .open_from_server(
+            &server_url,
+            &auth_token,
+            channel_id.as_deref(),
+            media_id.as_deref(),
+        )
         .await
+}
+
+/// Fetches a cached raster artwork asset from a paired LAN Kinora Server under strict CSP.
+#[tauri::command]
+async fn fetch_client_server_artwork(
+    server_url: String,
+    auth_token: String,
+    artwork_key: String,
+) -> Result<Option<ChannelLogo>, String> {
+    let res = lan_proxy::fetch_server_artwork(&server_url, &auth_token, &artwork_key).await?;
+    Ok(res.map(|a| ChannelLogo {
+        mime_type: a.mime_type,
+        bytes: a.bytes,
+    }))
 }
 
 /// Ends a Client-to-Server LAN playback bridge session.
@@ -967,6 +986,15 @@ fn scan_local_library(
     engine.scan_library(&library_id)
 }
 
+/// Checks watched local media directories for additions, deletions or modifications,
+/// auto-updating catalogue when changes are detected.
+#[tauri::command]
+fn check_local_media_changes(
+    engine: tauri::State<'_, local_media::LocalMediaEngine>,
+) -> Vec<local_media::LocalScanResult> {
+    engine.check_watched_folders()
+}
+
 /// Returns all indexed local movies and TV series.
 #[tauri::command]
 fn get_local_media_catalogue(
@@ -1191,6 +1219,26 @@ async fn update_remote_library(
     Ok(true)
 }
 
+/// Pushes EPG programmes into the server cache for connected client guide synchronization.
+#[tauri::command]
+async fn update_remote_epg(
+    programmes: Vec<remote_server::RemoteEpgProgramme>,
+    manager: tauri::State<'_, remote_server::RemoteServerManager>,
+) -> Result<bool, String> {
+    manager.update_epg(programmes).await;
+    Ok(true)
+}
+
+/// Pushes VOD, Series, and Local Media summaries into the server cache for connected clients.
+#[tauri::command]
+async fn update_remote_media(
+    media: Vec<remote_server::RemoteMediaItem>,
+    manager: tauri::State<'_, remote_server::RemoteServerManager>,
+) -> Result<bool, String> {
+    manager.update_media(media).await;
+    Ok(true)
+}
+
 /// Scans the local network for running Kinora servers via UDP discovery beacons.
 #[tauri::command]
 async fn discover_kinora_servers(
@@ -1222,7 +1270,9 @@ pub fn run() {
             // A private folder inside the app's data directory; without one, sources are not saved.
             let app_data = app.path().app_data_dir().ok();
             let dir = app_data.as_ref().map(|d| d.join("sources"));
-            app.manage(local_media::LocalMediaEngine::new(app_data.clone()));
+            let local_engine = local_media::LocalMediaEngine::new(app_data.clone());
+            let local_watcher = local_engine.clone();
+            app.manage(local_engine);
             app.manage(dvr::DvrEngine::new(app_data.clone()));
             app.manage(metadata_vault::MetadataVault::new(app_data.clone()));
             app.manage(guides::GuideStore::new(dir.clone()));
@@ -1246,6 +1296,18 @@ pub fn run() {
                             let _ = emit_handle.emit("kinora:remote_command", event);
                         })
                         .await;
+                }
+            });
+            let local_app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(15));
+                loop {
+                    interval.tick().await;
+                    let changes = local_watcher.check_watched_folders();
+                    if !changes.is_empty() {
+                        use tauri::Emitter;
+                        let _ = local_app_handle.emit("kinora:local_media_changed", &changes);
+                    }
                 }
             });
             app.manage(lan_proxy::ClientLanStreamBridge::new(origin.clone()));
@@ -1454,6 +1516,7 @@ pub fn run() {
             save_local_library,
             delete_local_library,
             scan_local_library,
+            check_local_media_changes,
             get_local_media_catalogue,
             get_storage_volumes_info,
             select_local_media_folder,
@@ -1485,6 +1548,9 @@ pub fn run() {
             update_remote_channels,
             update_remote_sources,
             update_remote_library,
+            update_remote_epg,
+            update_remote_media,
+            fetch_client_server_artwork,
             discover_kinora_servers
         ])
         .run(tauri::generate_context!());

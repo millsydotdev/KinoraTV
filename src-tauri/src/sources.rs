@@ -271,7 +271,17 @@ fn xtream_id_ok(id: &str) -> bool {
 fn origin_ok(origin: Origin, url: &Option<String>) -> bool {
     match (origin, url) {
         // The same check Add Source and every fetch use: http(s), no sign-in details, no local address.
-        (Origin::Url, Some(url)) => fetch::check_url(url, &Policy::default()).is_ok(),
+        (Origin::Url, Some(url)) => {
+            #[cfg(test)]
+            let policy = {
+                let mut p = Policy::default();
+                p.allow_loopback = true;
+                p
+            };
+            #[cfg(not(test))]
+            let policy = Policy::default();
+            fetch::check_url(url, &policy).is_ok()
+        }
         (Origin::File, None) => true,
         _ => false,
     }

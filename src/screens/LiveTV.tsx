@@ -783,9 +783,10 @@ export function LiveTV() {
   const innerW = colW + x(dayEnd)
   const showNow = dayOffset === 0
 
-  // Horizontal window for programme virtualisation: 600px overscan on both sides
-  const minProgX = isVirtualised ? Math.max(0, scrollState.left - 600) : 0
-  const maxProgX = isVirtualised ? scrollState.left + (scrollState.clientWidth || 1200) + 600 : Number.POSITIVE_INFINITY
+  // Horizontal time-window for 2D programme virtualisation: +/- 2.5 hours (150 min) of visible scroll range
+  const horizontalOverscanPx = Math.round(2.5 * 60 * ppm)
+  const minProgX = isVirtualised ? Math.max(0, scrollState.left - horizontalOverscanPx) : 0
+  const maxProgX = isVirtualised ? scrollState.left + (scrollState.clientWidth || 1200) + horizontalOverscanPx : Number.POSITIVE_INFINITY
 
   const panel = selected && (
     <ProgrammePanel

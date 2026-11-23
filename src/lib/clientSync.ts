@@ -6,10 +6,14 @@
  */
 
 import { useEffect, useState } from 'react'
-import type {
-  RemoteChannelSummary,
-  RemoteSourceSummary,
-  RemoteLibrarySummary,
+import {
+  fetchClientServerArtwork,
+  inNativeShell,
+  type RemoteChannelSummary,
+  type RemoteEpgProgramme,
+  type RemoteMediaItem,
+  type RemoteSourceSummary,
+  type RemoteLibrarySummary,
 } from './native'
 
 export type ClientSyncStatus = 'disconnected' | 'connecting' | 'connected' | 'syncing' | 'error'
@@ -32,6 +36,8 @@ export interface ClientSyncState {
   error: string | null
   sources: RemoteSourceSummary[]
   channels: RemoteChannelSummary[]
+  epg: RemoteEpgProgramme[]
+  media: RemoteMediaItem[]
   library: RemoteLibrarySummary | null
 }
 
@@ -48,6 +54,8 @@ class ClientSyncManager {
     error: null,
     sources: [],
     channels: [],
+    epg: [],
+    media: [],
     library: null,
   }
 
@@ -102,6 +110,8 @@ class ClientSyncManager {
     this.state.library = null
     this.state.sources = []
     this.state.channels = []
+    this.state.epg = []
+    this.state.media = []
     if (typeof localStorage !== 'undefined') {
       localStorage.removeItem(SERVER_URL_KEY)
       localStorage.removeItem(AUTH_TOKEN_KEY)
@@ -204,11 +214,13 @@ class ClientSyncManager {
     try {
       const headers = { Authorization: `Bearer ${authToken}` }
 
-      // Fetch channels, sources, and library in parallel
-      const [channelsRes, sourcesRes, libraryRes] = await Promise.all([
+      // Fetch channels, sources, library, EPG, and media catalogue in parallel
+      const [channelsRes, sourcesRes, libraryRes, epgRes, mediaRes] = await Promise.all([
         fetch(`${serverUrl}/api/channels`, { headers }),
         fetch(`${serverUrl}/api/sources`, { headers }),
         fetch(`${serverUrl}/api/library`, { headers }),
+        fetch(`${serverUrl}/api/epg`, { headers }).catch(() => null),
+        fetch(`${serverUrl}/api/media`, { headers }).catch(() => null),
       ])
 
       if (channelsRes.ok) {
@@ -219,6 +231,14 @@ class ClientSyncManager {
       }
       if (libraryRes.ok) {
         this.state.library = await libraryRes.json()
+      }
+      if (epgRes?.ok) {
+        const epgData = await epgRes.json()
+        if (Array.isArray(epgData)) this.state.epg = epgData
+      }
+      if (mediaRes?.ok) {
+        const mediaData = await mediaRes.json()
+        if (Array.isArray(mediaData)) this.state.media = mediaData
       }
 
       this.state.lastSyncTime = Math.floor(Date.now() / 1000)
@@ -369,6 +389,24 @@ class ClientSyncManager {
     proxyPath: string
     format: 'hls' | 'direct'
   } | null> {
+    return this.openServerTarget({ channelId })
+  }
+
+  public async openServerMediaStream(mediaId: string): Promise<{
+    streamUrl: string
+    sessionKey: string
+    proxyPath: string
+    format: 'hls' | 'direct'
+  } | null> {
+    return this.openServerTarget({ mediaId })
+  }
+
+  private async openServerTarget(payload: { channelId?: string; mediaId?: string }): Promise<{
+    streamUrl: string
+    sessionKey: string
+    proxyPath: string
+    format: 'hls' | 'direct'
+  } | null> {
     const { serverUrl, authToken } = this.state
     if (!serverUrl || !authToken) return null
 
@@ -379,7 +417,7 @@ class ClientSyncManager {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${authToken}`,
         },
-        body: JSON.stringify({ channelId }),
+        body: JSON.stringify(payload),
       })
       if (!res.ok) return null
       const data = await res.json()
@@ -395,6 +433,17 @@ class ClientSyncManager {
     } catch {
       return null
     }
+  }
+
+  public async fetchServerArtwork(artworkKey: string): Promise<string | null> {
+    const { serverUrl, authToken } = this.state
+    if (!serverUrl || !authToken || !artworkKey.trim()) return null
+
+    if (inNativeShell()) {
+      return fetchClientServerArtwork(serverUrl, authToken, artworkKey)
+    }
+
+    return `${serverUrl}/api/artwork?key=${encodeURIComponent(artworkKey)}&token=${encodeURIComponent(authToken)}`
   }
 
   public async closeServerStream(sessionKey: string): Promise<void> {
@@ -431,6 +480,8 @@ export function useClientSync(): ClientSyncState & {
   toggleLibraryItem: (action: 'toggle_favourite' | 'toggle_watchlist', id: string) => Promise<boolean>
   castMedia: (targetUrl: string, media: { title: string; streamUrl: string; subtitle?: string; position?: number; isLive?: boolean; artUrl?: string }) => Promise<boolean>
   resolveStreamUrl: (channelId: string) => Promise<string | null>
+  openServerMediaStream: (mediaId: string) => Promise<{ streamUrl: string; sessionKey: string; proxyPath: string; format: 'hls' | 'direct' } | null>
+  fetchServerArtwork: (artworkKey: string) => Promise<string | null>
 } {
   const [state, setState] = useState(() => clientSyncManager.getState())
 
@@ -450,5 +501,7 @@ export function useClientSync(): ClientSyncState & {
     toggleLibraryItem: (action, id) => clientSyncManager.toggleLibraryItem(action, id),
     castMedia: (url, media) => clientSyncManager.castMedia(url, media),
     resolveStreamUrl: (channelId) => clientSyncManager.resolveStreamUrl(channelId),
+    openServerMediaStream: (mediaId) => clientSyncManager.openServerMediaStream(mediaId),
+    fetchServerArtwork: (artworkKey) => clientSyncManager.fetchServerArtwork(artworkKey),
   }
 }

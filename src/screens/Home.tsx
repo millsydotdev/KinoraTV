@@ -25,6 +25,7 @@ import {
   type HomeFeedData,
 } from '../lib/homeFeed'
 import { useArtwork } from '../lib/useArtwork'
+import { isGenericOrPromoGraphic } from '../data/artworkEngine'
 import './Home.css'
 
 interface HomeHeroProps {
@@ -42,7 +43,11 @@ function HomeHero({
 
   const currentSlide = slides[carouselIndex % Math.max(1, slides.length)]
 
-  const heroArtType = currentSlide?.kind === 'series' ? 'series-backdrop' : 'movie-backdrop'
+  const heroArtType = currentSlide?.kind === 'series'
+    ? 'series-backdrop'
+    : (currentSlide?.kind === 'live' && !(currentSlide.category && /movie|film|cinema/i.test(currentSlide.category)))
+      ? 'series-backdrop'
+      : 'movie-backdrop'
   const resolvedHero = useArtwork({
     contentId: currentSlide?.ref,
     title: currentSlide?.title || '',
@@ -53,13 +58,18 @@ function HomeHero({
     autoEnrich: Boolean(currentSlide && (currentSlide.kind === 'movie' || currentSlide.kind === 'series' || (currentSlide.kind === 'live' && currentSlide.title))),
   })
 
-  // Guard against title logos, wordmarks, or portrait covers being enlarged to fill the hero background.
+  // Guard against title logos, wordmarks, promotional franchise graphics, or portrait covers being enlarged to fill the hero background.
   // Backdrops must strictly be genuine landscape visuals.
-  const candidateHeroArt = resolvedHero.src || currentSlide?.backdropUrl || currentSlide?.art
+  // For live slides, prioritize the broadcaster's authentic 16:9 episode still when available.
+  const liveBroadcasterStill = (currentSlide?.kind === 'live' && currentSlide?.backdropUrl && !isGenericOrPromoGraphic(currentSlide.backdropUrl, currentSlide.title))
+    ? currentSlide.backdropUrl
+    : null
+  const candidateHeroArt = liveBroadcasterStill || resolvedHero.src || currentSlide?.backdropUrl || currentSlide?.art
   const isInvalidBackdrop = Boolean(
     candidateHeroArt && (
-      /\/logos?\/|title[-_]logo|wordmark|clearart/i.test(candidateHeroArt) ||
-      (/\/cover$|poster|folder\.jpg/i.test(candidateHeroArt) && !candidateHeroArt.includes('/16-9') && !candidateHeroArt.includes('backdrop'))
+      /\/logos?\/|title[-_]logo|wordmark|clearart|ncisverse/i.test(candidateHeroArt) ||
+      (/\/cover$|poster|folder\.jpg/i.test(candidateHeroArt) && !candidateHeroArt.includes('/16-9') && !candidateHeroArt.includes('backdrop')) ||
+      isGenericOrPromoGraphic(candidateHeroArt, currentSlide?.title)
     )
   )
   const effectiveHeroArt = isInvalidBackdrop ? null : candidateHeroArt

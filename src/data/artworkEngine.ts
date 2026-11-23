@@ -268,6 +268,58 @@ export function canonicalizeTitle(raw: string): {
   return { cleanTitle, extractedYear, tags }
 }
 
+function isTitlePrefixMatch(full: string, prefix: string): boolean {
+  if (!full.startsWith(prefix)) return false
+  if (full.length === prefix.length) return true
+  const nextChar = full.charAt(prefix.length)
+  return /[\s:\-,._()\[\]]/.test(nextChar)
+}
+
+/**
+ * Detects generic category stock graphics, broadcaster promotional cards, or franchise title graphics.
+ * These must never be used as programme stills, episode artwork, or hero backdrops.
+ */
+export function isGenericOrPromoGraphic(url: string | null | undefined, title?: string | null): boolean {
+  if (!url || !url.trim()) return false
+  const trimmed = url.trim()
+
+  // Known broadcaster/CDN stock graphics used for generic categories (e.g. JioTV 3D silver "NEWS" ring graphic)
+  if (/fef7d9e050359f02bbc034eb3ecef417/i.test(trimmed)) {
+    return true
+  }
+
+  // Known broadcaster promotional channel cards with embedded logos and "Special" text
+  if (
+    /a1fdd5b63f0433c2b9f0ec27a8e14698|f68b7a646049941d1dbaeb2d8e4be5e4|3db83422f7fd65db69b5421517771705|2e9594243b355788c38d7457de7cdbc0|00fe8c03fa792d1c1704ddeba9847635|1c919287aaf7fa651bb584b5447bcfea/i.test(
+      trimmed,
+    )
+  ) {
+    return true
+  }
+
+  // Promotional franchise specials (e.g. NCISverse 1000 promotional graphic)
+  if (/49KZ0pe0n6E3AapZmOx94oAmWMl|ncisverse/i.test(trimmed)) {
+    return true
+  }
+
+  // Generic category keywords in URLs
+  if (/\/placeholder|generic[-_]news|default[-_]show|no[-_]image|stock[-_]art/i.test(trimmed)) {
+    return true
+  }
+
+  // If a title is provided, check if it is a generic category that should not use non-photographic art
+  if (title) {
+    const norm = title.trim().toLowerCase()
+    const isGenericCategory = /^(news|न्यूज़|breaking news|daily news|weather|मौसम|special|स्पेशल|आस्था स्पेशल|आस्था भजन स्पेशल|teleshopping|shopping|live|off air|no information)$/i.test(norm)
+    if (isGenericCategory && /dare_images\/shows\/epgdata/i.test(trimmed)) {
+      // Broadcaster epgdata images for generic category names are stock graphics, not episode stills
+      return true
+    }
+  }
+
+  return false
+}
+
 /**
  * Scores an artwork match against candidate metadata, handling remakes and ambiguous releases.
  */
@@ -329,11 +381,16 @@ export function scoreArtworkMatch(
   }
 
   // Subtitle / prefix match (e.g. "Dune" matching "Dune: Part One")
-  if (normCandidate.startsWith(normQuery) || normQuery.startsWith(normCandidate)) {
+  if (isTitlePrefixMatch(normCandidate, normQuery) || isTitlePrefixMatch(normQuery, normCandidate)) {
     if (queryYear && candidateYear && Math.abs(queryYear - candidateYear) <= 1) {
       return { confidence: 0.75, status: 'verified' }
     }
-    return { confidence: 0.65, status: 'verified' }
+    // Subtitle or spin-off title without verified matching year is ambiguous
+    return {
+      confidence: 0.45,
+      status: 'ambiguous',
+      reason: `Subtitle or spin-off title match requires verified production year (${candidateTitle}).`,
+    }
   }
 
   return { confidence: 0.0, status: 'unresolved', reason: 'No significant title correlation' }
@@ -966,6 +1023,27 @@ class ContentArtworkEngine {
         cacheKey: `logo:${landscapeUrl}`,
       }
       this.registry.set(titleLogoRecord.id, titleLogoRecord)
+      return null
+    }
+
+    // Refuse generic category graphics or broadcaster promotional cards
+    if (isGenericOrPromoGraphic(landscapeUrl, programme.title)) {
+      const promoRecord: ArtworkRecord = {
+        id: `promo:${progId}`,
+        contentId: progId,
+        artworkType: 'channel-logo',
+        title: programme.title,
+        sourceUrl: landscapeUrl,
+        sourceProvider: 'xmltv',
+        sourceIdentifier: channel?.id || programme.channelId,
+        aspectRatio: '16:9',
+        orientation: 'landscape',
+        retrievalTime: Date.now(),
+        verificationStatus: 'unresolved',
+        confidence: 0.2,
+        failureReason: 'Generic category graphic or promotional channel card detected; not genuine programme artwork.',
+      }
+      this.registry.set(promoRecord.id, promoRecord)
       return null
     }
 
@@ -1899,13 +1977,26 @@ class ContentArtworkEngine {
     this.notifyArtworkSubscribers()
   }
 
-  public findArtwork(title: string, type?: ArtworkType, year?: number | null): ArtworkRecord | null {
+  public findArtwork(title: string, type?: ArtworkType, year?: number | null, channelId?: string): ArtworkRecord | null {
     const { cleanTitle } = canonicalizeTitle(title)
     const norm = cleanTitle.toLowerCase()
+
+    // Prevent generic titles from matching cross-channel EPG artwork
+    const isGenericCategory = /^(news|न्यूज़|breaking news|daily news|weather|मौसम|special|स्पेशल|आस्था स्पेशल|आस्था भजन स्पेशल|teleshopping|shopping|live|off air|no information)$/i.test(norm)
+    if (isGenericCategory && type === 'epg-programme-artwork') {
+      return null
+    }
+
     let fallbackMatch: ArtworkRecord | null = null
     for (const record of this.registry.values()) {
       if (type && record.artworkType !== type) continue
       if (!record.sourceUrl || !record.sourceUrl.trim()) continue
+
+      // For EPG programme artwork, channelId must match if provided, and never share across different channels
+      if (type === 'epg-programme-artwork' && channelId && record.sourceIdentifier && record.sourceIdentifier !== channelId) {
+        continue
+      }
+
       const recNorm = canonicalizeTitle(record.title).cleanTitle.toLowerCase()
       if (recNorm === norm) {
         // Prefer external enriched provider over embedded/bundled when both exist, and matching year

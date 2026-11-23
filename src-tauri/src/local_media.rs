@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::ingest::{ErrorCode, IngestError};
@@ -171,10 +171,73 @@ pub fn into_response(reply: LocalMediaReply) -> tauri::http::Response<Vec<u8>> {
     builder.body(reply.body).unwrap_or_default()
 }
 
+/// Lightweight folder signature used for real-time change detection.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderFingerprint {
+    pub file_count: usize,
+    pub total_bytes: u64,
+    pub latest_mtime: u64,
+    pub path_hash: u64,
+}
+
+fn hash_str(s: &str) -> u64 {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in s.bytes() {
+        h = (h ^ (b as u64)).wrapping_mul(0x100000001b3);
+    }
+    h
+}
+
+/// Recursively computes a directory fingerprint based on metadata and entries.
+pub fn compute_folder_fingerprint(root: &Path, depth: usize) -> FolderFingerprint {
+    if depth > 10 || !root.exists() {
+        return FolderFingerprint::default();
+    }
+    let mut fp = FolderFingerprint::default();
+    if let Ok(m) = root.metadata() {
+        if let Ok(modified) = m.modified() {
+            if let Ok(dur) = modified.duration_since(UNIX_EPOCH) {
+                fp.latest_mtime = dur.as_secs();
+            }
+        }
+    }
+    let entries = match fs::read_dir(root) {
+        Ok(e) => e,
+        Err(_) => return fp,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_file() {
+            if let Ok(m) = entry.metadata() {
+                fp.file_count += 1;
+                fp.total_bytes += m.len();
+                if let Ok(mod_time) = m.modified() {
+                    if let Ok(dur) = mod_time.duration_since(UNIX_EPOCH) {
+                        fp.latest_mtime = fp.latest_mtime.max(dur.as_secs());
+                    }
+                }
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    fp.path_hash = fp.path_hash.wrapping_add(hash_str(name));
+                }
+            }
+        } else if path.is_dir() {
+            let sub_fp = compute_folder_fingerprint(&path, depth + 1);
+            fp.file_count += sub_fp.file_count;
+            fp.total_bytes += sub_fp.total_bytes;
+            fp.latest_mtime = fp.latest_mtime.max(sub_fp.latest_mtime);
+            fp.path_hash = fp.path_hash.wrapping_add(sub_fp.path_hash);
+        }
+    }
+    fp
+}
+
+#[derive(Clone)]
 pub struct LocalMediaEngine {
     dir: Option<PathBuf>,
-    libraries: Mutex<Vec<LocalLibrary>>,
-    catalogue: Mutex<LocalMediaCatalogue>,
+    libraries: Arc<Mutex<Vec<LocalLibrary>>>,
+    catalogue: Arc<Mutex<LocalMediaCatalogue>>,
+    fingerprints: Arc<Mutex<HashMap<String, FolderFingerprint>>>,
 }
 
 impl LocalMediaEngine {
@@ -182,8 +245,9 @@ impl LocalMediaEngine {
         let dir = app_data_dir.map(|p| p.join("sources"));
         let mut engine = Self {
             dir,
-            libraries: Mutex::new(Vec::new()),
-            catalogue: Mutex::new(LocalMediaCatalogue::default()),
+            libraries: Arc::new(Mutex::new(Vec::new())),
+            catalogue: Arc::new(Mutex::new(LocalMediaCatalogue::default())),
+            fingerprints: Arc::new(Mutex::new(HashMap::new())),
         };
         engine.load();
         engine
@@ -303,6 +367,11 @@ impl LocalMediaEngine {
         }
         self.save_catalogue()?;
 
+        self.fingerprints
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .remove(library_id);
+
         Ok(true)
     }
 
@@ -384,6 +453,20 @@ impl LocalMediaEngine {
         self.save_libraries()?;
         self.save_catalogue()?;
 
+        // Compute and record the combined folder fingerprint for change detection
+        let mut combined_fp = FolderFingerprint::default();
+        for folder in &lib.folders {
+            let fp = compute_folder_fingerprint(Path::new(folder), 0);
+            combined_fp.file_count += fp.file_count;
+            combined_fp.total_bytes += fp.total_bytes;
+            combined_fp.latest_mtime = combined_fp.latest_mtime.max(fp.latest_mtime);
+            combined_fp.path_hash = combined_fp.path_hash.wrapping_add(fp.path_hash);
+        }
+        self.fingerprints
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .insert(library_id.to_string(), combined_fp);
+
         let elapsed = start_time.elapsed().unwrap_or_default().as_millis() as u64;
 
         Ok(LocalScanResult {
@@ -393,6 +476,39 @@ impl LocalMediaEngine {
             errors,
             duration_ms: elapsed,
         })
+    }
+
+    /// Checks watched library folders for additions, deletions or modifications.
+    /// Automatically re-indexes modified libraries and returns scan summaries.
+    pub fn check_watched_folders(&self) -> Vec<LocalScanResult> {
+        let libs = self.get_libraries();
+        let mut results = Vec::new();
+        for lib in libs {
+            if !lib.auto_scan {
+                continue;
+            }
+            let mut combined_fp = FolderFingerprint::default();
+            for folder in &lib.folders {
+                let fp = compute_folder_fingerprint(Path::new(folder), 0);
+                combined_fp.file_count += fp.file_count;
+                combined_fp.total_bytes += fp.total_bytes;
+                combined_fp.latest_mtime = combined_fp.latest_mtime.max(fp.latest_mtime);
+                combined_fp.path_hash = combined_fp.path_hash.wrapping_add(fp.path_hash);
+            }
+            let changed = {
+                let fps = self.fingerprints.lock().unwrap_or_else(|p| p.into_inner());
+                match fps.get(&lib.id) {
+                    Some(prev) => prev != &combined_fp,
+                    None => true,
+                }
+            };
+            if changed {
+                if let Ok(scan_res) = self.scan_library(&lib.id) {
+                    results.push(scan_res);
+                }
+            }
+        }
+        results
     }
 
     fn scan_movies_folder(
@@ -1536,5 +1652,63 @@ mod tests {
 
             let _ = fs::remove_dir_all(&temp_dir);
         });
+    }
+
+    #[test]
+    fn check_watched_folders_detects_additions_and_deletions_in_real_time() {
+        let temp_dir = std::env::temp_dir().join(format!("kinora_test_watch_{}", now_secs()));
+        let media_folder = temp_dir.join("WatchedMovies");
+        fs::create_dir_all(&media_folder).unwrap();
+
+        let engine = LocalMediaEngine::new(Some(temp_dir.clone()));
+        let lib = LocalLibrary {
+            id: "lib_watch_test".into(),
+            name: "Watched Library".into(),
+            media_type: LocalMediaType::Movies,
+            folders: vec![media_folder.to_string_lossy().to_string()],
+            last_scanned_at: None,
+            auto_scan: true,
+            scan_interval_hours: 1,
+        };
+        engine.save_library(lib).unwrap();
+
+        // 1. Initial empty check
+        let initial_changes = engine.check_watched_folders();
+        assert_eq!(initial_changes.len(), 1);
+        assert_eq!(initial_changes[0].items_indexed, 0);
+
+        // 2. Unchanged check: no rescans
+        let no_changes = engine.check_watched_folders();
+        assert_eq!(no_changes.len(), 0);
+
+        // 3. Add movie1: detected and indexed automatically
+        let movie1 = media_folder.join("Film.One.2023.1080p.mkv");
+        fs::write(&movie1, b"MOCK_MOVIE_1_DATA").unwrap();
+
+        let change_add = engine.check_watched_folders();
+        assert_eq!(change_add.len(), 1);
+        assert_eq!(change_add[0].items_indexed, 1);
+        assert_eq!(engine.get_catalogue().movies.len(), 1);
+
+        // 4. Add movie2: detected and indexed automatically
+        let movie2 = media_folder.join("Film.Two.2024.2160p.mkv");
+        fs::write(&movie2, b"MOCK_MOVIE_2_DATA").unwrap();
+
+        let change_add2 = engine.check_watched_folders();
+        assert_eq!(change_add2.len(), 1);
+        assert_eq!(change_add2[0].items_indexed, 2);
+        assert_eq!(engine.get_catalogue().movies.len(), 2);
+
+        // 5. Delete movie1: detected and catalogue updated automatically
+        fs::remove_file(&movie1).unwrap();
+
+        let change_del = engine.check_watched_folders();
+        assert_eq!(change_del.len(), 1);
+        assert_eq!(change_del[0].items_indexed, 1);
+        let cat = engine.get_catalogue();
+        assert_eq!(cat.movies.len(), 1);
+        assert_eq!(cat.movies[0].title, "Film Two");
+
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 }

@@ -12,6 +12,7 @@ import { BackgroundTaskTrigger } from './BackgroundTaskCenter'
 import { CastModal } from './CastModal'
 import { useCasting } from '../lib/casting/manager'
 import { VirtualKeyboard } from './VirtualKeyboard'
+import { QuickSearchModal } from './QuickSearchModal'
 import './PageHeader.css'
 
 export const NavMenuContext = createContext<() => void>(() => undefined)
@@ -390,7 +391,7 @@ interface SearchSuggestion {
   badge: string
 }
 
-function HeaderSearch({ placeholder }: { placeholder: string }) {
+function HeaderSearch({ placeholder, onOpenQuickSearch }: { placeholder: string; onOpenQuickSearch?: () => void }) {
   const navigate = useNavigate()
   const store = useStore()
   const now = useNow()
@@ -561,7 +562,15 @@ function HeaderSearch({ placeholder }: { placeholder: string }) {
             <Icon name="close" size={14} />
           </button>
         ) : (
-          <kbd className="search-pill-kbd">/</kbd>
+          <button
+            type="button"
+            className="search-pill-kbd"
+            onClick={onOpenQuickSearch}
+            title="Open Quick Search Modal"
+            aria-label="Open Quick Search Modal"
+          >
+            /
+          </button>
         )}
       </form>
 
@@ -636,6 +645,7 @@ export function PageHeader({
   const { prefs, setPref } = useStore()
   const openNav = useContext(NavMenuContext)
   const [castOpen, setCastOpen] = useState(false)
+  const [quickSearchOpen, setQuickSearchOpen] = useState(false)
   const { isConnected, session } = useCasting()
 
   const openPalette = () => {
@@ -645,6 +655,19 @@ export function PageHeader({
   const openShortcuts = () => {
     window.dispatchEvent(new CustomEvent('kinora:shortcuts'))
   }
+
+  useEffect(() => {
+    const handleGlobalKey = (e: globalThis.KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      const isInput = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      if (!isInput && e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault()
+        setQuickSearchOpen(true)
+      }
+    }
+    window.addEventListener('keydown', handleGlobalKey)
+    return () => window.removeEventListener('keydown', handleGlobalKey)
+  }, [])
 
   return (
     <header className={`page-header${overlay ? ' is-overlay' : ''}`}>
@@ -677,7 +700,7 @@ export function PageHeader({
       </div>
 
       <div className="page-header-right">
-        {search && <HeaderSearch placeholder={searchPlaceholder} />}
+        {search && <HeaderSearch placeholder={searchPlaceholder} onOpenQuickSearch={() => setQuickSearchOpen(true)} />}
         {actions}
         <BackgroundTaskTrigger />
         <NotificationsAndReminders />
@@ -726,6 +749,7 @@ export function PageHeader({
         <time className="header-clock tnum" dateTime={new Date(now).toISOString()}>{clock(now, prefs.timeFormat)}</time>
       </div>
       <CastModal open={castOpen} onClose={() => setCastOpen(false)} />
+      <QuickSearchModal open={quickSearchOpen} onClose={() => setQuickSearchOpen(false)} />
     </header>
   )
 }

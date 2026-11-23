@@ -2527,6 +2527,17 @@ export async function scanLocalLibrary(libraryId: string): Promise<LocalScanResu
   return await invoke<LocalScanResult>('scan_local_library', { libraryId })
 }
 
+export async function checkLocalMediaChanges(): Promise<LocalScanResult[]> {
+  if (!isTauri()) {
+    return []
+  }
+  try {
+    return await invoke<LocalScanResult[]>('check_local_media_changes')
+  } catch {
+    return []
+  }
+}
+
 export async function getLocalMediaCatalogue(): Promise<LocalMediaCatalogue> {
   if (!isTauri()) {
     return {
@@ -2888,6 +2899,32 @@ export interface RemoteLibrarySummary {
   watchProgress: RemoteWatchProgressItem[]
 }
 
+export interface RemoteEpgProgramme {
+  channelId: string
+  title: string
+  subtitle?: string | null
+  description?: string | null
+  start: number
+  stop: number
+  category?: string | null
+  episode?: string | null
+}
+
+export interface RemoteMediaItem {
+  id: string
+  kind: 'movie' | 'series' | 'local' | string
+  title: string
+  year?: number | null
+  overview?: string | null
+  genres: string[]
+  rating?: number | null
+  durationSecs?: number | null
+  artworkKey?: string | null
+  backdropKey?: string | null
+  sourceId?: string | null
+  streamUrl?: string | null
+}
+
 export async function updateRemoteSources(sources: RemoteSourceSummary[]): Promise<boolean> {
   if (!isTauri()) return true
   try {
@@ -2901,6 +2938,24 @@ export async function updateRemoteLibrary(library: RemoteLibrarySummary): Promis
   if (!isTauri()) return true
   try {
     return await invoke<boolean>('update_remote_library', { library })
+  } catch {
+    return false
+  }
+}
+
+export async function updateRemoteEpg(programmes: RemoteEpgProgramme[]): Promise<boolean> {
+  if (!isTauri()) return true
+  try {
+    return await invoke<boolean>('update_remote_epg', { programmes })
+  } catch {
+    return false
+  }
+}
+
+export async function updateRemoteMedia(media: RemoteMediaItem[]): Promise<boolean> {
+  if (!isTauri()) return true
+  try {
+    return await invoke<boolean>('update_remote_media', { media })
   } catch {
     return false
   }
@@ -2947,22 +3002,48 @@ export interface DlnaDevice {
   renderingControlUrl?: string | null
 }
 
-/** Opens a proxied stream on a paired LAN Kinora Server through the native kstream bridge. */
+/** Opens a proxied channel or media stream on a paired LAN Kinora Server through the native kstream bridge. */
 export async function openClientServerStream(
   serverUrl: string,
   authToken: string,
-  channelId: string
+  target: string | { channelId?: string; mediaId?: string }
 ): Promise<OpenedStream | null> {
   if (!isTauri()) return null
+  const channelId = typeof target === 'string' ? target : target.channelId ?? null
+  const mediaId = typeof target === 'string' ? null : target.mediaId ?? null
   const raw = await invoke<{ url: string; session: number; format: 'hls' | 'dash' | 'direct' }>(
     'open_client_server_stream',
-    { serverUrl, authToken, channelId }
+    { serverUrl, authToken, channelId, mediaId }
   )
   if (!raw || typeof raw.url !== 'string' || typeof raw.session !== 'number') return null
   return {
     url: raw.url,
     session: raw.session,
     format: raw.format === 'direct' ? 'direct' : raw.format === 'dash' ? 'dash' : 'hls',
+  }
+}
+
+/** Fetches a cached raster artwork asset from a paired LAN Kinora Server as a safe data URL. */
+export async function fetchClientServerArtwork(
+  serverUrl: string,
+  authToken: string,
+  artworkKey: string
+): Promise<string | null> {
+  if (!isTauri()) return null
+  try {
+    const raw = await invoke<{ mimeType: string; bytes: number[] } | null>(
+      'fetch_client_server_artwork',
+      { serverUrl, authToken, artworkKey }
+    )
+    if (!raw || !raw.mimeType || !Array.isArray(raw.bytes) || raw.bytes.length === 0) return null
+    let binary = ''
+    const chunk = 0x8000
+    for (let i = 0; i < raw.bytes.length; i += chunk) {
+      binary += String.fromCharCode(...raw.bytes.slice(i, i + chunk))
+    }
+    return `data:${raw.mimeType};base64,${btoa(binary)}`
+  } catch {
+    return null
   }
 }
 
