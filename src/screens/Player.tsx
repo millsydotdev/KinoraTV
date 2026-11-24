@@ -1345,6 +1345,24 @@ export function Player() {
             </p>
           )}
         </div>
+        {sleepTimerRemaining !== null && sleepTimerRemaining > 0 && (
+          <button
+            type="button"
+            className="player-sleep-hud-badge"
+            onClick={() => {
+              setSleepTimerMinutes(null)
+              setSleepTimerRemaining(null)
+              setSleepTimerMode(null)
+              toast('Sleep timer turned off')
+            }}
+            title={`Sleep timer: stopping playback in ${Math.ceil(sleepTimerRemaining / 60)} minutes. Click to cancel.`}
+            aria-label={`Sleep timer: stopping playback in ${Math.ceil(sleepTimerRemaining / 60)} minutes. Click to cancel.`}
+            data-testid="player-sleep-timer-badge"
+          >
+            <Icon name="moon" size={13} />
+            <span className="tnum">{Math.ceil(sleepTimerRemaining / 60)}m</span>
+          </button>
+        )}
         {channelItem && (
           <button
             type="button"
@@ -2130,7 +2148,7 @@ export function Player() {
                       End of show ({programme.title})
                     </MenuOption>
                   )}
-                  {[15, 30, 45, 60].map((m) => (
+                  {[15, 30, 45, 60, 90, 120].map((m) => (
                     <MenuOption
                       key={m}
                       selected={sleepTimerMode === 'minutes' && sleepTimerMinutes === m}
@@ -2379,6 +2397,8 @@ export function Player() {
                 <dd>{playback.tracks.subtitles.length > 0 ? `${playback.tracks.subtitles.length} available` : 'None detected'}</dd>
                 <dt>Volume</dt>
                 <dd>{hasRealStream ? `${Math.round(playback.volume * 100)}%` : `${volume}%`}</dd>
+                <dt>Sleep Timer</dt>
+                <dd>{sleepTimerRemaining !== null && sleepTimerRemaining > 0 ? `${Math.ceil(sleepTimerRemaining / 60)} min remaining` : 'Disabled'}</dd>
               </dl>
             </CollapsibleSection>
 
