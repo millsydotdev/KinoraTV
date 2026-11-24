@@ -164,6 +164,57 @@ export function Sources() {
                 {store.playlists.length} {store.playlists.length === 1 ? 'playlist' : 'playlists'} · {store.totalPlaylistEntries} playlist entries · {store.channels.length} unique {store.channels.length === 1 ? 'channel' : 'channels'} · {store.guides.length} XMLTV {store.guides.length === 1 ? 'guide' : 'guides'}
               </p>
             )}
+            <div className="sources-refresh-bar" role="region" aria-label="Sources refresh controls">
+              <div className="sources-refresh-status">
+                <span className="faint">
+                  Last updated: {store.lastRefreshedAt ? relative(store.lastRefreshedAt, now) : 'Never'}
+                </span>
+                <span className="faint">·</span>
+                <span className="faint">
+                  {store.prefs.refreshSchedule === 'manual'
+                    ? 'Next: Manual'
+                    : store.nextRefreshScheduledAt
+                    ? `Next: ${store.nextRefreshScheduledAt <= now ? 'Due now' : relative(store.nextRefreshScheduledAt, now)}`
+                    : 'Next: Not scheduled'}
+                </span>
+              </div>
+              <div className="sources-refresh-actions">
+                <label className="sources-schedule-label">
+                  <span className="faint">Schedule:</span>
+                  <select
+                    className="select select-small sources-schedule-select"
+                    value={store.prefs.refreshSchedule}
+                    onChange={(e) => store.setPref('refreshSchedule', e.target.value as any)}
+                    aria-label="Refresh Schedule"
+                  >
+                    <option value="4h">Every 4 hours</option>
+                    <option value="8h">Every 8 hours</option>
+                    <option value="12h">Every 12 hours</option>
+                    <option value="24h">Every 24 hours</option>
+                    <option value="manual">Manual only</option>
+                  </select>
+                </label>
+                {store.isRefreshingAll ? (
+                  <button
+                    type="button"
+                    className="btn btn-danger btn-small sources-cancel-refresh-btn"
+                    onClick={store.cancelRefreshAll}
+                  >
+                    <Icon name="close" size={14} />
+                    <span>Cancel</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-small sources-refresh-all-btn"
+                    onClick={() => void store.refreshAllSources()}
+                  >
+                    <Icon name="refresh" size={14} />
+                    <span>Refresh all</span>
+                  </button>
+                )}
+              </div>
+            </div>
             <ul className="source-list">
             {store.playlists.map((s) => <PlaylistRow key={s.id} source={s} now={now} onOpen={() => setDetailId(s.id)} highlighted={highlightId === s.id} />)}
             {store.guides.map((g) => <GuideRow key={g.id} guide={g} now={now} onOpen={() => setDetailId(g.id)} />)}

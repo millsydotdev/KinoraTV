@@ -111,6 +111,16 @@ export interface Prefs {
   customUserAgent: string
   /** Optional custom HTTP Referrer override for stream playback. Empty string means none. */
   customReferrer: string
+  /** Background scheduled refresh interval for remote playlists and guides (Finding 18). */
+  refreshSchedule: '4h' | '8h' | '12h' | '24h' | 'manual'
+}
+
+export const SCHEDULE_MS: Record<'4h' | '8h' | '12h' | '24h' | 'manual', number | null> = {
+  '4h': 4 * 3600 * 1000,
+  '8h': 8 * 3600 * 1000,
+  '12h': 12 * 3600 * 1000,
+  '24h': 24 * 3600 * 1000,
+  manual: null,
 }
 
 /** Source-checking settings removed in D3.1: nothing used them. Stripped from saved prefs so they stop being stored. */
@@ -129,7 +139,7 @@ export const defaultPrefs: Prefs = {
   subtitles: false, subtitleLanguage: 'English', subtitleSize: 'medium', subtitleStyle: 'shadow',
   timeFormat: '24h', guideZoom: 3, guideArt: true, guideStart: 'now', demoMode: false, sidebarCollapsed: false, homeHubCollapsed: false,
   layoutMode: 'standard', viewMode: 'desktop', showArtworkBackgrounds: true, animatedTransitions: true, showMediaRatings: true, themeMode: 'dark',
-  customUserAgent: '', customReferrer: '',
+  customUserAgent: '', customReferrer: '', refreshSchedule: '12h',
 }
 
 export const emptyLibrary: Library = {
@@ -220,6 +230,7 @@ export function sanitizePrefs(stored: Prefs & RemovedPrefs): Prefs {
     animatedTransitions: p.animatedTransitions !== false,
     showMediaRatings: p.showMediaRatings !== false,
     themeMode: pick('themeMode', ['dark', 'midnight', 'dim', 'slate', 'oled', 'light', 'system']),
+    refreshSchedule: pick('refreshSchedule', ['4h', '8h', '12h', '24h', 'manual']),
   }
 }
 
@@ -1139,6 +1150,131 @@ function useStoreValue(
     }
   }, [findChannel])
 
+  // Scheduled source & guide refresh with backoff (Finding 18).
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<number | null>(() => {
+    try {
+      const saved = localStorage.getItem('kinora.refresh.last_at.v1')
+      return saved ? Number(saved) : null
+    } catch {
+      return null
+    }
+  })
+  const [nextRefreshScheduledAt, setNextRefreshScheduledAt] = useState<number | null>(null)
+  const [isRefreshingAll, setIsRefreshingAll] = useState(false)
+  const [backoffAttempt, setBackoffAttempt] = useState(0)
+  const refreshTimerRef = useRef<number>(0)
+  const isRefreshingRef = useRef(false)
+  const cancelRefreshRef = useRef(false)
+
+  const cancelRefreshAll = useCallback(() => {
+    if (refreshTimerRef.current) {
+      window.clearTimeout(refreshTimerRef.current)
+      refreshTimerRef.current = 0
+    }
+    cancelRefreshRef.current = true
+    lastOp.current++
+    setPlaylists((l) => l.map((s) => s.status === 'importing' ? { ...s, status: s.lastSuccess ? 'parsed' : 'failed', op: lastOp.current, error: 'Refresh cancelled' } : s))
+    setGuides((l) => l.map((g) => g.status === 'importing' ? { ...g, status: g.lastSuccess ? 'ready' : 'failed', op: lastOp.current, error: 'Refresh cancelled' } : g))
+    setIsRefreshingAll(false)
+    isRefreshingRef.current = false
+  }, [])
+
+  const refreshAllSources = useCallback(async () => {
+    if (isRefreshingRef.current) return
+    isRefreshingRef.current = true
+    cancelRefreshRef.current = false
+    setIsRefreshingAll(true)
+
+    let anyErrors = false
+    try {
+      for (const p of playlists) {
+        if (cancelRefreshRef.current) break
+        if (p.origin === 'url' && p.url) {
+          try {
+            await playlistActions.refreshPlaylist(p)
+          } catch {
+            anyErrors = true
+          }
+        }
+      }
+
+      for (const g of guides) {
+        if (cancelRefreshRef.current) break
+        if (g.origin === 'url' && g.url) {
+          try {
+            await guideActions.refreshGuide(g)
+          } catch {
+            anyErrors = true
+          }
+        }
+      }
+
+      for (const x of xtreamSources) {
+        if (cancelRefreshRef.current) break
+        if (x.connected) {
+          try {
+            await xtreamActions.refreshXtreamSource(x.id)
+          } catch {
+            anyErrors = true
+          }
+        }
+      }
+
+      if (!cancelRefreshRef.current) {
+        const now = Date.now()
+        setLastRefreshedAt(now)
+        try {
+          localStorage.setItem('kinora.refresh.last_at.v1', String(now))
+        } catch {}
+
+        if (anyErrors) {
+          setBackoffAttempt((prev) => prev + 1)
+        } else {
+          setBackoffAttempt(0)
+        }
+      }
+    } finally {
+      isRefreshingRef.current = false
+      setIsRefreshingAll(false)
+    }
+  }, [playlists, guides, xtreamSources, playlistActions, guideActions, xtreamActions])
+
+  useEffect(() => {
+    if (refreshTimerRef.current) {
+      window.clearTimeout(refreshTimerRef.current)
+      refreshTimerRef.current = 0
+    }
+
+    const intervalMs = SCHEDULE_MS[prefs.refreshSchedule]
+    if (intervalMs === null) {
+      setNextRefreshScheduledAt(null)
+      return
+    }
+
+    const now = Date.now()
+    let delayMs: number
+
+    if (backoffAttempt > 0) {
+      delayMs = Math.min(3600 * 1000, 5 * 60 * 1000 * Math.pow(2, backoffAttempt - 1))
+    } else {
+      const targetTime = (lastRefreshedAt ?? 0) + intervalMs
+      delayMs = Math.max(5000, targetTime - now)
+    }
+
+    setNextRefreshScheduledAt(now + delayMs)
+
+    refreshTimerRef.current = window.setTimeout(() => {
+      void refreshAllSources()
+    }, delayMs)
+
+    return () => {
+      if (refreshTimerRef.current) {
+        window.clearTimeout(refreshTimerRef.current)
+        refreshTimerRef.current = 0
+      }
+    }
+  }, [prefs.refreshSchedule, lastRefreshedAt, backoffAttempt, refreshAllSources])
+
   const keepHistory = prefs.keepHistory
   const setPref = useCallback(<K extends keyof Prefs>(key: K, value: Prefs[K]) => setPrefs((p) => ({ ...p, [key]: value })), [setPrefs])
 
@@ -1364,6 +1500,11 @@ function useStoreValue(
     recordStreamFailure,
     clearStreamFailure,
     getStreamFailure,
+    lastRefreshedAt,
+    nextRefreshScheduledAt,
+    isRefreshingAll,
+    refreshAllSources,
+    cancelRefreshAll,
   }
 }
 

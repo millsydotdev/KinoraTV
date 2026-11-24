@@ -1,10 +1,17 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { MediaResource } from '../data/personalLibrary'
 import { Dialog } from './Dialog'
 import { Icon } from './Icon'
 import { Art } from './ui'
 import { useToast } from './Toast'
 import { useStore } from '../state/store'
+import { fetchPodcastFeed, type PodcastEpisode as RealPodcastEpisode } from '../lib/podcast'
+import {
+  getPodcastEpisodes,
+  savePodcastSubscription,
+  isPodcastSubscribed,
+  removePodcastSubscription,
+} from '../state/podcastSubscriptions'
 import './PodcastFeedModal.css'
 
 export interface PodcastFeedModalProps {
@@ -13,7 +20,7 @@ export interface PodcastFeedModalProps {
   podcast: MediaResource
 }
 
-interface PodcastEpisode {
+interface DisplayEpisode {
   id: string
   number: number
   title: string
@@ -23,7 +30,7 @@ interface PodcastEpisode {
   audioUrl: string
 }
 
-function generateEpisodesForPodcast(podcast: MediaResource): PodcastEpisode[] {
+function generateEpisodesForPodcast(podcast: MediaResource): DisplayEpisode[] {
   const topics = [
     { title: 'Origins and Ancient Crossings', desc: 'An investigative exploration into the earliest documented voyages and trade routes across the Mediterranean and Atlantic horizons.' },
     { title: 'The Velocity of Ideas: Printing and Propagation', desc: 'How movable type, underground presses, and independent pamphlets ignited philosophical revolutions across Europe.' },
@@ -50,8 +57,63 @@ export function PodcastFeedModal({ isOpen, onClose, podcast }: PodcastFeedModalP
   const toast = useToast()
   const [searchQuery, setSearchQuery] = useState('')
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest')
+  const [realEpisodes, setRealEpisodes] = useState<DisplayEpisode[]>([])
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [isSubscribed, setIsSubscribed] = useState(() => isPodcastSubscribed(podcast.id) || isPodcastSubscribed(podcast.url))
 
-  const episodes = useMemo(() => generateEpisodesForPodcast(podcast), [podcast])
+  useEffect(() => {
+    if (!isOpen) return
+
+    // 1. Check local cache
+    const cached = getPodcastEpisodes(podcast.id)
+    if (cached.length > 0) {
+      setRealEpisodes(
+        cached.map((ep, idx) => ({
+          id: ep.id,
+          number: ep.episodeNumber || idx + 1,
+          title: ep.title,
+          description: ep.description,
+          duration: ep.duration,
+          publishedDate: ep.publishedDate || 'Recently published',
+          audioUrl: ep.audioUrl,
+        })),
+      )
+    }
+
+    // 2. If it is an active HTTP(S) URL, fetch latest
+    if (podcast.url.startsWith('http://') || podcast.url.startsWith('https://')) {
+      setIsRefreshing(true)
+      fetchPodcastFeed(podcast.url)
+        .then((result) => {
+          if (result.episodes.length > 0) {
+            const mapped = result.episodes.map((ep, idx) => ({
+              id: ep.id,
+              number: ep.episodeNumber || idx + 1,
+              title: ep.title,
+              description: ep.description,
+              duration: ep.duration,
+              publishedDate: ep.publishedDate || 'Recently published',
+              audioUrl: ep.audioUrl,
+            }))
+            setRealEpisodes(mapped)
+            if (isSubscribed) {
+              savePodcastSubscription(result.podcast, result.episodes)
+            }
+          }
+        })
+        .catch(() => {
+          // Graceful fallback to cached or generated demonstration episodes
+        })
+        .finally(() => {
+          setIsRefreshing(false)
+        })
+    }
+  }, [isOpen, podcast, isSubscribed])
+
+  const episodes = useMemo(() => {
+    if (realEpisodes.length > 0) return realEpisodes
+    return generateEpisodesForPodcast(podcast)
+  }, [realEpisodes, podcast])
 
   const filteredEpisodes = useMemo(() => {
     let list = [...episodes]
@@ -65,7 +127,69 @@ export function PodcastFeedModal({ isOpen, onClose, podcast }: PodcastFeedModalP
     return list
   }, [episodes, searchQuery, sortOrder])
 
-  const handlePlayEpisode = (ep: PodcastEpisode) => {
+  const handleToggleSubscribe = () => {
+    if (isSubscribed) {
+      removePodcastSubscription(podcast.id)
+      removePodcastSubscription(podcast.url)
+      setIsSubscribed(false)
+      toast(`Unsubscribed from ${podcast.name}`)
+    } else {
+      const feedToSave = {
+        id: podcast.id,
+        feedUrl: podcast.url,
+        title: podcast.name,
+        description: podcast.description || '',
+        author: podcast.provider,
+        artworkUrl: podcast.artworkUrl,
+        categories: ['Podcast'],
+        episodesCount: episodes.length,
+      }
+      const rawEpisodes: RealPodcastEpisode[] = episodes.map((ep) => ({
+        id: ep.id,
+        podcastId: podcast.id,
+        guid: ep.id,
+        title: ep.title,
+        description: ep.description,
+        publishedDate: ep.publishedDate,
+        duration: ep.duration,
+        audioUrl: ep.audioUrl,
+        mimeType: 'audio/mpeg',
+      }))
+      savePodcastSubscription(feedToSave, rawEpisodes)
+      setIsSubscribed(true)
+      toast(`Subscribed to ${podcast.name}`)
+    }
+  }
+
+  const handleManualRefresh = async () => {
+    if (!podcast.url.startsWith('http://') && !podcast.url.startsWith('https://')) {
+      toast('Demonstration feed refreshed.')
+      return
+    }
+
+    setIsRefreshing(true)
+    try {
+      const res = await fetchPodcastFeed(podcast.url)
+      const mapped = res.episodes.map((ep, idx) => ({
+        id: ep.id,
+        number: ep.episodeNumber || idx + 1,
+        title: ep.title,
+        description: ep.description,
+        duration: ep.duration,
+        publishedDate: ep.publishedDate || 'Recently published',
+        audioUrl: ep.audioUrl,
+      }))
+      setRealEpisodes(mapped)
+      savePodcastSubscription(res.podcast, res.episodes)
+      toast(`Feed refreshed: ${mapped.length} episodes found.`)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Feed refresh failed.')
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
+
+  const handlePlayEpisode = (ep: DisplayEpisode) => {
     store.mediaLibrary.playAudio({
       id: ep.id,
       name: ep.title,
@@ -78,7 +202,7 @@ export function PodcastFeedModal({ isOpen, onClose, podcast }: PodcastFeedModalP
     toast(`Playing: ${ep.title}`)
   }
 
-  const handleQueueEpisode = (ep: PodcastEpisode) => {
+  const handleQueueEpisode = (ep: DisplayEpisode) => {
     store.mediaLibrary.addToQueue({
       id: ep.id,
       name: ep.title,
@@ -133,6 +257,26 @@ export function PodcastFeedModal({ isOpen, onClose, podcast }: PodcastFeedModalP
                 title="Copy podcast feed URL"
               >
                 Copy Feed Address
+              </button>
+            </div>
+
+            <div className="podcast-feed-header-actions" style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+              <button
+                type="button"
+                className={`btn btn-sm ${isSubscribed ? 'btn-secondary' : 'btn-primary'}`}
+                onClick={handleToggleSubscribe}
+              >
+                <Icon name={isSubscribed ? 'check' : 'plus'} size={14} />
+                <span>{isSubscribed ? 'Subscribed' : 'Subscribe'}</span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={handleManualRefresh}
+                disabled={isRefreshing}
+              >
+                <Icon name="refresh" size={14} />
+                <span>{isRefreshing ? 'Refreshing...' : 'Refresh Feed'}</span>
               </button>
             </div>
           </div>
@@ -217,3 +361,4 @@ export function PodcastFeedModal({ isOpen, onClose, podcast }: PodcastFeedModalP
     </Dialog>
   )
 }
+

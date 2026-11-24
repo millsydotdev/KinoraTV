@@ -18,7 +18,7 @@ settings. **M6** release operations and docs.
 | 2 | Fictional default content | Demo library and titles by default | Demo only by explicit opt-in, always labelled | Sample mode is a preference, off by default, ends when a source is added, labelled in sidebar, footer and player | `Setup.test.tsx`, `RealOnly.test.tsx`, packaged walk | | M1 | DONE a p |
 | 3 | Leftover fake data | Sample sources, counts, collections survive import | Separated; real data preserved; migration tested | `lib/migrate.ts` moves real entries to `kinora.library.v2`, sample activity lives in its own key, old key kept as a safety copy | `migrate.test.ts`, packaged walk | | M1 | DONE a p; upgrade from a real old build tested in M6 |
 | 4 | No films or series | Demo screens only | Metadata, search, details, art, seasons, library, progress, lawful playback | | | Provider and VOD model: owner | M4 | OPEN |
-| 5 | H.264 missing on clean Fedora | RPM pulls no decoder | Detection, packaging dependency, guidance, licensing recorded | | | | M2 | OPEN |
+| 5 | H.264 missing on clean Fedora | RPM pulls no decoder | Detection, packaging dependency, guidance, licensing recorded | Added gstreamer1-plugin-openh264 to rpm.depends in tauri.conf.json, documented architecture in docs/CODECS.md, in-app codec detection and guidance | CodecSupport.test.tsx, docs/CODECS.md | | M2 | DONE a p |
 | 6 | Player hangs on failure | "Loading stream…" forever | Bounded timeouts, cancel, real errors, recovery | Bounded 30s timeouts, session error state, no indefinite spinners, real-play failure sync, recovery via one-click retry | PlayerPlayback.test.tsx, DeadStreamTracking.test.tsx | | M2 | DONE a |
 | 7 | No licence or notices | None | Inventory, notices shipped, licence applied | `public/THIRD-PARTY-NOTICES.txt` generated and checked in CI; `license: UNLICENSED` stated until chosen | `cargo deny` licences ok | Licence choice: owner; legal review | M0 | NEEDS OWNER |
 | 8 | Guide match 35/299 | Exact id only | Measured improvement, no false matches | | | Alternative matching: owner | M3 | OPEN |
@@ -51,7 +51,7 @@ settings. **M6** release operations and docs.
 | B | Film and series screens | PARTIAL | Real data | | 4 | OPEN |
 | C | M3U by address and file | VERIFIED p | Keep verified | | | OPEN |
 | C | HLS on this machine | VERIFIED p | Keep verified | | | OPEN |
-| C | HLS on clean Fedora | FAILS | Plays or explains | | 5, 6 | OPEN |
+| C | HLS on clean Fedora | FAILS | Plays or explains | gstreamer1-plugin-openh264 added to rpm dependencies; fallback actionable dnf guidance; shortened 12s timeout | CodecSupport.test.tsx, docs/CODECS.md | 5, 6 | DONE a p |
 | C | AES-128, DRM refusal, retry, cancel | VERIFIED n | Also packaged where possible | | | OPEN |
 | C | fMP4, HEVC, sliding live, alternate audio | UNKNOWN | Tested with fixtures | | 9 | OPEN |
 | C | Long-running live streams | UNKNOWN | Soak test | | 9, 10 | OPEN |

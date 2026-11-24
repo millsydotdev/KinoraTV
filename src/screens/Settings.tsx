@@ -1286,12 +1286,22 @@ function SystemVideo() {
     ['AAC audio', c?.aac, 'Used by almost every stream.'],
     ['HEVC video', c?.hevc, 'Used by some 4K streams.'],
     ['AV1 video', c?.av1, 'Used by a few newer streams.'],
+    ['VP9 video', c?.vp9, 'Open video format supported across web and broadcast sources.'],
+    ['MP3 audio', c?.mp3, 'Supported across radio, podcast, and audio streams.'],
   ]
   return (
     <Group title="What this system can play">
       {!c && <Row title="Video" hint="This window cannot report video support."><span className="muted">Unknown</span></Row>}
       {c && rows.map(([title, yes, hint]) => <Row key={title} title={title} hint={hint}><span className={yes ? 'muted' : 'pending-tag'}>{yes ? 'Available' : 'Not available'}</span></Row>)}
-      {c && !c.h264 && <p className="field-error" role="alert">{CODEC_HELP}</p>}
+      {c && !c.h264 && (
+        <div className="codec-warning-box" role="alert" style={{ marginTop: '12px' }}>
+          <p className="field-error" style={{ marginBottom: '8px' }}>{CODEC_HELP}</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.8125rem', color: 'var(--text-2)' }}>
+            <div><strong>Fedora:</strong> <code>sudo dnf install -y gstreamer1-plugin-openh264 gstreamer1-plugins-good</code></div>
+            <div><strong>Debian / Ubuntu:</strong> <code>sudo apt-get install -y gstreamer1.0-libav gstreamer1.0-plugins-good</code></div>
+          </div>
+        </div>
+      )}
     </Group>
   )
 }

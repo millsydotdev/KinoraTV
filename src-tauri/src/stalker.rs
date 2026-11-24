@@ -79,6 +79,28 @@ pub struct StalkerCatalogue {
     pub vod: Vec<StalkerVodItem>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct StalkerCapabilities {
+    pub supports_itv: bool,
+    pub supports_vod: bool,
+    pub supports_epg: bool,
+    pub supports_catchup: bool,
+    pub server_version: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct StalkerEpgProgramme {
+    pub id: String,
+    pub channel_id: String,
+    pub name: String,
+    pub time: String,
+    pub time_to: String,
+    pub duration: u32,
+    pub desc: Option<String>,
+}
+
 #[derive(Clone)]
 struct StalkerSession {
     portal_url: String,

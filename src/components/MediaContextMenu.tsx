@@ -76,7 +76,7 @@ export function MediaContextMenu({
 
   return (
     <>
-      {isOpen && !diagOpen ? (
+      {isOpen && !diagOpen && (
         <div
           ref={menuRef}
           className="media-context-menu"
@@ -241,7 +241,7 @@ export function MediaContextMenu({
         <span>Hide Item</span>
       </button>
     </div>
-  ) : null}
+  )}
 
   {diagOpen && (
     <ArtworkDiagnosticsModal
