@@ -17,9 +17,23 @@
  */
 
 import { getCustomArtwork, type CustomArtworkType } from '../state/customArtwork'
-import { artworkEngine, isGenericOrPromoGraphic, type ArtworkType } from '../data/artworkEngine'
+import { artworkEngine, type ArtworkType } from '../data/artworkEngine'
 import { curatedMovies, curatedSeries } from '../data/catalog'
 import { loadMetadataConfig } from '../data/metadataProviders'
+import { validateArtworkSuitability } from './artworkSuitability'
+import type { MediaKind, SourceType, ArtworkRole } from '../data/sourceCompatibility'
+
+export interface ArtworkDiagnostics {
+  mediaId?: string
+  title: string
+  role: ArtworkType
+  selectedProvider: 'custom' | 'local' | 'metadata' | 'provider' | 'bundled' | 'fallback'
+  selectedUrl: string | null
+  suitabilityScore: number
+  rejectionReason?: string
+  confidence: number
+  rationale: string
+}
 
 export interface ArtworkResolution {
   src: string | null
@@ -27,12 +41,16 @@ export interface ArtworkResolution {
   isGenuine: boolean
   aspectRatio: '2:3' | '16:9' | '1:1'
   attribution?: string
+  diagnostics?: ArtworkDiagnostics
 }
 
 export interface ResolveArtworkOptions {
   contentId?: string
   title: string
   type: ArtworkType
+  mediaKind?: MediaKind
+  sourceKind?: SourceType
+  channelId?: string
   providerArt?: string | null
   localArt?: string | null
   imdbId?: string | null
@@ -58,23 +76,37 @@ export function getExpectedAspectRatio(type: ArtworkType): '2:3' | '16:9' | '1:1
     case 'movie-poster':
     case 'series-poster':
     case 'season-artwork':
-    case 'audiobook-cover':
+    case 'book-cover':
+    case 'collection-poster':
       return '2:3'
     case 'movie-backdrop':
     case 'series-backdrop':
+    case 'cinematic-backdrop':
+    case 'collection-backdrop':
+    case 'fanart':
     case 'movie-logo':
     case 'series-logo':
+    case 'title-logo':
+    case 'clearart':
+    case 'banner':
     case 'episode-still':
     case 'epg-programme-artwork':
+    case 'programme-still':
     case 'documentary-artwork':
+    case 'genre-artwork':
       return '16:9'
     case 'channel-logo':
+    case 'channel-icon':
     case 'radio-station-artwork':
+    case 'radio-programme-artwork':
     case 'album-artwork':
+    case 'artist-image':
     case 'podcast-artwork':
+    case 'podcast-episode-artwork':
+    case 'audiobook-cover':
       return '1:1'
     default:
-      return '2:3'
+      return '16:9'
   }
 }
 
@@ -87,6 +119,12 @@ function toCustomArtworkType(t: ArtworkType): CustomArtworkType | undefined {
     case 'series-backdrop':
     case 'episode-still':
     case 'epg-programme-artwork':
+    case 'podcast-artwork':
+    case 'audiobook-cover':
+    case 'album-artwork':
+    case 'book-cover':
+    case 'title-logo':
+    case 'documentary-artwork':
       return t
     default:
       return undefined
@@ -94,7 +132,7 @@ function toCustomArtworkType(t: ArtworkType): CustomArtworkType | undefined {
 }
 
 function lookupMetadataEngine(options: ResolveArtworkOptions): ArtworkResolution | null {
-  const { contentId, title, type, year, seasonNumber, episodeNumber } = options
+  const { contentId, title, type, year, seasonNumber, episodeNumber, channelId } = options
   const aspectRatio = getExpectedAspectRatio(type)
 
   // Season artwork lookup
@@ -104,13 +142,23 @@ function lookupMetadataEngine(options: ResolveArtworkOptions): ArtworkResolution
       artworkEngine.getArtwork(`season-artwork:${contentId}:s${seasonNumber}`, 'season-artwork') ||
       artworkEngine.getArtwork(`season-artwork:series:${cleanId}:s${seasonNumber}`, 'season-artwork') ||
       artworkEngine.getArtwork(`season:${cleanId}:${seasonNumber}`, 'season-artwork')
-    if (seasonRec?.sourceUrl?.trim()) {
+    if (seasonRec?.sourceUrl?.trim() && isValidArtForRole(seasonRec.sourceUrl, type, title)) {
       return {
         src: seasonRec.sourceUrl.trim(),
         provider: seasonRec.sourceProvider === 'embedded' ? 'bundled' : 'metadata',
         isGenuine: true,
         aspectRatio,
         attribution: seasonRec.attribution,
+        diagnostics: {
+          mediaId: contentId,
+          title,
+          role: type,
+          selectedProvider: seasonRec.sourceProvider === 'embedded' ? 'bundled' : 'metadata',
+          selectedUrl: seasonRec.sourceUrl.trim(),
+          suitabilityScore: 0.95,
+          confidence: seasonRec.confidence,
+          rationale: `Matched season ${seasonNumber} artwork in central registry`,
+        },
       }
     }
   }
@@ -120,13 +168,23 @@ function lookupMetadataEngine(options: ResolveArtworkOptions): ArtworkResolution
     const cleanId = contentId.replace(/^(series|episode):/, '').split('/')[0] || contentId
     const epKey = `episode:still:${cleanId}:${seasonNumber}:${episodeNumber}`
     const epStill = artworkEngine.getArtwork(epKey, 'episode-still')
-    if (epStill?.sourceUrl?.trim()) {
+    if (epStill?.sourceUrl?.trim() && isValidArtForRole(epStill.sourceUrl, type, title)) {
       return {
         src: epStill.sourceUrl.trim(),
         provider: epStill.sourceProvider === 'embedded' ? 'bundled' : 'metadata',
         isGenuine: true,
         aspectRatio,
         attribution: epStill.attribution,
+        diagnostics: {
+          mediaId: contentId,
+          title,
+          role: type,
+          selectedProvider: epStill.sourceProvider === 'embedded' ? 'bundled' : 'metadata',
+          selectedUrl: epStill.sourceUrl.trim(),
+          suitabilityScore: 0.95,
+          confidence: epStill.confidence,
+          rationale: `Matched episode S${seasonNumber}E${episodeNumber} still in central registry`,
+        },
       }
     }
   }
@@ -134,21 +192,31 @@ function lookupMetadataEngine(options: ResolveArtworkOptions): ArtworkResolution
   // Direct contentId lookup in metadata engine
   if (contentId) {
     const byId = artworkEngine.getArtwork(contentId, type)
-    if (byId?.sourceUrl?.trim() && byId.sourceProvider !== 'embedded') {
+    if (byId?.sourceUrl?.trim() && byId.sourceProvider !== 'embedded' && isValidArtForRole(byId.sourceUrl, type, title)) {
       return {
         src: byId.sourceUrl.trim(),
         provider: 'metadata',
         isGenuine: true,
         aspectRatio,
         attribution: byId.attribution || 'Verified Metadata Service',
+        diagnostics: {
+          mediaId: contentId,
+          title,
+          role: type,
+          selectedProvider: 'metadata',
+          selectedUrl: byId.sourceUrl.trim(),
+          suitabilityScore: 0.95,
+          confidence: byId.confidence,
+          rationale: `Matched exact content identifier (${contentId}) in central registry`,
+        },
       }
     }
   }
 
   // Title + year lookup in metadata engine (external enriched records only; bundled handled separately)
   if (title) {
-    const enriched = artworkEngine.findArtwork(title, type, year)
-    if (enriched?.sourceUrl?.trim()) {
+    const enriched = artworkEngine.findArtwork(title, type, year, channelId)
+    if (enriched?.sourceUrl?.trim() && isValidArtForRole(enriched.sourceUrl, type, title)) {
       const isExternal = enriched.sourceProvider === 'tmdb' || enriched.sourceProvider === 'tvmaze' || enriched.sourceProvider === 'tvdb'
       if (isExternal) {
         return {
@@ -157,6 +225,16 @@ function lookupMetadataEngine(options: ResolveArtworkOptions): ArtworkResolution
           isGenuine: true,
           aspectRatio,
           attribution: enriched.attribution || (year ? `Metadata Match (${year})` : 'Verified Metadata Service'),
+          diagnostics: {
+            mediaId: contentId,
+            title,
+            role: type,
+            selectedProvider: 'metadata',
+            selectedUrl: enriched.sourceUrl.trim(),
+            suitabilityScore: 0.95,
+            confidence: enriched.confidence,
+            rationale: `Matched title and year (${title}${year ? `, ${year}` : ''}) via ${enriched.sourceProvider.toUpperCase()}`,
+          },
         }
       }
     }
@@ -165,40 +243,8 @@ function lookupMetadataEngine(options: ResolveArtworkOptions): ArtworkResolution
   return null
 }
 
-export function isValidArtForRole(url: string | null | undefined, targetRole: ArtworkType): boolean {
-  if (!url || !url.trim()) return false
-  const trimmed = url.trim()
-
-  // Backdrops and landscape stills: never accept title logos, channel logos, or portrait covers
-  if (
-    targetRole === 'movie-backdrop' ||
-    targetRole === 'series-backdrop' ||
-    targetRole === 'episode-still' ||
-    targetRole === 'epg-programme-artwork'
-  ) {
-    if (/\/logos?\/|title[-_]logo|wordmark|clearart/i.test(trimmed)) return false
-    if (/\/cover$|poster|folder\.jpg/i.test(trimmed) && !trimmed.includes('/16-9')) return false
-    if (/\/tv-logo\/|\/channel-logo\/|channel_icon/i.test(trimmed)) return false
-    if (isGenericOrPromoGraphic(trimmed)) return false
-  }
-
-  // Posters and season art (2:3 portrait): never accept wide backdrops or channel logos
-  if (
-    targetRole === 'movie-poster' ||
-    targetRole === 'series-poster' ||
-    targetRole === 'season-artwork' ||
-    targetRole === 'audiobook-cover'
-  ) {
-    if (/\/tv-logo\/|\/channel-logo\/|channel_icon/i.test(trimmed)) return false
-    if (/\/backdrop|\/still|_backdrop|_still|\/16-9/i.test(trimmed)) return false
-  }
-
-  // Channel logos (1:1): never accept posters or backdrops
-  if (targetRole === 'channel-logo') {
-    if (/\/backdrop|\/still|\/poster|folder\.jpg/i.test(trimmed)) return false
-  }
-
-  return true
+export function isValidArtForRole(url: string | null | undefined, targetRole: ArtworkType, contentTitle?: string | null): boolean {
+  return validateArtworkSuitability(url, targetRole as ArtworkRole, undefined, contentTitle).isValid
 }
 
 /**
@@ -227,18 +273,38 @@ export function resolveArtwork(options: ResolveArtworkOptions): ArtworkResolutio
         isGenuine: true,
         aspectRatio,
         attribution: 'User Custom Artwork',
+        diagnostics: {
+          mediaId: contentId,
+          title,
+          role: type,
+          selectedProvider: 'custom',
+          selectedUrl: custom.dataUrl,
+          suitabilityScore: 1.0,
+          confidence: 1.0,
+          rationale: 'Active user-assigned custom artwork',
+        },
       }
     }
   }
 
   const localResult: ArtworkResolution | null =
-    localArt && localArt.trim() && isValidArtForRole(localArt, type)
+    localArt && localArt.trim() && isValidArtForRole(localArt, type, title)
       ? {
           src: localArt.trim(),
           provider: 'local',
           isGenuine: true,
           aspectRatio,
           attribution: 'Local Media Artwork',
+          diagnostics: {
+            mediaId: contentId,
+            title,
+            role: type,
+            selectedProvider: 'local',
+            selectedUrl: localArt.trim(),
+            suitabilityScore: 0.95,
+            confidence: 0.95,
+            rationale: 'Verified local sidecar or folder image asset',
+          },
         }
       : null
 
@@ -253,13 +319,23 @@ export function resolveArtwork(options: ResolveArtworkOptions): ArtworkResolutio
       : providerArt
 
   const providerResult: ArtworkResolution | null =
-    effectiveProviderArt && effectiveProviderArt.trim() && isValidArtForRole(effectiveProviderArt, type)
+    effectiveProviderArt && effectiveProviderArt.trim() && isValidArtForRole(effectiveProviderArt, type, title)
       ? {
           src: effectiveProviderArt.trim(),
           provider: 'provider',
           isGenuine: true,
           aspectRatio,
           attribution: 'Connected Provider Metadata',
+          diagnostics: {
+            mediaId: contentId,
+            title,
+            role: type,
+            selectedProvider: 'provider',
+            selectedUrl: effectiveProviderArt.trim(),
+            suitabilityScore: 0.9,
+            confidence: 0.9,
+            rationale: 'Supplied directly by connected provider metadata',
+          },
         }
       : null
 
@@ -292,6 +368,16 @@ export function resolveArtwork(options: ResolveArtworkOptions): ArtworkResolutio
         isGenuine: true,
         aspectRatio,
         attribution: 'Kinora Curated Artwork',
+        diagnostics: {
+          mediaId: contentId,
+          title,
+          role: type,
+          selectedProvider: 'bundled',
+          selectedUrl: bundled,
+          suitabilityScore: 1.0,
+          confidence: 1.0,
+          rationale: 'Curated Kinora original title asset',
+        },
       }
     }
   } else if (type === 'series-poster' || type === 'series-backdrop') {
@@ -303,6 +389,16 @@ export function resolveArtwork(options: ResolveArtworkOptions): ArtworkResolutio
         isGenuine: true,
         aspectRatio,
         attribution: 'Kinora Curated Artwork',
+        diagnostics: {
+          mediaId: contentId,
+          title,
+          role: type,
+          selectedProvider: 'bundled',
+          selectedUrl: bundled,
+          suitabilityScore: 1.0,
+          confidence: 1.0,
+          rationale: 'Curated Kinora original title asset',
+        },
       }
     }
   }
@@ -313,5 +409,15 @@ export function resolveArtwork(options: ResolveArtworkOptions): ArtworkResolutio
     provider: 'fallback',
     isGenuine: false,
     aspectRatio,
+    diagnostics: {
+      mediaId: contentId,
+      title,
+      role: type,
+      selectedProvider: 'fallback',
+      selectedUrl: null,
+      suitabilityScore: 0.0,
+      confidence: 0.0,
+      rationale: 'No verified or suitable candidate found; using deliberate ambient fallback',
+    },
   }
 }

@@ -166,10 +166,13 @@ export function EncryptedBackupModal({
         localLibraries: localLibs.map((lib) => ({
           id: lib.id,
           name: lib.name,
-          path: lib.path,
-          kind: lib.kind,
+          folders: lib.folders,
+          mediaType: lib.mediaType,
+          lastScannedAt: lib.lastScannedAt,
+          autoScan: lib.autoScan,
+          scanIntervalHours: lib.scanIntervalHours,
         })),
-        nativeSourcesState: nativeLoaded?.saved ?? undefined,
+        nativeSourcesState: nativeLoaded ?? undefined,
         guideMappings: store.mappings ?? [],
         savedSources: store.playlists.map((p) => ({
           id: p.id,
@@ -218,7 +221,7 @@ export function EncryptedBackupModal({
 
       const missingPaths: string[] = []
       if (Array.isArray(payload.localLibraries) && payload.localLibraries.length > 0) {
-        const paths = payload.localLibraries.map((l) => l.path)
+        const paths = payload.localLibraries.flatMap((l) => l.folders?.length ? l.folders : (l.path ? [l.path] : []))
         const existsFlags = await checkLocalPathsExist(paths)
         paths.forEach((p, idx) => {
           if (existsFlags[idx] === false) missingPaths.push(p)
@@ -295,16 +298,20 @@ export function EncryptedBackupModal({
       }
 
       if (options.restoreSources && Array.isArray(decryptedPayload.localLibraries) && decryptedPayload.localLibraries.length > 0) {
-        const paths = decryptedPayload.localLibraries.map((l) => l.path)
+        const paths = decryptedPayload.localLibraries.flatMap((l) => l.folders?.length ? l.folders : (l.path ? [l.path] : []))
         const existsFlags = await checkLocalPathsExist(paths)
         for (let i = 0; i < decryptedPayload.localLibraries.length; i++) {
           const lib = decryptedPayload.localLibraries[i]
+          const libFolders = lib?.folders?.length ? lib.folders : (lib?.path ? [lib.path] : [])
           if (lib && existsFlags[i] !== false) {
             await saveLocalLibrary({
               id: lib.id,
               name: lib.name,
-              path: lib.path,
-              kind: lib.kind as 'movies' | 'series' | 'mixed',
+              folders: libFolders,
+              mediaType: (lib.mediaType as 'movies' | 'tv') || (lib.kind === 'tv' ? 'tv' : 'movies'),
+              lastScannedAt: lib.lastScannedAt ?? null,
+              autoScan: lib.autoScan ?? true,
+              scanIntervalHours: lib.scanIntervalHours ?? 24,
             }).catch(() => {})
           }
         }

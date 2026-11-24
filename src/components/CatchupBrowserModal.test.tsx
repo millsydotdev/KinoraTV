@@ -11,11 +11,14 @@ import type { Channel, Programme } from '../data/types'
 
 describe('CatchupBrowserModal UI Component', () => {
   beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-24T15:00:00Z'))
     localStorage.clear()
     vi.restoreAllMocks()
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     document.body.innerHTML = ''
   })
 
@@ -36,21 +39,20 @@ describe('CatchupBrowserModal UI Component', () => {
     tvArchiveDuration: 7,
   }
 
-  const now = Date.now()
-  const testProgramme: Programme = {
+  const getTestProgramme = (): Programme => ({
     id: 'p-evening-news',
     channelId: 'ch-xt-bbc',
     title: 'Evening News Hour',
     desc: 'Comprehensive daily news coverage.',
     category: 'News',
     episode: null,
-    start: now - 3600000,
-    stop: now - 1800000,
-  }
+    start: Date.now() - 3600000,
+    stop: Date.now() - 1800000,
+  })
 
   const mockStore = {
     channels: [testChannel],
-    schedule: (_c: Channel, _day: number) => [testProgramme],
+    schedule: (_c: Channel, _day: number) => [getTestProgramme()],
   } as unknown as Parameters<typeof StoreContext.Provider>[0]['value']
 
   it('renders catch-up browser with day tabs and broadcasts', () => {

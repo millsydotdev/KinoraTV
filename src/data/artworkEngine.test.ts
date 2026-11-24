@@ -4,9 +4,10 @@ import {
   canonicalizeTitle,
   scoreArtworkMatch,
   isGenuineArtwork,
+  isGenericOrPromoGraphic,
   artworkEngine,
   type ArtworkRecord,
-  type ArtworkType,
+  type TrackedAuditArtworkType,
 } from './artworkEngine'
 import { DEFAULT_METADATA_CONFIG, saveMetadataConfig } from './metadataProviders'
 import * as native from '../lib/native'
@@ -78,6 +79,23 @@ describe('Content Artwork Engine - Identity Resolution & Disambiguation', () => 
     const score = scoreArtworkMatch('Dune', 2021, 'Dune: Part One', 2021)
     expect(score.status).toBe('verified')
     expect(score.confidence).toBe(0.75)
+  })
+
+  it('rejects partial matches that lack word boundaries such as NCIS matching NCISverse', () => {
+    const score = scoreArtworkMatch('NCIS', undefined, 'NCISverse: The First 1,000', 2024)
+    expect(score.status).toBe('unresolved')
+    expect(score.confidence).toBe(0.0)
+  })
+
+  it('marks subtitle/spin-off matches without matching release year as ambiguous', () => {
+    const score = scoreArtworkMatch('NCIS', undefined, 'NCIS: Sydney', 2023)
+    expect(score.status).toBe('ambiguous')
+    expect(score.confidence).toBe(0.45)
+  })
+
+  it('detects generic category graphics and promotional cards with isGenericOrPromoGraphic', () => {
+    expect(isGenericOrPromoGraphic('http://jiotv.catchup.cdn.jio.com/dare_images/shows/epgdata/fef7d9e050359f02bbc034eb3ecef417.jpg')).toBe(true)
+    expect(isGenericOrPromoGraphic('https://images.metadata.sky.com/pd-image/abc/16-9')).toBe(false)
   })
 })
 
@@ -252,7 +270,7 @@ describe('Content Artwork Engine - Asset Type Separation & Completeness Audit', 
     const audit = artworkEngine.auditCompleteness(dummyChannels, dummyProgrammes, [], [])
 
     // Must report figures for all required categories
-    const requiredCategories: ArtworkType[] = [
+    const requiredCategories: TrackedAuditArtworkType[] = [
       'movie-poster',
       'movie-backdrop',
       'series-poster',

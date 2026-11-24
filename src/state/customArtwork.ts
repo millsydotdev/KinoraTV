@@ -19,6 +19,12 @@ export type CustomArtworkType =
   | 'series-backdrop'
   | 'episode-still'
   | 'epg-programme-artwork'
+  | 'podcast-artwork'
+  | 'audiobook-cover'
+  | 'album-artwork'
+  | 'book-cover'
+  | 'title-logo'
+  | 'documentary-artwork'
 
 export type CustomArtworkAspectRatio = '2:3' | '16:9' | '1:1' | 'custom'
 
@@ -217,6 +223,8 @@ export function deleteCustomArtwork(contentId: string): boolean {
 
   return false
 }
+
+export const removeCustomArtwork = deleteCustomArtwork
 
 export function restoreAutomaticArtwork(contentId: string): boolean {
   return deleteCustomArtwork(contentId)

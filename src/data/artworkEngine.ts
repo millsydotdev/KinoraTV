@@ -29,13 +29,31 @@ export type ArtworkType =
   | 'series-logo'
   | 'season-artwork'
   | 'episode-still'
+  | 'programme-still'
+  | 'programme-logo'
   | 'epg-programme-artwork'
-  | 'radio-station-artwork'
-  | 'album-artwork'
-  | 'podcast-artwork'
-  | 'audiobook-cover'
-  | 'documentary-artwork'
+  | 'cinematic-backdrop'
+  | 'fanart'
+  | 'title-logo'
+  | 'clearart'
+  | 'banner'
+  | 'collection-poster'
+  | 'collection-backdrop'
   | 'channel-logo'
+  | 'channel-icon'
+  | 'radio-station-artwork'
+  | 'radio-programme-artwork'
+  | 'album-artwork'
+  | 'artist-image'
+  | 'podcast-artwork'
+  | 'podcast-episode-artwork'
+  | 'audiobook-cover'
+  | 'book-cover'
+  | 'documentary-artwork'
+  | 'genre-artwork'
+  | 'custom-artwork'
+  | 'embedded-artwork'
+  | 'sidecar-artwork'
 
 export type ArtworkOrientation = 'portrait' | 'landscape' | 'square'
 export type ArtworkAspectRatio = '16:9' | '2:3' | '1:1' | 'custom'
@@ -51,6 +69,9 @@ export type ArtworkProvider =
   | 'tvdb'
   | 'local'
   | 'fallback'
+  | 'user-custom'
+  | 'media-server'
+  | 'stalker'
 
 export type ArtworkVerificationStatus =
   | 'verified'
@@ -175,6 +196,23 @@ export interface EpgInventoryMetrics {
   reconciliationExplanation: string
 }
 
+export type TrackedAuditArtworkType =
+  | 'movie-poster'
+  | 'movie-backdrop'
+  | 'movie-logo'
+  | 'series-poster'
+  | 'series-backdrop'
+  | 'series-logo'
+  | 'season-artwork'
+  | 'episode-still'
+  | 'epg-programme-artwork'
+  | 'radio-station-artwork'
+  | 'album-artwork'
+  | 'podcast-artwork'
+  | 'audiobook-cover'
+  | 'documentary-artwork'
+  | 'channel-logo'
+
 export interface ArtworkCompletenessAudit {
   epgInventory: EpgInventoryMetrics
   overallCoverage: {
@@ -189,7 +227,7 @@ export interface ArtworkCompletenessAudit {
     genuinePercent: number
     averageConfidence: number
   }
-  categories: Record<ArtworkType, ArtworkCategoryMetrics>
+  categories: Record<TrackedAuditArtworkType, ArtworkCategoryMetrics>
   providerMetrics: ProviderMetrics[]
   sourceBreakdowns: SourceArtworkBreakdown[]
   missingItems: MissingArtworkDetail[]
@@ -1041,6 +1079,7 @@ class ContentArtworkEngine {
         retrievalTime: Date.now(),
         verificationStatus: 'unresolved',
         confidence: 0.2,
+        cacheKey: `promo:${landscapeUrl}`,
         failureReason: 'Generic category graphic or promotional channel card detected; not genuine programme artwork.',
       }
       this.registry.set(promoRecord.id, promoRecord)
@@ -1107,7 +1146,7 @@ class ContentArtworkEngine {
     xtreamSeries: XtreamTitle[] = [],
     totalCachedGuideRecords = 0,
   ): ArtworkCompletenessAudit {
-    const categories: Record<ArtworkType, ArtworkCategoryMetrics> = {
+    const categories: Record<TrackedAuditArtworkType, ArtworkCategoryMetrics> = {
       'movie-poster': {
         artworkType: 'movie-poster',
         label: 'Movie Posters',

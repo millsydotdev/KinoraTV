@@ -4,6 +4,18 @@
 // Built strictly on the standard Web Crypto API with zero runtime dependencies.
 // Strictly adheres to project typography standards: zero em-dashes across all code and comments.
 
+export interface BackupLocalLibrary {
+  id: string
+  name: string
+  path?: string
+  kind?: string
+  folders?: string[]
+  mediaType?: 'movies' | 'tv' | string
+  lastScannedAt?: number | null
+  autoScan?: boolean
+  scanIntervalHours?: number
+}
+
 export interface KinoraBackupPayload {
   app: 'Kinora'
   version: 2 | 3
@@ -22,7 +34,7 @@ export interface KinoraBackupPayload {
   channelOrganization?: unknown
   dvrRules?: unknown
   dvrConfig?: unknown
-  localLibraries?: { id: string; name: string; path: string; kind: string }[]
+  localLibraries?: BackupLocalLibrary[]
   checksum?: string
   deviceInfo?: {
     platform?: string

@@ -29,6 +29,9 @@ export function useArtwork(options: UseArtworkOptions): ArtworkResolution {
     contentId,
     title,
     type,
+    mediaKind,
+    sourceKind,
+    channelId,
     providerArt,
     localArt,
     localMediaId,
@@ -97,6 +100,9 @@ export function useArtwork(options: UseArtworkOptions): ArtworkResolution {
         contentId,
         title,
         type,
+        mediaKind,
+        sourceKind,
+        channelId,
         providerArt,
         localArt: effectiveLocalArt,
         imdbId,
@@ -106,7 +112,7 @@ export function useArtwork(options: UseArtworkOptions): ArtworkResolution {
       }),
     // revision triggers recomputation after enrichment or custom override changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [contentId, title, type, providerArt, effectiveLocalArt, imdbId, year, seasonNumber, episodeNumber, revision],
+    [contentId, title, type, mediaKind, sourceKind, channelId, providerArt, effectiveLocalArt, imdbId, year, seasonNumber, episodeNumber, revision],
   )
 
   // Request throttled on-demand enrichment if artwork is missing or only fallback/bundled

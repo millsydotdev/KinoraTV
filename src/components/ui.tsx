@@ -277,7 +277,12 @@ export function ProgrammeArt({
     backdropOnly && normalizedRawIcon && (/\/logos?\/|title[-_]logo|wordmark|clearart/i.test(normalizedRawIcon))
   )
 
-  const iconUrl = isChannelLogo || isTitleLogo ? null : normalizedRawIcon
+  // Refuse generic category graphics, stock news graphics, or broadcaster promotional cards
+  const isPromoOrGeneric = Boolean(
+    normalizedRawIcon && isGenericOrPromoGraphic(normalizedRawIcon, programme?.title)
+  )
+
+  const iconUrl = isChannelLogo || isTitleLogo || isPromoOrGeneric ? null : normalizedRawIcon
 
   // Check user-selected custom artwork first (Priority 1)
   const customRecord = programme?.id
@@ -285,9 +290,17 @@ export function ProgrammeArt({
     : (programme?.title ? getCustomArtwork(programme.title, 'epg-programme-artwork') : undefined)
 
   // Check if central artwork engine has resolved genuine artwork for this programme
-  const enrichedRecord = programme?.title
-    ? artworkEngine.findArtwork(programme.title, 'epg-programme-artwork')
-    : null
+  // Never match generic category titles cross-channel
+  const isGenericTitle = Boolean(
+    programme?.title &&
+      /^(news|न्यूज़|breaking news|daily news|weather|मौसम|special|स्पेशल|आस्था स्पेशल|आस्था भजन स्पेशल|teleshopping|shopping|live|off air|no information)$/i.test(
+        programme.title.trim(),
+      ),
+  )
+  const enrichedRecord =
+    programme?.title && !isGenericTitle
+      ? artworkEngine.findArtwork(programme.title, 'epg-programme-artwork', undefined, channel?.id)
+      : null
   const effectiveIconUrl = customRecord?.dataUrl || iconUrl || (enrichedRecord?.sourceUrl ? enrichedRecord.sourceUrl : null)
 
   // Only use explicit art prop or demo programme art (never silent scenic fallback)

@@ -11,7 +11,8 @@ import { useStore } from '../state/store'
 import { useToast } from './Toast'
 import { ContextMenu, type ContextMenuItem } from './design-system/ContextMenu'
 import { CollectionDialog } from './CollectionDialog'
-import { artworkEngine, type ArtworkType } from '../data/artworkEngine'
+import { ArtworkDiagnosticsModal } from './ArtworkDiagnosticsModal'
+import { artworkEngine, isGenericOrPromoGraphic, type ArtworkType } from '../data/artworkEngine'
 import { TechnicalBadge, type TechnicalFormat } from './TechnicalBadges'
 import { useArtwork } from '../lib/useArtwork'
 import { loadMetadataConfig } from '../data/metadataProviders'
@@ -22,6 +23,7 @@ export function useCardContextMenu(to: string, title: string, itemRef?: string) 
   const navigate = useNavigate()
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null)
   const [collectOpen, setCollectOpen] = useState(false)
+  const [diagOpen, setDiagOpen] = useState(false)
 
   let ref = itemRef
   if (!ref) {
@@ -146,6 +148,12 @@ export function useCardContextMenu(to: string, title: string, itemRef?: string) 
       } catch {}
     },
   })
+  items.push({
+    id: 'diagnostics',
+    label: 'Artwork Details and Diagnostics...',
+    icon: 'film',
+    run: () => setDiagOpen(true),
+  })
 
   return {
     onContextMenu,
@@ -167,6 +175,14 @@ export function useCardContextMenu(to: string, title: string, itemRef?: string) 
             onClose={() => setCollectOpen(false)}
             itemRef={ref}
             itemTitle={title}
+          />
+        )}
+        {diagOpen && (
+          <ArtworkDiagnosticsModal
+            open={diagOpen}
+            onClose={() => setDiagOpen(false)}
+            itemRef={ref}
+            title={title}
           />
         )}
       </>
@@ -689,6 +705,17 @@ export function ChannelCard({ channel, now, next, to, format, selected, at }: {
   const itemRef = channel.id ? `channel:${channel.id}` : undefined
   const { onContextMenu, menu } = useCardContextMenu(to, displayName, itemRef)
   const remainingMins = now && now.stop > at ? Math.max(1, Math.round((now.stop - at) / 60000)) : undefined
+  const isGenericTitle = Boolean(
+    now?.title &&
+      /^(news|न्यूज़|breaking news|daily news|weather|मौसम|special|स्पेशल|आस्था स्पेशल|आस्था भजन स्पेशल|teleshopping|shopping|live|off air|no information)$/i.test(
+        now.title.trim(),
+      ),
+  )
+  const isPromoIcon = Boolean(now?.icon && isGenericOrPromoGraphic(now.icon, now.title))
+  const enrichedArt = !isGenericTitle && now?.title
+    ? artworkEngine.findArtwork(now.title, 'epg-programme-artwork', undefined, channel.id)?.sourceUrl
+    : null
+  const hasValidProgrammeArt = Boolean(now?.art || (!isPromoIcon && (now?.icon || enrichedArt)))
   return (
     <>
       <Link
@@ -698,8 +725,8 @@ export function ChannelCard({ channel, now, next, to, format, selected, at }: {
         onContextMenu={onContextMenu}
       >
         <div className="card-media card-shade channel-card-media" style={{ ['--channel-tone' as string]: channel.mark.tone }}>
-          {now?.art || now?.icon || (now?.title && artworkEngine.findArtwork(now.title, 'epg-programme-artwork')?.sourceUrl) ? (
-            <ProgrammeArt programme={now} channel={channel} alt={now.title} backdropOnly className="channel-card-art" />
+          {hasValidProgrammeArt ? (
+            <ProgrammeArt programme={now} channel={channel} alt={now?.title || ''} backdropOnly className="channel-card-art" />
           ) : (
             <div className="channel-card-ambient">
               <div className="channel-card-ambient-logo">

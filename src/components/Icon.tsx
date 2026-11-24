@@ -240,6 +240,10 @@ const tablerIcons = {
   mobile: IconDeviceMobile,
   remote: IconDeviceRemote,
   wifi: IconWifi,
+  server: IconServer,
+  stream: IconBroadcast,
+  browse: IconLayoutList,
+  read: IconBook,
 } as const satisfies Record<string, TablerComponent>
 
 export type IconName = keyof typeof tablerIcons

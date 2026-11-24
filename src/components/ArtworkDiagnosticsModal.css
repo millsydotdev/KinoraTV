@@ -1,0 +1,228 @@
+/* ArtworkDiagnosticsModal.css
+ * Styling for the Artwork Diagnostics and Customization Modal.
+ * Strictly adheres to the zero em-dash typography standard.
+ */
+
+.art-diag-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 680px;
+}
+
+.art-diag-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  padding-bottom: 12px;
+}
+
+.art-diag-title {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--text-primary, #ffffff);
+  margin: 0;
+  flex: 1;
+}
+
+.art-diag-kind-badge,
+.art-diag-role-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+}
+
+.art-diag-kind-badge {
+  background: var(--bg-surface-elevated, rgba(255, 255, 255, 0.12));
+  color: var(--text-secondary, #cccccc);
+}
+
+.art-diag-role-badge {
+  background: color-mix(in oklab, var(--accent, #e50914) 20%, transparent);
+  color: var(--accent, #ff4d4d);
+  border: 1px solid color-mix(in oklab, var(--accent, #e50914) 30%, transparent);
+}
+
+.art-diag-active-section {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 16px;
+  background: var(--bg-surface, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.art-diag-preview-wrap {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: 6px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.art-diag-preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.art-diag-missing-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-muted, #888888);
+  font-size: 0.8rem;
+  text-align: center;
+  padding: 12px;
+}
+
+.art-diag-meta-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: center;
+}
+
+.art-diag-meta-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 0.82rem;
+}
+
+.art-diag-label {
+  color: var(--text-muted, #888888);
+  font-weight: 500;
+  min-width: 120px;
+}
+
+.art-diag-val {
+  color: var(--text-primary, #ffffff);
+}
+
+.art-diag-pill {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.art-diag-url-truncate {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  color: var(--text-secondary, #aaaaaa);
+}
+
+.art-diag-controls-box {
+  background: var(--bg-surface, rgba(255, 255, 255, 0.02));
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.art-diag-section-sub {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary, #ffffff);
+  margin: 0 0 10px 0;
+}
+
+.art-diag-custom-active {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.84rem;
+}
+
+.art-diag-input-form {
+  display: flex;
+  gap: 8px;
+}
+
+.art-diag-url-input {
+  flex: 1;
+}
+
+.art-diag-candidates-box {
+  background: var(--bg-surface, rgba(255, 255, 255, 0.02));
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.art-diag-candidates-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.art-diag-empty-candidates {
+  font-size: 0.82rem;
+  margin: 0;
+}
+
+.art-diag-candidates-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.art-diag-candidate-card {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.art-diag-candidate-img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  background: #111;
+}
+
+.art-diag-candidate-info {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 8px;
+  font-size: 0.72rem;
+}
+
+.art-diag-candidate-provider {
+  font-weight: 600;
+  color: var(--text-primary, #fff);
+}
+
+.art-diag-candidate-confidence {
+  color: var(--text-muted, #888);
+}
+
+.art-diag-candidate-apply-btn {
+  margin: 0 6px 6px 6px;
+  font-size: 0.74rem;
+  padding: 4px 8px;
+}
+
+.art-diag-footer {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+}

@@ -43,9 +43,13 @@ function HomeHero({
 
   const currentSlide = slides[carouselIndex % Math.max(1, slides.length)]
 
+  const isLiveMovie = currentSlide?.kind === 'live' && Boolean(
+    (currentSlide.genres && currentSlide.genres.some((g) => /movie|film|cinema/i.test(g))) ||
+    (currentSlide.programme?.category && /movie|film|cinema/i.test(currentSlide.programme.category))
+  )
   const heroArtType = currentSlide?.kind === 'series'
     ? 'series-backdrop'
-    : (currentSlide?.kind === 'live' && !(currentSlide.category && /movie|film|cinema/i.test(currentSlide.category)))
+    : (currentSlide?.kind === 'live' && !isLiveMovie)
       ? 'series-backdrop'
       : 'movie-backdrop'
   const resolvedHero = useArtwork({
