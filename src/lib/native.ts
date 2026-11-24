@@ -3063,6 +3063,51 @@ export async function closeClientServerStream(session: number): Promise<void> {
   await invoke('close_client_server_stream', { session }).catch(() => {})
 }
 
+export interface ClientServerResponse {
+  status: number
+  ok: boolean
+  body: string
+}
+
+/** Executes a CSP-safe LAN API request to a paired Kinora Server through Rust IPC. */
+export async function clientServerRequest(
+  serverUrl: string,
+  method: 'GET' | 'POST' | 'DELETE',
+  path: string,
+  authToken?: string | null,
+  body?: string | null
+): Promise<ClientServerResponse> {
+  if (!isTauri()) {
+    throw new Error('Native LAN request bridge requires the Tauri desktop shell.')
+  }
+  return invoke<ClientServerResponse>('client_server_request', {
+    serverUrl,
+    method,
+    path,
+    authToken: authToken ?? null,
+    body: body ?? null,
+  })
+}
+
+/** Connects a CSP-safe background SSE stream from a paired Kinora Server via Rust IPC. */
+export async function connectClientServerSse(
+  serverUrl: string,
+  authToken: string
+): Promise<boolean> {
+  if (!isTauri()) return false
+  try {
+    return await invoke<boolean>('client_server_sse_connect', { serverUrl, authToken })
+  } catch {
+    return false
+  }
+}
+
+/** Disconnects the active Client-to-Server native SSE stream. */
+export async function disconnectClientServerSse(): Promise<void> {
+  if (!isTauri()) return
+  await invoke('client_server_sse_disconnect').catch(() => {})
+}
+
 /** Discovers DLNA / UPnP MediaRenderer devices across the local subnet. */
 export async function discoverDlnaRenderers(): Promise<DlnaDevice[]> {
   if (!isTauri()) return []

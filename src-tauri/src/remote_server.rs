@@ -2324,8 +2324,12 @@ pub fn get_embedded_remote_html() -> &'static str {
     .now-playing { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
     .np-title { font-size: 0.95rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .np-channel { font-size: 0.75rem; color: #94a3b8; }
-    .progress-bar { width: 100%; height: 4px; background: rgba(255,255,255,0.15); border-radius: 2px; overflow: hidden; }
-    .progress-fill { height: 100%; background: #6366f1; width: 0%; transition: width 200ms ease; }
+    .seek-row { display: flex; align-items: center; gap: 8px; }
+    .seek-time { font-size: 0.7rem; color: #94a3b8; font-variant-numeric: tabular-nums; min-width: 38px; }
+    .seek-time.right { text-align: right; }
+    .seek-slider { flex: 1; accent-color: #6366f1; height: 4px; cursor: pointer; }
+    .seek-slider:disabled { opacity: 0.45; cursor: default; }
+    .media-badge { display: inline-block; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.04em; background: rgba(99,102,241,0.22); color: #c7d2fe; padding: 2px 6px; border-radius: 4px; margin-right: 6px; font-weight: 600; }
 
     /* D-Pad Controller */
     .dpad-container { display: flex; align-items: center; justify-content: center; margin: 4px 0; }
@@ -2383,7 +2387,7 @@ pub fn get_embedded_remote_html() -> &'static str {
   <main id="pairingView">
     <div class="pairing-box">
       <h2>Connect to Kinora</h2>
-      <p style="font-size:0.875rem;color:#94a3b8;">Enter the 4-digit pairing PIN shown on your Kinora screen.</p>
+      <p style="font-size:0.875rem;color:#94a3b8;">Enter the pairing PIN shown on your Kinora screen.</p>
       <input type="text" id="pinInput" class="pin-input" pattern="[0-9]*" inputmode="numeric" maxlength="6" placeholder="0000" autofocus>
       <input type="text" id="nameInput" class="name-input" placeholder="Device Name (e.g. Pixel Phone)">
       <div id="pairError" class="pair-error"></div>
@@ -2395,8 +2399,9 @@ pub fn get_embedded_remote_html() -> &'static str {
   <div id="mainViews" style="display:none;">
     <nav class="tab-bar">
       <button class="tab-btn active" id="tabRemoteBtn" onclick="switchTab('remote')">Remote</button>
-      <button class="tab-btn" id="tabKeypadBtn" onclick="switchTab('keypad')">Input & Keypad</button>
+      <button class="tab-btn" id="tabKeypadBtn" onclick="switchTab('keypad')">Keypad</button>
       <button class="tab-btn" id="tabChannelsBtn" onclick="switchTab('channels')">Channels</button>
+      <button class="tab-btn" id="tabMediaBtn" onclick="switchTab('media')">Media</button>
     </nav>
 
     <!-- Tab 1: Remote Control -->
@@ -2404,7 +2409,11 @@ pub fn get_embedded_remote_html() -> &'static str {
       <div class="now-playing">
         <div class="np-title" id="npTitle">Kinora TV</div>
         <div class="np-channel" id="npChannel">Connected & Ready</div>
-        <div class="progress-bar"><div class="progress-fill" id="npProgress"></div></div>
+        <div class="seek-row">
+          <span class="seek-time" id="npTimeCur">0:00</span>
+          <input type="range" id="seekSlider" class="seek-slider" min="0" max="100" value="0" aria-label="Playback position" disabled>
+          <span class="seek-time right" id="npTimeDur">LIVE</span>
+        </div>
       </div>
 
       <div class="dpad-container">
@@ -2426,7 +2435,7 @@ pub fn get_embedded_remote_html() -> &'static str {
       <div class="row-cluster">
         <button class="btn-action" onclick="sendCmd('step_back')">-10s</button>
         <button class="btn-action" onclick="sendCmd('step_forward')">+30s</button>
-        <button class="btn-action" onclick="sendCmd('toggle_mute')">Mute</button>
+        <button class="btn-action" id="btnMute" onclick="sendCmd('toggle_mute')">Mute</button>
       </div>
 
       <div class="rockers-grid">
@@ -2473,20 +2482,90 @@ pub fn get_embedded_remote_html() -> &'static str {
       <input type="text" id="channelFilter" class="channel-search" placeholder="Search channels..." oninput="filterChannels()">
       <div id="channelsList" style="margin-top:8px;"></div>
     </main>
+
+    <!-- Tab 4: Media Library Browser -->
+    <main id="viewMedia" class="view-content" style="display:none;">
+      <input type="text" id="mediaFilter" class="channel-search" placeholder="Search movies, series, local files..." oninput="filterMedia()">
+      <div id="mediaList" style="margin-top:8px;"></div>
+    </main>
   </div>
 
   <script>
     let authToken = localStorage.getItem('kinora_token') || null;
     let sseSource = null;
     let channelsData = [];
+    let mediaData = [];
+    let isSeeking = false;
+    let currentDurationSec = 0;
 
     window.addEventListener('load', () => {
+      initDelegatedHandlers();
       if (authToken) {
         showRemote();
       } else {
         showPairing();
       }
     });
+
+    function initDelegatedHandlers() {
+      const seekSlider = document.getElementById('seekSlider');
+      if (seekSlider) {
+        const startSeek = () => { isSeeking = true; };
+        const endSeek = () => { isSeeking = false; };
+        seekSlider.addEventListener('pointerdown', startSeek);
+        seekSlider.addEventListener('touchstart', startSeek, { passive: true });
+        seekSlider.addEventListener('pointerup', endSeek);
+        seekSlider.addEventListener('touchend', endSeek);
+        seekSlider.addEventListener('input', () => {
+          isSeeking = true;
+          document.getElementById('npTimeCur').innerText = formatTime(Number(seekSlider.value));
+        });
+        seekSlider.addEventListener('change', () => {
+          isSeeking = false;
+          const pos = Math.max(0, Math.round(Number(seekSlider.value) || 0));
+          document.getElementById('npTimeCur').innerText = formatTime(pos);
+          sendCmd('seek_to', { positionSec: pos });
+        });
+      }
+
+      const channelsList = document.getElementById('channelsList');
+      if (channelsList) {
+        channelsList.addEventListener('click', (e) => {
+          const item = e.target.closest('.channel-item');
+          if (!item) return;
+          const id = item.getAttribute('data-channel-id') || '';
+          const num = Number(item.getAttribute('data-channel-num') || '0');
+          if (id) tuneToChannel(id, num);
+        });
+      }
+
+      const mediaList = document.getElementById('mediaList');
+      if (mediaList) {
+        mediaList.addEventListener('click', (e) => {
+          const item = e.target.closest('.media-item');
+          if (!item) return;
+          const mediaId = item.getAttribute('data-media-id') || '';
+          const title = item.getAttribute('data-media-title') || '';
+          const kind = item.getAttribute('data-media-kind') || 'movie';
+          if (mediaId || title) {
+            sendCmd('play_media_item', { mediaId, title, kind });
+          }
+        });
+      }
+    }
+
+    function formatTime(secs) {
+      const total = Math.max(0, Math.floor(Number(secs) || 0));
+      const h = Math.floor(total / 3600);
+      const m = Math.floor((total % 3600) / 60);
+      const s = total % 60;
+      const ss = s < 10 ? '0' + s : '' + s;
+      if (h > 0) {
+        const mm = m < 10 ? '0' + m : '' + m;
+        return h + ':' + mm + ':' + ss;
+      }
+      return m + ':' + ss;
+    }
 
     function showPairing() {
       document.getElementById('pairingView').style.display = 'flex';
@@ -2507,13 +2586,18 @@ pub fn get_embedded_remote_html() -> &'static str {
       document.getElementById('tabRemoteBtn').classList.toggle('active', tab === 'remote');
       document.getElementById('tabKeypadBtn').classList.toggle('active', tab === 'keypad');
       document.getElementById('tabChannelsBtn').classList.toggle('active', tab === 'channels');
+      document.getElementById('tabMediaBtn').classList.toggle('active', tab === 'media');
 
       document.getElementById('viewRemote').style.display = tab === 'remote' ? 'flex' : 'none';
       document.getElementById('viewKeypad').style.display = tab === 'keypad' ? 'flex' : 'none';
       document.getElementById('viewChannels').style.display = tab === 'channels' ? 'block' : 'none';
+      document.getElementById('viewMedia').style.display = tab === 'media' ? 'block' : 'none';
 
       if (tab === 'channels' && channelsData.length === 0) {
         fetchChannels();
+      }
+      if (tab === 'media' && mediaData.length === 0) {
+        fetchMedia();
       }
     }
 
@@ -2613,13 +2697,13 @@ pub fn get_embedded_remote_html() -> &'static str {
         return;
       }
       box.innerHTML = list.map(c => `
-        <div class="channel-item" onclick="tuneToChannel('${c.id}', ${c.number || 0})">
+        <div class="channel-item" data-channel-id="${escapeHtml(c.id)}" data-channel-num="${Number(c.number) || 0}">
           <div>
-            <span class="channel-num">${c.number ? '#' + c.number : ''}</span>
+            <span class="channel-num">${c.number ? '#' + escapeHtml(c.number) : ''}</span>
             <span class="channel-title">${escapeHtml(c.name)}</span>
             <div class="channel-now">${escapeHtml(c.currentProgramme || c.group || 'Live')}</div>
           </div>
-          <button style="background:#6366f1;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:0.75rem;cursor:pointer;">Watch</button>
+          <button type="button" style="background:#6366f1;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:0.75rem;cursor:pointer;">Watch</button>
         </div>
       `).join('');
     }
@@ -2630,13 +2714,67 @@ pub fn get_embedded_remote_html() -> &'static str {
       renderChannels(filtered);
     }
 
+    async function fetchMedia() {
+      if (!authToken) return;
+      try {
+        const res = await fetch('/api/media', {
+          headers: { 'Authorization': 'Bearer ' + authToken }
+        });
+        if (res.ok) {
+          mediaData = await res.json();
+          renderMedia(mediaData);
+        }
+      } catch (e) {}
+    }
+
+    function renderMedia(list) {
+      const box = document.getElementById('mediaList');
+      if (!list || list.length === 0) {
+        box.innerHTML = '<div style="color:#94a3b8;font-size:0.85rem;text-align:center;padding:20px;">No movies, series, or local media found on server.</div>';
+        return;
+      }
+      box.innerHTML = list.map(m => {
+        const metaParts = [];
+        if (m.year) metaParts.push(String(m.year));
+        if (Array.isArray(m.genres) && m.genres.length > 0) metaParts.push(m.genres.slice(0, 2).join(', '));
+        const subtitle = metaParts.join(' - ') || (m.group || 'Library');
+        return `
+        <div class="channel-item media-item" data-media-id="${escapeHtml(m.id)}" data-media-title="${escapeHtml(m.title)}" data-media-kind="${escapeHtml(m.kind || 'movie')}">
+          <div>
+            <div>
+              <span class="media-badge">${escapeHtml(m.kind || 'media')}</span>
+              <span class="channel-title">${escapeHtml(m.title)}</span>
+            </div>
+            <div class="channel-now">${escapeHtml(subtitle)}</div>
+          </div>
+          <button type="button" style="background:#6366f1;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:0.75rem;cursor:pointer;">Play on TV</button>
+        </div>
+      `;
+      }).join('');
+    }
+
+    function filterMedia() {
+      const q = document.getElementById('mediaFilter').value.toLowerCase();
+      const filtered = mediaData.filter(m =>
+        (m.title || '').toLowerCase().includes(q) ||
+        (m.kind || '').toLowerCase().includes(q) ||
+        (Array.isArray(m.genres) && m.genres.some(g => String(g).toLowerCase().includes(q)))
+      );
+      renderMedia(filtered);
+    }
+
     function tuneToChannel(channelId, channelNumber) {
       sendCmd('tune_channel', { channelId, channelNumber });
     }
 
     function escapeHtml(str) {
-      if (!str) return '';
-      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     }
 
     function connectSse() {
@@ -2645,7 +2783,9 @@ pub fn get_embedded_remote_html() -> &'static str {
       sseSource.onmessage = (e) => {
         try {
           const state = JSON.parse(e.data);
-          updatePlaybackUi(state);
+          if (state && !state.type) {
+            updatePlaybackUi(state);
+          }
         } catch (err) {}
       };
       sseSource.onerror = () => {
@@ -2657,9 +2797,36 @@ pub fn get_embedded_remote_html() -> &'static str {
     function updatePlaybackUi(state) {
       document.getElementById('npTitle').innerText = state.title || 'Kinora TV';
       document.getElementById('npChannel').innerText = state.channelName ? `${state.channelName} (${state.channelNumber || ''})` : (state.subtitle || 'Connected');
-      if (state.durationSec > 0) {
-        const pct = Math.min(100, Math.max(0, (state.positionSec / state.durationSec) * 100));
-        document.getElementById('npProgress').style.width = pct + '%';
+      const playBtn = document.getElementById('btnPlayPause');
+      if (playBtn && typeof state.isPlaying === 'boolean') {
+        playBtn.innerText = state.isPlaying ? 'Pause' : 'Play';
+      }
+      const muteBtn = document.getElementById('btnMute');
+      if (muteBtn && typeof state.isMuted === 'boolean') {
+        muteBtn.innerText = state.isMuted ? 'Unmute' : 'Mute';
+      }
+      const slider = document.getElementById('seekSlider');
+      const curLabel = document.getElementById('npTimeCur');
+      const durLabel = document.getElementById('npTimeDur');
+      const dur = Number(state.durationSec) || 0;
+      const pos = Math.max(0, Number(state.positionSec) || 0);
+      currentDurationSec = dur;
+      if (slider && curLabel && durLabel) {
+        if (dur > 0 && !state.isLive) {
+          slider.disabled = false;
+          slider.max = String(Math.floor(dur));
+          durLabel.innerText = formatTime(dur);
+          if (!isSeeking) {
+            slider.value = String(Math.min(Math.floor(dur), Math.floor(pos)));
+            curLabel.innerText = formatTime(pos);
+          }
+        } else {
+          slider.disabled = true;
+          slider.max = '100';
+          slider.value = '0';
+          curLabel.innerText = formatTime(pos);
+          durLabel.innerText = 'LIVE';
+        }
       }
     }
   </script>

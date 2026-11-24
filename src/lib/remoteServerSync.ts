@@ -115,18 +115,6 @@ export function handleIncomingRemoteCommand(event: RemoteCommandEvent): void {
       }
       break
 
-    case 'vol_up':
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', code: 'ArrowUp', bubbles: true }))
-      }
-      break
-
-    case 'vol_down':
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', code: 'ArrowDown', bubbles: true }))
-      }
-      break
-
     case 'mute':
     case 'toggle_mute':
       dispatchKinoraCommand({ type: 'toggleMute', source: 'remote' })
@@ -167,6 +155,39 @@ export function handleIncomingRemoteCommand(event: RemoteCommandEvent): void {
         window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', bubbles: true }))
       }
       break
+
+    case 'seek_to': {
+      const rawPos = Number(payload.positionSec)
+      if (!Number.isFinite(rawPos) || rawPos < 0) break
+      if (typeof document !== 'undefined') {
+        const video = document.querySelector('video') as HTMLVideoElement | null
+        if (video) {
+          const maxDur = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : rawPos
+          video.currentTime = Math.min(rawPos, maxDur)
+        }
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('kinora:remote_seek', { detail: { positionSec: rawPos } }))
+      }
+      break
+    }
+
+    case 'play_media_item': {
+      const mediaId = typeof payload.mediaId === 'string' ? payload.mediaId : ''
+      const title = typeof payload.title === 'string' ? payload.title : ''
+      const kind = typeof payload.kind === 'string' ? payload.kind : 'movie'
+      if (typeof window !== 'undefined') {
+        const ev = new CustomEvent('kinora:play_media_item', {
+          detail: { mediaId, title, kind },
+          cancelable: true,
+        })
+        const notPrevented = window.dispatchEvent(ev)
+        if (notPrevented && title) {
+          window.location.hash = `#/search?q=${encodeURIComponent(title)}`
+        }
+      }
+      break
+    }
 
     case 'subtitles':
       if (typeof window !== 'undefined') {

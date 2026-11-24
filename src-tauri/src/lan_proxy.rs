@@ -854,6 +854,220 @@ pub async fn fetch_server_artwork(
     }))
 }
 
+/// Structured HTTP response returned by `client_server_request` to the Tauri webview.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientServerResponse {
+    pub status: u16,
+    pub ok: bool,
+    pub body: String,
+}
+
+/// Validates that a client-requested API path stays strictly within Kinora Server routes.
+pub fn validate_api_path(path: &str) -> Result<&str, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() || trimmed.len() > 1024 {
+        return Err("Invalid API path length.".to_string());
+    }
+    if !trimmed.starts_with('/') {
+        return Err("API path must start with '/'.".to_string());
+    }
+    if trimmed.contains("://")
+        || trimmed.contains('@')
+        || trimmed.contains("..")
+        || trimmed.bytes().any(|b| b < 0x20 || b == 0x7f)
+    {
+        return Err("API path contains disallowed characters.".to_string());
+    }
+    let route = trimmed.split('?').next().unwrap_or(trimmed);
+    let allowed = route == "/pair"
+        || route == "/info"
+        || route == "/status"
+        || route.starts_with("/api/");
+    if !allowed {
+        return Err("API path is outside permitted Kinora Server routes.".to_string());
+    }
+    Ok(trimmed)
+}
+
+/// Executes a CSP-safe JSON API request against a validated LAN Kinora Server.
+/// Keeps `tauri.conf.json` CSP and `fetch.rs` completely locked down.
+pub async fn client_server_request(
+    server_url: &str,
+    method: &str,
+    path: &str,
+    auth_token: Option<&str>,
+    body: Option<&str>,
+) -> Result<ClientServerResponse, String> {
+    let parsed = validate_lan_server_url(server_url)?;
+    let safe_path = validate_api_path(path)?;
+    let server_base = format!(
+        "{}://{}{}",
+        parsed.scheme(),
+        parsed.host_str().unwrap_or_default(),
+        parsed.port().map(|p| format!(":{p}")).unwrap_or_default()
+    );
+    let target = format!("{server_base}{safe_path}");
+
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .referer(false)
+        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(12))
+        .build()
+        .map_err(|_| "Failed to initialize LAN API client.".to_string())?;
+
+    let mut req = match method.trim().to_ascii_uppercase().as_str() {
+        "GET" => client.get(&target),
+        "POST" => client.post(&target),
+        "DELETE" => client.delete(&target),
+        _ => return Err("Unsupported HTTP method for Kinora Server request.".to_string()),
+    };
+
+    if let Some(tok) = auth_token.map(str::trim).filter(|t| !t.is_empty()) {
+        req = req.header("Authorization", format!("Bearer {tok}"));
+    }
+    if let Some(b) = body {
+        req = req
+            .header("Content-Type", "application/json")
+            .body(b.to_string());
+    }
+
+    let resp = req
+        .send()
+        .await
+        .map_err(|_| "Unable to reach Kinora Server on the local network.".to_string())?;
+
+    const MAX_JSON_BYTES: usize = 8 * 1024 * 1024;
+    let status = resp.status().as_u16();
+    let ok = resp.status().is_success();
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|_| "Failed to read response from Kinora Server.".to_string())?;
+    if bytes.len() > MAX_JSON_BYTES {
+        return Err("Kinora Server response exceeded 8 MiB limit.".to_string());
+    }
+
+    Ok(ClientServerResponse {
+        status,
+        ok,
+        body: String::from_utf8_lossy(&bytes).to_string(),
+    })
+}
+
+/// Manages a single background SSE event stream from the paired LAN Kinora Server
+/// so Tauri desktop clients receive real-time sync events under strict CSP.
+#[derive(Default)]
+pub struct ClientSseBridge {
+    cancel_tx: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+}
+
+impl ClientSseBridge {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn disconnect(&self) {
+        if let Some(tx) = self
+            .cancel_tx
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .take()
+        {
+            let _ = tx.send(());
+        }
+    }
+
+    pub async fn connect<F>(
+        &self,
+        server_url: &str,
+        auth_token: &str,
+        on_event: F,
+    ) -> Result<bool, String>
+    where
+        F: Fn(serde_json::Value) + Send + Sync + 'static,
+    {
+        let parsed = validate_lan_server_url(server_url)?;
+        let server_base = format!(
+            "{}://{}{}",
+            parsed.scheme(),
+            parsed.host_str().unwrap_or_default(),
+            parsed.port().map(|p| format!(":{p}")).unwrap_or_default()
+        );
+        let tok = auth_token.trim().to_string();
+        if tok.is_empty() {
+            return Err("Missing authorization token for SSE connection.".to_string());
+        }
+
+        // Cancel any previous SSE stream before opening a new one.
+        self.disconnect();
+
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .referer(false)
+            .redirect(reqwest::redirect::Policy::none())
+            .connect_timeout(Duration::from_secs(5))
+            .build()
+            .map_err(|_| "Failed to initialize LAN SSE client.".to_string())?;
+
+        let target = format!("{server_base}/api/events");
+        let mut resp = client
+            .get(&target)
+            .header("Authorization", format!("Bearer {tok}"))
+            .header("Accept", "text/event-stream")
+            .send()
+            .await
+            .map_err(|_| "Unable to connect to Kinora Server event stream.".to_string())?;
+
+        if !resp.status().is_success() {
+            return Err(format!(
+                "Kinora Server rejected event stream (HTTP {}).",
+                resp.status().as_u16()
+            ));
+        }
+
+        let (cancel_tx, mut cancel_rx) = tokio::sync::oneshot::channel::<()>();
+        {
+            let mut slot = self.cancel_tx.lock().unwrap_or_else(|p| p.into_inner());
+            *slot = Some(cancel_tx);
+        }
+
+        tokio::spawn(async move {
+            let mut buf = String::new();
+            loop {
+                tokio::select! {
+                    _ = &mut cancel_rx => break,
+                    chunk_res = resp.chunk() => {
+                        match chunk_res {
+                            Ok(Some(chunk)) => {
+                                if buf.len() + chunk.len() > 256 * 1024 {
+                                    buf.clear();
+                                    continue;
+                                }
+                                buf.push_str(&String::from_utf8_lossy(&chunk));
+                                while let Some(idx) = buf.find('\n') {
+                                    let line = buf[..idx].trim_end_matches('\r').to_string();
+                                    buf.drain(..=idx);
+                                    if let Some(json_str) = line.strip_prefix("data: ") {
+                                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str) {
+                                            on_event(val);
+                                        }
+                                    }
+                                }
+                            }
+                            _ => break,
+                        }
+                    }
+                }
+            }
+        });
+
+        Ok(true)
+    }
+}
+
 /// Rewrites server-side `/api/stream/h/<session_key>/` paths in an HLS playlist into
 /// `kstream://localhost/server-stream/<session_key>/` paths for Tauri WebKitGTK playback.
 pub fn rewrite_lan_playlist_for_kstream(playlist: &str, session_key: &str) -> String {
@@ -1004,5 +1218,197 @@ mod tests {
             rewritten,
             format!("#EXTM3U\nkstream://localhost/server-stream/{key}/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n")
         );
+    }
+
+    #[test]
+    fn validates_allowed_client_server_api_paths() {
+        assert_eq!(validate_api_path("/pair").unwrap(), "/pair");
+        assert_eq!(validate_api_path("/api/info").unwrap(), "/api/info");
+        assert_eq!(
+            validate_api_path("/api/channels?group=News").unwrap(),
+            "/api/channels?group=News"
+        );
+        assert!(validate_api_path("http://evil.example/api/info").is_err());
+        assert!(validate_api_path("//evil.example/api/info").is_err());
+        assert!(validate_api_path("/api/../etc/passwd").is_err());
+        assert!(validate_api_path("/api/info@evil").is_err());
+        assert!(validate_api_path("/unknown").is_err());
+        assert!(validate_api_path("/api/info\r\nX-Injected: 1").is_err());
+    }
+
+    #[tokio::test]
+    async fn client_server_request_and_sse_bridge_roundtrip_over_loopback() {
+        use crate::remote_server::{RemoteChannelSummary, RemoteServerManager};
+
+        // Pick an ephemeral free port for the test server instance.
+        let free_port = {
+            let sock = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            sock.local_addr().unwrap().port()
+        };
+
+        let server = RemoteServerManager::new(None);
+        server
+            .update_channels(vec![RemoteChannelSummary {
+                id: "ch-bbc1".to_string(),
+                name: "BBC One".to_string(),
+                number: Some(101),
+                group: Some("News".to_string()),
+                logo: None,
+                stream_url: Some("https://secret.example/live.m3u8?token=xyz".to_string()),
+                current_programme: None,
+            }])
+            .await;
+
+        let _status = server
+            .start(Some(free_port), Some("4321".to_string()), |_| {})
+            .await
+            .expect("test server starts");
+
+        let server_url = format!("http://127.0.0.1:{free_port}");
+
+        // 1. Pair through the CSP-safe Rust bridge.
+        let pair_resp = client_server_request(
+            &server_url,
+            "POST",
+            "/pair",
+            None,
+            Some(r#"{"pin":"4321","deviceName":"Bridge Client","deviceType":"desktopclient"}"#),
+        )
+        .await
+        .expect("pair request succeeds");
+        assert!(pair_resp.ok);
+        let pair_json: serde_json::Value = serde_json::from_str(&pair_resp.body).unwrap();
+        let token = pair_json["token"].as_str().expect("token issued").to_string();
+
+        // 2. Fetch channels through the CSP-safe bridge and confirm streamUrl is stripped.
+        let ch_resp = client_server_request(&server_url, "GET", "/api/channels", Some(&token), None)
+            .await
+            .expect("channels request succeeds");
+        assert!(ch_resp.ok);
+        assert!(ch_resp.body.contains("BBC One"));
+        assert!(!ch_resp.body.contains("secret.example"));
+        assert!(!ch_resp.body.contains("token=xyz"));
+
+        // 3. Connect SSE bridge and confirm real-time sync_progress broadcast arrives.
+        let sse = ClientSseBridge::new();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<serde_json::Value>();
+        let connected = sse
+            .connect(&server_url, &token, move |val| {
+                let _ = tx.send(val);
+            })
+            .await
+            .expect("SSE bridge connects");
+        assert!(connected);
+
+        // Give the server a brief moment to register the SSE subscriber, then push progress.
+        tokio::time::sleep(Duration::from_millis(60)).await;
+        let prog_resp = client_server_request(
+            &server_url,
+            "POST",
+            "/api/sync/progress",
+            Some(&token),
+            Some(r#"{"itemRef":"movie:solaris","title":"Solaris","position":180,"duration":6000}"#),
+        )
+        .await
+        .expect("sync progress succeeds");
+        assert!(prog_resp.ok);
+
+        let received = tokio::time::timeout(Duration::from_secs(3), async {
+            while let Some(ev) = rx.recv().await {
+                if ev.get("type").and_then(|t| t.as_str()) == Some("sync_progress") {
+                    return Some(ev);
+                }
+            }
+            None
+        })
+        .await
+        .expect("SSE event arrived in time")
+        .expect("sync_progress event received");
+
+        assert_eq!(received["data"]["itemRef"], "movie:solaris");
+        assert_eq!(received["data"]["position"].as_f64(), Some(180.0));
+
+        sse.disconnect();
+        server.stop().await;
+    }
+
+    #[tokio::test]
+    async fn client_lan_stream_bridge_rewrites_and_serves_kstream_playlist() {
+        let session_key = "0123456789abcdef0123456789abcdef";
+        let root_handle = "11111111111111111111111111111111";
+        let seg_handle = "22222222222222222222222222222222";
+        let open_body = serde_json::json!({
+            "ok": true,
+            "channelId": "ch-1",
+            "sessionKey": session_key,
+            "proxyPath": format!("/api/stream/h/{session_key}/{root_handle}"),
+            "format": "hls"
+        })
+        .to_string()
+        .into_bytes();
+        let playlist_body = format!(
+            "#EXTM3U\n#EXT-X-VERSION:3\n#EXTINF:4.0,\n/api/stream/h/{session_key}/{seg_handle}\n"
+        )
+        .into_bytes();
+
+        let mut routes = HashMap::new();
+        routes.insert("/api/stream/open".to_string(), ("application/json", open_body));
+        routes.insert(
+            format!("/api/stream/h/{session_key}/{root_handle}"),
+            (PLAYLIST_TYPE, playlist_body),
+        );
+        routes.insert(
+            format!("/api/stream/h/{session_key}/{seg_handle}"),
+            ("video/mp2t", b"LAN_BRIDGE_SEGMENT_OK".to_vec()),
+        );
+        let addr = start_fixture_http_server(routes).await;
+        let server_url = format!("http://{addr}");
+
+        let bridge = ClientLanStreamBridge::new("tauri://localhost".to_string());
+        let opened = bridge
+            .open_from_server(&server_url, "tok-test", Some("ch-1"), None)
+            .await
+            .expect("bridge opens channel");
+        assert_eq!(opened.format, "hls");
+        assert_eq!(
+            opened.url,
+            format!("kstream://localhost/server-stream/{session_key}/{root_handle}")
+        );
+
+        let pl_reply = bridge
+            .serve(
+                "GET",
+                &format!("/server-stream/{session_key}/{root_handle}"),
+                Some("tauri://localhost"),
+                &[],
+            )
+            .await;
+        assert_eq!(pl_reply.status, 200);
+        let pl_text = String::from_utf8(pl_reply.body).unwrap();
+        assert!(pl_text.contains(&format!(
+            "kstream://localhost/server-stream/{session_key}/{seg_handle}"
+        )));
+
+        let seg_reply = bridge
+            .serve(
+                "GET",
+                &format!("/server-stream/{session_key}/{seg_handle}"),
+                Some("tauri://localhost"),
+                &[],
+            )
+            .await;
+        assert_eq!(seg_reply.status, 200);
+        assert_eq!(seg_reply.body, b"LAN_BRIDGE_SEGMENT_OK");
+
+        bridge.close(opened.session);
+        let after_close = bridge
+            .serve(
+                "GET",
+                &format!("/server-stream/{session_key}/{seg_handle}"),
+                Some("tauri://localhost"),
+                &[],
+            )
+            .await;
+        assert_eq!(after_close.status, 410);
     }
 }

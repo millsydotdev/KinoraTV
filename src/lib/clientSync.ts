@@ -7,6 +7,9 @@
 
 import { useEffect, useState } from 'react'
 import {
+  clientServerRequest,
+  connectClientServerSse,
+  disconnectClientServerSse,
   fetchClientServerArtwork,
   inNativeShell,
   type RemoteChannelSummary,
@@ -61,6 +64,57 @@ class ClientSyncManager {
 
   private listeners = new Set<() => void>()
   private eventSource: EventSource | null = null
+  private unlistenNativeSse: (() => void) | null = null
+  private sseConnectionSeq = 0
+
+  private async lanRequest(
+    serverUrl: string,
+    method: 'GET' | 'POST' | 'DELETE',
+    path: string,
+    authToken?: string | null,
+    body?: unknown
+  ): Promise<{ ok: boolean; status: number; json: <T = unknown>() => Promise<T> }> {
+    const cleanUrl = serverUrl.replace(/\/+$/, '')
+    if (inNativeShell()) {
+      const nativeRes = await clientServerRequest(
+        cleanUrl,
+        method,
+        path,
+        authToken ?? null,
+        body !== undefined ? JSON.stringify(body) : null
+      )
+      return {
+        ok: nativeRes.ok,
+        status: nativeRes.status,
+        json: async <T = unknown>() => JSON.parse(nativeRes.body) as T,
+      }
+    }
+
+    const headers: Record<string, string> = {}
+    if (body !== undefined) {
+      headers['Content-Type'] = 'application/json'
+    }
+    if (authToken) {
+      headers.Authorization = `Bearer ${authToken}`
+    }
+
+    const hasHeaders = Object.keys(headers).length > 0
+    const init: RequestInit | undefined =
+      method === 'GET' && !hasHeaders && body === undefined
+        ? undefined
+        : {
+            ...(method !== 'GET' ? { method } : {}),
+            ...(hasHeaders ? { headers } : {}),
+            ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+          }
+
+    const res = init ? await fetch(`${cleanUrl}${path}`, init) : await fetch(`${cleanUrl}${path}`)
+    return {
+      ok: res.ok,
+      status: res.status ?? (res.ok ? 200 : 500),
+      json: async <T = unknown>() => (await res.json()) as T,
+    }
+  }
 
   constructor() {
     if (typeof localStorage !== 'undefined') {
@@ -131,17 +185,13 @@ class ClientSyncManager {
     this.notify()
 
     try {
-      const res = await fetch(`${cleanUrl}/pair`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pin: pin.trim(),
-          deviceName,
-          deviceType,
-        }),
+      const res = await this.lanRequest(cleanUrl, 'POST', '/pair', null, {
+        pin: pin.trim(),
+        deviceName,
+        deviceType,
       })
 
-      const data = await res.json()
+      const data = await res.json<{ ok?: boolean; token?: string; error?: string }>()
       if (res.ok && data.ok && data.token) {
         this.setServerConfig(cleanUrl, data.token)
         return await this.connect()
@@ -173,9 +223,9 @@ class ClientSyncManager {
 
     try {
       // 1. Verify server info
-      const infoRes = await fetch(`${serverUrl}/api/info`)
+      const infoRes = await this.lanRequest(serverUrl, 'GET', '/api/info')
       if (!infoRes.ok) throw new Error('Server info unreachable')
-      const info: ServerSyncInfo = await infoRes.json()
+      const info = await infoRes.json<ServerSyncInfo>()
       this.state.serverInfo = info
 
       // 2. Perform initial synchronization
@@ -196,9 +246,17 @@ class ClientSyncManager {
   }
 
   public disconnect(): void {
+    this.sseConnectionSeq += 1
     if (this.eventSource) {
       this.eventSource.close()
       this.eventSource = null
+    }
+    if (this.unlistenNativeSse) {
+      this.unlistenNativeSse()
+      this.unlistenNativeSse = null
+    }
+    if (inNativeShell()) {
+      void disconnectClientServerSse()
     }
     this.state.status = 'disconnected'
     this.notify()
@@ -212,33 +270,31 @@ class ClientSyncManager {
     this.notify()
 
     try {
-      const headers = { Authorization: `Bearer ${authToken}` }
-
       // Fetch channels, sources, library, EPG, and media catalogue in parallel
       const [channelsRes, sourcesRes, libraryRes, epgRes, mediaRes] = await Promise.all([
-        fetch(`${serverUrl}/api/channels`, { headers }),
-        fetch(`${serverUrl}/api/sources`, { headers }),
-        fetch(`${serverUrl}/api/library`, { headers }),
-        fetch(`${serverUrl}/api/epg`, { headers }).catch(() => null),
-        fetch(`${serverUrl}/api/media`, { headers }).catch(() => null),
+        this.lanRequest(serverUrl, 'GET', '/api/channels', authToken),
+        this.lanRequest(serverUrl, 'GET', '/api/sources', authToken),
+        this.lanRequest(serverUrl, 'GET', '/api/library', authToken),
+        this.lanRequest(serverUrl, 'GET', '/api/epg', authToken).catch(() => null),
+        this.lanRequest(serverUrl, 'GET', '/api/media', authToken).catch(() => null),
       ])
 
       if (channelsRes.ok) {
-        this.state.channels = await channelsRes.json()
+        this.state.channels = await channelsRes.json<RemoteChannelSummary[]>()
       }
       if (sourcesRes.ok) {
-        this.state.sources = await sourcesRes.json()
+        this.state.sources = await sourcesRes.json<RemoteSourceSummary[]>()
       }
       if (libraryRes.ok) {
-        this.state.library = await libraryRes.json()
+        this.state.library = await libraryRes.json<RemoteLibrarySummary>()
       }
       if (epgRes?.ok) {
-        const epgData = await epgRes.json()
-        if (Array.isArray(epgData)) this.state.epg = epgData
+        const epgData = await epgRes.json<unknown>()
+        if (Array.isArray(epgData)) this.state.epg = epgData as RemoteEpgProgramme[]
       }
       if (mediaRes?.ok) {
-        const mediaData = await mediaRes.json()
-        if (Array.isArray(mediaData)) this.state.media = mediaData
+        const mediaData = await mediaRes.json<unknown>()
+        if (Array.isArray(mediaData)) this.state.media = mediaData as RemoteMediaItem[]
       }
 
       this.state.lastSyncTime = Math.floor(Date.now() / 1000)
@@ -261,18 +317,11 @@ class ClientSyncManager {
     if (!serverUrl || !authToken) return false
 
     try {
-      const res = await fetch(`${serverUrl}/api/sync/progress`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({
-          itemRef,
-          title,
-          position,
-          duration,
-        }),
+      const res = await this.lanRequest(serverUrl, 'POST', '/api/sync/progress', authToken, {
+        itemRef,
+        title,
+        position,
+        duration,
       })
       return res.ok
     } catch {
@@ -288,16 +337,9 @@ class ClientSyncManager {
     if (!serverUrl || !authToken) return false
 
     try {
-      const res = await fetch(`${serverUrl}/api/sync/library`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({
-          action,
-          id,
-        }),
+      const res = await this.lanRequest(serverUrl, 'POST', '/api/sync/library', authToken, {
+        action,
+        id,
       })
       return res.ok
     } catch {
@@ -318,34 +360,83 @@ class ClientSyncManager {
     token?: string
   ): Promise<boolean> {
     const cleanUrl = targetUrl.replace(/\/+$/, '')
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    }
     const effectiveToken = token || this.state.authToken
-    if (effectiveToken) {
-      headers.Authorization = `Bearer ${effectiveToken}`
-    }
 
     try {
-      const res = await fetch(`${cleanUrl}/api/cast`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(media),
-      })
+      const res = await this.lanRequest(cleanUrl, 'POST', '/api/cast', effectiveToken, media)
       return res.ok
     } catch {
       return false
     }
   }
 
+  private handleSsePayload(payload: unknown): void {
+    if (!payload || typeof payload !== 'object') return
+    const record = payload as { type?: string; data?: Record<string, unknown> }
+    if (record.type === 'sync_progress' && record.data) {
+      const item = record.data as unknown as RemoteLibrarySummary['watchProgress'][number]
+      if (this.state.library) {
+        const list = [...this.state.library.watchProgress]
+        const idx = list.findIndex((p) => p.itemRef === item.itemRef)
+        if (idx >= 0) {
+          list[idx] = item
+        } else {
+          list.push(item)
+        }
+        this.state.library.watchProgress = list
+        this.notify()
+      }
+    } else if (record.type === 'sync_library' && record.data) {
+      if (this.state.library) {
+        if (Array.isArray(record.data.favourites)) {
+          this.state.library.favourites = record.data.favourites as string[]
+        }
+        if (Array.isArray(record.data.watchlist)) {
+          this.state.library.watchlist = record.data.watchlist as string[]
+        }
+        this.notify()
+      }
+    }
+  }
+
   private connectEventStream(): void {
-    if (typeof EventSource === 'undefined') return
+    const seq = ++this.sseConnectionSeq
     if (this.eventSource) {
       this.eventSource.close()
+      this.eventSource = null
+    }
+    if (this.unlistenNativeSse) {
+      this.unlistenNativeSse()
+      this.unlistenNativeSse = null
     }
 
     const { serverUrl, authToken } = this.state
     if (!serverUrl || !authToken) return
+
+    if (inNativeShell()) {
+      void (async () => {
+        try {
+          const { listen } = await import('@tauri-apps/api/event')
+          const unlisten = await listen<unknown>('kinora:client_sync_event', (ev) => {
+            this.handleSsePayload(ev.payload)
+          })
+          if (this.sseConnectionSeq !== seq) {
+            unlisten()
+            return
+          }
+          this.unlistenNativeSse = unlisten
+          await connectClientServerSse(serverUrl, authToken)
+          if (this.sseConnectionSeq !== seq) {
+            await disconnectClientServerSse()
+          }
+        } catch (e) {
+          console.debug('Native SSE bridge failed to connect:', e)
+        }
+      })()
+      return
+    }
+
+    if (typeof EventSource === 'undefined') return
 
     const sseUrl = `${serverUrl}/api/events?token=${encodeURIComponent(authToken)}`
     this.eventSource = new EventSource(sseUrl)
@@ -353,27 +444,8 @@ class ClientSyncManager {
     this.eventSource.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data)
-        if (payload.type === 'sync_progress' && payload.data) {
-          const item = payload.data
-          if (this.state.library) {
-            const list = [...this.state.library.watchProgress]
-            const idx = list.findIndex((p) => p.itemRef === item.itemRef)
-            if (idx >= 0) {
-              list[idx] = item
-            } else {
-              list.push(item)
-            }
-            this.state.library.watchProgress = list
-            this.notify()
-          }
-        } else if (payload.type === 'sync_library' && payload.data) {
-          if (this.state.library) {
-            this.state.library.favourites = payload.data.favourites || this.state.library.favourites
-            this.state.library.watchlist = payload.data.watchlist || this.state.library.watchlist
-            this.notify()
-          }
-        }
-      } catch (e) {
+        this.handleSsePayload(payload)
+      } catch {
         console.debug('Received SSE message:', event.data)
       }
     }
@@ -411,16 +483,15 @@ class ClientSyncManager {
     if (!serverUrl || !authToken) return null
 
     try {
-      const res = await fetch(`${serverUrl}/api/stream/open`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify(payload),
-      })
+      const res = await this.lanRequest(serverUrl, 'POST', '/api/stream/open', authToken, payload)
       if (!res.ok) return null
-      const data = await res.json()
+      const data = await res.json<{
+        ok?: boolean
+        streamUrl?: string
+        sessionKey?: string
+        proxyPath?: string
+        format?: string
+      }>()
       if (data.ok && typeof data.streamUrl === 'string' && typeof data.sessionKey === 'string') {
         return {
           streamUrl: data.streamUrl,
@@ -450,14 +521,7 @@ class ClientSyncManager {
     const { serverUrl, authToken } = this.state
     if (!serverUrl || !authToken || !sessionKey) return
     try {
-      await fetch(`${serverUrl}/api/stream/close`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({ sessionKey }),
-      })
+      await this.lanRequest(serverUrl, 'POST', '/api/stream/close', authToken, { sessionKey })
     } catch {
       // Best-effort close on disconnect or channel switch
     }

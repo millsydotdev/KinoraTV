@@ -753,6 +753,48 @@ async fn fetch_client_server_artwork(
     }))
 }
 
+/// Executes a CSP-safe LAN API request from a Tauri desktop Client to its paired Kinora Server.
+#[tauri::command]
+async fn client_server_request(
+    server_url: String,
+    method: String,
+    path: String,
+    auth_token: Option<String>,
+    body: Option<String>,
+) -> Result<lan_proxy::ClientServerResponse, String> {
+    lan_proxy::client_server_request(
+        &server_url,
+        &method,
+        &path,
+        auth_token.as_deref(),
+        body.as_deref(),
+    )
+    .await
+}
+
+/// Connects a background SSE event stream from a paired LAN Kinora Server and forwards
+/// events to the webview as `kinora:client_sync_event`.
+#[tauri::command]
+async fn client_server_sse_connect(
+    app: tauri::AppHandle,
+    server_url: String,
+    auth_token: String,
+    sse: tauri::State<'_, lan_proxy::ClientSseBridge>,
+) -> Result<bool, String> {
+    use tauri::Emitter;
+    let handle = app.clone();
+    sse.connect(&server_url, &auth_token, move |payload| {
+        let _ = handle.emit("kinora:client_sync_event", payload);
+    })
+    .await
+}
+
+/// Disconnects any active Client-to-Server SSE event stream.
+#[tauri::command]
+fn client_server_sse_disconnect(sse: tauri::State<'_, lan_proxy::ClientSseBridge>) {
+    sse.disconnect();
+}
+
 /// Ends a Client-to-Server LAN playback bridge session.
 #[tauri::command]
 fn close_client_server_stream(
@@ -1325,6 +1367,7 @@ pub fn run() {
                 }
             });
             app.manage(lan_proxy::ClientLanStreamBridge::new(origin.clone()));
+            app.manage(lan_proxy::ClientSseBridge::new());
             app.manage(stream::Streams::new(
                 fetch::Policy::default(),
                 stream::Limits::default(),
@@ -1565,6 +1608,9 @@ pub fn run() {
             update_remote_epg,
             update_remote_media,
             fetch_client_server_artwork,
+            client_server_request,
+            client_server_sse_connect,
+            client_server_sse_disconnect,
             check_local_paths_exist,
             discover_kinora_servers
         ])

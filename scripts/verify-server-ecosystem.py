@@ -203,7 +203,10 @@ def main():
 
         st, _, html = http_req(f"{base}/")
         assert st == 200 and b"Kinora Remote" in html
-        print("[PASS] 2. Embedded mobile web remote HTML served")
+        assert b'id="seekSlider"' in html, "Mobile remote missing interactive seek slider"
+        assert b'id="viewMedia"' in html and b"play_media_item" in html, "Mobile remote missing Media tab"
+        assert b'onclick="tuneToChannel(' not in html, "Mobile remote must not use inline JS channel onclick"
+        print("[PASS] 2. Embedded mobile web remote HTML served (seek slider, Media tab, XSS-safe handlers)")
 
         # 2. Unauthenticated protection
         for ep in ("/api/channels", "/api/epg", "/api/media", "/api/artwork?key=channel:pl-smoke~bbc1.uk", "/api/library"):

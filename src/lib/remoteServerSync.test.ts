@@ -194,4 +194,65 @@ describe('remoteServerSync', () => {
     broadcastRemotePlaybackState(dummyState, true)
     expect(updateSpy).toHaveBeenCalledWith(dummyState)
   })
+
+  it('handles seek_to by dispatching kinora:remote_seek and updating active video', () => {
+    const video = document.createElement('video')
+    Object.defineProperty(video, 'duration', { value: 600, configurable: true })
+    document.body.appendChild(video)
+
+    const seekSpy = vi.fn()
+    window.addEventListener('kinora:remote_seek', seekSpy)
+
+    handleIncomingRemoteCommand({
+      command: 'seek_to',
+      payload: { positionSec: 245 },
+      timestamp: Date.now(),
+    })
+    expect(video.currentTime).toBe(245)
+    expect(seekSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: { positionSec: 245 } })
+    )
+
+    // Invalid negative seek values are ignored safely
+    handleIncomingRemoteCommand({
+      command: 'seek_to',
+      payload: { positionSec: -10 },
+      timestamp: Date.now(),
+    })
+    expect(seekSpy).toHaveBeenCalledTimes(1)
+
+    window.removeEventListener('kinora:remote_seek', seekSpy)
+    video.remove()
+  })
+
+  it('handles play_media_item by dispatching event and falling back to search hash when unhandled', () => {
+    window.location.hash = '#/'
+    const mediaSpy = vi.fn()
+    window.addEventListener('kinora:play_media_item', mediaSpy)
+
+    handleIncomingRemoteCommand({
+      command: 'play_media_item',
+      payload: { mediaId: 'mov-1', title: 'Solaris', kind: 'movie' },
+      timestamp: Date.now(),
+    })
+    expect(mediaSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detail: { mediaId: 'mov-1', title: 'Solaris', kind: 'movie' },
+      })
+    )
+    expect(window.location.hash).toBe('#/search?q=Solaris')
+    window.removeEventListener('kinora:play_media_item', mediaSpy)
+
+    // When a screen handles the event via preventDefault, hash is not overwritten
+    window.location.hash = '#/movies'
+    const cancelHandler = (e: Event) => e.preventDefault()
+    window.addEventListener('kinora:play_media_item', cancelHandler)
+    handleIncomingRemoteCommand({
+      command: 'play_media_item',
+      payload: { mediaId: 'mov-2', title: 'Stalker', kind: 'movie' },
+      timestamp: Date.now(),
+    })
+    expect(window.location.hash).toBe('#/movies')
+    window.removeEventListener('kinora:play_media_item', cancelHandler)
+  })
 })
