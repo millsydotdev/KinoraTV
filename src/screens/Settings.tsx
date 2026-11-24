@@ -6,7 +6,7 @@ import { Icon, type IconName } from '../components/Icon'
 import { useToast } from '../components/Toast'
 import { PageHeader } from '../components/PageHeader'
 import { Segmented, Switch } from '../components/ui'
-import { getAppInfo, checkForUpdates, installUpdate, inNativeShell, getArtworkCacheStats, clearArtworkCache, retryFailedArtwork, type ArtworkCacheStats, type AppInfo, type UpdateCheckResult, APP_VERSION, APP_ENV, isStaging, isProduction, getVersionChannel, formatChannelName, getPlatformMode, setPlatformMode, startRemoteServer, discoverKinoraServers, type PlatformMode } from '../lib/native'
+import { getAppInfo, checkForUpdates, installUpdate, inNativeShell, getArtworkCacheStats, clearArtworkCache, retryFailedArtwork, type ArtworkCacheStats, type AppInfo, type UpdateCheckResult, APP_VERSION, APP_ENV, isStaging, isProduction, getVersionChannel, formatChannelName, getPlatformMode, setPlatformMode, startRemoteServer, discoverKinoraServers, type PlatformMode, saveSources } from '../lib/native'
 import { useClientSync } from '../lib/clientSync'
 import { useVoiceAndAgentControl } from '../lib/voiceAndAgent'
 import { CODEC_HELP, codecSupport } from '../lib/playback'
@@ -2325,6 +2325,7 @@ function ProfilesSection() {
 
 function DataSection() {
   const store = useStore()
+  const navigate = useNavigate()
   const toast = useToast()
   const [confirm, setConfirm] = useState<null | { title: string; body: string; action: string; run: () => void }>(null)
   const importFileInput = useRef<HTMLInputElement>(null)
@@ -2912,6 +2913,22 @@ function DataSection() {
         </Row>
         <Row title="Reset all settings" hint="Every preference on this page goes back to its default.">
           <button type="button" className="btn btn-ghost btn-small" onClick={() => ask('Reset all settings?', 'Appearance, playback, subtitle and guide preferences return to their defaults. Your library is not touched.', 'Reset settings', () => store.resetPrefs())}>Reset</button>
+        </Row>
+        <Row title="Erase all data (Factory reset)" hint="Permanently deletes all playlists, guides, preferences, personal library, and cached credentials on this device. Restarts into first-run setup.">
+          <button type="button" className="btn btn-ghost btn-small" style={{ color: 'var(--red, #f44)' }} onClick={() => ask('Erase all data on this device?', 'This will permanently remove all playlists, EPG guides, preferences, personal collections, watch history, and cached metadata. Kinora will return to its clean initial state.', 'Erase everything', async () => {
+            try {
+              await saveSources({ sources: [], guides: [], mappings: [] })
+            } catch {}
+            if (typeof localStorage !== 'undefined') {
+              const keys = Object.keys(localStorage).filter((k) => k.startsWith('kinora.'))
+              keys.forEach((k) => localStorage.removeItem(k))
+            }
+            store.resetLibrary('empty')
+            store.resetPrefs()
+            store.restartSetup()
+            navigate('/setup', { replace: true })
+            toast('All Kinora data erased. Starting fresh setup.')
+          })}>Erase all</button>
         </Row>
       </Group>
       <Dialog

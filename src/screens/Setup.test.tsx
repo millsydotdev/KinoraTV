@@ -12,7 +12,7 @@ import { LiveTV } from './LiveTV'
 import { Setup } from './Setup'
 
 const native = vi.hoisted(() => ({
-  inNativeShell: vi.fn(), loadSources: vi.fn(), saveSources: vi.fn(), loadCatalogue: vi.fn(), refreshCatalogue: vi.fn(), fetchPlaylist: vi.fn(),
+  inNativeShell: vi.fn(), loadSources: vi.fn(), saveSources: vi.fn(), loadCatalogue: vi.fn(), refreshCatalogue: vi.fn(), fetchPlaylist: vi.fn(), fetchGuide: vi.fn(),
   openStream: vi.fn(), closeStream: vi.fn(),
 }))
 vi.mock('../lib/native', async (original) => ({ ...(await original<typeof import('../lib/native')>()), ...native }))
@@ -61,6 +61,7 @@ beforeEach(() => {
   native.loadCatalogue.mockResolvedValue(catalogue)
   native.refreshCatalogue.mockResolvedValue(catalogue)
   native.fetchPlaylist.mockResolvedValue(report)
+  native.fetchGuide.mockResolvedValue({ programmes: 1200, channels: 25, start: 0, stop: 0 })
 })
 afterEach(async () => {
   await act(async () => root.unmount())
@@ -83,16 +84,40 @@ describe('a new user', () => {
     await click('United States')
     expect(native.fetchPlaylist).toHaveBeenCalledWith('https://iptv-org.github.io/iptv/countries/us.m3u')
     await click('Continue')
+    expect(text()).toContain('Electronic Programme Guide')
+    await click('Skip guide')
+    expect(text()).toContain('Logos & Artwork Privacy')
+    await click('Finish setup')
     expect(text()).toContain('You are ready to watch')
     await click('Open Live TV')
     expect(text()).toContain('Real One')
     expect(JSON.parse(localStorage.getItem('kinora.setup.v1') ?? '{}')).toEqual({ done: true })
   })
 
+  it('suggests and attaches the matching XMLTV guide for the chosen country', async () => {
+    await mount('/setup')
+    await click('Find channels')
+    await click('United States')
+    await click('Continue')
+    expect(text()).toContain('Electronic Programme Guide')
+    expect(text()).toContain('Suggested for your channels')
+    expect(text()).toContain('US Guide (iptv-org)')
+    await click('Add Suggested Guide')
+    expect(native.fetchGuide).toHaveBeenCalledWith(expect.any(String), 'https://iptv-org.github.io/epg/guides/us.xml.gz')
+    expect(text()).toContain('Logos & Artwork Privacy')
+    await click('Finish setup')
+    expect(text()).toContain('You are ready to watch')
+    expect(text()).toContain('EPG Guides')
+  })
+
   it('can skip every step and is told how to come back', async () => {
     await mount('/setup')
     await click('Find channels')
     await click('Skip this step')
+    expect(text()).toContain('Electronic Programme Guide')
+    await click('Skip guide')
+    expect(text()).toContain('Logos & Artwork Privacy')
+    await click('Finish setup')
     expect(text()).toContain('open this setup again from Settings')
     await click('Go to Home')
     expect(text()).toContain('Nothing to watch yet')
@@ -115,6 +140,10 @@ describe('a new user', () => {
     await click('Find channels')
     expect(text()).toContain('could not be loaded')
     await click('Skip this step')
+    expect(text()).toContain('Electronic Programme Guide')
+    await click('Skip guide')
+    expect(text()).toContain('Logos & Artwork Privacy')
+    await click('Finish setup')
     expect(text()).toContain('You can do this later')
   })
 

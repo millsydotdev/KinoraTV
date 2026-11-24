@@ -641,17 +641,7 @@ export function Movies() {
   return (
     <div className="streaming-page movies-screen">
       <PageHeader
-        title={
-          <div className="streaming-title-group">
-            <div className="streaming-icon-badge" aria-hidden="true">
-              <Icon name="film" size={20} />
-            </div>
-            <div className="streaming-title-meta">
-              <span className="streaming-title">Movies</span>
-              <span className="streaming-subtitle">Discover, watch and manage your movie collection.</span>
-            </div>
-          </div>
-        }
+        title="Movies"
         searchPlaceholder="Search movies, TV shows, channels..."
       />
 

@@ -402,17 +402,7 @@ export function SeriesBrowse() {
   return (
     <div className="streaming-page series-screen">
       <PageHeader
-        title={
-          <div className="streaming-title-group">
-            <div className="streaming-icon-badge" aria-hidden="true">
-              <Icon name="tv" size={20} />
-            </div>
-            <div className="streaming-title-meta">
-              <span className="streaming-title">TV Shows</span>
-              <span className="streaming-subtitle">Discover, binge and manage your TV series collection.</span>
-            </div>
-          </div>
-        }
+        title="TV Shows"
         searchPlaceholder="Search TV shows, seasons, episodes..."
       />
 

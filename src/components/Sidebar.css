@@ -325,12 +325,10 @@
   width: 3.5px;
   border-radius: 999px;
   background: var(--accent, #e50914);
-  box-shadow: 0 0 10px var(--accent-glow, rgba(229, 9, 20, 0.6));
 }
 
 .sidebar-root-btn.is-active .sidebar-icon {
   color: var(--accent, #e50914);
-  filter: drop-shadow(0 0 6px var(--accent-glow, rgba(229, 9, 20, 0.45)));
 }
 
 .sidebar-root-btn.is-active .sidebar-chevron {
@@ -477,19 +475,6 @@
   font-weight: 600;
   background: var(--accent-soft, rgba(229, 9, 20, 0.12));
   border-color: color-mix(in oklab, var(--accent, #e50914) 26%, transparent);
-}
-
-.sidebar-child-link.is-active::before {
-  content: '';
-  position: absolute;
-  left: 5px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--accent, #e50914);
-  box-shadow: 0 0 6px var(--accent-glow, rgba(229, 9, 20, 0.6));
 }
 
 .sidebar-child-link.is-active .sidebar-child-icon {

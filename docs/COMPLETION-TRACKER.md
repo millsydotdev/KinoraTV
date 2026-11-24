@@ -14,7 +14,7 @@ settings. **M6** release operations and docs.
 
 | # | Finding | Before | Finished outcome | Done so far | Evidence | Depends on / approval | M | Status |
 |---|---|---|---|---|---|---|---|---|
-| 1 | No onboarding | Lands in fictional catalogue | Skippable setup, revisitable, reaches a real channel | `/setup` opens on a new profile; choose a country, read, add; every step skippable; offline handled; Settings › Data reopens it. Guide and image steps follow in M3 and M4 | `Setup.test.tsx`; packaged walk with real iptv-org catalogue (screenshots viewed) | | M1 | IN PROGRESS: guide and image steps |
+| 1 | No onboarding | Lands in fictional catalogue | Skippable setup, revisitable, reaches a real channel | `/setup` opens on a new profile; choose a country, read, add; skippable country, XMLTV guide and artwork privacy steps; offline handled; Settings › Advanced reopens it | `Setup.test.tsx`; packaged walk with real iptv-org catalogue (screenshots viewed) | | M1 | DONE a p |
 | 2 | Fictional default content | Demo library and titles by default | Demo only by explicit opt-in, always labelled | Sample mode is a preference, off by default, ends when a source is added, labelled in sidebar, footer and player | `Setup.test.tsx`, `RealOnly.test.tsx`, packaged walk | | M1 | DONE a p |
 | 3 | Leftover fake data | Sample sources, counts, collections survive import | Separated; real data preserved; migration tested | `lib/migrate.ts` moves real entries to `kinora.library.v2`, sample activity lives in its own key, old key kept as a safety copy | `migrate.test.ts`, packaged walk | | M1 | DONE a p; upgrade from a real old build tested in M6 |
 | 4 | No films or series | Demo screens only | Metadata, search, details, art, seasons, library, progress, lawful playback | | | Provider and VOD model: owner | M4 | OPEN |
@@ -73,7 +73,7 @@ settings. **M6** release operations and docs.
 | F | Permissions, stored fields | VERIFIED p | Keep verified | | | OPEN |
 | F | Backup and restore | PARTIAL | See finding 15 | Schema v3 AES-256-GCM with pre-flight migration wizard, selective import | 15 | DONE a |
 | F | Upgrade across releases | NOT IMPLEMENTED | Tested from an old build | | 13 | OPEN |
-| F | In-app erase | NOT IMPLEMENTED | See finding 15 | | 15 | OPEN |
+| F | In-app erase | VERIFIED | Factory reset clears sources, guides, preferences, and local storage | Settings.tsx, SettingsReset.test.tsx | 15 | DONE a |
 | F | Large saved-data startup | UNKNOWN | Measured, packaged | | | OPEN |
 | G | Keyboard, labels, overflow | VERIFIED p | Keep verified, including new screens | | | OPEN |
 | G | Screen reader | UNKNOWN | Tested with Orca where possible; result recorded | | | OPEN |

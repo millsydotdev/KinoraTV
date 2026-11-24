@@ -32,6 +32,13 @@ export type SourceType =
   | 'rss-feed'
   | 'opds-library'
 
+export type ImplementationStatus =
+  | 'fully-implemented'
+  | 'implemented-with-limitations'
+  | 'partially-implemented'
+  | 'architectural-definition-only'
+  | 'not-implemented'
+
 export type MediaKind =
   | 'channel'
   | 'radio'

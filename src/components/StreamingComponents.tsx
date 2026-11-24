@@ -154,7 +154,6 @@ export function StreamingHero({
 
       <div className="streaming-hero-content">
         <div className="streaming-hero-kicker">
-          <span className="streaming-kicker-dash" />
           <span>{current.kicker}</span>
         </div>
 
@@ -295,10 +294,9 @@ export function StreamingGenreRow({
   return (
     <section className="streaming-genre-section" aria-label="Browse by Genre">
       <div className="streaming-genre-header">
-        <div className="streaming-section-title-dash">
-          <span className="streaming-title-dash-red" />
+        <h2 className="streaming-rail-title">
           <span>Browse by Genre</span>
-        </div>
+        </h2>
         <button
           type="button"
           className="streaming-view-all"
