@@ -186,7 +186,7 @@ export function ArtworkDiagnosticsModal({
             {resolution.src && (
               <div className="art-diag-meta-row">
                 <span className="art-diag-label">Asset URL:</span>
-                <span className="art-diag-val tnum art-diag-url-truncate" title={resolution.src}>
+                <span className="art-diag-val tnum art-diag-url-truncate" title={resolution.src.split('?')[0]}>
                   {resolution.src.split('?')[0]}
                 </span>
               </div>

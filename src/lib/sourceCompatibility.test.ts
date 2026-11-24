@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   getSourceCapability,
+  getSourceImplementationStatus,
   doesSourceSupportMedia,
   doesSourceProvideArtworkRole,
   type SourceType,
@@ -39,6 +40,19 @@ describe('Source and Media Compatibility Matrix', () => {
       expect(cap.supportedArtworkRoles.length).toBeGreaterThan(0)
       expect(cap.knownLimitations.length).toBeGreaterThan(0)
     }
+  })
+
+  it('accurately distinguishes genuine implementation status across all 10 sources', () => {
+    expect(getSourceImplementationStatus('m3u')).toBe('fully-implemented')
+    expect(getSourceImplementationStatus('xtream')).toBe('fully-implemented')
+    expect(getSourceImplementationStatus('xmltv')).toBe('fully-implemented')
+    expect(getSourceImplementationStatus('stalker')).toBe('implemented-with-limitations')
+    expect(getSourceImplementationStatus('local-media')).toBe('fully-implemented')
+    expect(getSourceImplementationStatus('media-server')).toBe('architectural-definition-only')
+    expect(getSourceImplementationStatus('metadata-service')).toBe('fully-implemented')
+    expect(getSourceImplementationStatus('discovery-catalogue')).toBe('fully-implemented')
+    expect(getSourceImplementationStatus('rss-feed')).toBe('partially-implemented')
+    expect(getSourceImplementationStatus('opds-library')).toBe('architectural-definition-only')
   })
 
   it('correctly reports supported media kinds per source type', () => {
@@ -106,10 +120,110 @@ describe('Canonical Media and Asset Model', () => {
 })
 
 describe('Artwork Suitability Validation Engine', () => {
-  it('refuses private and loopback destinations', () => {
+  it('refuses private and loopback destinations by default', () => {
     const res = validateArtworkSuitability('http://127.0.0.1:8080/logo.png', 'channel-logo')
     expect(res.isValid).toBe(false)
     expect(res.rejectionReason).toContain('Private or loopback')
+  })
+
+  it('unconditionally blocks cloud metadata service endpoints under all options', () => {
+    const endpoints = [
+      'http://169.254.169.254/latest/meta-data/',
+      'http://metadata.google.internal/computeMetadata/v1/',
+      'http://instance-data/latest/meta-data/',
+    ]
+    for (const ep of endpoints) {
+      // Direct call
+      const res1 = validateArtworkSuitability(ep, 'channel-logo')
+      expect(res1.isValid).toBe(false)
+      expect(res1.rejectionReason).toContain('Cloud metadata service destination refused')
+
+      // With trusted local source enabled (must still be refused unconditionally)
+      const res2 = validateArtworkSuitability(ep, 'channel-logo', { isTrustedLocalSource: true })
+      expect(res2.isValid).toBe(false)
+      expect(res2.rejectionReason).toContain('Cloud metadata service destination refused')
+
+      // With trusted hosts (must still be refused unconditionally)
+      const res3 = validateArtworkSuitability(ep, 'channel-logo', {
+        allowLocalNetwork: true,
+        trustedHosts: ['169.254.169.254', 'metadata.google.internal'],
+      })
+      expect(res3.isValid).toBe(false)
+      expect(res3.rejectionReason).toContain('Cloud metadata service destination refused')
+    }
+  })
+
+  it('allows private network addresses only when explicitly marked trusted or in trustedHosts', () => {
+    const privateUrl = 'http://192.168.1.100:8096/Images/Primary'
+
+    // Untrusted by default
+    const untrustedRes = validateArtworkSuitability(privateUrl, 'movie-poster')
+    expect(untrustedRes.isValid).toBe(false)
+    expect(untrustedRes.rejectionReason).toContain('Private or loopback address destination refused')
+
+    // Allowed with isTrustedLocalSource
+    const trustedRes = validateArtworkSuitability(privateUrl, 'movie-poster', { isTrustedLocalSource: true })
+    expect(trustedRes.isValid).toBe(true)
+
+    // Allowed with allowLocalNetwork
+    const localNetRes = validateArtworkSuitability(privateUrl, 'movie-poster', { allowLocalNetwork: true })
+    expect(localNetRes.isValid).toBe(true)
+
+    // Allowed with trustedHosts
+    const hostRes = validateArtworkSuitability(privateUrl, 'movie-poster', { trustedHosts: ['192.168.1.100'] })
+    expect(hostRes.isValid).toBe(true)
+  })
+
+  it('permits local filesystem sidecar artwork via file:// scheme', () => {
+    const fileUrl = 'file:///mnt/storage/media/movies/Inception/backdrop.jpg'
+    const res = validateArtworkSuitability(fileUrl, 'movie-backdrop')
+    expect(res.isValid).toBe(true)
+    expect(res.suitabilityScore).toBeGreaterThanOrEqual(0.9)
+  })
+
+  it('rejects low-resolution backdrops and posters below minimum bounds', () => {
+    // Backdrop below 320x180
+    const lowResBackdrop = validateArtworkSuitability(
+      'https://example.com/art/tiny-backdrop.jpg',
+      'cinematic-backdrop',
+      { inspection: { width: 300, height: 168 } },
+    )
+    expect(lowResBackdrop.isValid).toBe(false)
+    expect(lowResBackdrop.rejectionReason).toContain('too low for cinematic backdrop')
+
+    // Poster below 120x180
+    const lowResPoster = validateArtworkSuitability(
+      'https://example.com/art/tiny-poster.jpg',
+      'movie-poster',
+      { inspection: { width: 100, height: 150 } },
+    )
+    expect(lowResPoster.isValid).toBe(false)
+    expect(lowResPoster.rejectionReason).toContain('too low for poster')
+  })
+
+  it('validates MIME types and rejects non-image formats', () => {
+    const htmlRes = validateArtworkSuitability(
+      'https://example.com/cover.jpg',
+      'movie-poster',
+      { inspection: { mimeType: 'text/html' } },
+    )
+    expect(htmlRes.isValid).toBe(false)
+    expect(htmlRes.rejectionReason).toContain('must be an image format')
+
+    const pdfRes = validateArtworkSuitability(
+      'https://example.com/cover.jpg',
+      'book-cover',
+      { inspection: { mimeType: 'application/pdf' } },
+    )
+    expect(pdfRes.isValid).toBe(false)
+    expect(pdfRes.rejectionReason).toContain('must be an image format')
+
+    const imageRes = validateArtworkSuitability(
+      'https://example.com/cover.jpg',
+      'movie-poster',
+      { inspection: { mimeType: 'image/jpeg' } },
+    )
+    expect(imageRes.isValid).toBe(true)
   })
 
   it('refuses generic category stock graphics such as 3D news rings', () => {
@@ -198,6 +312,60 @@ describe('Artwork Matching and Disambiguation Rules', () => {
     expect(isGenericOrPromoGraphic('http://jiotv.catchup.cdn.jio.com/dare_images/shows/epgdata/a1fdd5b63f0433c2b9f0ec27a8e14698.jpg')).toBe(true)
     expect(isGenericOrPromoGraphic('https://example.com/art/49KZ0pe0n6E3AapZmOx94oAmWMl.jpg')).toBe(true)
     expect(isGenericOrPromoGraphic('https://images.metadata.sky.com/pd-image/89aabe55-3c82-47ef-b4ab-a41f1cef81fd/16-9')).toBe(false)
+  })
+
+  it('handles multilingual EPG titles in Devanagari script accurately', () => {
+    // Exact Hindi match without year
+    const exactMatch = scoreArtworkMatch('आस्था स्पेशल', undefined, 'आस्था स्पेशल', undefined)
+    expect(exactMatch.status).toBe('verified')
+    expect(exactMatch.confidence).toBe(0.85)
+
+    // Exact Hindi match with verified broadcast year
+    const yearMatch = scoreArtworkMatch('आस्था स्पेशल', 2024, 'आस्था स्पेशल', 2024)
+    expect(yearMatch.status).toBe('verified')
+    expect(yearMatch.confidence).toBe(1.0)
+
+    // Hindi News title matching
+    const newsMatch = scoreArtworkMatch('न्यूज़ एक्सप्रेस', undefined, 'न्यूज़ एक्सप्रेस', undefined)
+    expect(newsMatch.status).toBe('verified')
+    expect(newsMatch.confidence).toBe(0.85)
+  })
+
+  it('disambiguates regional broadcast channels cleanly', () => {
+    // Channel London vs Channel Scotland
+    artworkEngine.registerProgrammeIcon(
+      {
+        id: 'prog-bbc-ldn',
+        channelId: 'bbc-one-london',
+        start: 1000,
+        stop: 2000,
+        title: 'Regional News London',
+        desc: 'London news broadcast',
+        category: 'News',
+        episode: null,
+        icon: 'https://images.metadata.sky.com/pd-image/london-news/16-9',
+      },
+      {
+        id: 'bbc-one-london',
+        number: 1,
+        name: 'BBC One London',
+        group: 'Regional',
+        categories: ['Regional'],
+        mark: { tone: '#b00', text: 'LDN' },
+        streamUrl: 'https://example.com/ldn.m3u8',
+        logoUrl: 'https://example.com/ldn.png',
+        hd: true,
+        sourceId: 'src-1',
+        tvgId: 'bbc-one-london',
+      },
+    )
+
+    const ldnArt = artworkEngine.findArtwork('Regional News London', 'epg-programme-artwork', undefined, 'bbc-one-london')
+    expect(ldnArt).not.toBeNull()
+    expect(ldnArt?.sourceUrl).toContain('london-news')
+
+    const scotArt = artworkEngine.findArtwork('Regional News London', 'epg-programme-artwork', undefined, 'bbc-one-scotland')
+    expect(scotArt).toBeNull()
   })
 })
 

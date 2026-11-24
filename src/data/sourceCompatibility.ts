@@ -102,6 +102,7 @@ export interface SourceCapability {
   displayName: string
   icon: IconName
   description: string
+  implementationStatus: ImplementationStatus
   supportedMediaKinds: MediaKind[]
   supportedArtworkRoles: ArtworkRole[]
   artworkProvenance: 'remote' | 'local' | 'embedded' | 'hybrid'
@@ -120,6 +121,7 @@ export const SOURCE_CAPABILITY_MATRIX: Record<SourceType, SourceCapability> = {
     displayName: 'M3U / M3U8 Playlist',
     icon: 'live',
     description: 'Standard M3U/M3U8 text playlists with EXTINF metadata tags and stream links.',
+    implementationStatus: 'fully-implemented',
     supportedMediaKinds: ['channel', 'radio', 'movie', 'series', 'episode'],
     supportedArtworkRoles: ['channel-logo', 'movie-poster', 'series-poster', 'cinematic-backdrop'],
     artworkProvenance: 'remote',
@@ -140,6 +142,7 @@ export const SOURCE_CAPABILITY_MATRIX: Record<SourceType, SourceCapability> = {
     displayName: 'Xtream Codes Provider',
     icon: 'database',
     description: 'Structured IPTV and VOD server architecture with authentication, category trees, and stream actions.',
+    implementationStatus: 'fully-implemented',
     supportedMediaKinds: ['channel', 'radio', 'catchup', 'movie', 'series', 'season', 'episode'],
     supportedArtworkRoles: [
       'channel-logo',
@@ -168,6 +171,7 @@ export const SOURCE_CAPABILITY_MATRIX: Record<SourceType, SourceCapability> = {
     displayName: 'XMLTV EPG Guide',
     icon: 'guide',
     description: 'Standard XMLTV broadcast timetables supplying programme schedules, ratings, categories, and broadcast stills.',
+    implementationStatus: 'fully-implemented',
     supportedMediaKinds: ['channel', 'programme', 'radio-programme'],
     supportedArtworkRoles: ['channel-logo', 'channel-icon', 'programme-still', 'epg-programme-artwork', 'episode-still'],
     artworkProvenance: 'remote',
@@ -188,6 +192,7 @@ export const SOURCE_CAPABILITY_MATRIX: Record<SourceType, SourceCapability> = {
     displayName: 'Stalker / MAG Middleware',
     icon: 'tv',
     description: 'Middleware portal architecture using handshake handshakes, tokenized playback, and MAC authentication.',
+    implementationStatus: 'implemented-with-limitations',
     supportedMediaKinds: ['channel', 'catchup', 'movie', 'series', 'episode'],
     supportedArtworkRoles: ['channel-logo', 'movie-poster', 'series-poster'],
     artworkProvenance: 'remote',
@@ -207,6 +212,7 @@ export const SOURCE_CAPABILITY_MATRIX: Record<SourceType, SourceCapability> = {
     displayName: 'Local Storage and Sidecars',
     icon: 'folder',
     description: 'Local filesystem directories, mounted network shares, sidecar artwork, and embedded audio/video tags.',
+    implementationStatus: 'fully-implemented',
     supportedMediaKinds: [
       'movie',
       'series',
@@ -252,6 +258,7 @@ export const SOURCE_CAPABILITY_MATRIX: Record<SourceType, SourceCapability> = {
     displayName: 'Media Server (Jellyfin / Plex / Emby)',
     icon: 'database',
     description: 'Personal media server integrations with unified libraries, collections, and progress sync.',
+    implementationStatus: 'architectural-definition-only',
     supportedMediaKinds: ['movie', 'series', 'season', 'episode', 'album', 'track', 'audiobook'],
     supportedArtworkRoles: [
       'movie-poster',
@@ -284,6 +291,7 @@ export const SOURCE_CAPABILITY_MATRIX: Record<SourceType, SourceCapability> = {
     displayName: 'Trusted Metadata Services',
     icon: 'search',
     description: 'External metadata and artwork providers including TMDb, TVDB, TVmaze, and OpenSubtitles.',
+    implementationStatus: 'fully-implemented',
     supportedMediaKinds: ['movie', 'series', 'season', 'episode', 'collection', 'documentary'],
     supportedArtworkRoles: [
       'movie-poster',
@@ -319,6 +327,7 @@ export const SOURCE_CAPABILITY_MATRIX: Record<SourceType, SourceCapability> = {
     displayName: 'Public Discovery Repositories',
     icon: 'rows',
     description: 'Public curated directories including iptv-org and vetted public cultural catalogues.',
+    implementationStatus: 'fully-implemented',
     supportedMediaKinds: ['channel', 'radio', 'resource'],
     supportedArtworkRoles: ['channel-logo', 'channel-icon', 'radio-station-artwork'],
     artworkProvenance: 'remote',
@@ -338,6 +347,7 @@ export const SOURCE_CAPABILITY_MATRIX: Record<SourceType, SourceCapability> = {
     displayName: 'Podcast & Audio RSS Feeds',
     icon: 'mic',
     description: 'Standard RSS 2.0 and iTunes podcast feeds containing audio episodes and channel artwork.',
+    implementationStatus: 'partially-implemented',
     supportedMediaKinds: ['podcast', 'podcast-episode', 'radio-programme'],
     supportedArtworkRoles: ['podcast-artwork', 'podcast-episode-artwork', 'channel-icon'],
     artworkProvenance: 'remote',
@@ -357,6 +367,7 @@ export const SOURCE_CAPABILITY_MATRIX: Record<SourceType, SourceCapability> = {
     displayName: 'OPDS Publication Catalogue',
     icon: 'book',
     description: 'Open Publication Distribution System feeds for books, audiobooks, and documents.',
+    implementationStatus: 'architectural-definition-only',
     supportedMediaKinds: ['book', 'audiobook', 'audiobook-chapter'],
     supportedArtworkRoles: ['book-cover', 'audiobook-cover'],
     artworkProvenance: 'remote',
@@ -378,6 +389,14 @@ export const SOURCE_CAPABILITY_MATRIX: Record<SourceType, SourceCapability> = {
  */
 export function getSourceCapability(sourceType: SourceType): SourceCapability {
   return SOURCE_CAPABILITY_MATRIX[sourceType] || SOURCE_CAPABILITY_MATRIX['m3u']
+}
+
+/**
+ * Returns the genuine implementation status for a source type.
+ */
+export function getSourceImplementationStatus(sourceType: SourceType): ImplementationStatus {
+  const cap = SOURCE_CAPABILITY_MATRIX[sourceType]
+  return cap ? cap.implementationStatus : 'not-implemented'
 }
 
 /**

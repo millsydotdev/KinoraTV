@@ -38,6 +38,7 @@ export function PersistentPlayerDock() {
     togglePlay,
     stopPlayback,
     setPipMode,
+    retry,
   } = useUniversalPlayback()
 
   const store = useStore()
@@ -135,19 +136,23 @@ export function PersistentPlayerDock() {
           <button
             type="button"
             className="pip-center-play-btn"
-            title={isPlaying ? 'Pause' : 'Play'}
-            aria-label={isPlaying ? 'Pause' : 'Play'}
-            onClick={togglePlay}
+            title={playbackState.status === 'error' ? 'Retry stream' : isPlaying ? 'Pause' : 'Play'}
+            aria-label={playbackState.status === 'error' ? 'Retry stream' : isPlaying ? 'Pause' : 'Play'}
+            onClick={playbackState.status === 'error' ? retry : togglePlay}
           >
-            <Icon name={isPlaying ? 'pause' : 'play'} size={20} />
+            <Icon name={playbackState.status === 'error' ? 'refresh' : isPlaying ? 'pause' : 'play'} size={20} />
           </button>
 
           <div className="pip-dock-bottom-bar">
-            {activeStream?.subtitle && (
+            {playbackState.status === 'error' ? (
+              <span className="pip-title-text" style={{ fontSize: '11px', color: 'var(--warn, #f59e0b)' }} title={playbackState.message ?? 'Stream offline'}>
+                Offline: {playbackState.message ?? 'Stream error'}
+              </span>
+            ) : activeStream?.subtitle ? (
               <span className="pip-title-text" style={{ fontSize: '11px', opacity: 0.85 }}>
                 {activeStream.subtitle}
               </span>
-            )}
+            ) : null}
           </div>
         </div>
       )}

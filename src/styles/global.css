@@ -879,6 +879,32 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 }
 .badge-hd { background: color-mix(in oklab, var(--surface) 70%, transparent); border: 1px solid var(--line-strong); color: var(--text-2); font-size: 0.625rem; }
 .badge-offline { background: color-mix(in oklab, var(--warn) 20%, transparent); color: var(--warn); border: 1px solid color-mix(in oklab, var(--warn) 40%, transparent); font-size: 0.625rem; }
+.channel-card-offline-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.channel-card-retry-btn {
+  background: transparent;
+  border: none;
+  color: inherit;
+  padding: 0;
+  margin: 0;
+  margin-left: 2px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.85;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.channel-card-retry-btn:hover {
+  opacity: 1;
+  transform: rotate(45deg);
+}
+.channel-card-error-text {
+  color: var(--warn);
+}
 
 /* TV Box Animated Neon Focus and Card Border */
 .neon-focus,

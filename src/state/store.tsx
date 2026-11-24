@@ -29,6 +29,13 @@ import { clientSyncManager, useClientSync } from '../lib/clientSync'
 
 export type { Collection, Library, Progress, Ref, XtreamTitle }
 
+export interface StreamFailure {
+  channelId: string
+  at: number
+  message: string
+  canRetry: boolean
+}
+
 export interface XtreamSource extends SavedXtreamSource {
   connected: boolean
   /** Kept only in React memory so the form can reconnect during this app session. */
@@ -291,10 +298,44 @@ function useStoreValue(
   initialDemo: boolean,
   initialXtreamSources: XtreamSource[] = [],
   initialXtreamCatalogue: Partial<XtreamCatalogueState> = { movies: [], series: [] },
+  initialStreamFailures?: Map<string, StreamFailure> | Record<string, StreamFailure>,
 ) {
   const { activeProfile, isKidsMode } = useProfiles()
   const profileId = activeProfile?.id ?? 'default'
   const clientSync = useClientSync()
+
+  // Track real-play stream failures in session state (in-memory only, no background probing).
+  const [streamFailures, setStreamFailures] = useState<Map<string, StreamFailure>>(() => {
+    if (!initialStreamFailures) return new Map()
+    if (initialStreamFailures instanceof Map) return new Map(initialStreamFailures)
+    return new Map(Object.entries(initialStreamFailures))
+  })
+
+  const recordStreamFailure = useCallback((channelId: string, error: { message: string; canRetry?: boolean }) => {
+    setStreamFailures((prev) => {
+      const next = new Map(prev)
+      next.set(channelId, {
+        channelId,
+        at: Date.now(),
+        message: error.message,
+        canRetry: error.canRetry ?? true,
+      })
+      return next
+    })
+  }, [])
+
+  const clearStreamFailure = useCallback((channelId: string) => {
+    setStreamFailures((prev) => {
+      if (!prev.has(channelId)) return prev
+      const next = new Map(prev)
+      next.delete(channelId)
+      return next
+    })
+  }, [])
+
+  const getStreamFailure = useCallback((channelId: string): StreamFailure | undefined => {
+    return streamFailures.get(channelId)
+  }, [streamFailures])
 
   // Auto-reconnect to the paired Kinora Server on startup when running in Client mode.
   useEffect(() => {
@@ -1315,6 +1356,10 @@ function useStoreValue(
     demoTitles: demoActive,
     mediaLibrary,
     userPreferences,
+    streamFailures,
+    recordStreamFailure,
+    clearStreamFailure,
+    getStreamFailure,
   }
 }
 
@@ -1330,6 +1375,7 @@ export function StoreProvider({
   initialDemo = false,
   initialXtreamSources = [],
   initialXtreamCatalogue = { movies: [], series: [] },
+  initialStreamFailures,
 }: {
   children: ReactNode
   initialPlaylists?: PlaylistSource[]
@@ -1338,8 +1384,9 @@ export function StoreProvider({
   initialDemo?: boolean
   initialXtreamSources?: XtreamSource[]
   initialXtreamCatalogue?: Partial<XtreamCatalogueState>
+  initialStreamFailures?: Map<string, StreamFailure> | Record<string, StreamFailure>
 }) {
-  const store = useStoreValue(initialPlaylists, initialGuides, initialMappings, initialDemo, initialXtreamSources, initialXtreamCatalogue)
+  const store = useStoreValue(initialPlaylists, initialGuides, initialMappings, initialDemo, initialXtreamSources, initialXtreamCatalogue, initialStreamFailures)
   useEffect(() => {
     ;(window as unknown as { __kinora_store?: Store }).__kinora_store = store
     return () => {

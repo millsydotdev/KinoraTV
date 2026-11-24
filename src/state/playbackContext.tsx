@@ -422,8 +422,30 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     if (retryIntervalRef.current) window.clearInterval(retryIntervalRef.current)
     reconnectControllerRef.current?.cancel()
     setRetryTimerRemaining(null)
+    const channelId = activeStream?.channel?.id || (activeStream?.ref?.startsWith('channel:') ? activeStream.ref.slice('channel:'.length) : null)
+    if (channelId) {
+      store.clearStreamFailure(channelId)
+    }
     playback.retry()
-  }, [playback])
+  }, [playback, activeStream, store])
+
+  // Synchronise real-play stream failures with session state in store (Finding 6, 18).
+  useEffect(() => {
+    if (!activeStream) return
+    const channelId = activeStream.channel?.id || (activeStream.ref?.startsWith('channel:') ? activeStream.ref.slice('channel:'.length) : null)
+    if (!channelId) return
+
+    if (playback.state.status === 'error' || playback.state.status === 'unsupported') {
+      if (!playback.state.message?.includes('desktop app')) {
+        store.recordStreamFailure(channelId, {
+          message: playback.state.message || 'Stream playback failed',
+          canRetry: playback.state.canRetry,
+        })
+      }
+    } else if (playback.state.status === 'playing') {
+      store.clearStreamFailure(channelId)
+    }
+  }, [playback.state.status, playback.state.message, playback.state.canRetry, activeStream, store])
 
   const cancelRetry = useCallback(() => {
     if (retryIntervalRef.current) window.clearInterval(retryIntervalRef.current)

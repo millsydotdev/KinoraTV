@@ -1,13 +1,14 @@
 import type { ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useEffect, useRef, useState } from 'react'
+import { useContext, useEffect, useRef, useState } from 'react'
 import type { Channel, Programme } from '../data/types'
 import { clock } from '../lib/time'
 import { loadXtreamArtwork } from '../lib/native'
 import { cleanChannelTitle } from '../state/playlists'
 import { Icon, type IconName } from './Icon'
 import { Art, ChannelMark, ProgressBar, ProgrammeArt } from './ui'
-import { useStore } from '../state/store'
+import { StoreContext, useStore } from '../state/store'
+import { useUniversalPlayback } from '../state/playbackContext'
 import { useToast } from './Toast'
 import { ContextMenu, type ContextMenuItem } from './design-system/ContextMenu'
 import { CollectionDialog } from './CollectionDialog'
@@ -700,6 +701,11 @@ export const idleLabel = (c: Channel) => (c.sourceId ? 'No guide information' : 
 export function ChannelCard({ channel, now, next, to, format, selected, at }: {
   channel: Channel; now?: Programme; next?: Programme; to: string; format: '24h' | '12h'; selected?: boolean; at: number
 }) {
+  const store = useContext(StoreContext)
+  const playbackCtx = useUniversalPlayback()
+  const navigate = useNavigate()
+  const failure = channel.id ? store?.getStreamFailure(channel.id) : undefined
+
   const displayName = cleanChannelTitle(channel.name)
   const isPlayable = Boolean(channel.streamUrl)
   const itemRef = channel.id ? `channel:${channel.id}` : undefined
@@ -721,8 +727,13 @@ export function ChannelCard({ channel, now, next, to, format, selected, at }: {
       <Link
         to={to}
         className={`card channel-card${selected ? ' is-selected' : ''}`}
-        aria-label={`${displayName}: ${now?.title ?? idleLabel(channel)}${next ? `, next at ${clock(next.start, format)}` : ''}${selected ? ', watching' : ''}`}
+        aria-label={`${displayName}: ${now?.title ?? idleLabel(channel)}${failure ? `, stream offline: ${failure.message}` : ''}${next ? `, next at ${clock(next.start, format)}` : ''}${selected ? ', watching' : ''}`}
         onContextMenu={onContextMenu}
+        onClick={() => {
+          if (failure && channel.id) {
+            store?.clearStreamFailure(channel.id)
+          }
+        }}
       >
         <div className="card-media card-shade channel-card-media" style={{ ['--channel-tone' as string]: channel.mark.tone }}>
           {hasValidProgrammeArt ? (
@@ -741,16 +752,55 @@ export function ChannelCard({ channel, now, next, to, format, selected, at }: {
             <span className="card-top-badges">
               {channel.hd && <span className="badge badge-hd">HD</span>}
               {(channel.streamOptions?.length ?? 0) > 1 && <span className="badge badge-hd" title={`${channel.streamOptions?.length} stream servers available`}>{channel.streamOptions?.length} servers</span>}
-              {selected ? <span className="badge badge-accent">Watching</span> : now && <span className="badge badge-live">Live</span>}
-              {!isPlayable && channel.sourceId && <span className="badge badge-offline" title="Stream address pending source refresh">Unverified</span>}
+              {failure ? (
+                <span
+                  className="badge badge-offline channel-card-offline-badge"
+                  title={`Stream offline: ${failure.message}`}
+                  data-testid="channel-offline-badge"
+                >
+                  <Icon name="warning" size={10} />
+                  <span>Offline</span>
+                  {failure.canRetry && (
+                    <button
+                      type="button"
+                      className="channel-card-retry-btn"
+                      aria-label={`Retry tuning ${displayName}`}
+                      title="Retry tuning"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        if (channel.id) store?.clearStreamFailure(channel.id)
+                        if (selected) {
+                          playbackCtx.retry()
+                        } else {
+                          navigate(to)
+                        }
+                      }}
+                    >
+                      <Icon name="refresh" size={10} />
+                    </button>
+                  )}
+                </span>
+              ) : selected ? (
+                <span className="badge badge-accent">Watching</span>
+              ) : now ? (
+                <span className="badge badge-live">Live</span>
+              ) : null}
+              {!isPlayable && channel.sourceId && !failure && (
+                <span className="badge badge-offline" title="Stream address pending source refresh">Unverified</span>
+              )}
             </span>
           </span>
           <span className="card-overlay has-progress" aria-hidden="true">
             <span className="channel-card-prog-row">
               <strong className="channel-prog-title">{now?.title ?? idleLabel(channel)}</strong>
-              {remainingMins != null && (
+              {failure ? (
+                <span className="channel-card-time-left channel-card-error-text" title={failure.message}>
+                  Offline
+                </span>
+              ) : remainingMins != null ? (
                 <span className="channel-card-time-left">{remainingMins} min left</span>
-              )}
+              ) : null}
             </span>
             {next && <span className="tnum channel-next-info">Next {clock(next.start, format)} · {next.title}</span>}
           </span>

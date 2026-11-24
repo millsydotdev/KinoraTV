@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { CHANNEL_GROUPS, GUIDE_DAYS, MIN, addDays, startOfDay } from '../data/channels'
 import { movies, series } from '../data/catalog'
@@ -27,7 +27,7 @@ import { EpgStatusModal } from '../components/EpgStatusModal'
 import { EpgMappingModal } from '../components/EpgMappingModal'
 import { loadBouquetConfig, applyCategoryPreferences, type BouquetConfig } from '../lib/bouquetManager'
 import { useProfiles } from '../state/profiles'
-import { useStore } from '../state/store'
+import { StoreContext, useStore } from '../state/store'
 import { MediaContextMenu } from '../components/MediaContextMenu'
 import { ShareModal, type ShareItem } from '../components/ShareModal'
 import { NumericZapHUD } from '../components/NumericZapHUD'
@@ -93,6 +93,8 @@ function GuidePreviewPlayer({
   onInfo: () => void
   onTune: () => void
 }) {
+  const store = useContext(StoreContext)
+  const failure = channel.id ? store?.getStreamFailure(channel.id) : undefined
   const { activeStream, togglePlay, toggleMute, setVolume, muted, volume, playbackState } = useUniversalPlayback()
   const hasActivePrimary = activeStream !== null
   const isPlayingThisChannel = activeStream?.channel?.id === channel.id || activeStream?.ref === channelRef(channel.id)
@@ -125,6 +127,10 @@ function GuidePreviewPlayer({
           ) : !channel.streamUrl ? (
             <div style={{ fontSize: '0.8125rem', color: 'rgba(255,255,255,0.6)' }}>
               No direct stream address configured for this channel
+            </div>
+          ) : failure ? (
+            <div style={{ fontSize: '0.8125rem', color: 'var(--warn, #f59e0b)' }} data-testid="tvguide-player-offline-notice">
+              Stream offline: {failure.message}
             </div>
           ) : (
             <div style={{ fontSize: '0.8125rem', color: 'rgba(255,255,255,0.6)' }}>
@@ -568,6 +574,9 @@ export function LiveTV() {
   const current = playing ? store.programmeAt(playing, now) : undefined
 
   const tune = (c: Channel, announce = true) => {
+    if (store.getStreamFailure(c.id)) {
+      store.clearStreamFailure(c.id)
+    }
     if (playing && playing.id !== c.id) {
       prevChannelRef.current = playing
     }
@@ -1511,6 +1520,7 @@ export function LiveTV() {
                   const isPlaying = reallyPlaying && isTuned
                   const cleanName = c.cleanName || cleanChannelTitle(c.name)
                   const badges = c.badges ?? parseChannelMetadata(c.name).badges
+                  const failure = store.getStreamFailure(c.id)
                   return (
                     <div key={c.id} id={`guide-row-${c.id}`} className={`guide-row${isTuned ? ' is-playing' : ''}`} role="row" aria-rowindex={(isVirtualised ? startRowIdx : 0) + idx + 2}>
                       <div
@@ -1544,7 +1554,7 @@ export function LiveTV() {
                             setFocusChannelId(c.id)
                             gridHasFocusRef.current = true
                           }}
-                          aria-label={`Watch ${c.number} ${c.name}${isPlaying ? ', now watching' : ''}`}
+                          aria-label={`Watch ${c.number} ${c.name}${isPlaying ? ', now watching' : ''}${failure ? `, offline (${failure.message})` : ''}`}
                           aria-current={isTuned ? 'true' : undefined}
                         >
                           <ChannelMark channel={c} size={compactCol ? 32 : 34} />
@@ -1554,6 +1564,15 @@ export function LiveTV() {
                               {c.name !== cleanName && <span className="sr-only">{c.name}</span>}
                               <span className="guide-channel-subline">
                                 {isPlaying && <span className="watching"><Icon name="play" size={9} />Watching</span>}
+                                {failure && (
+                                  <span
+                                    className="guide-channel-tag tag-offline"
+                                    title={`Offline: ${failure.message}`}
+                                    data-testid="guide-channel-offline-badge"
+                                  >
+                                    <Icon name="warning" size={9} /> Offline
+                                  </span>
+                                )}
                                 {badges.map((b, idx) => (
                                   <span key={`${b.kind}-${idx}`} className={`guide-channel-tag tag-${b.kind}`}>{b.label}</span>
                                 ))}

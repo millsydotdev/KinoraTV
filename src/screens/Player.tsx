@@ -1319,7 +1319,12 @@ export function Player() {
                     <button
                       type="button"
                       className="text-link"
-                      onClick={() => playback.retry()}
+                      onClick={() => {
+                        if (channelItem) {
+                          store.clearStreamFailure(channelItem.id)
+                        }
+                        playback.retry()
+                      }}
                     >
                       Retry
                     </button>

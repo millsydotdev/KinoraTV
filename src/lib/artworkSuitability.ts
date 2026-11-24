@@ -23,13 +23,21 @@ export interface ImageInspection {
   isAnimated?: boolean
 }
 
+export interface ArtworkSuitabilityOptions {
+  inspection?: ImageInspection
+  contentTitle?: string | null
+  isTrustedLocalSource?: boolean
+  allowLocalNetwork?: boolean
+  trustedHosts?: string[]
+}
+
 /**
  * Validates whether an artwork candidate URL and properties are suitable for a specific artwork role.
  */
 export function validateArtworkSuitability(
   url: string | null | undefined,
   targetRole: ArtworkRole,
-  inspection?: ImageInspection,
+  optionsOrInspection?: ImageInspection | ArtworkSuitabilityOptions,
   contentTitle?: string | null,
 ): ArtworkValidationResult {
   if (!url || !url.trim()) {
@@ -42,8 +50,37 @@ export function validateArtworkSuitability(
 
   const trimmed = url.trim()
 
+  // Unpack options and inspection
+  let inspection: ImageInspection | undefined
+  let effectiveTitle: string | null | undefined = contentTitle
+  let isTrustedLocalSource = false
+  let allowLocalNetwork = false
+  let trustedHosts: string[] = []
+
+  if (optionsOrInspection) {
+    if (
+      'inspection' in optionsOrInspection ||
+      'isTrustedLocalSource' in optionsOrInspection ||
+      'allowLocalNetwork' in optionsOrInspection ||
+      'trustedHosts' in optionsOrInspection
+    ) {
+      const opts = optionsOrInspection as ArtworkSuitabilityOptions
+      inspection = opts.inspection
+      if (opts.contentTitle !== undefined) {
+        effectiveTitle = opts.contentTitle
+      }
+      isTrustedLocalSource = Boolean(opts.isTrustedLocalSource)
+      allowLocalNetwork = Boolean(opts.allowLocalNetwork)
+      trustedHosts = opts.trustedHosts ?? []
+    } else {
+      inspection = optionsOrInspection as ImageInspection
+    }
+  }
+
   // 1. URL Scheme and Destination Safety
-  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://') && !trimmed.startsWith('data:') && !trimmed.startsWith('/') && !trimmed.startsWith('kstream://')) {
+  const allowedSchemes = ['http://', 'https://', 'data:', '/', 'kstream://', 'file://']
+  const hasAllowedScheme = allowedSchemes.some((scheme) => trimmed.startsWith(scheme))
+  if (!hasAllowedScheme) {
     return {
       isValid: false,
       suitabilityScore: 0.0,
@@ -51,17 +88,53 @@ export function validateArtworkSuitability(
     }
   }
 
-  // Refuse loopback or metadata endpoints
-  if (/^https?:\/\/(?:127\.|169\.254\.|10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.|localhost)/i.test(trimmed)) {
+  // Unconditionally refuse cloud metadata service destinations (zero exceptions)
+  if (/^https?:\/\/(?:169\.254\.|metadata\.google\.internal|instance-data)/i.test(trimmed)) {
     return {
       isValid: false,
       suitabilityScore: 0.0,
-      rejectionReason: 'Private or loopback address destination refused',
+      rejectionReason: 'Cloud metadata service destination refused',
     }
   }
 
-  // 2. Generic Category and Broadcaster Promotional Card Detection
-  if (isGenericOrPromoGraphic(trimmed, contentTitle)) {
+  // Check private or loopback destinations
+  const isPrivateOrLoopback = /^https?:\/\/(?:127\.|10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.|localhost)/i.test(trimmed)
+  if (isPrivateOrLoopback) {
+    let isAllowed = isTrustedLocalSource || allowLocalNetwork
+    if (!isAllowed && trustedHosts.length > 0) {
+      try {
+        const parsedUrl = new URL(trimmed)
+        if (trustedHosts.includes(parsedUrl.hostname) || trustedHosts.includes(parsedUrl.host)) {
+          isAllowed = true
+        }
+      } catch {
+        // invalid URL parse
+      }
+    }
+
+    if (!isAllowed) {
+      return {
+        isValid: false,
+        suitabilityScore: 0.0,
+        rejectionReason: 'Private or loopback address destination refused',
+      }
+    }
+  }
+
+  // 2. MIME Type Validation (when supplied)
+  if (inspection?.mimeType) {
+    const mime = inspection.mimeType.toLowerCase().trim()
+    if (!mime.startsWith('image/')) {
+      return {
+        isValid: false,
+        suitabilityScore: 0.0,
+        rejectionReason: `Invalid MIME type ${inspection.mimeType} (must be an image format)`,
+      }
+    }
+  }
+
+  // 3. Generic Category and Broadcaster Promotional Card Detection
+  if (isGenericOrPromoGraphic(trimmed, effectiveTitle)) {
     return {
       isValid: false,
       suitabilityScore: 0.1,
@@ -69,16 +142,55 @@ export function validateArtworkSuitability(
     }
   }
 
+  // 4. Low-Resolution Guard (when dimensions are supplied)
+  if (inspection?.width && inspection?.height) {
+    const isBackdropRole =
+      targetRole === 'movie-backdrop' ||
+      targetRole === 'series-backdrop' ||
+      targetRole === 'cinematic-backdrop' ||
+      targetRole === 'collection-backdrop' ||
+      targetRole === 'fanart' ||
+      targetRole === 'documentary-artwork'
+
+    if (isBackdropRole && (inspection.width < 320 || inspection.height < 180)) {
+      return {
+        isValid: false,
+        suitabilityScore: 0.2,
+        rejectionReason: `Image resolution ${inspection.width}x${inspection.height} too low for cinematic backdrop (minimum 320x180 required)`,
+        width: inspection.width,
+        height: inspection.height,
+      }
+    }
+
+    const isPosterRole =
+      targetRole === 'movie-poster' ||
+      targetRole === 'series-poster' ||
+      targetRole === 'season-artwork' ||
+      targetRole === 'collection-poster' ||
+      targetRole === 'book-cover' ||
+      targetRole === 'audiobook-cover'
+
+    if (isPosterRole && (inspection.width < 120 || inspection.height < 180)) {
+      return {
+        isValid: false,
+        suitabilityScore: 0.2,
+        rejectionReason: `Image resolution ${inspection.width}x${inspection.height} too low for poster (minimum 120x180 required)`,
+        width: inspection.width,
+        height: inspection.height,
+      }
+    }
+  }
+
   const spec = getArtworkRoleSpec(targetRole)
 
-  // 3. Aspect Ratio and Dimension Verification (when dimensions are supplied)
+  // 5. Aspect Ratio and Dimension Verification (when dimensions are supplied)
   if (inspection?.width && inspection?.height) {
     const ratio = inspection.width / inspection.height
     if (ratio < spec.minRatio || ratio > spec.maxRatio) {
       return {
         isValid: false,
         suitabilityScore: 0.25,
-        rejectionReason: `Aspect ratio ${ratio.toFixed(2)} outside acceptable bounds [${spec.minRatio} - ${spec.maxRatio}] for ${spec.label}`,
+        rejectionReason: `Aspect ratio ${ratio.toFixed(2)} outside acceptable bounds [${spec.minRatio} to ${spec.maxRatio}] for ${spec.label}`,
         checkedAspect: `${inspection.width}x${inspection.height} (${ratio.toFixed(2)})`,
         width: inspection.width,
         height: inspection.height,
@@ -86,7 +198,7 @@ export function validateArtworkSuitability(
     }
   }
 
-  // 4. Role-Specific Content Type and Path Heuristics
+  // 6. Role-Specific Content Type and Path Heuristics
   // Backdrops, landscape stills, and hero art:
   if (
     targetRole === 'movie-backdrop' ||
@@ -200,7 +312,7 @@ export function validateArtworkSuitability(
     }
   }
 
-  // 5. Animation Handling
+  // 7. Animation Handling
   if (inspection?.isAnimated && targetRole !== 'fanart') {
     return {
       isValid: false,

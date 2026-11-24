@@ -256,7 +256,7 @@
   font-weight: 700;
   font-size: 0.9375rem;
   text-decoration: none;
-  box-shadow: 0 4px 18px var(--accent-glow, rgba(229, 9, 20, 0.55));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
   border: 1px solid rgba(255, 255, 255, 0.15);
   transition: transform 140ms ease, box-shadow 140ms ease;
   cursor: pointer;
@@ -264,7 +264,7 @@
 
 .streaming-btn-watch:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 24px rgba(255, 37, 59, 0.75);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
 
 .streaming-btn-pill {
@@ -588,8 +588,8 @@
 
 .streaming-card-wide:hover {
   transform: translateY(-5px) scale(1.02);
-  border-color: rgba(242, 13, 36, 0.65);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.8), 0 0 18px rgba(242, 13, 36, 0.35);
+  border-color: var(--line-strong, rgba(255, 255, 255, 0.3));
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.8);
 }
 
 /* 2:3 Portrait Theatrical Poster Cards */
@@ -614,8 +614,8 @@
 
 .streaming-card-poster:hover {
   transform: translateY(-5px) scale(1.02);
-  border-color: rgba(242, 13, 36, 0.65);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.8), 0 0 18px rgba(242, 13, 36, 0.35);
+  border-color: var(--line-strong, rgba(255, 255, 255, 0.3));
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.8);
 }
 
 .streaming-card-poster .streaming-card-art {
@@ -753,13 +753,12 @@
   width: 64px;
   height: 64px;
   border-radius: 14px;
-  background: rgba(229, 9, 20, 0.12);
-  border: 1px solid rgba(229, 9, 20, 0.35);
-  color: #ff253b;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  color: var(--text-2, #94a3b8);
   display: grid;
   place-items: center;
   margin-bottom: 20px;
-  box-shadow: 0 0 20px rgba(229, 9, 20, 0.25);
 }
 
 .streaming-empty-title {

@@ -577,7 +577,7 @@ export function SeriesBrowse() {
             {/* Trending TV Shows Rail */}
             <StreamingRail
               title={hasXtream ? 'Trending TV Shows' : hasDemo ? 'Trending TV Shows' : 'Broadcast & Episodic Archives'}
-              iconName="flame"
+              iconName={hasXtream || hasDemo ? 'flame' : 'archive'}
               iconColor="var(--accent)"
               onSeeAll={() => setActiveTab('a-z')}
             >
