@@ -155,6 +155,27 @@ A rigorous visual review comparing live captures against the target design refer
 
 ---
 
+### 3.5 Structural Source Compatibility, Media Models, and Defect Resolutions
+
+To ensure long-term architectural stability across all source integrations, Kinora implemented the complete Source, Media, and Artwork Compatibility Architecture documented in [docs/SOURCE_MEDIA_ARTWORK_COMPATIBILITY.md](file:///mnt/storage/TVMovie/docs/SOURCE_MEDIA_ARTWORK_COMPATIBILITY.md):
+
+1. **NCIS Hero Selection and Disambiguation (5USA):**
+   - *Defect:* Hero billboard displayed a giant promotional graphic reading "NCISVERSE / THE FIRST 1,000" rather than a genuine scene still.
+   - *Remediation:* Enforced word-boundary checks in `isTitlePrefixMatch` (`NCIS` cannot prefix-match `NCISverse`). Subtitles or spin-offs lacking confirmed release years are treated as ambiguous. Added franchise promotional graphic detection in `isGenericOrPromoGraphic`. Live TV hero slides prioritize authentic broadcast stills (`currentSlide.backdropUrl`) over external search.
+   - *Verified Result:* Hero features authentic 16:9 photographic still of the cast with clean typography.
+2. **Aaj Tak Stock News Graphic Elimination:**
+   - *Defect:* Card media displayed a low-res 3D silver ring graphic with text "NEWS" supplied by JioTV EPG.
+   - *Remediation:* Added generic category graphic filtering detecting stock hashes (`fef7d9e050359f02bbc034eb3ecef417`). Implemented clean ambient fallback (`channel-card-ambient` with 52px `ChannelMark`) in `ChannelCard`.
+   - *Verified Result:* Clean authentic broadcast visual and branded Aaj Tak logo badge.
+3. **Aastha UK and Aastha International Channel Disambiguation:**
+   - *Defect:* Overly aggressive suffix stripping in `xmltv.rs` stripped "international", causing `AasthaInternational.in@SD` to collide with `Aastha.in`, duplicating promotional card artwork across both channels.
+   - *Remediation:* Removed "international" and "world" from suffix stripping in `xmltv.rs`. Added channel-scoped querying in `artworkEngine.findArtwork(title, type, year, channelId)`.
+   - *Verified Result:* Aastha UK displays authentic photographic still of Swami Ramdevji; Aastha International renders its dedicated channel badge and schedule.
+4. **User-Facing Diagnostics Modal:**
+   - Integrated `ArtworkDiagnosticsModal` in context menu offering candidate gallery inspection, manual custom URL overrides, and metadata re-enrichment.
+
+---
+
 ## 4. Verification and Quality Gates
 
 ### 4.1 Application Version Integrity
@@ -177,10 +198,10 @@ $ npm test
 > kinora@0.6.0 test
 > vitest run
 
-Test Files  134 passed (134)
-     Tests  1032 passed (1032)
-  Duration  16.01s
-[PASSED: 100% test passing rate across all 1,032 tests]
+Test Files  143 passed (143)
+     Tests  1099 passed (1099)
+  Duration  16.67s
+[PASSED: 100% test passing rate across all 1,099 tests in 143 test suites]
 ```
 
 ### 4.4 Native Rust Backend Tests (Cargo)
@@ -188,12 +209,12 @@ Test Files  134 passed (134)
 $ npm run test:rust
 > cargo test --manifest-path src-tauri/Cargo.toml
 
-test result: ok. 221 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 3.10s
-[PASSED: 100% test passing rate across all 221 tests]
+test result: ok. 231 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 3.11s
+[PASSED: 100% test passing rate across all 231 tests]
 ```
 
 ### 4.5 Strict Typography Standard Audit
-An automated verification script scanned all 285 modified and tracked files across the codebase, tests, HTML contact sheets, and markdown documentation:
+An automated verification script scanned all modified and tracked files across the codebase, tests, HTML contact sheets, and markdown documentation:
 - **Zero em-dash characters found (`\u2014`).**
 - **Zero en-dash characters found (`\u2013`).**
 - All punctuation strictly adheres to hyphens (`-`), colons (`:`), or parentheses `()`.
@@ -204,9 +225,10 @@ An automated verification script scanned all 285 modified and tracked files acro
 
 The comprehensive visual acceptance and defect remediation for Kinora 0.6.0 is complete:
 - The Columbo title graphic background distortion was fully diagnosed and eliminated through Sky metadata URL translation and hero role guarding.
-- The Live TV Right Now card layer collision was resolved with clean channel badge separation and un-duplicated metadata containers.
-- Strict artwork roles are enforced across all media types in `artworkResolver.ts`.
+- The NCIS hero promotional backdrop mismatch was eliminated through word-boundary matching and priority for authentic broadcast stills.
+- Aaj Tak and Aastha promotional/stock card contaminations were eliminated through generic graphic detection, channel-scoped matching, and suffix preservation.
+- Strict artwork roles are enforced across all media types in `artworkResolver.ts` and `artworkSuitability.ts`.
 - Scroll dropout and IPC queue starvation were eliminated through semaphore expansion (20 permits) and viewport-aware `IntersectionObserver` deferred fetching.
 - All 21 views were captured from the authentic native runtime driving real user data, with **0 broken images across all captures**.
-- All quality gates (0 TypeScript errors, 1,032 Vitest tests passed, 221 Rust tests passed, 0 typography violations) are satisfied.
+- All quality gates (0 TypeScript errors, 1,099 Vitest tests passed, 231 Rust tests passed, 0 typography violations) are satisfied.
 - Kinora 0.6.0 is verified and certified release-ready.
