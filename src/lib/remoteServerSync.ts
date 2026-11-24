@@ -20,6 +20,66 @@ export type RemoteCommandHandler = (cmd: RemoteCommandEvent) => void
 let unlistenRemoteCommand: (() => void) | null = null
 let customHandlers: Set<RemoteCommandHandler> = new Set()
 
+function navigateRemote(path: string): void {
+  const normalized = path.startsWith('/') ? path : `/${path}`
+  dispatchKinoraCommand({
+    type: 'navigate',
+    payload: { to: normalized },
+    source: 'remote',
+  })
+  if (typeof window !== 'undefined') {
+    const win = window as unknown as { __kinora_navigate?: (to: string) => void }
+    if (!win.__kinora_navigate) {
+      window.location.hash = `#${normalized}`
+    }
+  }
+}
+
+function normalizeAgentDestination(dest: string): string {
+  const clean = dest.trim().replace(/^#/, '')
+  const lower = clean.toLowerCase()
+  switch (lower) {
+    case '':
+    case '/':
+    case 'home':
+      return '/'
+    case 'live':
+    case 'livetv':
+    case 'live-tv':
+    case 'guide':
+    case 'epg':
+      return '/live'
+    case 'movies':
+    case 'films':
+      return '/movies'
+    case 'series':
+    case 'shows':
+    case 'tv':
+      return '/series'
+    case 'library':
+    case 'favourites':
+    case 'favorites':
+      return '/library'
+    case 'recordings':
+    case 'dvr':
+      return '/recordings'
+    case 'sources':
+      return '/sources'
+    case 'settings':
+      return '/settings'
+    case 'search':
+      return '/search'
+    case 'radio':
+      return '/radio'
+    case 'music':
+      return '/music'
+    case 'podcasts':
+      return '/podcasts'
+    default:
+      return clean.startsWith('/') ? clean : `/${clean}`
+  }
+}
+
 /**
  * Handles an incoming remote command and maps it to Kinora navigation or playback actions.
  */
@@ -84,8 +144,8 @@ export function handleIncomingRemoteCommand(event: RemoteCommandEvent): void {
     }
 
     case 'home': {
+      navigateRemote('/')
       if (typeof window !== 'undefined') {
-        window.location.hash = '#/'
         window.dispatchEvent(new CustomEvent('kinora:navigate_home'))
       }
       break
@@ -105,12 +165,14 @@ export function handleIncomingRemoteCommand(event: RemoteCommandEvent): void {
 
     case 'seek_forward':
       if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('kinora:remote_seek_delta', { detail: { deltaSec: 30 } }))
         window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', bubbles: true }))
       }
       break
 
     case 'seek_backward':
       if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('kinora:remote_seek_delta', { detail: { deltaSec: -10 } }))
         window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', code: 'ArrowLeft', bubbles: true }))
       }
       break
@@ -123,6 +185,7 @@ export function handleIncomingRemoteCommand(event: RemoteCommandEvent): void {
     case 'vol_up':
     case 'volume_up':
       if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('kinora:remote_volume_delta', { detail: { delta: 0.1 } }))
         window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', code: 'ArrowUp', bubbles: true }))
       }
       break
@@ -130,6 +193,7 @@ export function handleIncomingRemoteCommand(event: RemoteCommandEvent): void {
     case 'vol_down':
     case 'volume_down':
       if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('kinora:remote_volume_delta', { detail: { delta: -0.1 } }))
         window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', code: 'ArrowDown', bubbles: true }))
       }
       break
@@ -146,12 +210,14 @@ export function handleIncomingRemoteCommand(event: RemoteCommandEvent): void {
 
     case 'step_back':
       if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('kinora:remote_seek_delta', { detail: { deltaSec: -10 } }))
         window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', code: 'ArrowLeft', bubbles: true }))
       }
       break
 
     case 'step_forward':
       if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('kinora:remote_seek_delta', { detail: { deltaSec: 30 } }))
         window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', bubbles: true }))
       }
       break
@@ -183,7 +249,7 @@ export function handleIncomingRemoteCommand(event: RemoteCommandEvent): void {
         })
         const notPrevented = window.dispatchEvent(ev)
         if (notPrevented && title) {
-          window.location.hash = `#/search?q=${encodeURIComponent(title)}`
+          navigateRemote(`/search?q=${encodeURIComponent(title)}`)
         }
       }
       break
@@ -223,9 +289,14 @@ export function handleIncomingRemoteCommand(event: RemoteCommandEvent): void {
           active.value = text
           active.dispatchEvent(new Event('input', { bubbles: true }))
           active.dispatchEvent(new Event('change', { bubbles: true }))
-        } else {
+        } else if (text.trim()) {
           // If no input is focused, open search with this query
-          window.location.hash = `#/search?q=${encodeURIComponent(text)}`
+          dispatchKinoraCommand({
+            type: 'searchMedia',
+            payload: { query: text },
+            source: 'remote',
+          })
+          navigateRemote(`/search?q=${encodeURIComponent(text)}`)
         }
       }
       break
@@ -242,10 +313,13 @@ export function handleIncomingRemoteCommand(event: RemoteCommandEvent): void {
     }
 
     case 'agent_search': {
-      if (typeof window !== 'undefined') {
-        const query = typeof payload.query === 'string' ? payload.query : ''
-        window.location.hash = `#/search?q=${encodeURIComponent(query)}`
-      }
+      const query = typeof payload.query === 'string' ? payload.query : ''
+      dispatchKinoraCommand({
+        type: 'searchMedia',
+        payload: { query },
+        source: 'remote',
+      })
+      navigateRemote(`/search?q=${encodeURIComponent(query)}`)
       break
     }
 
@@ -257,10 +331,8 @@ export function handleIncomingRemoteCommand(event: RemoteCommandEvent): void {
     }
 
     case 'agent_navigate': {
-      if (typeof window !== 'undefined') {
-        const dest = typeof payload.destination === 'string' ? payload.destination : '/'
-        window.location.hash = dest.startsWith('#') ? dest : `#${dest}`
-      }
+      const dest = typeof payload.destination === 'string' ? payload.destination : '/'
+      navigateRemote(normalizeAgentDestination(dest))
       break
     }
 

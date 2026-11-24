@@ -186,4 +186,65 @@ describe('RemoteControlModal', () => {
     expect(host.textContent).toContain('dpad_select')
     expect(host.textContent).toContain('Test Phone')
   })
+
+  it('allows renaming a trusted device inline and regenerating a 6-digit PIN', async () => {
+    const mockDevice: nativeModule.TrustedDevice = {
+      id: 'dev-456',
+      name: 'Old Tablet',
+      deviceType: 'tablet',
+      capabilities: ['remoteControl'],
+      authToken: 'token-def',
+      pairedAt: 1700000000,
+      lastSeenAt: 1700000100,
+      ipAddress: '192.168.1.77',
+      revoked: false,
+    }
+
+    vi.spyOn(nativeModule, 'getTrustedDevices').mockResolvedValue([mockDevice])
+    const renameSpy = vi.spyOn(nativeModule, 'renameTrustedDevice').mockResolvedValue(true)
+
+    await act(async () => {
+      root.render(<RemoteControlModal open={true} onClose={() => {}} />)
+    })
+
+    // Regenerate PIN should produce a 6-digit numeric PIN
+    const newPinBtn = Array.from(host.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('New PIN')
+    )
+    expect(newPinBtn).toBeDefined()
+    await act(async () => {
+      newPinBtn?.click()
+    })
+    expect(nativeModule.startRemoteServer).toHaveBeenCalledWith(5198, expect.stringMatching(/^\d{6}$/))
+
+    // Switch to Trusted Devices and rename
+    const devTabBtn = Array.from(host.querySelectorAll<HTMLButtonElement>('.remote-tab-btn')).find((b) =>
+      b.textContent?.includes('Trusted Devices')
+    )
+    await act(async () => {
+      devTabBtn?.click()
+    })
+
+    const renameBtn = host.querySelector<HTMLButtonElement>('button[title="Rename device"]')
+    expect(renameBtn).not.toBeNull()
+    await act(async () => {
+      renameBtn?.click()
+    })
+
+    const nameInput = host.querySelector<HTMLInputElement>('input[aria-label="New device name"]')
+    expect(nameInput).not.toBeNull()
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set
+      setter?.call(nameInput, 'Kitchen iPad')
+      nameInput?.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+
+    const saveBtn = host.querySelector<HTMLButtonElement>('button[title="Save device name"]')
+    await act(async () => {
+      saveBtn?.click()
+    })
+
+    expect(renameSpy).toHaveBeenCalledWith('dev-456', 'Kitchen iPad')
+    expect(host.textContent).toContain('Kitchen iPad')
+  })
 })

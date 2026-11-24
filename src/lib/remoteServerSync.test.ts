@@ -255,4 +255,36 @@ describe('remoteServerSync', () => {
     expect(window.location.hash).toBe('#/movies')
     window.removeEventListener('kinora:play_media_item', cancelHandler)
   })
+
+  it('normalizes agent_navigate aliases and dispatches seek/volume delta events', async () => {
+    const { dispatchKinoraCommand } = await import('./commands')
+    const seekDeltaSpy = vi.fn()
+    const volDeltaSpy = vi.fn()
+    window.addEventListener('kinora:remote_seek_delta', seekDeltaSpy)
+    window.addEventListener('kinora:remote_volume_delta', volDeltaSpy)
+
+    handleIncomingRemoteCommand({
+      command: 'agent_navigate',
+      payload: { destination: 'livetv' },
+      timestamp: Date.now(),
+    })
+    expect(dispatchKinoraCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'navigate', payload: { to: '/live' }, source: 'remote' })
+    )
+
+    handleIncomingRemoteCommand({ command: 'step_forward', timestamp: Date.now() })
+    expect(seekDeltaSpy).toHaveBeenCalledWith(expect.objectContaining({ detail: { deltaSec: 30 } }))
+
+    handleIncomingRemoteCommand({ command: 'step_back', timestamp: Date.now() })
+    expect(seekDeltaSpy).toHaveBeenCalledWith(expect.objectContaining({ detail: { deltaSec: -10 } }))
+
+    handleIncomingRemoteCommand({ command: 'volume_up', timestamp: Date.now() })
+    expect(volDeltaSpy).toHaveBeenCalledWith(expect.objectContaining({ detail: { delta: 0.1 } }))
+
+    handleIncomingRemoteCommand({ command: 'volume_down', timestamp: Date.now() })
+    expect(volDeltaSpy).toHaveBeenCalledWith(expect.objectContaining({ detail: { delta: -0.1 } }))
+
+    window.removeEventListener('kinora:remote_seek_delta', seekDeltaSpy)
+    window.removeEventListener('kinora:remote_volume_delta', volDeltaSpy)
+  })
 })

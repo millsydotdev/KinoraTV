@@ -2654,6 +2654,7 @@ export interface RemotePlaybackState {
   isMuted: boolean
   durationSec: number
   positionSec: number
+  isLive?: boolean
   channelName?: string | null
   channelNumber?: number | null
 }

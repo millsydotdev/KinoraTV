@@ -47,7 +47,7 @@ import { RemoteControlModal } from './components/RemoteControlModal'
 import { RemoteHintBar } from './components/RemoteHintBar'
 import { TraktSettingsModal } from './components/TraktSettingsModal'
 import { DownloadsModal } from './components/DownloadsModal'
-import { downloadRef } from './data/refs'
+import { channelRef, downloadRef } from './data/refs'
 import { loadTraktConfig, performTraktSync } from './lib/trakt'
 import { registerCommandHandler } from './lib/commands'
 import { initGlobalRemoteNav, restoreRouteFocus, saveRouteFocus } from './lib/remoteNav'
@@ -150,6 +150,54 @@ function Shell() {
     const remoteBridgeCleanupPromise = initializeRemoteControlBridge()
     const handleNavigateHome = () => navigate('/')
     window.addEventListener('kinora:navigate_home', handleNavigateHome)
+    const handleTuneChannel = (e: Event) => {
+      const detail = (e as CustomEvent<{
+        channelId?: string
+        channelNumber?: number
+        channelName?: string
+        name?: string
+      }>).detail
+      if (!detail) return
+      const byId = detail.channelId ? store.findChannel(detail.channelId) : undefined
+      const byNum =
+        !byId && typeof detail.channelNumber === 'number' && detail.channelNumber > 0
+          ? store.channels.find((c) => c.number === detail.channelNumber)
+          : undefined
+      const queryName = (detail.channelName || detail.name || '').trim().toLowerCase()
+      const byName =
+        !byId && !byNum && queryName
+          ? store.channels.find((c) => c.name.toLowerCase().includes(queryName))
+          : undefined
+      const target = byId ?? byNum ?? byName
+      if (target) {
+        navigate(`/watch/${encodeURIComponent(channelRef(target.id))}`)
+      } else {
+        navigate('/live')
+      }
+    }
+    window.addEventListener('kinora:tune_channel', handleTuneChannel)
+    const handlePlayMediaItem = (e: Event) => {
+      const detail = (e as CustomEvent<{ mediaId?: string; title?: string; kind?: string }>).detail
+      if (!detail) return
+      const id = (detail.mediaId || '').trim()
+      const kind = (detail.kind || '').trim().toLowerCase()
+      const title = (detail.title || '').trim()
+      e.preventDefault()
+      if (id && (id.startsWith('channel:') || id.startsWith('local:') || id.startsWith('movie:') || id.startsWith('episode:'))) {
+        navigate(`/watch/${encodeURIComponent(id)}`)
+      } else if (id && kind === 'movie') {
+        navigate(`/movies/${encodeURIComponent(id)}`)
+      } else if (id && (kind === 'series' || kind === 'show')) {
+        navigate(`/series/${encodeURIComponent(id)}`)
+      } else if (id && kind === 'local') {
+        navigate(`/watch/${encodeURIComponent(`local:${id}`)}`)
+      } else if (title) {
+        navigate(`/search?q=${encodeURIComponent(title)}`)
+      } else {
+        navigate('/movies')
+      }
+    }
+    window.addEventListener('kinora:play_media_item', handlePlayMediaItem)
     const handleOpenMobileRemote = () => setRemoteModalOpen(true)
     window.addEventListener('kinora:open-mobile-remote', handleOpenMobileRemote)
     const handleOpenTraktSync = () => setTraktModalOpen(true)
@@ -218,12 +266,14 @@ function Shell() {
       gamepad.stop()
       window.removeEventListener('kinora:remote-color', handleRemoteColor)
       window.removeEventListener('kinora:navigate_home', handleNavigateHome)
+      window.removeEventListener('kinora:tune_channel', handleTuneChannel)
+      window.removeEventListener('kinora:play_media_item', handlePlayMediaItem)
       window.removeEventListener('kinora:open-mobile-remote', handleOpenMobileRemote)
       window.removeEventListener('kinora:open-trakt-sync', handleOpenTraktSync)
       window.removeEventListener('kinora:open-downloads', handleOpenDownloads)
       remoteBridgeCleanupPromise.then((unsub) => unsub?.())
     }
-  }, [navigate])
+  }, [navigate, store])
 
   useEffect(() => {
     window.scrollTo(0, 0)

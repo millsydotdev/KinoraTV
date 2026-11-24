@@ -104,6 +104,8 @@ pub struct RemotePlaybackState {
     pub is_muted: bool,
     pub duration_sec: f64,
     pub position_sec: f64,
+    #[serde(default)]
+    pub is_live: bool,
     pub channel_name: Option<String>,
     pub channel_number: Option<u32>,
 }
@@ -118,6 +120,7 @@ impl Default for RemotePlaybackState {
             is_muted: false,
             duration_sec: 0.0,
             position_sec: 0.0,
+            is_live: false,
             channel_name: None,
             channel_number: None,
         }
@@ -2305,8 +2308,16 @@ pub fn get_embedded_remote_html() -> &'static str {
 
     /* Navigation Tabs */
     .tab-bar { display: flex; background: rgba(255,255,255,0.03); border-bottom: 1px solid rgba(255,255,255,0.08); }
-    .tab-btn { flex: 1; padding: 10px 0; background: transparent; border: none; color: #94a3b8; font-size: 0.825rem; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; transition: all 120ms ease; }
+    .tab-btn { flex: 1; padding: 10px 4px; background: transparent; border: none; color: #94a3b8; font-size: 0.75rem; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; transition: all 120ms ease; white-space: nowrap; }
     .tab-btn.active { color: #fff; border-bottom-color: #6366f1; background: rgba(99,102,241,0.08); }
+    .epg-card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 6px; cursor: pointer; }
+    .epg-card:active { background: rgba(99,102,241,0.18); border-color: #6366f1; }
+    .epg-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .epg-now-title { font-size: 0.88rem; font-weight: 600; color: #f8fafc; }
+    .epg-meta { font-size: 0.72rem; color: #94a3b8; }
+    .epg-bar { width: 100%; height: 3px; background: rgba(255,255,255,0.12); border-radius: 2px; overflow: hidden; }
+    .epg-bar-fill { height: 100%; background: #6366f1; }
+    .epg-next { font-size: 0.74rem; color: #cbd5e1; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 5px; }
 
     /* Pairing Screen */
     #pairingView { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center; }
@@ -2401,6 +2412,7 @@ pub fn get_embedded_remote_html() -> &'static str {
       <button class="tab-btn active" id="tabRemoteBtn" onclick="switchTab('remote')">Remote</button>
       <button class="tab-btn" id="tabKeypadBtn" onclick="switchTab('keypad')">Keypad</button>
       <button class="tab-btn" id="tabChannelsBtn" onclick="switchTab('channels')">Channels</button>
+      <button class="tab-btn" id="tabGuideBtn" onclick="switchTab('guide')">Guide</button>
       <button class="tab-btn" id="tabMediaBtn" onclick="switchTab('media')">Media</button>
     </nav>
 
@@ -2483,7 +2495,16 @@ pub fn get_embedded_remote_html() -> &'static str {
       <div id="channelsList" style="margin-top:8px;"></div>
     </main>
 
-    <!-- Tab 4: Media Library Browser -->
+    <!-- Tab 4: EPG / TV Guide Browser -->
+    <main id="viewGuide" class="view-content" style="display:none;">
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input type="text" id="guideFilter" class="channel-search" placeholder="Search TV guide programmes..." oninput="filterGuide()">
+        <button type="button" class="btn-disconnect" style="padding:10px 12px;white-space:nowrap;" onclick="fetchGuide()">Refresh</button>
+      </div>
+      <div id="guideList" style="margin-top:8px;"></div>
+    </main>
+
+    <!-- Tab 5: Media Library Browser -->
     <main id="viewMedia" class="view-content" style="display:none;">
       <input type="text" id="mediaFilter" class="channel-search" placeholder="Search movies, series, local files..." oninput="filterMedia()">
       <div id="mediaList" style="margin-top:8px;"></div>
@@ -2494,6 +2515,7 @@ pub fn get_embedded_remote_html() -> &'static str {
     let authToken = localStorage.getItem('kinora_token') || null;
     let sseSource = null;
     let channelsData = [];
+    let guideData = [];
     let mediaData = [];
     let isSeeking = false;
     let currentDurationSec = 0;
@@ -2552,6 +2574,17 @@ pub fn get_embedded_remote_html() -> &'static str {
           }
         });
       }
+
+      const guideList = document.getElementById('guideList');
+      if (guideList) {
+        guideList.addEventListener('click', (e) => {
+          const card = e.target.closest('.epg-card');
+          if (!card) return;
+          const id = card.getAttribute('data-channel-id') || '';
+          const num = Number(card.getAttribute('data-channel-num') || '0');
+          if (id) tuneToChannel(id, num);
+        });
+      }
     }
 
     function formatTime(secs) {
@@ -2586,15 +2619,20 @@ pub fn get_embedded_remote_html() -> &'static str {
       document.getElementById('tabRemoteBtn').classList.toggle('active', tab === 'remote');
       document.getElementById('tabKeypadBtn').classList.toggle('active', tab === 'keypad');
       document.getElementById('tabChannelsBtn').classList.toggle('active', tab === 'channels');
+      document.getElementById('tabGuideBtn').classList.toggle('active', tab === 'guide');
       document.getElementById('tabMediaBtn').classList.toggle('active', tab === 'media');
 
       document.getElementById('viewRemote').style.display = tab === 'remote' ? 'flex' : 'none';
       document.getElementById('viewKeypad').style.display = tab === 'keypad' ? 'flex' : 'none';
       document.getElementById('viewChannels').style.display = tab === 'channels' ? 'block' : 'none';
+      document.getElementById('viewGuide').style.display = tab === 'guide' ? 'block' : 'none';
       document.getElementById('viewMedia').style.display = tab === 'media' ? 'block' : 'none';
 
       if (tab === 'channels' && channelsData.length === 0) {
         fetchChannels();
+      }
+      if (tab === 'guide' && guideData.length === 0) {
+        fetchGuide();
       }
       if (tab === 'media' && mediaData.length === 0) {
         fetchMedia();
@@ -2712,6 +2750,102 @@ pub fn get_embedded_remote_html() -> &'static str {
       const q = document.getElementById('channelFilter').value.toLowerCase();
       const filtered = channelsData.filter(c => (c.name || '').toLowerCase().includes(q) || (c.group || '').toLowerCase().includes(q));
       renderChannels(filtered);
+    }
+
+    function formatClock(ts) {
+      const ms = ts > 1e12 ? ts : ts * 1000;
+      const d = new Date(ms);
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      return hh + ':' + mm;
+    }
+
+    async function fetchGuide() {
+      if (!authToken) return;
+      try {
+        if (channelsData.length === 0) {
+          await fetchChannels();
+        }
+        const res = await fetch('/api/epg', {
+          headers: { 'Authorization': 'Bearer ' + authToken }
+        });
+        if (res.ok) {
+          guideData = await res.json();
+          renderGuide(guideData);
+        }
+      } catch (e) {}
+    }
+
+    function renderGuide(programmes) {
+      const box = document.getElementById('guideList');
+      if (!programmes || programmes.length === 0) {
+        box.innerHTML = '<div style="color:#94a3b8;font-size:0.85rem;text-align:center;padding:20px;">No TV guide listings loaded on server yet.</div>';
+        return;
+      }
+      const nowMs = Date.now();
+      const chMap = new Map();
+      for (const c of channelsData) chMap.set(c.id, c);
+
+      const byChannel = new Map();
+      for (const p of programmes) {
+        const startMs = p.start > 1e12 ? p.start : p.start * 1000;
+        const stopMs = p.stop > 1e12 ? p.stop : p.stop * 1000;
+        if (stopMs <= nowMs) continue;
+        if (!byChannel.has(p.channelId)) byChannel.set(p.channelId, []);
+        byChannel.get(p.channelId).push({ ...p, startMs, stopMs });
+      }
+
+      const cards = [];
+      for (const [channelId, list] of byChannel.entries()) {
+        list.sort((a, b) => a.startMs - b.startMs);
+        const current = list.find(p => p.startMs <= nowMs && p.stopMs > nowMs) || list[0];
+        const next = list.find(p => p !== current && p.startMs >= current.stopMs) || list[1] || null;
+        const ch = chMap.get(channelId);
+        const chName = ch ? ch.name : channelId;
+        const chNum = ch && ch.number ? ch.number : 0;
+        const pct = current.stopMs > current.startMs
+          ? Math.max(0, Math.min(100, Math.round(((nowMs - current.startMs) / (current.stopMs - current.startMs)) * 100)))
+          : 0;
+        const minsLeft = Math.max(1, Math.round((current.stopMs - nowMs) / 60000));
+        cards.push(`
+          <div class="epg-card" data-channel-id="${escapeHtml(channelId)}" data-channel-num="${chNum}">
+            <div class="epg-head">
+              <div>
+                <span class="channel-num">${chNum ? '#' + escapeHtml(chNum) : ''}</span>
+                <span class="channel-title">${escapeHtml(chName)}</span>
+              </div>
+              <button type="button" style="background:#6366f1;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:0.72rem;cursor:pointer;">Watch</button>
+            </div>
+            <div class="epg-now-title">${escapeHtml(current.title)}</div>
+            <div class="epg-meta">${formatClock(current.startMs)} - ${formatClock(current.stopMs)} (${minsLeft}m left)${current.category ? ' - ' + escapeHtml(current.category) : ''}</div>
+            <div class="epg-bar"><div class="epg-bar-fill" style="width:${pct}%"></div></div>
+            ${next ? `<div class="epg-next">Next ${formatClock(next.startMs)}: ${escapeHtml(next.title)}</div>` : ''}
+          </div>
+        `);
+      }
+
+      if (cards.length === 0) {
+        box.innerHTML = '<div style="color:#94a3b8;font-size:0.85rem;text-align:center;padding:20px;">No upcoming programmes match your search.</div>';
+        return;
+      }
+      box.innerHTML = cards.join('');
+    }
+
+    function filterGuide() {
+      const q = document.getElementById('guideFilter').value.toLowerCase();
+      if (!q) {
+        renderGuide(guideData);
+        return;
+      }
+      const chMap = new Map();
+      for (const c of channelsData) chMap.set(c.id, (c.name || '').toLowerCase());
+      const filtered = guideData.filter(p =>
+        (p.title || '').toLowerCase().includes(q) ||
+        (p.category || '').toLowerCase().includes(q) ||
+        (p.description || '').toLowerCase().includes(q) ||
+        (chMap.get(p.channelId) || '').includes(q)
+      );
+      renderGuide(filtered);
     }
 
     async function fetchMedia() {
@@ -2846,6 +2980,30 @@ mod tests {
     }
 
     #[test]
+    fn embedded_remote_html_includes_guide_media_and_seek_controls() {
+        let html = get_embedded_remote_html();
+        assert!(html.contains(r#"id="seekSlider""#));
+        assert!(html.contains(r#"id="tabGuideBtn""#));
+        assert!(html.contains(r#"id="viewGuide""#));
+        assert!(html.contains(r#"id="viewMedia""#));
+        assert!(html.contains("fetchGuide()"));
+        assert!(html.contains("play_media_item"));
+        assert!(!html.contains(r#"onclick="tuneToChannel("#));
+    }
+
+    #[test]
+    fn playback_state_deserializes_with_is_live_default() {
+        let raw = r#"{"title":"BBC One","subtitle":null,"isPlaying":true,"volume":0.8,"isMuted":false,"durationSec":0,"positionSec":12,"channelName":"BBC One","channelNumber":101}"#;
+        let parsed: RemotePlaybackState = serde_json::from_str(raw).unwrap();
+        assert!(!parsed.is_live);
+        assert_eq!(parsed.title, "BBC One");
+
+        let live_raw = r#"{"title":"BBC One","subtitle":null,"isPlaying":true,"volume":0.8,"isMuted":false,"durationSec":3600,"positionSec":12,"isLive":true,"channelName":"BBC One","channelNumber":101}"#;
+        let parsed_live: RemotePlaybackState = serde_json::from_str(live_raw).unwrap();
+        assert!(parsed_live.is_live);
+    }
+
+    #[test]
     fn auth_token_generation_produces_32_hex_chars() {
         let tok = generate_auth_token();
         assert_eq!(tok.len(), 32);
@@ -2876,6 +3034,7 @@ mod tests {
             is_muted: false,
             duration_sec: 3600.0,
             position_sec: 120.0,
+            is_live: false,
             channel_name: Some("BBC One".to_string()),
             channel_number: Some(101),
         };

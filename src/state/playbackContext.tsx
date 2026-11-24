@@ -721,6 +721,28 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       }
     })
 
+    const onRemoteSeek = (e: Event) => {
+      const pos = Number((e as CustomEvent<{ positionSec?: number }>).detail?.positionSec)
+      if (Number.isFinite(pos) && pos >= 0) {
+        seek(pos)
+      }
+    }
+    const onRemoteSeekDelta = (e: Event) => {
+      const delta = Number((e as CustomEvent<{ deltaSec?: number }>).detail?.deltaSec)
+      if (Number.isFinite(delta) && delta !== 0) {
+        seekDelta(delta)
+      }
+    }
+    const onRemoteVolDelta = (e: Event) => {
+      const delta = Number((e as CustomEvent<{ delta?: number }>).detail?.delta)
+      if (Number.isFinite(delta) && delta !== 0) {
+        playback.setVolume(Math.max(0, Math.min(1, playback.volume + delta)))
+      }
+    }
+    window.addEventListener('kinora:remote_seek', onRemoteSeek)
+    window.addEventListener('kinora:remote_seek_delta', onRemoteSeekDelta)
+    window.addEventListener('kinora:remote_volume_delta', onRemoteVolDelta)
+
     return () => {
       unregPlay()
       unregToggle()
@@ -729,8 +751,11 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       unregVol()
       unregMute()
       unregPip()
+      window.removeEventListener('kinora:remote_seek', onRemoteSeek)
+      window.removeEventListener('kinora:remote_seek_delta', onRemoteSeekDelta)
+      window.removeEventListener('kinora:remote_volume_delta', onRemoteVolDelta)
     }
-  }, [playStream, playback, play, pause])
+  }, [playStream, playback, play, pause, seek, seekDelta])
 
   const value: UniversalPlaybackContextValue = {
     activeStream,
@@ -795,6 +820,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       isMuted: playback.muted,
       durationSec: duration,
       positionSec: currentTime,
+      isLive: Boolean(activeStream?.isLive),
       channelName: activeStream?.channel?.name || null,
       channelNumber: activeStream?.channel?.number || null,
     })

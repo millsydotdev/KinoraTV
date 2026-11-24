@@ -10,6 +10,7 @@ import {
   stopRemoteServer,
   getTrustedDevices,
   revokeTrustedDevice,
+  renameTrustedDevice,
   getAuditLog,
   type RemoteServerStatus,
   type TrustedDevice,
@@ -30,6 +31,8 @@ export function RemoteControlModal({ open, onClose }: RemoteControlModalProps) {
   const [activeTab, setActiveTab] = useState<'pairing' | 'devices' | 'audit'>('pairing')
   const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState('')
 
   // Load status and data on open
   useEffect(() => {
@@ -98,10 +101,26 @@ export function RemoteControlModal({ open, onClose }: RemoteControlModalProps) {
     if (!status) return
     setLoading(true)
     try {
-      const newPin = Math.floor(1000 + Math.random() * 9000).toString()
+      const newPin = Math.floor(100000 + Math.random() * 900000).toString()
       await stopRemoteServer()
       const next = await startRemoteServer(status.port, newPin)
       if (next) setStatus(next)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleRefreshData = async () => {
+    setLoading(true)
+    try {
+      const [res, devList, audits] = await Promise.all([
+        getRemoteServerStatus(),
+        getTrustedDevices(),
+        getAuditLog(),
+      ])
+      if (res) setStatus(res)
+      setDevices(devList)
+      setAuditLog(audits)
     } finally {
       setLoading(false)
     }
@@ -125,6 +144,22 @@ export function RemoteControlModal({ open, onClose }: RemoteControlModalProps) {
       const audits = await getAuditLog()
       setAuditLog(audits)
     }
+  }
+
+  const handleStartRename = (dev: TrustedDevice) => {
+    setEditingDeviceId(dev.id)
+    setEditingName(dev.name)
+  }
+
+  const handleSaveRename = async (deviceId: string) => {
+    const trimmed = editingName.trim()
+    if (!trimmed) return
+    const ok = await renameTrustedDevice(deviceId, trimmed)
+    if (ok) {
+      setDevices(devices.map((d) => (d.id === deviceId ? { ...d, name: trimmed } : d)))
+    }
+    setEditingDeviceId(null)
+    setEditingName('')
   }
 
   const isRunning = status?.running ?? false
@@ -206,7 +241,7 @@ export function RemoteControlModal({ open, onClose }: RemoteControlModalProps) {
 
                   <div className="remote-details-column">
                     <div className="remote-pin-block">
-                      <span className="remote-pin-label">4-Digit Pairing PIN</span>
+                      <span className="remote-pin-label">Pairing PIN</span>
                       <span className="remote-pin-display">{status.pairingPin}</span>
                     </div>
 
@@ -242,7 +277,7 @@ export function RemoteControlModal({ open, onClose }: RemoteControlModalProps) {
                 <ol>
                   <li>Ensure your smartphone, tablet, or AI agent is on the same local Wi-Fi.</li>
                   <li>Scan the QR code or open the browser address shown above.</li>
-                  <li>Enter the 4-digit PIN on your device to complete secure pairing.</li>
+                  <li>Enter the pairing PIN on your device to complete secure pairing.</li>
                 </ol>
               </div>
             </>
@@ -257,7 +292,23 @@ export function RemoteControlModal({ open, onClose }: RemoteControlModalProps) {
                   <div key={dev.id} className="device-item-card">
                     <div className="device-info-left">
                       <div className="device-name-row">
-                        <span>{dev.name}</span>
+                        {editingDeviceId === dev.id ? (
+                          <input
+                            type="text"
+                            className="remote-url-input"
+                            aria-label="New device name"
+                            value={editingName}
+                            onChange={(e) => setEditingName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') void handleSaveRename(dev.id)
+                              if (e.key === 'Escape') setEditingDeviceId(null)
+                            }}
+                            style={{ maxWidth: '180px', padding: '4px 8px', fontSize: '0.85rem' }}
+                            autoFocus
+                          />
+                        ) : (
+                          <span>{dev.name}</span>
+                        )}
                         <span className="device-badge">{dev.deviceType}</span>
                         {dev.revoked && <span style={{ color: '#ef4444', fontSize: '0.75rem' }}>(Revoked)</span>}
                       </div>
@@ -267,15 +318,47 @@ export function RemoteControlModal({ open, onClose }: RemoteControlModalProps) {
                       </div>
                     </div>
                     {!dev.revoked && (
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-small"
-                        onClick={() => handleRevokeDevice(dev.id)}
-                        style={{ color: '#ef4444' }}
-                        title="Revoke device access"
-                      >
-                        Revoke
-                      </button>
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        {editingDeviceId === dev.id ? (
+                          <>
+                            <button
+                              type="button"
+                              className="btn btn-primary btn-small"
+                              onClick={() => void handleSaveRename(dev.id)}
+                              title="Save device name"
+                            >
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-small"
+                              onClick={() => setEditingDeviceId(null)}
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-small"
+                              onClick={() => handleStartRename(dev)}
+                              title="Rename device"
+                            >
+                              Rename
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-small"
+                              onClick={() => handleRevokeDevice(dev.id)}
+                              style={{ color: '#ef4444' }}
+                              title="Revoke device access"
+                            >
+                              Revoke
+                            </button>
+                          </>
+                        )}
+                      </div>
                     )}
                   </div>
                 ))
@@ -316,15 +399,26 @@ export function RemoteControlModal({ open, onClose }: RemoteControlModalProps) {
         </div>
 
         <div className="remote-modal-footer">
-          <button
-            type="button"
-            className="btn btn-ghost btn-small"
-            onClick={handleRegeneratePin}
-            disabled={loading || !isRunning}
-          >
-            <Icon name="refresh" size={14} />
-            New PIN
-          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              type="button"
+              className="btn btn-ghost btn-small"
+              onClick={handleRegeneratePin}
+              disabled={loading || !isRunning}
+            >
+              <Icon name="refresh" size={14} />
+              New PIN
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-small"
+              onClick={handleRefreshData}
+              disabled={loading}
+              title="Refresh connected devices and audit log"
+            >
+              Refresh
+            </button>
+          </div>
 
           <button
             type="button"
