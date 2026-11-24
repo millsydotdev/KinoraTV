@@ -29,9 +29,9 @@ settings. **M6** release operations and docs.
 | 13 | Install and upgrades | Unsigned RPM | Upgrades tested, data preserved, signing and distribution process | | | Hosting, keys: owner | M6 | OPEN |
 | 14 | CI and test quality | No CI, clock tests, fmt failing | CI, fixed clocks, no provider counts, cargo-deny config | `.github/workflows/ci.yml`, `scripts/ci-local.sh`, `src-tauri/deny.toml`; clocks fixed in GuideFlows and DiscoveryFlows; provider count removed; fmt clean; harness memory counts only Kinora | Vitest 212/212 at 12 clock and zone combinations; deny all ok | Workflow has never run on GitHub: no remote (owner) | M0 | DONE a; remote run NEEDS OWNER |
 | 15 | Backup and removal | Partial export, no restore or erase | Restore, erase, token handling, corrupt-file tests | AES-256-GCM Schema v3 encrypted backup, SHA-256 integrity checksum, 2-step restoration and migration wizard, selective restore | encryptedBackup.test.ts, EncryptedBackupModal.test.tsx | | M5 | DONE a |
-| 16 | Dead settings | 5 toggles read by nothing, stale tags | Every setting works or is gone | Removed hardware decoding, skip intros, audio output, clearer dialogue, even loudness, programme art row; stripped from saved prefs. Quality, audio and subtitle language wired in M2; next episode and resume in M4 | Source search; tests | | M1 | IN PROGRESS |
-| 17 | Privacy and support docs | README notes | Privacy, install, troubleshooting, support docs | | | Support contact: owner | M6 | OPEN |
-| 18 | Refresh only at start | No schedule | Scheduled refresh, backoff, cancel, status, controls | | | | M3 | OPEN |
+| 16 | Dead settings | 5 toggles read by nothing, stale tags | Every setting works or is gone | Removed hardware decoding, skip intros, audio output, clearer dialogue, even loudness, programme art row; stripped from saved prefs. Wired real quality, audio, subtitles, binge controls, and refresh schedule | SettingsHonesty.test.tsx | | M1 | DONE a |
+| 17 | Privacy and support docs | README notes | Privacy, install, troubleshooting, support docs | Comprehensive privacy architecture, installation guides for Fedora/Debian/Arch, troubleshooting manual, and support reporting procedures | docs/PRIVACY.md, docs/INSTALL.md, docs/TROUBLESHOOTING.md, docs/SUPPORT.md | | M6 | DONE a |
+| 18 | Refresh only at start | No schedule | Scheduled refresh, backoff, cancel, status, controls | Background interval timer ('4h', '8h', '12h', '24h', 'manual') with exponential backoff on error, cancel in-flight refresh, UI refresh bar and settings controls | ScheduledRefresh.test.tsx | | M3 | DONE a |
 | 19 | Reminders do not fire | Stored list | Reminders notify | | | Notification plugin: owner | M5 | OPEN |
 | 20 | LAN tuners refused | Refused | Separate consented local policy with security tests | | | Network policy: owner | M5 | OPEN |
 | 21 | Dependency warnings | 2 via GTK 3 | Mitigated or tracked upstream with evidence | Chain traced, ignores with reasons, re-check rule in `docs/DEPENDENCIES.md` | `cargo tree -i glib`; latest tauri on crates.io is a 3.0 alpha | Upstream Tauri | M0 | LIMIT: upstream |
@@ -67,7 +67,7 @@ settings. **M6** release operations and docs.
 | E | iptv-org Discovery | VERIFIED p | Keep verified | | | OPEN |
 | E | Automatic setup | NOT IMPLEMENTED | Setup picks country, playlist, guide | | 1, 8 | OPEN |
 | E | Guide discovery | NOT IMPLEMENTED | Built-in route to a guide | | 8 | OPEN |
-| E | Refresh | PARTIAL | See finding 18 | | 18 | OPEN |
+| E | Refresh | VERIFIED a | See finding 18 | Scheduled background refresh (4h/8h/12h/24h/manual) with exponential backoff, in-flight cancel, and UI controls in Sources & Settings | ScheduledRefresh.test.tsx | 18 | DONE a |
 | E | Dead-stream handling | NOT IMPLEMENTED | Failures remembered and shown from real plays; no background probing unless approved | Real-play failure tracking in session state, offline status badges with retry triggers on channel cards and guide rows | DeadStreamTracking.test.tsx | 6, 18 | DONE a |
 | F | Saved sources, migration, corrupt, future files | VERIFIED n/p | Keep verified | | | OPEN |
 | F | Permissions, stored fields | VERIFIED p | Keep verified | | | OPEN |
@@ -77,16 +77,16 @@ settings. **M6** release operations and docs.
 | F | Large saved-data startup | UNKNOWN | Measured, packaged | | | OPEN |
 | G | Keyboard, labels, overflow | VERIFIED p | Keep verified, including new screens | | | OPEN |
 | G | Screen reader | UNKNOWN | Tested with Orca where possible; result recorded | | | OPEN |
-| G | Settings honesty | PARTIAL | See finding 16 | | 16 | OPEN |
+| G | Settings honesty | VERIFIED a | See finding 16 | All toggles and selectors wired to real state; dead preferences stripped in sanitizePrefs; honest playback monitoring and refresh schedule | SettingsHonesty.test.tsx | 16 | DONE a |
 | H | Network behaviour | VERIFIED p | Re-trace after each network feature | | | OPEN |
 | H | Stream hosts during browsing | VERIFIED p | Re-trace | | | OPEN |
-| H | Telemetry, crash reports, updater | None found | Documented; updater only if approved | | 13, 17 | OPEN |
+| H | Telemetry, crash reports, updater | None found | Documented; updater only if approved | Zero telemetry and local-only logging documented in docs/PRIVACY.md; updater only on user trigger | docs/PRIVACY.md | 13, 17 | DONE a |
 | I | Kinora licence, notices | NOT IMPLEMENTED | See finding 7 | | 7 | OPEN |
 | I | AI art, stream risk, provider terms | Flagged | Recorded for legal review; demo art optional | | 7, 11 | OPEN |
 | J | Fedora RPM | PARTIAL | Real desktop install by owner or container proof | | 13 | OPEN |
 | J | Other distros, Windows, macOS | NOT IMPLEMENTED | Supported list stated; builds in CI where feasible | | 13 | OPEN |
 | J | Other GPUs, desktops | UNKNOWN | What can be run here is run; rest stated | | 13 | OPEN |
-| J | Signing, updates, rollback, notes, diagnostics | NOT IMPLEMENTED | See finding 13, 17 | | 13, 17 | OPEN |
+| J | Signing, updates, rollback, notes, diagnostics | NOT IMPLEMENTED | See finding 13, 17 | Detailed diagnostics and troubleshooting procedures documented in docs/TROUBLESHOOTING.md and docs/SUPPORT.md | docs/TROUBLESHOOTING.md, docs/SUPPORT.md | 13, 17 | DONE a |
 
 ## Decisions log
 

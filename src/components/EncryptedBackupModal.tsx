@@ -144,6 +144,41 @@ export function EncryptedBackupModal({
         if (artRaw) customArtworkData = JSON.parse(artRaw)
       } catch {}
 
+      let mediaServersData: unknown = null
+      let podcastData: unknown = null
+      let opdsData: unknown = null
+      let stalkerData: unknown = null
+
+      try {
+        const msRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('kinora.media_servers.v1') : null
+        if (msRaw) {
+          const parsed = JSON.parse(msRaw)
+          if (Array.isArray(parsed)) {
+            mediaServersData = parsed.map((s: Record<string, unknown>) => ({
+              ...s,
+              password: s.password ? '[PROTECTED]' : undefined,
+            }))
+          } else {
+            mediaServersData = parsed
+          }
+        }
+      } catch {}
+
+      try {
+        const podRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('kinora.podcast.subscriptions.v1') : null
+        if (podRaw) podcastData = JSON.parse(podRaw)
+      } catch {}
+
+      try {
+        const opdsRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('kinora.opds.catalogs.v1') : null
+        if (opdsRaw) opdsData = JSON.parse(opdsRaw)
+      } catch {}
+
+      try {
+        const stkRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('kinora.stalker.portals.v1') : null
+        if (stkRaw) stalkerData = JSON.parse(stkRaw)
+      } catch {}
+
       const [nativeLoaded, localLibs] = await Promise.all([
         loadSources().catch(() => null),
         getLocalLibraries().catch(() => []),
@@ -172,6 +207,10 @@ export function EncryptedBackupModal({
           autoScan: lib.autoScan,
           scanIntervalHours: lib.scanIntervalHours,
         })),
+        mediaServers: mediaServersData,
+        podcastSubscriptions: podcastData,
+        opdsCatalogs: opdsData,
+        stalkerPortals: stalkerData,
         nativeSourcesState: nativeLoaded ?? undefined,
         guideMappings: store.mappings ?? [],
         savedSources: store.playlists.map((p) => ({
@@ -328,6 +367,30 @@ export function EncryptedBackupModal({
             }
           }
         }
+      }
+
+      if (options.restoreMediaServers !== false && decryptedPayload.mediaServers && typeof localStorage !== 'undefined') {
+        try {
+          localStorage.setItem('kinora.media_servers.v1', JSON.stringify(decryptedPayload.mediaServers))
+        } catch {}
+      }
+
+      if (options.restorePodcasts !== false && decryptedPayload.podcastSubscriptions && typeof localStorage !== 'undefined') {
+        try {
+          localStorage.setItem('kinora.podcast.subscriptions.v1', JSON.stringify(decryptedPayload.podcastSubscriptions))
+        } catch {}
+      }
+
+      if (options.restoreOpds !== false && decryptedPayload.opdsCatalogs && typeof localStorage !== 'undefined') {
+        try {
+          localStorage.setItem('kinora.opds.catalogs.v1', JSON.stringify(decryptedPayload.opdsCatalogs))
+        } catch {}
+      }
+
+      if (options.restoreStalker !== false && decryptedPayload.stalkerPortals && typeof localStorage !== 'undefined') {
+        try {
+          localStorage.setItem('kinora.stalker.portals.v1', JSON.stringify(decryptedPayload.stalkerPortals))
+        } catch {}
       }
 
       toast('Encrypted backup restored and migrated successfully.')

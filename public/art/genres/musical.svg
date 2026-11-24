@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#220018"/>
+      <stop offset="50%" stop-color="#390029"/>
+      <stop offset="100%" stop-color="#0e000a"/>
+    </linearGradient>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ff007f"/>
+      <stop offset="100%" stop-color="#ffd166"/>
+    </linearGradient>
+    <linearGradient id="grad2" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffd166"/>
+      <stop offset="100%" stop-color="#7209b7"/>
+    </linearGradient>
+    <radialGradient id="grad-radial" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ff007f" stop-opacity="0.8"/>
+      <stop offset="60%" stop-color="#ffd166" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#0e000a" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="vignette" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#000000" stop-opacity="0.3"/>
+      <stop offset="50%" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.85"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <g><polygon points="640,0 240,720 1040,720" fill="url(#grad2)" opacity="0.4"/>
+            <circle cx="640" cy="260" r="160" fill="url(#grad1)" opacity="0.5"/>
+            <ellipse cx="600" cy="420" rx="36" ry="24" fill="#ffd166" opacity="0.85"/>
+            <line x1="630" y1="420" x2="630" y2="240" stroke="#ffd166" stroke-width="10" stroke-linecap="round"/>
+            <ellipse cx="760" cy="380" rx="36" ry="24" fill="#ffd166" opacity="0.85"/>
+            <line x1="790" y1="380" x2="790" y2="200" stroke="#ffd166" stroke-width="10" stroke-linecap="round"/>
+            <polygon points="625,240 795,200 795,240 625,280" fill="#ffd166" opacity="0.9"/>
+            <circle cx="500" cy="180" r="6" fill="#ffffff"/>
+            <circle cx="820" cy="140" r="8" fill="#ff007f"/></g>
+  <rect width="1280" height="720" fill="url(#vignette)"/>
+</svg>

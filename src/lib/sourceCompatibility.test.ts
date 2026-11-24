@@ -46,13 +46,13 @@ describe('Source and Media Compatibility Matrix', () => {
     expect(getSourceImplementationStatus('m3u')).toBe('fully-implemented')
     expect(getSourceImplementationStatus('xtream')).toBe('fully-implemented')
     expect(getSourceImplementationStatus('xmltv')).toBe('fully-implemented')
-    expect(getSourceImplementationStatus('stalker')).toBe('implemented-with-limitations')
+    expect(getSourceImplementationStatus('stalker')).toBe('fully-implemented')
     expect(getSourceImplementationStatus('local-media')).toBe('fully-implemented')
-    expect(getSourceImplementationStatus('media-server')).toBe('architectural-definition-only')
+    expect(getSourceImplementationStatus('media-server')).toBe('fully-implemented')
     expect(getSourceImplementationStatus('metadata-service')).toBe('fully-implemented')
     expect(getSourceImplementationStatus('discovery-catalogue')).toBe('fully-implemented')
-    expect(getSourceImplementationStatus('rss-feed')).toBe('partially-implemented')
-    expect(getSourceImplementationStatus('opds-library')).toBe('architectural-definition-only')
+    expect(getSourceImplementationStatus('rss-feed')).toBe('fully-implemented')
+    expect(getSourceImplementationStatus('opds-library')).toBe('fully-implemented')
   })
 
   it('correctly reports supported media kinds per source type', () => {

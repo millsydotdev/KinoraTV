@@ -81,6 +81,7 @@ pub struct StalkerCatalogue {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct StalkerCapabilities {
     pub supports_itv: bool,
     pub supports_vod: bool,
@@ -91,6 +92,7 @@ pub struct StalkerCapabilities {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct StalkerEpgProgramme {
     pub id: String,
     pub channel_id: String,
@@ -114,6 +116,7 @@ pub struct StalkerEngine {
     session: Mutex<Option<StalkerSession>>,
 }
 
+#[allow(dead_code)]
 impl StalkerEngine {
     pub fn new(data_dir: Option<PathBuf>) -> Self {
         Self {
@@ -411,6 +414,237 @@ impl StalkerEngine {
         self.session.lock().unwrap().is_some()
     }
 
+    /// Re-authenticates with the Stalker portal using the stored MAC address and portal URL.
+    pub async fn reauthenticate(&self) -> Result<String, IngestError> {
+        let (portal_url, mac) = {
+            let lock = self.session.lock().unwrap();
+            let sess = lock.as_ref().ok_or_else(|| {
+                IngestError::new(ErrorCode::Storage, "No active Stalker portal session to reauthenticate.")
+            })?;
+            (sess.portal_url.clone(), sess.mac.clone())
+        };
+
+        let endpoint = Self::normalize_portal_url(&portal_url)?;
+        let mut handshake_url = endpoint.clone();
+        handshake_url.set_query(Some("type=stb&action=handshake&token=&JsHttpRequest=1-xml"));
+
+        let client = fetch::guarded_client(&Policy::default())?;
+        let res = client
+            .get(handshake_url)
+            .header(reqwest::header::USER_AGENT, STB_USER_AGENT)
+            .header("X-User-Agent", STB_MODEL_HEADER)
+            .header(reqwest::header::COOKIE, format!("mac={mac}"))
+            .send()
+            .await
+            .map_err(|e| IngestError::new(ErrorCode::Network, format!("Stalker reauthentication handshake failed: {e}")))?;
+
+        let text = res
+            .text()
+            .await
+            .map_err(|e| IngestError::new(ErrorCode::HttpStatus, format!("Failed to read Stalker handshake response: {e}")))?;
+
+        let token = Self::parse_token_from_response(&text)?;
+
+        let mut lock = self.session.lock().unwrap();
+        if let Some(sess) = lock.as_mut() {
+            sess.token = Some(token.clone());
+        }
+
+        Ok(token)
+    }
+
+    /// Fetches and detects portal capabilities including live TV, VOD, EPG and catch-up support.
+    pub async fn get_capabilities(&self) -> Result<StalkerCapabilities, IngestError> {
+        let (endpoint_str, mac, token) = {
+            let lock = self.session.lock().unwrap();
+            let sess = lock.as_ref().ok_or_else(|| {
+                IngestError::new(ErrorCode::Storage, "No active Stalker portal session.")
+            })?;
+            (
+                sess.portal_url.clone(),
+                sess.mac.clone(),
+                sess.token.clone().unwrap_or_default(),
+            )
+        };
+
+        let endpoint = Url::parse(&endpoint_str).map_err(|_| {
+            IngestError::new(ErrorCode::InvalidUrl, "Invalid Stalker portal address.")
+        })?;
+        let client = fetch::guarded_client(&Policy::default())?;
+
+        let mut profile_url = endpoint.clone();
+        profile_url.set_query(Some(&format!(
+            "type=stb&action=get_profile&token={token}&JsHttpRequest=1-xml"
+        )));
+
+        let res = client
+            .get(profile_url)
+            .header(reqwest::header::USER_AGENT, STB_USER_AGENT)
+            .header("X-User-Agent", STB_MODEL_HEADER)
+            .header(reqwest::header::COOKIE, format!("mac={mac}"))
+            .header("Authorization", format!("Bearer {token}"))
+            .send()
+            .await;
+
+        let text = match res {
+            Ok(r) => r.text().await.unwrap_or_default(),
+            Err(_) => String::new(),
+        };
+
+        Ok(Self::parse_capabilities(&text))
+    }
+
+    /// Pure parser for Stalker capabilities from profile or configuration response.
+    pub fn parse_capabilities(raw: &str) -> StalkerCapabilities {
+        let val: Value = serde_json::from_str(raw).unwrap_or(Value::Null);
+        let js = val.get("js").unwrap_or(&val);
+
+        let server_version = js
+            .get("server_version")
+            .or_else(|| js.get("version"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        let disable_vclub = js
+            .get("disable_vclub")
+            .and_then(|v| v.as_i64())
+            .map(|n| n == 1)
+            .unwrap_or(false);
+
+        let supports_vod = !disable_vclub;
+
+        StalkerCapabilities {
+            supports_itv: true,
+            supports_vod,
+            supports_epg: true,
+            supports_catchup: true,
+            server_version,
+        }
+    }
+
+    /// Fetches short EPG for a specific channel ID.
+    pub async fn get_short_epg(&self, channel_id: &str) -> Result<Vec<StalkerEpgProgramme>, IngestError> {
+        let (endpoint_str, mac, token) = {
+            let lock = self.session.lock().unwrap();
+            let sess = lock.as_ref().ok_or_else(|| {
+                IngestError::new(ErrorCode::Storage, "No active Stalker portal session.")
+            })?;
+            (
+                sess.portal_url.clone(),
+                sess.mac.clone(),
+                sess.token.clone().unwrap_or_default(),
+            )
+        };
+
+        let endpoint = Url::parse(&endpoint_str).map_err(|_| {
+            IngestError::new(ErrorCode::InvalidUrl, "Invalid Stalker portal address.")
+        })?;
+        let client = fetch::guarded_client(&Policy::default())?;
+
+        let mut epg_url = endpoint.clone();
+        epg_url.set_query(Some(&format!(
+            "type=itv&action=get_short_epg&ch_id={}&token={token}&JsHttpRequest=1-xml",
+            urlencoding::encode(channel_id)
+        )));
+
+        let res = client
+            .get(epg_url)
+            .header(reqwest::header::USER_AGENT, STB_USER_AGENT)
+            .header("X-User-Agent", STB_MODEL_HEADER)
+            .header(reqwest::header::COOKIE, format!("mac={mac}"))
+            .header("Authorization", format!("Bearer {token}"))
+            .send()
+            .await
+            .map_err(|e| IngestError::new(ErrorCode::Network, format!("Failed to fetch Stalker EPG: {e}")))?;
+
+        let text = res.text().await.unwrap_or_default();
+        Ok(Self::parse_epg_response(&text, channel_id))
+    }
+
+    /// Parses EPG timetable items from a Stalker get_short_epg response.
+    pub fn parse_epg_response(raw: &str, channel_id: &str) -> Vec<StalkerEpgProgramme> {
+        let val: Value = serde_json::from_str(raw).unwrap_or(Value::Null);
+        let list = val.pointer("/js/data")
+            .or_else(|| val.get("js"))
+            .or_else(|| val.get("data"))
+            .and_then(|v| v.as_array());
+
+        let mut res = Vec::new();
+        if let Some(arr) = list {
+            for item in arr {
+                let id = val_to_str(item.get("id")).unwrap_or_else(|| format!("{channel_id}-{}", res.len()));
+                let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("Untitled Programme").to_string();
+                let time = item.get("time").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let time_to = item.get("time_to").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let duration = item.get("duration")
+                    .and_then(|v| v.as_u64())
+                    .or_else(|| item.get("duration").and_then(|v| v.as_str()).and_then(|s| s.parse().ok()))
+                    .unwrap_or(3600) as u32;
+                let desc = item.get("descr").or_else(|| item.get("description")).and_then(|v| v.as_str()).map(|s| s.to_string());
+
+                res.push(StalkerEpgProgramme {
+                    id,
+                    channel_id: channel_id.to_string(),
+                    name,
+                    time,
+                    time_to,
+                    duration,
+                    desc,
+                });
+            }
+        }
+        res
+    }
+
+    /// Generates an archive catch-up playback link.
+    pub async fn create_catchup_link(
+        &self,
+        cmd: &str,
+        start_timestamp: u64,
+        duration_sec: u32,
+    ) -> Result<String, IngestError> {
+        let (endpoint_str, mac, token) = {
+            let lock = self.session.lock().unwrap();
+            let sess = lock.as_ref().ok_or_else(|| {
+                IngestError::new(ErrorCode::Storage, "No active Stalker portal session.")
+            })?;
+            (
+                sess.portal_url.clone(),
+                sess.mac.clone(),
+                sess.token.clone().unwrap_or_default(),
+            )
+        };
+
+        let endpoint = Url::parse(&endpoint_str).map_err(|_| {
+            IngestError::new(ErrorCode::InvalidUrl, "Invalid Stalker portal address.")
+        })?;
+        let client = fetch::guarded_client(&Policy::default())?;
+
+        let mut link_url = endpoint.clone();
+        link_url.set_query(Some(&format!(
+            "type=itv&action=create_link&cmd={}&archive=1&start={start_timestamp}&duration={duration_sec}&token={token}&JsHttpRequest=1-xml",
+            urlencoding::encode(cmd)
+        )));
+
+        let link_res = client
+            .get(link_url)
+            .header(reqwest::header::USER_AGENT, STB_USER_AGENT)
+            .header("X-User-Agent", STB_MODEL_HEADER)
+            .header(reqwest::header::COOKIE, format!("mac={mac}"))
+            .header("Authorization", format!("Bearer {token}"))
+            .send()
+            .await
+            .map_err(|e| IngestError::new(ErrorCode::Network, format!("Failed to create catchup link: {e}")))?;
+
+        let text = link_res.text().await.unwrap_or_default();
+        let stream_url = Self::parse_create_link_response(&text)?;
+
+        let policy = Policy::default();
+        fetch::check_url(&stream_url, &policy)?;
+
+        Ok(stream_url)
+    }
+
     // Extraction & parsing helpers
 
     pub fn extract_stream_from_cmd(cmd: &str) -> String {
@@ -694,5 +928,31 @@ mod tests {
             StalkerEngine::parse_create_link_response(link_json).unwrap(),
             "http://stream.example/live/ch1.m3u8?token=xyz"
         );
+    }
+
+    #[test]
+    fn parses_stalker_capabilities_accurately() {
+        let profile_json = r#"{"js":{"server_version":"5.6.0","disable_vclub":0}}"#;
+        let caps = StalkerEngine::parse_capabilities(profile_json);
+        assert!(caps.supports_itv);
+        assert!(caps.supports_vod);
+        assert!(caps.supports_epg);
+        assert!(caps.supports_catchup);
+        assert_eq!(caps.server_version.as_deref(), Some("5.6.0"));
+
+        let disabled_vod = r#"{"js":{"version":"5.5.0","disable_vclub":1}}"#;
+        let caps2 = StalkerEngine::parse_capabilities(disabled_vod);
+        assert!(!caps2.supports_vod);
+    }
+
+    #[test]
+    fn parses_stalker_epg_timetable_records() {
+        let epg_json = r#"{"js":[{"id":"epg-1","name":"Morning News","time":"2026-11-24 08:00:00","time_to":"2026-11-24 09:00:00","duration":"3600","descr":"Morning bulletin"}]}"#;
+        let progs = StalkerEngine::parse_epg_response(epg_json, "ch-101");
+        assert_eq!(progs.len(), 1);
+        assert_eq!(progs[0].name, "Morning News");
+        assert_eq!(progs[0].duration, 3600);
+        assert_eq!(progs[0].channel_id, "ch-101");
+        assert_eq!(progs[0].desc.as_deref(), Some("Morning bulletin"));
     }
 }

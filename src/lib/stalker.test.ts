@@ -9,7 +9,10 @@ import {
   mapStalkerToKinoraChannels,
   mapStalkerVodToItems,
   stalkerToPlaylistReport,
+  mapStalkerEpgToProgrammes,
+  buildStalkerCatchupRequest,
   type SavedStalkerPortal,
+  type StalkerEpgProgramme,
 } from './stalker'
 import type { StalkerCatalogue } from './native'
 
@@ -193,6 +196,35 @@ describe('stalker library', () => {
       expect(inception?.year).toBe(2010)
       expect(inception?.streamUrl).toBe('stalker://ffrt%20http%3A%2F%2Fstream.example.com%2Fvod%2Finception.mp4')
       expect(inception?.poster).toBe('http://posters.example.com/inception.jpg')
+    })
+
+    it('maps stalker epg records to Kinora programme format', () => {
+      const epg: StalkerEpgProgramme[] = [
+        {
+          id: '1',
+          channelId: 'stalker-101',
+          name: 'Global News at 8',
+          time: '2026-11-24 20:00:00',
+          timeTo: '2026-11-24 21:00:00',
+          duration: 3600,
+          desc: 'Main evening news bulletin',
+        },
+      ]
+
+      const progs = mapStalkerEpgToProgrammes(epg, 'stalker-101')
+      expect(progs).toHaveLength(1)
+      expect(progs[0]?.title).toBe('Global News at 8')
+      expect(progs[0]?.channelId).toBe('stalker-101')
+      expect(progs[0]?.desc).toBe('Main evening news bulletin')
+      expect(progs[0]?.start).toBe(1795550400000)
+      expect(progs[0]?.stop).toBe(1795554000000)
+    })
+
+    it('builds catchup request descriptors accurately', () => {
+      const req = buildStalkerCatchupRequest('ffmpeg http://stream.example/live.m3u8', 1732478400, 3600)
+      expect(req.cmd).toBe('ffmpeg http://stream.example/live.m3u8')
+      expect(req.start).toBe(1732478400)
+      expect(req.duration).toBe(3600)
     })
   })
 })

@@ -142,4 +142,43 @@ describe('Encrypted Backup & Restore Engine (.kinorabackup)', () => {
     expect(report.compatibility.warnings.some((w) => w.includes('/mnt/nas/movies'))).toBe(true)
     expect(report.compatibility.warnings.some((w) => w.includes('file-based playlists'))).toBe(true)
   })
+
+  it('inspects and preserves media servers, podcasts, opds catalogs, and stalker portals', async () => {
+    const extendedPayload: KinoraBackupPayload = {
+      ...samplePayload,
+      mediaServers: [
+        { id: 'jf-1', platform: 'jellyfin', name: 'Home Jellyfin', serverUrl: 'http://192.168.1.100:8096' },
+        { id: 'plex-1', platform: 'plex', name: 'Living Room Plex', serverUrl: 'http://192.168.1.101:32400' },
+      ],
+      podcastSubscriptions: [
+        { id: 'pod-1', title: 'Daily Tech', feedUrl: 'https://feeds.example/tech.xml' },
+      ],
+      opdsCatalogs: [
+        { id: 'opds-1', title: 'Standard Ebooks', feedUrl: 'https://standardebooks.org/opds' },
+        { id: 'opds-2', title: 'Project Gutenberg', feedUrl: 'https://m.gutenberg.org/ebooks.opds' },
+      ],
+      stalkerPortals: [
+        { id: 'stk-1', portalUrl: 'http://portal.example.com/c', mac: '00:1A:79:00:11:22' },
+      ],
+    }
+
+    const report = inspectBackupPayload(extendedPayload)
+    expect(report.itemCounts.mediaServers).toBe(2)
+    expect(report.itemCounts.podcastSubscriptions).toBe(1)
+    expect(report.itemCounts.opdsCatalogs).toBe(2)
+    expect(report.itemCounts.stalkerPortals).toBe(1)
+    expect(report.compatibility.warnings.some((w) => w.includes('Media servers'))).toBe(true)
+    expect(report.compatibility.warnings.some((w) => w.includes('Stalker portals'))).toBe(true)
+
+    // Test round-trip encryption/decryption
+    const key = 'SafeVaultKey999!'
+    const encrypted = await encryptBackupPayload(extendedPayload, key)
+    const decrypted = await decryptBackupPayload(encrypted, key)
+
+    expect(Array.isArray(decrypted.mediaServers)).toBe(true)
+    expect((decrypted.mediaServers as unknown[]).length).toBe(2)
+    expect(Array.isArray(decrypted.podcastSubscriptions)).toBe(true)
+    expect(Array.isArray(decrypted.opdsCatalogs)).toBe(true)
+    expect(Array.isArray(decrypted.stalkerPortals)).toBe(true)
+  })
 })

@@ -2,7 +2,25 @@
 // Strictly adheres to project typography standards: zero em-dashes across all code and comments.
 
 import type { PlaylistChannel, PlaylistReport, StalkerCatalogue, StalkerChannel, StalkerVodItem } from './native'
-import type { Channel } from '../data/types'
+import type { Channel, Programme } from '../data/types'
+
+export interface StalkerCapabilities {
+  supportsItv: boolean
+  supportsVod: boolean
+  supportsEpg: boolean
+  supportsCatchup: boolean
+  serverVersion?: string | null
+}
+
+export interface StalkerEpgProgramme {
+  id: string
+  channelId: string
+  name: string
+  time: string
+  timeTo: string
+  duration: number
+  desc?: string | null
+}
 
 export interface SavedStalkerPortal {
   id: string
@@ -177,4 +195,45 @@ export function mapStalkerVodToItems(catalogue: StalkerCatalogue): Array<{
       streamUrl: `stalker://${encodeURIComponent(item.cmd)}`,
     }
   })
+}
+
+/**
+ * Maps Stalker EPG timetable entries into Kinora Programme format.
+ */
+export function mapStalkerEpgToProgrammes(
+  epgList: StalkerEpgProgramme[],
+  channelId: string,
+): Programme[] {
+  return epgList.map((item, index) => {
+    const parsedStart = item.time ? Date.parse(item.time.replace(' ', 'T') + 'Z') : NaN
+    const startMs = Number.isNaN(parsedStart) ? Date.now() + index * 3600000 : parsedStart
+    const parsedEnd = item.timeTo ? Date.parse(item.timeTo.replace(' ', 'T') + 'Z') : NaN
+    const endMs = Number.isNaN(parsedEnd) ? startMs + (item.duration || 3600) * 1000 : parsedEnd
+
+    return {
+      id: `stalker-epg-${item.id || index}`,
+      channelId,
+      title: item.name || 'Untitled Programme',
+      start: startMs,
+      stop: endMs,
+      desc: item.desc || '',
+      category: 'General',
+      episode: null,
+    }
+  })
+}
+
+/**
+ * Builds a catch-up playback request descriptor for Stalker archive streams.
+ */
+export function buildStalkerCatchupRequest(
+  cmd: string,
+  startTimestampSec: number,
+  durationSec: number,
+): { cmd: string; start: number; duration: number } {
+  return {
+    cmd,
+    start: startTimestampSec,
+    duration: Math.max(60, durationSec),
+  }
 }

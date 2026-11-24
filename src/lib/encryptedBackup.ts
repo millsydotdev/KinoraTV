@@ -35,6 +35,10 @@ export interface KinoraBackupPayload {
   dvrRules?: unknown
   dvrConfig?: unknown
   localLibraries?: BackupLocalLibrary[]
+  mediaServers?: unknown
+  podcastSubscriptions?: unknown
+  opdsCatalogs?: unknown
+  stalkerPortals?: unknown
   checksum?: string
   deviceInfo?: {
     platform?: string
@@ -60,6 +64,10 @@ export interface BackupInspectionReport {
     customArtwork: number
     dvrRules: number
     localLibraries: number
+    mediaServers: number
+    podcastSubscriptions: number
+    opdsCatalogs: number
+    stalkerPortals: number
   }
   compatibility: {
     isCompatible: boolean
@@ -77,6 +85,10 @@ export interface RestoreSelectionOptions {
   restorePersonalMedia: boolean
   restoreCustomArtwork?: boolean
   restoreDvr?: boolean
+  restoreMediaServers?: boolean
+  restorePodcasts?: boolean
+  restoreOpds?: boolean
+  restoreStalker?: boolean
 }
 
 const MAGIC_HEADER = 'KINORA_BACKUP_V1'
@@ -316,6 +328,18 @@ export function inspectBackupPayload(
 
   const dvrRules = Array.isArray(payload.dvrRules) ? payload.dvrRules.length : 0
   const localLibraries = Array.isArray(payload.localLibraries) ? payload.localLibraries.length : 0
+  const mediaServers = Array.isArray(payload.mediaServers) ? payload.mediaServers.length : 0
+  const podcastSubscriptions = Array.isArray(payload.podcastSubscriptions) ? payload.podcastSubscriptions.length : 0
+  const opdsCatalogs = Array.isArray(payload.opdsCatalogs) ? payload.opdsCatalogs.length : 0
+  const stalkerPortals = Array.isArray(payload.stalkerPortals) ? payload.stalkerPortals.length : 0
+
+  if (mediaServers > 0) {
+    warnings.push(`Media servers (${mediaServers}): Access tokens and credentials should be re-verified after restore.`)
+  }
+
+  if (stalkerPortals > 0) {
+    warnings.push(`Stalker portals (${stalkerPortals}): Portal MAC addresses are restored; verify portal authorization on your network.`)
+  }
 
   if (missingLocalPaths.length > 0) {
     warnings.push(
@@ -348,6 +372,10 @@ export function inspectBackupPayload(
       customArtwork,
       dvrRules,
       localLibraries,
+      mediaServers,
+      podcastSubscriptions,
+      opdsCatalogs,
+      stalkerPortals,
     },
     compatibility: {
       isCompatible: true,

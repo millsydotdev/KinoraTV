@@ -9,6 +9,7 @@ export interface AggregatedVodVariant {
   id: string
   sourceId: string
   sourceName: string
+  sourceKind?: 'm3u' | 'xtream' | 'local-media' | 'media-server' | 'stalker'
   streamId: string
   name: string
   quality: '4K' | '1080p' | '720p' | 'HD' | 'SD'
@@ -47,18 +48,27 @@ export function normalizeVodTitle(rawName: string, fallbackYear?: number | null)
     quality = 'SD'
   }
 
-  // Extract year pattern like (2024), [2024], or standalone 2024
+  // Extract release year: prefer parenthesized or bracketed year like (2017) or [2024]
   let detectedYear: number | null = fallbackYear ?? null
-  const yearMatch = title.match(/[\(\[\s](19\d\d|20\d\d)[\)\]\s]?/)
-  if (yearMatch && yearMatch[1]) {
-    detectedYear = parseInt(yearMatch[1], 10)
-    title = title.replace(new RegExp(`[\\(\\[]?\\s*${yearMatch[1]}\\s*[\\)\\]]?`, 'g'), ' ')
+  const bracketedYearMatch = title.match(/[\(\[]\s*(19\d\d|20[0-3]\d)\s*[\)\]]/)
+  if (bracketedYearMatch && bracketedYearMatch[1]) {
+    detectedYear = parseInt(bracketedYearMatch[1], 10)
+    title = title.replace(bracketedYearMatch[0], ' ')
+  } else if (!detectedYear) {
+    const standaloneYearMatch = title.match(/\b(19\d\d|20[0-2]\d)\b/)
+    if (standaloneYearMatch && standaloneYearMatch[1]) {
+      detectedYear = parseInt(standaloneYearMatch[1], 10)
+      title = title.replace(standaloneYearMatch[0], ' ')
+    }
+  } else if (detectedYear) {
+    title = title.replace(new RegExp(`\\b${detectedYear}\\b`, 'g'), ' ')
   }
 
   // Strip quality tokens and bracketed info like [4K UHD], (1080p), FHD, etc.
   title = title.replace(/\[\s*(4K|UHD|2160P|1080P|720P|FHD|HD|SD|HEVC)[\s\w]*\]/gi, ' ')
   title = title.replace(/\(\s*(4K|UHD|2160P|1080P|720P|FHD|HD|SD|HEVC)[\s\w]*\)/gi, ' ')
   title = title.replace(/\b(4K|UHD|2160P|1080P|720P|FHD|HD|SD|HEVC)\b/gi, ' ')
+  title = title.replace(/\b(BluRay|BDRip|BRRip|WEB-?DL|WEBRip|HDRip|DVDRip|x264|x265|REMUX)\b/gi, ' ')
 
   // Clean title casing and strip trailing punctuation/whitespace
   let clean = cleanChannelTitle(title).trim()
@@ -181,4 +191,141 @@ export function findAlternateVodVariants(
       providerChannelId: streamId,
     }
   })
+}
+
+export interface UniversalMediaInput {
+  id: string
+  sourceId: string
+  sourceName: string
+  sourceKind: 'm3u' | 'xtream' | 'local-media' | 'media-server' | 'stalker'
+  title: string
+  year?: number | null
+  posterUrl?: string | null
+  backdropUrl?: string | null
+  streamUrl: string
+  extension?: string
+  mediaKind: 'movie' | 'series' | 'episode' | 'video'
+  plot?: string
+  rating?: string
+}
+
+export interface AggregatedUniversalMedia {
+  canonicalId: string
+  title: string
+  year: number | null
+  mediaKind: 'movie' | 'series' | 'episode' | 'video'
+  posterUrl: string | null
+  backdropUrl: string | null
+  plot?: string
+  variants: AggregatedVodVariant[]
+  totalSources: number
+  customArtwork?: {
+    poster?: string | null
+    backdrop?: string | null
+  }
+}
+
+/**
+ * Universal media aggregator across M3U, Xtream, Local Media, Media Server, and Stalker sources.
+ * Normalizes title, detects release year, coalesces matching titles, and collects multi-source stream variants.
+ */
+export function aggregateUniversalMedia(items: UniversalMediaInput[]): AggregatedUniversalMedia[] {
+  const groups = new Map<string, { primary: UniversalMediaInput; variants: AggregatedVodVariant[] }>()
+
+  for (const item of items) {
+    const { cleanTitle, year, quality } = normalizeVodTitle(item.title, item.year)
+    const key = canonicalVodKey(cleanTitle, year)
+    const ext = item.extension || 'mp4'
+
+    const variant: AggregatedVodVariant = {
+      id: `${item.sourceId}:${item.id}`,
+      sourceId: item.sourceId,
+      sourceName: item.sourceName,
+      sourceKind: item.sourceKind,
+      streamId: item.id,
+      name: `${item.sourceName} (${quality})`,
+      quality,
+      extension: ext,
+      streamUrl: item.streamUrl,
+    }
+
+    const existing = groups.get(key)
+    if (!existing) {
+      groups.set(key, {
+        primary: {
+          ...item,
+          title: cleanTitle,
+          year: year ?? item.year,
+        },
+        variants: [variant],
+      })
+    } else {
+      // Prioritize media-server, local-media, or 4K/1080p metadata
+      const isPrioritySource = item.sourceKind === 'media-server' || item.sourceKind === 'local-media'
+      if ((isPrioritySource || quality === '4K' || quality === '1080p') && item.posterUrl) {
+        existing.primary = {
+          ...item,
+          title: cleanTitle,
+          year: year ?? item.year,
+        }
+      }
+      existing.variants.push(variant)
+    }
+  }
+
+  return Array.from(groups.values()).map(({ primary, variants }) => ({
+    canonicalId: `media-${canonicalVodKey(primary.title, primary.year || null)}`,
+    title: primary.title,
+    year: primary.year ?? null,
+    mediaKind: primary.mediaKind,
+    posterUrl: primary.posterUrl ?? null,
+    backdropUrl: primary.backdropUrl ?? null,
+    plot: primary.plot,
+    variants,
+    totalSources: new Set(variants.map((v) => v.sourceId)).size,
+  }))
+}
+
+/**
+ * Safely removes a source's stream variants from aggregated media.
+ * Preserves the canonical media item if other sources still provide variants.
+ * Drops the item only when all its source variants have been removed.
+ */
+export function removeSourceFromUniversalMedia(
+  mediaList: AggregatedUniversalMedia[],
+  sourceIdToRemove: string,
+): AggregatedUniversalMedia[] {
+  const updated: AggregatedUniversalMedia[] = []
+
+  for (const item of mediaList) {
+    const remainingVariants = item.variants.filter((v) => v.sourceId !== sourceIdToRemove)
+    if (remainingVariants.length > 0) {
+      updated.push({
+        ...item,
+        variants: remainingVariants,
+        totalSources: new Set(remainingVariants.map((v) => v.sourceId)).size,
+      })
+    }
+  }
+
+  return updated
+}
+
+/**
+ * Synchronizes library items while safeguarding cached entries against source outages.
+ * If a source returns empty or errors, previously cached items for that source are retained.
+ */
+export function reconcileResilientLibrary(
+  existingCache: UniversalMediaInput[],
+  freshItems: UniversalMediaInput[],
+  activeSourceId: string,
+  fetchSuccess: boolean,
+): UniversalMediaInput[] {
+  if (!fetchSuccess) {
+    // Keep previously cached items for this source
+    return existingCache
+  }
+  // Remove old items for this source and append fresh items
+  const otherSourcesItems = existingCache.filter((item) => item.sourceId !== activeSourceId)
+  return [...otherSourcesItems, ...freshItems]
 }

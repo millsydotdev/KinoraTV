@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#200612"/>
+      <stop offset="50%" stop-color="#330a1e"/>
+      <stop offset="100%" stop-color="#0e0208"/>
+    </linearGradient>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#e63946"/>
+      <stop offset="100%" stop-color="#a01a35"/>
+    </linearGradient>
+    <linearGradient id="grad2" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#a01a35"/>
+      <stop offset="100%" stop-color="#f4a261"/>
+    </linearGradient>
+    <radialGradient id="grad-radial" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#e63946" stop-opacity="0.8"/>
+      <stop offset="60%" stop-color="#a01a35" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#0e0208" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="vignette" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#000000" stop-opacity="0.3"/>
+      <stop offset="50%" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.85"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <g><polygon points="640,0 300,720 980,720" fill="url(#grad1)" opacity="0.35"/>
+            <circle cx="640" cy="240" r="140" fill="url(#grad-radial)" opacity="0.6"/>
+            <path d="M520,380 C560,330 720,330 760,380" stroke="#f4a261" stroke-width="3" fill="none" opacity="0.6"/>
+            <ellipse cx="560" cy="280" rx="14" ry="20" fill="#a01a35" opacity="0.8"/>
+            <ellipse cx="720" cy="280" rx="14" ry="20" fill="#a01a35" opacity="0.8"/>
+            <line x1="640" y1="0" x2="640" y2="720" stroke="#ffffff" stroke-width="1" opacity="0.15"/>
+            <path d="M200,720 Q640,480 1080,720" fill="#080104" opacity="0.8"/></g>
+  <rect width="1280" height="720" fill="url(#vignette)"/>
+</svg>

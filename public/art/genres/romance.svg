@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#240010"/>
+      <stop offset="50%" stop-color="#3b001a"/>
+      <stop offset="100%" stop-color="#100007"/>
+    </linearGradient>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ff4d6d"/>
+      <stop offset="100%" stop-color="#ff758f"/>
+    </linearGradient>
+    <linearGradient id="grad2" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ff758f"/>
+      <stop offset="100%" stop-color="#c9184a"/>
+    </linearGradient>
+    <radialGradient id="grad-radial" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ff4d6d" stop-opacity="0.8"/>
+      <stop offset="60%" stop-color="#ff758f" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#100007" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="vignette" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#000000" stop-opacity="0.3"/>
+      <stop offset="50%" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.85"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <g><circle cx="560" cy="280" r="130" fill="url(#grad1)" opacity="0.6"/>
+            <circle cx="720" cy="280" r="130" fill="url(#grad1)" opacity="0.6"/>
+            <polygon points="440,310 840,310 640,540" fill="url(#grad1)" opacity="0.7"/>
+            <circle cx="380" cy="180" r="40" fill="#ff758f" opacity="0.3"/>
+            <circle cx="900" cy="220" r="50" fill="#ff4d6d" opacity="0.3"/>
+            <circle cx="780" cy="460" r="30" fill="#ff758f" opacity="0.25"/>
+            <path d="M0,640 Q640,520 1280,640 L1280,720 L0,720 Z" fill="#0c0005" opacity="0.9"/></g>
+  <rect width="1280" height="720" fill="url(#vignette)"/>
+</svg>

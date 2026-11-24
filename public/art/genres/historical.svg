@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1c140a"/>
+      <stop offset="50%" stop-color="#2e2111"/>
+      <stop offset="100%" stop-color="#0d0904"/>
+    </linearGradient>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#c99a45"/>
+      <stop offset="100%" stop-color="#8c6b2d"/>
+    </linearGradient>
+    <linearGradient id="grad2" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#8c6b2d"/>
+      <stop offset="100%" stop-color="#e3c280"/>
+    </linearGradient>
+    <radialGradient id="grad-radial" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#c99a45" stop-opacity="0.8"/>
+      <stop offset="60%" stop-color="#8c6b2d" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#0d0904" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="vignette" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#000000" stop-opacity="0.3"/>
+      <stop offset="50%" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.85"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <g><circle cx="640" cy="340" r="230" stroke="#c99a45" stroke-width="2" fill="none" opacity="0.35"/>
+            <circle cx="640" cy="340" r="190" stroke="#8c6b2d" stroke-width="1" stroke-dasharray="8,6" fill="none" opacity="0.4"/>
+            <circle cx="640" cy="340" r="80" stroke="#e3c280" stroke-width="1.5" fill="none" opacity="0.5"/>
+            <polygon points="640,150 655,325 640,340 625,325" fill="#c99a45" opacity="0.85"/>
+            <polygon points="640,530 655,355 640,340 625,355" fill="#8c6b2d" opacity="0.75"/>
+            <line x1="380" y1="340" x2="900" y2="340" stroke="#c99a45" stroke-width="1" opacity="0.3"/>
+            <line x1="640" y1="80" x2="640" y2="600" stroke="#c99a45" stroke-width="1" opacity="0.3"/>
+            <path d="M0,600 Q320,520 640,580 T1280,540 L1280,720 L0,720 Z" fill="#0a0703" opacity="0.9"/></g>
+  <rect width="1280" height="720" fill="url(#vignette)"/>
+</svg>

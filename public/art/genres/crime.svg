@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0c10"/>
+      <stop offset="50%" stop-color="#101622"/>
+      <stop offset="100%" stop-color="#040508"/>
+    </linearGradient>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffd60a"/>
+      <stop offset="100%" stop-color="#003566"/>
+    </linearGradient>
+    <linearGradient id="grad2" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#003566"/>
+      <stop offset="100%" stop-color="#d90429"/>
+    </linearGradient>
+    <radialGradient id="grad-radial" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffd60a" stop-opacity="0.8"/>
+      <stop offset="60%" stop-color="#003566" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#040508" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="vignette" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#000000" stop-opacity="0.3"/>
+      <stop offset="50%" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.85"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <g><line x1="0" y1="120" x2="1280" y2="120" stroke="#ffffff" stroke-width="1" opacity="0.08"/>
+            <line x1="0" y1="240" x2="1280" y2="240" stroke="#ffffff" stroke-width="1" opacity="0.08"/>
+            <line x1="0" y1="360" x2="1280" y2="360" stroke="#ffffff" stroke-width="1" opacity="0.08"/>
+            <line x1="0" y1="480" x2="1280" y2="480" stroke="#ffffff" stroke-width="1" opacity="0.08"/>
+            <line x1="0" y1="600" x2="1280" y2="600" stroke="#ffffff" stroke-width="1" opacity="0.08"/>
+            <polygon points="180,720 420,180 560,720" fill="#000814" opacity="0.95"/>
+            <polygon points="500,720 720,240 880,720" fill="#020e1f" opacity="0.9"/>
+            <polygon points="800,720 1020,140 1200,720" fill="#000611" opacity="0.96"/>
+            <line x1="-50" y1="660" x2="1330" y2="520" stroke="#ffd60a" stroke-width="16" stroke-dasharray="50,20" opacity="0.85"/>
+            <circle cx="580" cy="240" r="160" fill="url(#grad-radial)" opacity="0.4"/>
+            <circle cx="580" cy="240" r="90" stroke="#ffd60a" stroke-width="2" stroke-dasharray="8,6" fill="none" opacity="0.5"/>
+            <line x1="580" y1="130" x2="580" y2="350" stroke="#ffd60a" stroke-width="2" opacity="0.4"/>
+            <line x1="470" y1="240" x2="690" y2="240" stroke="#ffd60a" stroke-width="2" opacity="0.4"/></g>
+  <rect width="1280" height="720" fill="url(#vignette)"/>
+</svg>

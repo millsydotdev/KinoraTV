@@ -1243,11 +1243,25 @@ function Section({ id }: { id: string }) {
     case 'sources':
       return (
         <Group title="Importing and refreshing">
-          <Row title="Refreshing" hint="Playlists and guides with an address are read when you add them, each time Kinora starts, and when you refresh one. Files are read only when you choose them. Automatic refresh is not available yet.">
-            <span className="muted">Manual</span>
+          <Row title="Automatic refresh schedule" hint="Kinora updates remote playlists and XMLTV guides in the background on this schedule.">
+            <select
+              className="select"
+              value={prefs.refreshSchedule}
+              onChange={(e) => setPref('refreshSchedule', e.target.value as Prefs['refreshSchedule'])}
+              aria-label="Automatic refresh schedule"
+            >
+              <option value="4h">Every 4 hours</option>
+              <option value="8h">Every 8 hours</option>
+              <option value="12h">Every 12 hours (recommended)</option>
+              <option value="24h">Every 24 hours</option>
+              <option value="manual">Manual only</option>
+            </select>
           </Row>
-          <Row title="Stream checks" hint="Kinora reads channel lists but does not open or test streams. Checking streams is not available yet.">
-            <span className="muted">Not available</span>
+          <Row title="Last refresh" hint="When sources and guide data were last refreshed.">
+            <span className="muted">{store.lastRefreshedAt ? new Date(store.lastRefreshedAt).toLocaleString() : 'Never'}</span>
+          </Row>
+          <Row title="Stream health & failures" hint="Kinora marks channels that fail playback with an offline status badge and provides retry buttons. Streams are never probed in the background.">
+            <span className="muted">Monitored during playback</span>
           </Row>
           <Row title="Keeping sources" hint="Imported playlists and guides are saved on this device, including their addresses, which can contain private tokens. Guide programmes are kept there too, so they show offline. Stream addresses are never saved, so restored channels play again once their source refreshes.">
             <span className="muted">On this device</span>

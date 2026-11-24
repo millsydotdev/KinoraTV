@@ -6,6 +6,45 @@
 
 .sources-foot { margin-top: 18px; }
 
+.sources-refresh-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-m);
+  background: var(--surface-2);
+}
+
+.sources-refresh-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8125rem;
+}
+
+.sources-refresh-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sources-schedule-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+}
+
+.sources-schedule-select {
+  padding: 4px 8px;
+  font-size: 0.8125rem;
+  border-radius: var(--r-s);
+}
+
 /* Source rows as in the mockup: icon tile, name, last checked, status pill on the right. */
 .source-list { display: grid; gap: 10px; }
 .source-row {
