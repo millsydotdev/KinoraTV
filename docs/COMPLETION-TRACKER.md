@@ -19,7 +19,7 @@ settings. **M6** release operations and docs.
 | 3 | Leftover fake data | Sample sources, counts, collections survive import | Separated; real data preserved; migration tested | `lib/migrate.ts` moves real entries to `kinora.library.v2`, sample activity lives in its own key, old key kept as a safety copy | `migrate.test.ts`, packaged walk | | M1 | DONE a p; upgrade from a real old build tested in M6 |
 | 4 | No films or series | Demo screens only | Metadata, search, details, art, seasons, library, progress, lawful playback | | | Provider and VOD model: owner | M4 | OPEN |
 | 5 | H.264 missing on clean Fedora | RPM pulls no decoder | Detection, packaging dependency, guidance, licensing recorded | | | | M2 | OPEN |
-| 6 | Player hangs on failure | "Loading stream…" forever | Bounded timeouts, cancel, real errors, recovery | | | | M2 | OPEN |
+| 6 | Player hangs on failure | "Loading stream…" forever | Bounded timeouts, cancel, real errors, recovery | Bounded 30s timeouts, session error state, no indefinite spinners, real-play failure sync, recovery via one-click retry | PlayerPlayback.test.tsx, DeadStreamTracking.test.tsx | | M2 | DONE a |
 | 7 | No licence or notices | None | Inventory, notices shipped, licence applied | `public/THIRD-PARTY-NOTICES.txt` generated and checked in CI; `license: UNLICENSED` stated until chosen | `cargo deny` licences ok | Licence choice: owner; legal review | M0 | NEEDS OWNER |
 | 8 | Guide match 35/299 | Exact id only | Measured improvement, no false matches | | | Alternative matching: owner | M3 | OPEN |
 | 9 | Stream formats | HLS only; unknowns | Formats detected, unsupported explained, DASH decided, unknowns tested | | | DASH dependency: owner | M2 | OPEN |
@@ -68,7 +68,7 @@ settings. **M6** release operations and docs.
 | E | Automatic setup | NOT IMPLEMENTED | Setup picks country, playlist, guide | | 1, 8 | OPEN |
 | E | Guide discovery | NOT IMPLEMENTED | Built-in route to a guide | | 8 | OPEN |
 | E | Refresh | PARTIAL | See finding 18 | | 18 | OPEN |
-| E | Dead-stream handling | NOT IMPLEMENTED | Failures remembered and shown from real plays; no background probing unless approved | | 6, 18 | OPEN |
+| E | Dead-stream handling | NOT IMPLEMENTED | Failures remembered and shown from real plays; no background probing unless approved | Real-play failure tracking in session state, offline status badges with retry triggers on channel cards and guide rows | DeadStreamTracking.test.tsx | 6, 18 | DONE a |
 | F | Saved sources, migration, corrupt, future files | VERIFIED n/p | Keep verified | | | OPEN |
 | F | Permissions, stored fields | VERIFIED p | Keep verified | | | OPEN |
 | F | Backup and restore | PARTIAL | See finding 15 | Schema v3 AES-256-GCM with pre-flight migration wizard, selective import | 15 | DONE a |

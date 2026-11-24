@@ -313,6 +313,10 @@ function useStoreValue(
 
   const recordStreamFailure = useCallback((channelId: string, error: { message: string; canRetry?: boolean }) => {
     setStreamFailures((prev) => {
+      const existing = prev.get(channelId)
+      if (existing && existing.message === error.message && existing.canRetry === (error.canRetry ?? true)) {
+        return prev
+      }
       const next = new Map(prev)
       next.set(channelId, {
         channelId,

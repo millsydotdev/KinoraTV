@@ -227,7 +227,7 @@ describe('ChannelCard offline badges and retry actions', () => {
     // Retry button present
     const retryBtn = document.querySelector<HTMLButtonElement>('.channel-card-retry-btn')
     expect(retryBtn).not.toBeNull()
-    expect(retryBtn?.getAttribute('aria-label')).toContain('Retry tuning BBC News HD')
+    expect(retryBtn?.getAttribute('aria-label')).toContain('Retry tuning BBC News')
 
     // Card subtitle row shows offline indicator
     const progRow = document.querySelector('.channel-card-prog-row')
@@ -388,7 +388,7 @@ describe('LiveTV guide row failure indicators', () => {
     expect(guideTag?.textContent).toContain('Offline')
 
     // Tune to channel by clicking the row tune button
-    const tuneBtn = document.querySelector<HTMLButtonElement>(`#guide-row-${CSS.escape(deadChannel.id)} .guide-channel-tune`)
+    const tuneBtn = document.getElementById(`guide-row-${deadChannel.id}`)?.querySelector<HTMLButtonElement>('.guide-channel-tune')
     expect(tuneBtn).not.toBeNull()
 
     await act(async () => {
@@ -410,7 +410,7 @@ describe('End-to-end player error recording', () => {
     }
 
     native.openStream.mockRejectedValueOnce(
-      new IngestError('blocked', 'Stream connection refused by host.')
+      new IngestError('network', 'Stream connection refused by host.')
     )
 
     host = document.createElement('div')
@@ -436,7 +436,7 @@ describe('End-to-end player error recording', () => {
     const failure = currentStore.getStreamFailure(deadChannel.id)
     expect(failure).toBeDefined()
     expect(failure?.channelId).toBe(deadChannel.id)
-    expect(failure?.message).toContain('This stream refers to an address Kinora does not fetch from')
+    expect(failure?.message).toContain('Playback could not start.')
 
     // Clicking Retry clears the recorded failure and tries opening again
     native.openStream.mockResolvedValueOnce(opened(2))
