@@ -290,6 +290,110 @@ pub async fn hydrate_headless_epg(
     count
 }
 
+/// Reads an existing `local_catalogue.json` (if present in `data_dir`) and publishes safe
+/// movie and series summaries to the server's `/api/media` cache without exposing host paths.
+pub async fn hydrate_headless_local_media(
+    data_dir: &Path,
+    manager: &remote_server::RemoteServerManager,
+) -> usize {
+    let candidates = [
+        data_dir.join("local_catalogue.json"),
+        data_dir.join("sources").join("local_catalogue.json"),
+    ];
+    let Some(cat_path) = candidates.into_iter().find(|p| p.is_file()) else {
+        return 0;
+    };
+    let Ok(raw) = std::fs::read_to_string(&cat_path) else {
+        return 0;
+    };
+    let Ok(doc) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return 0;
+    };
+
+    let mut items = Vec::new();
+    if let Some(movies) = doc.get("movies").and_then(|v| v.as_array()) {
+        for m in movies.iter().take(1500) {
+            let Some(id) = m.get("id").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let Some(title) = m.get("title").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let year = m.get("year").and_then(|v| v.as_u64()).map(|y| y as u32);
+            let library_id = m
+                .get("libraryId")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let duration_secs = m.get("durationSecs").and_then(|v| v.as_u64());
+            items.push(remote_server::RemoteMediaItem {
+                id: format!("local:{id}"),
+                kind: "movie".to_string(),
+                title: title.to_string(),
+                year,
+                overview: None,
+                genres: vec!["Local Library".to_string()],
+                rating: None,
+                artwork_key: Some(format!("local:{id}")),
+                backdrop_key: None,
+                duration_secs,
+                source_id: library_id,
+                stream_url: None,
+            });
+        }
+    }
+
+    if let Some(series) = doc.get("series").and_then(|v| v.as_array()) {
+        for s in series.iter().take(1500) {
+            let Some(id) = s.get("id").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let Some(title) = s.get("title").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let year = s.get("year").and_then(|v| v.as_u64()).map(|y| y as u32);
+            let library_id = s
+                .get("libraryId")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            items.push(remote_server::RemoteMediaItem {
+                id: format!("local:{id}"),
+                kind: "series".to_string(),
+                title: title.to_string(),
+                year,
+                overview: None,
+                genres: vec!["Local Library".to_string()],
+                rating: None,
+                artwork_key: Some(format!("local:{id}")),
+                backdrop_key: None,
+                duration_secs: None,
+                source_id: library_id,
+                stream_url: None,
+            });
+        }
+    }
+
+    let count = items.len();
+    if count > 0 {
+        manager.update_media(items).await;
+    }
+    count
+}
+
+async fn wait_for_shutdown_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        if let Ok(mut term) = signal(SignalKind::terminate()) {
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {}
+                _ = term.recv() => {}
+            }
+            return;
+        }
+    }
+    let _ = tokio::signal::ctrl_c().await;
+}
+
 /// Runs Kinora in headless server mode without initializing WebKitGTK or GUI windows.
 pub fn run_headless_server(port: Option<u16>, custom_pin: Option<String>) {
     let rt = match tokio::runtime::Builder::new_multi_thread()
@@ -308,10 +412,11 @@ pub fn run_headless_server(port: Option<u16>, custom_pin: Option<String>) {
         let sources_dir = data_dir.join("sources");
         let manager = remote_server::RemoteServerManager::new(Some(data_dir.clone()));
 
-        // Load cached metadata and cached XMLTV guides immediately so endpoints respond right away.
+        // Load cached metadata, cached XMLTV guides, and local media catalogue immediately.
         let (cached_sources, cached_channels) =
             load_cached_sources_into_server(&sources_dir, &manager).await;
         let cached_epg = hydrate_headless_epg(&sources_dir, &manager).await;
+        let cached_media = hydrate_headless_local_media(&data_dir, &manager).await;
 
         // Ensure platform mode is persisted as Server.
         manager
@@ -339,27 +444,29 @@ pub fn run_headless_server(port: Option<u16>, custom_pin: Option<String>) {
         println!("  Pairing PIN:              {}", status.pairing_pin);
         println!("  Storage Directory:        {}", data_dir.display());
         println!(
-            "  Cached Catalogue:         {} sources, {} channels, {} EPG entries",
-            cached_sources, cached_channels, cached_epg
+            "  Cached Catalogue:         {} sources, {} channels, {} EPG entries, {} media items",
+            cached_sources, cached_channels, cached_epg, cached_media
         );
         println!("============================================================");
-        println!("  Ready for connections. Press Ctrl+C to stop.");
+        println!("  Ready for connections. Send SIGTERM or press Ctrl+C to stop.");
         println!("============================================================");
 
         // Hydrate URL playlists immediately in the background, then refresh periodically.
         let (refresh_stop_tx, mut refresh_stop_rx) = tokio::sync::oneshot::channel::<()>();
         let hydrate_mgr = manager.clone();
         let hydrate_dir = sources_dir.clone();
+        let hydrate_data_dir = data_dir.clone();
         tokio::spawn(async move {
             let policy = fetch::Policy::default();
             loop {
                 let (total, playable) =
                     hydrate_headless_sources(&hydrate_dir, &hydrate_mgr, &policy).await;
                 let epg_count = hydrate_headless_epg(&hydrate_dir, &hydrate_mgr).await;
-                if total > 0 || epg_count > 0 {
+                let media_count = hydrate_headless_local_media(&hydrate_data_dir, &hydrate_mgr).await;
+                if total > 0 || epg_count > 0 || media_count > 0 {
                     println!(
-                        "[Kinora Server] Catalogue hydrated: {} channels ({} playable via proxy), {} EPG entries",
-                        total, playable, epg_count
+                        "[Kinora Server] Catalogue hydrated: {} channels ({} playable via proxy), {} EPG entries, {} media items",
+                        total, playable, epg_count, media_count
                     );
                 }
                 tokio::select! {
@@ -369,9 +476,7 @@ pub fn run_headless_server(port: Option<u16>, custom_pin: Option<String>) {
             }
         });
 
-        if let Err(e) = tokio::signal::ctrl_c().await {
-            eprintln!("Error listening for shutdown signal: {e}");
-        }
+        wait_for_shutdown_signal().await;
 
         let _ = refresh_stop_tx.send(());
         println!("\nShutting down Kinora Media Server...");
@@ -478,6 +583,53 @@ mod tests {
         let (src_count, ch_count) = load_cached_sources_into_server(&sources_dir, &mgr).await;
         assert_eq!(src_count, 1);
         assert_eq!(ch_count, 1);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[tokio::test]
+    async fn hydrates_local_media_catalogue_without_leaking_file_paths() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "kinora_headless_local_media_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        let catalogue_json = serde_json::json!({
+            "movies": [{
+                "id": "mov-solaris",
+                "libraryId": "lib-1",
+                "filePath": "/mnt/private-nas/secret-folder/Solaris.mkv",
+                "title": "Solaris",
+                "year": 1972
+            }],
+            "series": [{
+                "id": "ser-cosmos",
+                "libraryId": "lib-2",
+                "folderPath": "/mnt/private-nas/tv/Cosmos",
+                "title": "Cosmos",
+                "year": 1980
+            }],
+            "totalMediaBytes": 123456
+        });
+        fs::write(
+            temp_dir.join("local_catalogue.json"),
+            serde_json::to_vec(&catalogue_json).unwrap(),
+        )
+        .unwrap();
+
+        let mgr = remote_server::RemoteServerManager::new(Some(temp_dir.clone()));
+        let count = hydrate_headless_local_media(&temp_dir, &mgr).await;
+        assert_eq!(count, 2);
+
+        let media = mgr.get_media().await;
+        let serialized = serde_json::to_string(&media).unwrap();
+        assert!(serialized.contains("Solaris"));
+        assert!(serialized.contains("Cosmos"));
+        assert!(!serialized.contains("/mnt/private-nas"));
 
         let _ = fs::remove_dir_all(&temp_dir);
     }

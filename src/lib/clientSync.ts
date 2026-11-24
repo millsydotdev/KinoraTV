@@ -535,6 +535,47 @@ class ClientSyncManager {
 
 export const clientSyncManager = new ClientSyncManager()
 
+export interface LocalLibraryShape {
+  favourites: string[]
+  watchlist: string[]
+  progress: Record<string, { pos: number; dur: number; at: number }>
+}
+
+/**
+ * Merges a paired Kinora Server's shared library snapshot (favourites, watchlist, watchProgress)
+ * over local library state while in connected Client mode, without mutating either input.
+ */
+export function mergeRemoteLibraryIntoLocal<T extends LocalLibraryShape>(
+  local: T,
+  remote: RemoteLibrarySummary | null,
+  connected: boolean
+): T {
+  if (!connected || !remote) return local
+
+  const nextProgress: Record<string, { pos: number; dur: number; at: number }> = { ...local.progress }
+  if (Array.isArray(remote.watchProgress)) {
+    for (const entry of remote.watchProgress) {
+      if (!entry || typeof entry.itemRef !== 'string' || !entry.itemRef) continue
+      const existing = nextProgress[entry.itemRef]
+      const remoteAt = Number(entry.updatedAt) || 0
+      if (!existing || remoteAt >= existing.at) {
+        nextProgress[entry.itemRef] = {
+          pos: Math.max(0, Number(entry.position) || 0),
+          dur: Math.max(0, Number(entry.duration) || 0),
+          at: remoteAt || Date.now(),
+        }
+      }
+    }
+  }
+
+  return {
+    ...local,
+    favourites: Array.isArray(remote.favourites) ? [...remote.favourites] : local.favourites,
+    watchlist: Array.isArray(remote.watchlist) ? [...remote.watchlist] : local.watchlist,
+    progress: nextProgress,
+  }
+}
+
 export function useClientSync(): ClientSyncState & {
   pairWithServer: (serverUrl: string, pin: string, deviceName?: string, deviceType?: string) => Promise<boolean>
   connect: () => Promise<boolean>

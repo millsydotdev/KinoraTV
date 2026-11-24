@@ -25,7 +25,7 @@ import { useUserPreferencesStore } from './userPreferences'
 import { useProfiles } from './profiles'
 import { filterKidSafeChannels, filterKidSafeProgrammes, filterKidSafeXtreamTitles, isProgrammeKidSafe } from '../lib/kidsMode'
 import { PlaybackProvider } from './playbackContext'
-import { clientSyncManager, useClientSync } from '../lib/clientSync'
+import { clientSyncManager, mergeRemoteLibraryIntoLocal, useClientSync } from '../lib/clientSync'
 
 export type { Collection, Library, Progress, Ref, XtreamTitle }
 
@@ -113,6 +113,12 @@ export interface Prefs {
   customReferrer: string
   /** Background scheduled refresh interval for remote playlists and guides (Finding 18). */
   refreshSchedule: '4h' | '8h' | '12h' | '24h' | 'manual'
+  /** Whether upcoming programme reminders trigger notifications (Finding 19). */
+  reminderAlerts: boolean
+  /** Whether scheduled DVR recording events trigger notifications. */
+  recordingAlerts: boolean
+  /** Whether background source refresh completions trigger notifications. */
+  refreshAlerts: boolean
 }
 
 export const SCHEDULE_MS: Record<'4h' | '8h' | '12h' | '24h' | 'manual', number | null> = {
@@ -140,6 +146,7 @@ export const defaultPrefs: Prefs = {
   timeFormat: '24h', guideZoom: 3, guideArt: true, guideStart: 'now', demoMode: false, sidebarCollapsed: false, homeHubCollapsed: false,
   layoutMode: 'standard', viewMode: 'desktop', showArtworkBackgrounds: true, animatedTransitions: true, showMediaRatings: true, themeMode: 'dark',
   customUserAgent: '', customReferrer: '', refreshSchedule: '12h',
+  reminderAlerts: true, recordingAlerts: true, refreshAlerts: false,
 }
 
 export const emptyLibrary: Library = {
@@ -231,6 +238,9 @@ export function sanitizePrefs(stored: Prefs & RemovedPrefs): Prefs {
     showMediaRatings: p.showMediaRatings !== false,
     themeMode: pick('themeMode', ['dark', 'midnight', 'dim', 'slate', 'oled', 'light', 'system']),
     refreshSchedule: pick('refreshSchedule', ['4h', '8h', '12h', '24h', 'manual']),
+    reminderAlerts: p.reminderAlerts !== false,
+    recordingAlerts: p.recordingAlerts !== false,
+    refreshAlerts: p.refreshAlerts === true,
   }
 }
 
@@ -744,17 +754,17 @@ function useStoreValue(
   }, [channels, clientSync.status])
 
   useEffect(() => {
-    if (playlists.length > 0) {
+    if (playlists.length > 0 && clientSync.status !== 'connected') {
       const srcSummaries = playlists.map((p) => ({
         id: p.id,
         label: p.label,
-        origin: p.origin === 'url' ? (p.url || p.label) : p.label,
+        origin: p.origin === 'url' ? 'url' : 'file',
         channelCount: p.channels.length,
         kind: 'playlist',
       }))
       void updateRemoteSources(srcSummaries)
     }
-  }, [playlists])
+  }, [playlists, clientSync.status])
 
   useEffect(() => {
     if (clientSync.status === 'connected') return
@@ -1456,8 +1466,18 @@ function useStoreValue(
     },
   }), [refreshDvrState, recordings, clientSync])
 
+  const effectiveLibrary = useMemo(
+    () =>
+      mergeRemoteLibraryIntoLocal(
+        library,
+        clientSync.library,
+        clientSync.status === 'connected'
+      ),
+    [library, clientSync.library, clientSync.status]
+  )
+
   return {
-    library, prefs, setPref, sources: demoActive ? src.sources : [], ...actions, catalogue, ...catalogueActions,
+    library: effectiveLibrary, prefs, setPref, sources: demoActive ? src.sources : [], ...actions, catalogue, ...catalogueActions,
     setupDone: setup.done || playlists.length > 0 || guides.length > 0 || xtreamSources.length > 0 || clientSync.status === 'connected',
     finishSetup: () => setSetup({ done: true }),
     restartSetup: () => setSetup({ done: false }),
@@ -1478,10 +1498,10 @@ function useStoreValue(
     dvrConfig,
     dvrStorageInfo,
     ...dvrActions,
-    /** The channel catalogue every screen shows: playlist channels, the sample set in sample mode, or nothing. */
+    /** The channel catalogue every screen shows: playlist channels, synced server channels, the sample set, or nothing. */
     channels,
     /** Total raw channel entries across all imported playlists before cross-playlist deduplication. */
-    totalPlaylistEntries: (playlists.length > 0 ? playlistChannels.length : 0) + xtreamChannels.length,
+    totalPlaylistEntries: (playlists.length > 0 ? playlistChannels.length : 0) + xtreamChannels.length + clientChannels.length,
     findChannel,
     getPreferredServer,
     setPreferredServer: userPreferences.setPreferredServer,
@@ -1491,7 +1511,7 @@ function useStoreValue(
     findXtreamMovie,
     findXtreamSeries,
     findXtreamEpisode,
-    channelMode: (playlists.length > 0 || xtreamChannels.length > 0) ? 'playlists' as const : demoActive ? 'demo' as const : 'none' as const,
+    channelMode: (playlists.length > 0 || xtreamChannels.length > 0 || (clientSync.status === 'connected' && clientChannels.length > 0)) ? 'playlists' as const : demoActive ? 'demo' as const : 'none' as const,
     /** The fictional films and series exist only in sample mode. */
     demoTitles: demoActive,
     mediaLibrary,

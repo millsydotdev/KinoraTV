@@ -156,6 +156,23 @@ def seed_isolated_data(data_dir: str) -> bytes:
     with open(os.path.join(artwork_dir, artwork_cache_filename("channel:pl-smoke~bbc1.uk")), "wb") as f:
         f.write(png_bytes)
 
+    local_cat = {
+        "movies": [
+            {
+                "id": "mov-solaris",
+                "libraryId": "lib-local",
+                "filePath": "/mnt/private-nas/Solaris.mkv",
+                "title": "Solaris",
+                "year": 1972,
+                "durationSecs": 9900,
+            }
+        ],
+        "series": [],
+        "totalMediaBytes": 123456,
+    }
+    with open(os.path.join(data_dir, "local_catalogue.json"), "w", encoding="utf-8") as f:
+        json.dump(local_cat, f)
+
     return png_bytes
 
 
@@ -380,9 +397,16 @@ def main():
         assert {"PairDevice", "CastMedia", "InputText", "SyncProgress", "toggle_favourite"}.issubset(actions), f"Unexpected audit actions: {actions}"
         print("[PASS] 8. Cast handoff, remote keyboard input, and audit trail verified")
 
-        # 8. Restart persistence check (devices.json + platform_config.json with 0600 permissions)
-        proc.send_signal(signal.SIGINT)
-        proc.wait(timeout=5)
+        # 8. Restart persistence check (SIGTERM clean shutdown + 0600 permissions + local media hydration)
+        st, _, raw = http_req(f"{base}/api/media", headers=tv_hdr)
+        assert st == 200
+        media_list = json.loads(raw)
+        assert any(m["title"] == "Solaris" for m in media_list), f"Expected Solaris in /api/media, got {media_list}"
+        assert b"/mnt/private-nas" not in raw, "Host filesystem path leaked in /api/media"
+
+        proc.send_signal(signal.SIGTERM)
+        exit_code = proc.wait(timeout=5)
+        assert exit_code == 0, f"Expected clean SIGTERM exit 0, got {exit_code}"
         proc = None
 
         for fname in ("devices.json", "platform_config.json"):

@@ -16,7 +16,7 @@ vi.mock('@tauri-apps/api/event', () => ({
   listen: tauriMock.listen,
 }))
 
-import { clientSyncManager } from './clientSync'
+import { clientSyncManager, mergeRemoteLibraryIntoLocal } from './clientSync'
 
 describe('clientSyncManager', () => {
   beforeEach(() => {
@@ -353,5 +353,36 @@ describe('clientSyncManager', () => {
     clientSyncManager.disconnect()
     expect(unlistenSpy).toHaveBeenCalled()
     expect(tauriMock.invoke).toHaveBeenCalledWith('client_server_sse_disconnect')
+  })
+
+  it('merges remote server library into local state immutably only when connected', () => {
+    const local = {
+      favourites: ['channel:local-1'],
+      watchlist: ['movie:local-film'],
+      progress: {
+        'movie:solaris': { pos: 100, dur: 6000, at: 1000 },
+        'movie:local-only': { pos: 50, dur: 1000, at: 900 },
+      },
+    }
+    const remote = {
+      favourites: ['channel:bbc1', 'channel:itv1'],
+      watchlist: ['movie:stalker'],
+      watchProgress: [
+        { itemRef: 'movie:solaris', title: 'Solaris', position: 420, duration: 6000, updatedAt: 2000 },
+        { itemRef: 'movie:new', title: 'New Film', position: 60, duration: 3600, updatedAt: 1500 },
+      ],
+    }
+
+    // Disconnected returns local untouched
+    expect(mergeRemoteLibraryIntoLocal(local, remote, false)).toBe(local)
+
+    // Connected mirrors favourites, watchlist, and newer watch progress without mutating local
+    const merged = mergeRemoteLibraryIntoLocal(local, remote, true)
+    expect(merged.favourites).toEqual(['channel:bbc1', 'channel:itv1'])
+    expect(merged.watchlist).toEqual(['movie:stalker'])
+    expect(merged.progress['movie:solaris']).toEqual({ pos: 420, dur: 6000, at: 2000 })
+    expect(merged.progress['movie:new']).toEqual({ pos: 60, dur: 3600, at: 1500 })
+    expect(merged.progress['movie:local-only']).toEqual({ pos: 50, dur: 1000, at: 900 })
+    expect(local.favourites).toEqual(['channel:local-1'])
   })
 })
