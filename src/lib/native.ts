@@ -2970,6 +2970,16 @@ export async function discoverKinoraServers(timeoutSecs?: number): Promise<Disco
   }
 }
 
+/** Checks whether local media folder paths exist on this machine (for backup migration pre-flight). */
+export async function checkLocalPathsExist(paths: string[]): Promise<boolean[]> {
+  if (!isTauri() || paths.length === 0) return paths.map(() => true)
+  try {
+    return await invoke<boolean[]>('check_local_paths_exist', { paths })
+  } catch {
+    return paths.map(() => true)
+  }
+}
+
 export async function fetchTrakt(
   url: string,
   method: 'GET' | 'POST' | 'DELETE' = 'GET',

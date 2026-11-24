@@ -16,10 +16,13 @@ export interface KinoraBackupPayload {
   xtreamFallback?: unknown
   smartCollections?: unknown
   savedSources?: unknown
+  nativeSourcesState?: unknown
   guideMappings?: unknown
   customArtwork?: unknown
   channelOrganization?: unknown
   dvrRules?: unknown
+  dvrConfig?: unknown
+  localLibraries?: { id: string; name: string; path: string; kind: string }[]
   checksum?: string
   deviceInfo?: {
     platform?: string
@@ -38,9 +41,13 @@ export interface BackupInspectionReport {
     history: number
     collections: number
     sources: number
+    guides: number
+    guideMappings: number
     bouquets: number
     smartCollections: number
     customArtwork: number
+    dvrRules: number
+    localLibraries: number
   }
   compatibility: {
     isCompatible: boolean
@@ -56,6 +63,8 @@ export interface RestoreSelectionOptions {
   restoreBouquets: boolean
   restoreSmartCollections: boolean
   restorePersonalMedia: boolean
+  restoreCustomArtwork?: boolean
+  restoreDvr?: boolean
 }
 
 const MAGIC_HEADER = 'KINORA_BACKUP_V1'
@@ -227,7 +236,10 @@ export async function decryptBackupPayload(
 /**
  * Inspects a decrypted backup payload and provides a structured pre-flight validation report.
  */
-export function inspectBackupPayload(payload: KinoraBackupPayload): BackupInspectionReport {
+export function inspectBackupPayload(
+  payload: KinoraBackupPayload,
+  missingLocalPaths: string[] = [],
+): BackupInspectionReport {
   const warnings: string[] = []
   let migrationNeeded = false
 
@@ -242,9 +254,36 @@ export function inspectBackupPayload(payload: KinoraBackupPayload): BackupInspec
   const history = Array.isArray(lib?.history) ? lib.history.length : 0
   const collections = Array.isArray(lib?.collections) ? lib.collections.length : 0
 
+  const nativeState = payload.nativeSourcesState as {
+    sources?: { origin?: string }[]
+    guides?: unknown[]
+    mappings?: unknown[]
+    xtreamSources?: unknown[]
+  } | undefined
+
   let sources = 0
-  if (Array.isArray(payload.savedSources)) {
+  if (Array.isArray(nativeState?.sources)) {
+    sources = nativeState.sources.length
+  } else if (Array.isArray(payload.savedSources)) {
     sources = payload.savedSources.length
+  }
+
+  const guides = Array.isArray(nativeState?.guides) ? nativeState.guides.length : 0
+  const guideMappings = Array.isArray(nativeState?.mappings)
+    ? nativeState.mappings.length
+    : Array.isArray(payload.guideMappings)
+    ? payload.guideMappings.length
+    : 0
+
+  if (Array.isArray(nativeState?.xtreamSources) && nativeState.xtreamSources.length > 0) {
+    warnings.push(
+      `Xtream providers (${nativeState.xtreamSources.length}): provider passwords are excluded from portable backups; reconnect accounts after restore.`,
+    )
+    migrationNeeded = true
+  }
+
+  if (Array.isArray(nativeState?.sources) && nativeState.sources.some((s) => s.origin === 'file')) {
+    warnings.push('One or more file-based playlists are included: re-import the local .m3u file if stream URLs need refreshing.')
   }
 
   let bouquets = 0
@@ -261,6 +300,16 @@ export function inspectBackupPayload(payload: KinoraBackupPayload): BackupInspec
   let customArtwork = 0
   if (payload.customArtwork && typeof payload.customArtwork === 'object') {
     customArtwork = Object.keys(payload.customArtwork as object).length
+  }
+
+  const dvrRules = Array.isArray(payload.dvrRules) ? payload.dvrRules.length : 0
+  const localLibraries = Array.isArray(payload.localLibraries) ? payload.localLibraries.length : 0
+
+  if (missingLocalPaths.length > 0) {
+    warnings.push(
+      `Missing local media folder(s) on this device (${missingLocalPaths.length}): ${missingLocalPaths.slice(0, 3).join(', ')}. Update paths in Sources after restore.`,
+    )
+    migrationNeeded = true
   }
 
   if (payload.deviceInfo?.platform && typeof window !== 'undefined') {
@@ -280,9 +329,13 @@ export function inspectBackupPayload(payload: KinoraBackupPayload): BackupInspec
       history,
       collections,
       sources,
+      guides,
+      guideMappings,
       bouquets,
       smartCollections,
       customArtwork,
+      dvrRules,
+      localLibraries,
     },
     compatibility: {
       isCompatible: true,

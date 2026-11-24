@@ -115,4 +115,31 @@ describe('Encrypted Backup & Restore Engine (.kinorabackup)', () => {
       encryptBackupPayload(samplePayload, '12'),
     ).rejects.toThrow('Backup passphrase must be at least 4 characters long.')
   })
+
+  it('reports native sources, guides, DVR rules, and missing local paths during pre-flight inspection', () => {
+    const richPayload: KinoraBackupPayload = {
+      ...samplePayload,
+      nativeSourcesState: {
+        sources: [{ id: 'pl-1', origin: 'file' }, { id: 'pl-2', origin: 'url' }],
+        guides: [{ id: 'gd-1' }],
+        mappings: [{ channel: 'c1', guide: 'gd-1', xmltvId: 'bbc1.uk' }],
+        xtreamSources: [{ id: 'xt-1', name: 'My IPTV' }],
+      },
+      dvrRules: [{ id: 'rule-1', query: 'Horizon' }],
+      customArtwork: { 'channel:c1': 'data:image/png;base64,AAAA' },
+      localLibraries: [{ id: 'lib-1', name: 'NAS Movies', path: '/mnt/nas/movies', kind: 'movies' }],
+    }
+
+    const report = inspectBackupPayload(richPayload, ['/mnt/nas/movies'])
+    expect(report.itemCounts.sources).toBe(2)
+    expect(report.itemCounts.guides).toBe(1)
+    expect(report.itemCounts.guideMappings).toBe(1)
+    expect(report.itemCounts.dvrRules).toBe(1)
+    expect(report.itemCounts.customArtwork).toBe(1)
+    expect(report.itemCounts.localLibraries).toBe(1)
+    expect(report.compatibility.migrationNeeded).toBe(true)
+    expect(report.compatibility.warnings.some((w) => w.includes('Xtream providers'))).toBe(true)
+    expect(report.compatibility.warnings.some((w) => w.includes('/mnt/nas/movies'))).toBe(true)
+    expect(report.compatibility.warnings.some((w) => w.includes('file-based playlists'))).toBe(true)
+  })
 })

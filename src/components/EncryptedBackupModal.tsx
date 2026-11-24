@@ -15,6 +15,18 @@ import {
   type BackupInspectionReport,
   type RestoreSelectionOptions,
 } from '../lib/encryptedBackup'
+import {
+  checkLocalPathsExist,
+  dvrSaveConfig,
+  dvrSaveRule,
+  getLocalLibraries,
+  loadSources,
+  saveLocalLibrary,
+  saveSources,
+  type DvrConfig,
+  type SavedState,
+  type SeriesRule,
+} from '../lib/native'
 import './EncryptedBackupModal.css'
 
 export interface EncryptedBackupModalProps {
@@ -56,6 +68,8 @@ export function EncryptedBackupModal({
     restoreBouquets: true,
     restoreSmartCollections: true,
     restorePersonalMedia: true,
+    restoreCustomArtwork: true,
+    restoreDvr: true,
   })
 
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -108,6 +122,7 @@ export function EncryptedBackupModal({
       let bouquetData: unknown = null
       let xtreamFallbackData: unknown = null
       let smartCollectionsData: unknown = null
+      let customArtworkData: unknown = null
 
       try {
         const bqRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('kinora.bouquet_config.v1.default') : null
@@ -124,6 +139,16 @@ export function EncryptedBackupModal({
         if (scRaw) smartCollectionsData = JSON.parse(scRaw)
       } catch {}
 
+      try {
+        const artRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('kinora.custom_artwork.v1') : null
+        if (artRaw) customArtworkData = JSON.parse(artRaw)
+      } catch {}
+
+      const [nativeLoaded, localLibs] = await Promise.all([
+        loadSources().catch(() => null),
+        getLocalLibraries().catch(() => []),
+      ])
+
       const payload: KinoraBackupPayload = {
         app: 'Kinora',
         version: 3,
@@ -135,6 +160,17 @@ export function EncryptedBackupModal({
         bouquets: bouquetData,
         xtreamFallback: xtreamFallbackData,
         smartCollections: smartCollectionsData,
+        customArtwork: customArtworkData,
+        dvrRules: store.seriesRules ?? [],
+        dvrConfig: store.dvrConfig ?? null,
+        localLibraries: localLibs.map((lib) => ({
+          id: lib.id,
+          name: lib.name,
+          path: lib.path,
+          kind: lib.kind,
+        })),
+        nativeSourcesState: nativeLoaded?.saved ?? undefined,
+        guideMappings: store.mappings ?? [],
         savedSources: store.playlists.map((p) => ({
           id: p.id,
           name: p.name,
@@ -179,7 +215,17 @@ export function EncryptedBackupModal({
     try {
       const buffer = await selectedFile.arrayBuffer()
       const payload = await decryptBackupPayload(buffer, passphrase)
-      const report = inspectBackupPayload(payload)
+
+      const missingPaths: string[] = []
+      if (Array.isArray(payload.localLibraries) && payload.localLibraries.length > 0) {
+        const paths = payload.localLibraries.map((l) => l.path)
+        const existsFlags = await checkLocalPathsExist(paths)
+        paths.forEach((p, idx) => {
+          if (existsFlags[idx] === false) missingPaths.push(p)
+        })
+      }
+
+      const report = inspectBackupPayload(payload, missingPaths)
 
       setDecryptedPayload(payload)
       setInspectionReport(report)
@@ -192,7 +238,7 @@ export function EncryptedBackupModal({
     }
   }
 
-  const handleExecuteRestore = () => {
+  const handleExecuteRestore = async () => {
     if (!decryptedPayload || !store) return
     setErrorMsg(null)
     setBusy(true)
@@ -234,6 +280,47 @@ export function EncryptedBackupModal({
         try {
           localStorage.setItem('kinora.smart_collections.v1.default', JSON.stringify(decryptedPayload.smartCollections))
         } catch {}
+      }
+
+      if (options.restoreCustomArtwork !== false && decryptedPayload.customArtwork && typeof localStorage !== 'undefined') {
+        try {
+          localStorage.setItem('kinora.custom_artwork.v1', JSON.stringify(decryptedPayload.customArtwork))
+        } catch {}
+      }
+
+      if (options.restoreSources && decryptedPayload.nativeSourcesState && typeof decryptedPayload.nativeSourcesState === 'object') {
+        try {
+          await saveSources(decryptedPayload.nativeSourcesState as SavedState)
+        } catch {}
+      }
+
+      if (options.restoreSources && Array.isArray(decryptedPayload.localLibraries) && decryptedPayload.localLibraries.length > 0) {
+        const paths = decryptedPayload.localLibraries.map((l) => l.path)
+        const existsFlags = await checkLocalPathsExist(paths)
+        for (let i = 0; i < decryptedPayload.localLibraries.length; i++) {
+          const lib = decryptedPayload.localLibraries[i]
+          if (lib && existsFlags[i] !== false) {
+            await saveLocalLibrary({
+              id: lib.id,
+              name: lib.name,
+              path: lib.path,
+              kind: lib.kind as 'movies' | 'series' | 'mixed',
+            }).catch(() => {})
+          }
+        }
+      }
+
+      if (options.restoreDvr !== false) {
+        if (decryptedPayload.dvrConfig && typeof decryptedPayload.dvrConfig === 'object') {
+          await dvrSaveConfig(decryptedPayload.dvrConfig as DvrConfig).catch(() => {})
+        }
+        if (Array.isArray(decryptedPayload.dvrRules)) {
+          for (const rule of decryptedPayload.dvrRules) {
+            if (rule && typeof rule === 'object') {
+              await dvrSaveRule(rule as SeriesRule).catch(() => {})
+            }
+          }
+        }
       }
 
       toast('Encrypted backup restored and migrated successfully.')
@@ -416,6 +503,14 @@ export function EncryptedBackupModal({
 
               <div className="enc-inspection-grid">
                 <div className="enc-stat-card">
+                  <span className="enc-stat-val">{inspectionReport?.itemCounts.sources ?? 0}</span>
+                  <span className="enc-stat-lbl">Sources</span>
+                </div>
+                <div className="enc-stat-card">
+                  <span className="enc-stat-val">{inspectionReport?.itemCounts.guides ?? 0}</span>
+                  <span className="enc-stat-lbl">EPG Guides</span>
+                </div>
+                <div className="enc-stat-card">
                   <span className="enc-stat-val">{inspectionReport?.itemCounts.favourites ?? 0}</span>
                   <span className="enc-stat-lbl">Favourites</span>
                 </div>
@@ -431,12 +526,28 @@ export function EncryptedBackupModal({
                   <span className="enc-stat-val">{inspectionReport?.itemCounts.bouquets ?? 0}</span>
                   <span className="enc-stat-lbl">Bouquets</span>
                 </div>
+                <div className="enc-stat-card">
+                  <span className="enc-stat-val">{inspectionReport?.itemCounts.customArtwork ?? 0}</span>
+                  <span className="enc-stat-lbl">Custom Artwork</span>
+                </div>
+                <div className="enc-stat-card">
+                  <span className="enc-stat-val">{inspectionReport?.itemCounts.dvrRules ?? 0}</span>
+                  <span className="enc-stat-lbl">DVR Rules</span>
+                </div>
               </div>
 
               <label className="enc-backup-label" style={{ marginTop: '4px' }}>
                 Select Components to Restore
               </label>
               <div className="enc-options-list">
+                <label className="enc-checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={options.restoreSources}
+                    onChange={(e) => setOptions({ ...options, restoreSources: e.target.checked })}
+                  />
+                  <span>Sources, Playlists, EPG Guides, Mappings, and Local Folders</span>
+                </label>
                 <label className="enc-checkbox-row">
                   <input
                     type="checkbox"
@@ -468,6 +579,22 @@ export function EncryptedBackupModal({
                     onChange={(e) => setOptions({ ...options, restoreSmartCollections: e.target.checked })}
                   />
                   <span>Smart Collections and Dynamic Groupings</span>
+                </label>
+                <label className="enc-checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={options.restoreCustomArtwork !== false}
+                    onChange={(e) => setOptions({ ...options, restoreCustomArtwork: e.target.checked })}
+                  />
+                  <span>Custom Artwork Assignments</span>
+                </label>
+                <label className="enc-checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={options.restoreDvr !== false}
+                    onChange={(e) => setOptions({ ...options, restoreDvr: e.target.checked })}
+                  />
+                  <span>DVR Recording Rules and Storage Configuration</span>
                 </label>
               </div>
 

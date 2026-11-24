@@ -1239,6 +1239,20 @@ async fn update_remote_media(
     Ok(true)
 }
 
+/// Checks whether a bounded list of local folder paths exist on this machine (used by the
+/// backup restoration wizard to warn about missing media directories during device migration).
+#[tauri::command]
+fn check_local_paths_exist(paths: Vec<String>) -> Vec<bool> {
+    paths
+        .into_iter()
+        .take(64)
+        .map(|p| {
+            let trimmed = p.trim();
+            !trimmed.is_empty() && trimmed.len() <= 1024 && std::path::Path::new(trimmed).exists()
+        })
+        .collect()
+}
+
 /// Scans the local network for running Kinora servers via UDP discovery beacons.
 #[tauri::command]
 async fn discover_kinora_servers(
@@ -1551,6 +1565,7 @@ pub fn run() {
             update_remote_epg,
             update_remote_media,
             fetch_client_server_artwork,
+            check_local_paths_exist,
             discover_kinora_servers
         ])
         .run(tauri::generate_context!());

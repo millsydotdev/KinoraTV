@@ -1449,33 +1449,272 @@ async fn handle_connection<F>(
 
             let body = extract_body(&req_str);
             if let Ok(cmd_obj) = serde_json::from_str::<serde_json::Value>(body) {
-                let action = cmd_obj.get("action").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
+                let action = cmd_obj
+                    .get("action")
+                    .or_else(|| cmd_obj.get("command"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .trim()
+                    .to_ascii_lowercase();
                 let payload = cmd_obj.get("payload").cloned().unwrap_or(serde_json::Value::Null);
 
-                {
-                    let mut state = manager.inner.lock().await;
-                    record_audit_action(
-                        &mut state.audit_log,
-                        &caller.id,
-                        &caller.name,
-                        "AiAgent",
-                        &action,
-                        &payload.to_string(),
-                        "executed",
-                    );
-                }
-
-                // Map agent action to appropriate event
-                let evt = RemoteCommandEvent {
-                    command: format!("agent_{action}"),
-                    payload,
-                    client_id: Some(caller.id),
-                    timestamp: now_unix_secs(),
+                let (status_code, response_json) = match action.as_str() {
+                    "search" => {
+                        let q = payload
+                            .get("query")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .trim()
+                            .to_ascii_lowercase();
+                        let state = manager.inner.lock().await;
+                        let matched_channels: Vec<RemoteChannelSummary> = state
+                            .channels
+                            .iter()
+                            .filter(|c| {
+                                q.is_empty()
+                                    || c.name.to_ascii_lowercase().contains(&q)
+                                    || c.group
+                                        .as_deref()
+                                        .unwrap_or("")
+                                        .to_ascii_lowercase()
+                                        .contains(&q)
+                            })
+                            .take(25)
+                            .map(|c| {
+                                let mut clean = c.clone();
+                                clean.stream_url = None;
+                                clean
+                            })
+                            .collect();
+                        let matched_programmes: Vec<&RemoteEpgProgramme> = state
+                            .epg
+                            .iter()
+                            .filter(|p| {
+                                q.is_empty()
+                                    || p.title.to_ascii_lowercase().contains(&q)
+                                    || p.description
+                                        .as_deref()
+                                        .unwrap_or("")
+                                        .to_ascii_lowercase()
+                                        .contains(&q)
+                            })
+                            .take(25)
+                            .collect();
+                        let matched_media: Vec<RemoteMediaItem> = state
+                            .media
+                            .iter()
+                            .filter(|m| {
+                                q.is_empty()
+                                    || m.title.to_ascii_lowercase().contains(&q)
+                                    || m.overview
+                                        .as_deref()
+                                        .unwrap_or("")
+                                        .to_ascii_lowercase()
+                                        .contains(&q)
+                            })
+                            .take(25)
+                            .map(|m| {
+                                let mut clean = m.clone();
+                                clean.stream_url = None;
+                                clean
+                            })
+                            .collect();
+                        let json = serde_json::json!({
+                            "ok": true,
+                            "action": "search",
+                            "data": {
+                                "channels": matched_channels,
+                                "programmes": matched_programmes,
+                                "media": matched_media
+                            }
+                        })
+                        .to_string();
+                        drop(state);
+                        if payload.get("navigate").and_then(|v| v.as_bool()).unwrap_or(false) {
+                            on_command(RemoteCommandEvent {
+                                command: "agent_search".to_string(),
+                                payload: payload.clone(),
+                                client_id: Some(caller.id.clone()),
+                                timestamp: now_unix_secs(),
+                            });
+                        }
+                        let mut state = manager.inner.lock().await;
+                        record_audit_action(
+                            &mut state.audit_log,
+                            &caller.id,
+                            &caller.name,
+                            "AiAgent",
+                            "search",
+                            &format!("query_len={}", q.len()),
+                            "executed",
+                        );
+                        (200, json)
+                    }
+                    "query_epg" => {
+                        let cid = payload.get("channelId").and_then(|v| v.as_str()).map(|s| s.to_string());
+                        let cname = payload.get("channelName").and_then(|v| v.as_str()).map(|s| s.to_ascii_lowercase());
+                        let q = payload.get("query").and_then(|v| v.as_str()).map(|s| s.to_ascii_lowercase());
+                        let state = manager.inner.lock().await;
+                        let matched_ids: Vec<String> = if let Some(ref name_q) = cname {
+                            state
+                                .channels
+                                .iter()
+                                .filter(|c| c.name.to_ascii_lowercase().contains(name_q))
+                                .map(|c| c.id.clone())
+                                .collect()
+                        } else {
+                            Vec::new()
+                        };
+                        let programmes: Vec<&RemoteEpgProgramme> = state
+                            .epg
+                            .iter()
+                            .filter(|p| {
+                                if let Some(ref target_cid) = cid {
+                                    if &p.channel_id != target_cid {
+                                        return false;
+                                    }
+                                }
+                                if cname.is_some() && !matched_ids.contains(&p.channel_id) {
+                                    return false;
+                                }
+                                if let Some(ref text_q) = q {
+                                    if !p.title.to_ascii_lowercase().contains(text_q)
+                                        && !p.description.as_deref().unwrap_or("").to_ascii_lowercase().contains(text_q)
+                                    {
+                                        return false;
+                                    }
+                                }
+                                true
+                            })
+                            .take(50)
+                            .collect();
+                        let json = serde_json::json!({
+                            "ok": true,
+                            "action": "query_epg",
+                            "data": { "programmes": programmes }
+                        })
+                        .to_string();
+                        drop(state);
+                        let mut state = manager.inner.lock().await;
+                        record_audit_action(
+                            &mut state.audit_log,
+                            &caller.id,
+                            &caller.name,
+                            "AiAgent",
+                            "query_epg",
+                            "EPG query answered",
+                            "executed",
+                        );
+                        (200, json)
+                    }
+                    "status" => {
+                        let mut state = manager.inner.lock().await;
+                        let active_devices = state.trusted_devices.iter().filter(|d| !d.revoked).count();
+                        let json = serde_json::json!({
+                            "ok": true,
+                            "action": "status",
+                            "data": {
+                                "mode": state.mode,
+                                "playback": state.playback_state,
+                                "channelCount": state.channels.len(),
+                                "mediaCount": state.media.len(),
+                                "epgCount": state.epg.len(),
+                                "activeDevices": active_devices
+                            }
+                        })
+                        .to_string();
+                        record_audit_action(
+                            &mut state.audit_log,
+                            &caller.id,
+                            &caller.name,
+                            "AiAgent",
+                            "status",
+                            "Status snapshot returned",
+                            "executed",
+                        );
+                        (200, json)
+                    }
+                    "list_devices" => {
+                        let mut state = manager.inner.lock().await;
+                        let safe_devices: Vec<serde_json::Value> = state
+                            .trusted_devices
+                            .iter()
+                            .filter(|d| !d.revoked)
+                            .map(|d| {
+                                serde_json::json!({
+                                    "id": d.id,
+                                    "name": d.name,
+                                    "deviceType": d.device_type,
+                                    "capabilities": d.capabilities,
+                                    "lastSeenAt": d.last_seen_at
+                                })
+                            })
+                            .collect();
+                        let json = serde_json::json!({
+                            "ok": true,
+                            "action": "list_devices",
+                            "data": { "devices": safe_devices }
+                        })
+                        .to_string();
+                        record_audit_action(
+                            &mut state.audit_log,
+                            &caller.id,
+                            &caller.name,
+                            "AiAgent",
+                            "list_devices",
+                            "Listed active devices",
+                            "executed",
+                        );
+                        (200, json)
+                    }
+                    "tune" | "playback" | "navigate" | "favourites" | "handoff" => {
+                        {
+                            let mut state = manager.inner.lock().await;
+                            record_audit_action(
+                                &mut state.audit_log,
+                                &caller.id,
+                                &caller.name,
+                                "AiAgent",
+                                &action,
+                                &payload.to_string(),
+                                "executed",
+                            );
+                        }
+                        on_command(RemoteCommandEvent {
+                            command: format!("agent_{action}"),
+                            payload,
+                            client_id: Some(caller.id),
+                            timestamp: now_unix_secs(),
+                        });
+                        let json = serde_json::json!({
+                            "ok": true,
+                            "action": action,
+                            "dispatched": true
+                        })
+                        .to_string();
+                        (200, json)
+                    }
+                    _ => {
+                        let mut state = manager.inner.lock().await;
+                        record_audit_action(
+                            &mut state.audit_log,
+                            &caller.id,
+                            &caller.name,
+                            "AiAgent",
+                            &action,
+                            "Unsupported agent action",
+                            "rejected",
+                        );
+                        (400, r#"{"ok":false,"error":"Unsupported agent action"}"#.to_string())
+                    }
                 };
 
-                on_command(evt);
-
-                let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{\"ok\":true}";
+                let reason = if status_code == 200 { "OK" } else { "Bad Request" };
+                let resp = format!(
+                    "HTTP/1.1 {status_code} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+                    response_json.len(),
+                    response_json
+                );
                 let _ = stream.write_all(resp.as_bytes()).await;
             } else {
                 let err_resp = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: 26\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{\"error\":\"Invalid JSON\"}";
@@ -1489,10 +1728,30 @@ async fn handle_connection<F>(
                 return;
             }
             let caller = caller_opt.unwrap();
+            if !caller.capabilities.contains(&DeviceCapability::InputText)
+                && !caller.capabilities.contains(&DeviceCapability::RemoteControl)
+            {
+                send_forbidden(&mut stream, "Device lacks InputText capability").await;
+                return;
+            }
 
             let body = extract_body(&req_str);
             if let Ok(input_obj) = serde_json::from_str::<serde_json::Value>(body) {
                 let text = input_obj.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let char_len = text.chars().count();
+
+                {
+                    let mut state = manager.inner.lock().await;
+                    record_audit_action(
+                        &mut state.audit_log,
+                        &caller.id,
+                        &caller.name,
+                        "InputText",
+                        "InputText",
+                        &format!("Injected {char_len} characters"),
+                        "dispatched",
+                    );
+                }
 
                 let evt = RemoteCommandEvent {
                     command: "input_text".to_string(),

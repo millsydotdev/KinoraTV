@@ -123,6 +123,7 @@ fn main() {
             "update_remote_epg",
             "update_remote_media",
             "fetch_client_server_artwork",
+            "check_local_paths_exist",
             "discover_kinora_servers",
         ]),
     ))
