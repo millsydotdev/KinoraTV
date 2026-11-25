@@ -57,31 +57,20 @@ export function GenreCard({
           loading="lazy"
         />
         <div className="genre-card-overlay">
-          <div className="genre-card-top-badges">
-            <span className="genre-card-badge">
-              <Icon name={genre.artwork.icon} size={11} style={{ marginRight: 4 }} />
-              {genre.parentId ? 'Subgenre' : genre.mediaTypes[0] || 'Genre'}
-            </span>
-
-            {typeof count === 'number' && (
+          {typeof count === 'number' && count > 0 && (
+            <div className="genre-card-top-badges">
               <span className="genre-card-badge badge-count">
                 {count} {count === 1 ? 'title' : 'titles'}
               </span>
-            )}
-          </div>
-
-          <h3 className="genre-card-title">{effectiveName}</h3>
-          <p className="genre-card-desc">{genre.description}</p>
-
-          {subgenres.length > 0 && (
-            <div className="genre-card-subgenres">
-              {subgenres.map((sub) => (
-                <span key={sub} className="genre-card-subchip">
-                  {sub}
-                </span>
-              ))}
             </div>
           )}
+
+          <div className="genre-card-bottom-info">
+            <h3 className="genre-card-title">{effectiveName}</h3>
+            {subgenres.length > 0 && (
+              <p className="genre-card-subtitle">{subgenres.join(' • ')}</p>
+            )}
+          </div>
         </div>
       </div>
     </>

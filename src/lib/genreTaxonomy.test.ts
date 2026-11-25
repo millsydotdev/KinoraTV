@@ -95,7 +95,7 @@ describe('Genre Artwork Engine & Strict Fallback Priority', () => {
   it('resolves verified dedicated landscape, portrait, and banner artwork', () => {
     const resolved = resolveGenreArtwork('horror', 'landscape')
     expect(resolved.provenance).toBe('verified')
-    expect(resolved.url).toBe('/art/genres/horror.svg')
+    expect(resolved.url).toBe('/art/genres/horror.jpg')
     expect(resolved.variant).toBe('landscape')
     expect(resolved.ambient.primaryHue).toBe(350)
   })
@@ -105,7 +105,7 @@ describe('Genre Artwork Engine & Strict Fallback Priority', () => {
     const resolved = resolveGenreArtwork(subgenreId, 'landscape')
 
     expect(resolved.provenance).toBe('verified')
-    expect(resolved.url).toBe('/art/genres/science-fiction.svg')
+    expect(resolved.url).toBe('/art/genres/science-fiction.jpg')
     expect(resolved.ambient.primaryHue).toBe(200)
   })
 
@@ -127,7 +127,7 @@ describe('Genre Artwork Engine & Strict Fallback Priority', () => {
     // Without user custom artwork, reverts cleanly to verified
     const reverted = resolveGenreArtwork('comedy', 'landscape')
     expect(reverted.provenance).toBe('verified')
-    expect(reverted.url).toBe('/art/genres/comedy.svg')
+    expect(reverted.url).toBe('/art/genres/comedy.jpg')
   })
 })
 

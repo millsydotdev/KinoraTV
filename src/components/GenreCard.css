@@ -49,80 +49,70 @@
   inset: 0;
   background: linear-gradient(
     to top,
-    rgba(3, 4, 7, 0.95) 0%,
-    rgba(3, 4, 7, 0.65) 45%,
-    rgba(3, 4, 7, 0.15) 100%
+    rgba(2, 4, 8, 0.94) 0%,
+    rgba(2, 4, 8, 0.6) 26%,
+    rgba(2, 4, 8, 0.12) 55%,
+    transparent 100%
   );
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  padding: 16px;
+  padding: 18px 20px;
   pointer-events: none;
 }
 
 .genre-card-top-badges {
   position: absolute;
-  top: 10px;
-  left: 10px;
-  right: 10px;
+  top: 12px;
+  right: 12px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 6px;
 }
 
 .genre-card-badge {
   font-size: 0.6875rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   padding: 3px 8px;
   border-radius: 9999px;
-  background: rgba(0, 0, 0, 0.65);
+  background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   color: #ffffff;
 }
 
 .genre-card-badge.badge-count {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.65);
   color: var(--text-2, #cbd5e1);
+}
+
+.genre-card-bottom-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 
 .genre-card-title {
   margin: 0;
-  font-size: 1.125rem;
+  font-size: 1.25rem;
   font-weight: 700;
-  line-height: 1.3;
+  line-height: 1.25;
   color: #ffffff;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+  letter-spacing: -0.01em;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
 }
 
-.genre-card-desc {
-  margin: 4px 0 0;
+.genre-card-subtitle {
+  margin: 0;
   font-size: 0.75rem;
+  font-weight: 500;
   color: rgba(255, 255, 255, 0.75);
-  line-height: 1.4;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  line-height: 1.3;
+  white-space: nowrap;
   overflow: hidden;
-}
-
-.genre-card-subgenres {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 8px;
-}
-
-.genre-card-subchip {
-  font-size: 0.6875rem;
-  padding: 2px 8px;
-  border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
 }
 
 /* Featured Hero Banner for Discover and Browse */
