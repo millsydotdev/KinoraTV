@@ -2361,225 +2361,1115 @@ async fn handle_open_proxy_stream(
 
 pub fn get_embedded_remote_html() -> &'static str {
     r##"<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Kinora Remote</title>
-  <meta name="theme-color" content="#0d0f14">
+  <meta name="theme-color" content="#050507">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23050507'/%3E%3Cpath d='M6 5.5C6 4.7 6.7 4 7.5 4h3c.8 0 1.5.7 1.5 1.5v21c0 .8-.7 1.5-1.5 1.5h-3C6.7 28 6 27.3 6 26.5z' fill='%23E50914'/%3E%3Cpath d='M11 15l9.5-10.2c.5-.5 1.2-.8 1.9-.8H25c.8 0 1.4.8 1 1.6L24 10l-8.5 5.5z' fill='%23ff3d4a'/%3E%3Cpath d='M15.5 16.5L24 22l2 4.4c.4.8-.2 1.6-1 1.6h-2.6c-.7 0-1.4-.3-1.9-.8L11 17z' fill='%23ad060f'/%3E%3Cpath d='M9.2 11.4c0-.5.6-.8 1-.6L17 15.5c.4.3.4.7 0 1l-6.8 4.7c-.4.2-1-.1-1-.6z' fill='%23E50914'/%3E%3C/svg%3E">
   <style>
-    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; user-select: none; }
-    body { background: #0d0f14; color: #fff; height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
-    .header { display: flex; align-items: center; justify-content: space-between; padding: 12px 18px; background: rgba(255,255,255,0.04); border-bottom: 1px solid rgba(255,255,255,0.08); }
-    .logo { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.02em; display: flex; align-items: center; gap: 8px; }
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; box-shadow: 0 0 8px #10b981; }
-    .btn-disconnect { background: transparent; border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 6px; padding: 4px 10px; font-size: 0.75rem; cursor: pointer; }
+    :root {
+      --bg: #050507;
+      --nav: #000000;
+      --surface: #0e0e12;
+      --surface-2: #14141a;
+      --surface-3: #1a1a22;
+      --line: rgba(255, 255, 255, 0.08);
+      --line-strong: rgba(255, 255, 255, 0.16);
+      --text: #f5f5f5;
+      --text-2: #b4b7bd;
+      --text-3: #9a9fa8;
+      --accent: #E50914;
+      --accent-hover: #F40612;
+      --accent-active: #B90018;
+      --accent-text: #ff6b73;
+      --ok: #3ecf8e;
+      --warn: #f2b84b;
+      --bad: #ff7070;
+      --radius-sm: 6px;
+      --radius: 8px;
+      --radius-lg: 12px;
+      --focus-ring: 0 0 0 2px #050507, 0 0 0 4px #ff6b73;
+      --nav-h: 64px;
+    }
 
-    /* Navigation Tabs */
-    .tab-bar { display: flex; background: rgba(255,255,255,0.03); border-bottom: 1px solid rgba(255,255,255,0.08); }
-    .tab-btn { flex: 1; padding: 10px 4px; background: transparent; border: none; color: #94a3b8; font-size: 0.75rem; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; transition: all 120ms ease; white-space: nowrap; }
-    .tab-btn.active { color: #fff; border-bottom-color: #6366f1; background: rgba(99,102,241,0.08); }
-    .epg-card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 6px; cursor: pointer; }
-    .epg-card:active { background: rgba(99,102,241,0.18); border-color: #6366f1; }
-    .epg-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-    .epg-now-title { font-size: 0.88rem; font-weight: 600; color: #f8fafc; }
-    .epg-meta { font-size: 0.72rem; color: #94a3b8; }
-    .epg-bar { width: 100%; height: 3px; background: rgba(255,255,255,0.12); border-radius: 2px; overflow: hidden; }
-    .epg-bar-fill { height: 100%; background: #6366f1; }
-    .epg-next { font-size: 0.74rem; color: #cbd5e1; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 5px; }
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Hanken Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    body {
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      padding-top: env(safe-area-inset-top);
+      padding-left: env(safe-area-inset-left);
+      padding-right: env(safe-area-inset-right);
+    }
+
+    button, input {
+      font-family: inherit;
+      color: inherit;
+    }
+
+    button:focus-visible,
+    input:focus-visible {
+      outline: none;
+      box-shadow: var(--focus-ring);
+    }
+
+    /* Top App Header */
+    .header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 16px;
+      background: var(--nav);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .brand-wordmark {
+      display: flex;
+      align-items: baseline;
+      gap: 5px;
+      line-height: 1;
+    }
+
+    .brand-name {
+      font-size: 1.05rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      color: var(--text);
+    }
+
+    .brand-tag {
+      font-size: 0.65rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      padding: 2px 5px;
+      border-radius: 4px;
+      background: var(--accent);
+      color: #ffffff;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .conn-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--ok);
+    }
+
+    .conn-pill.offline { color: var(--warn); }
+
+    .conn-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      flex-shrink: 0;
+    }
+
+    .btn-unpair {
+      min-height: 36px;
+      padding: 0 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius-sm);
+      color: var(--text-2);
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-unpair:active {
+      background: var(--surface-3);
+      color: var(--text);
+    }
 
     /* Pairing Screen */
-    #pairingView { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center; }
-    .pairing-box { max-width: 320px; width: 100%; display: flex; flex-direction: column; gap: 14px; }
-    .pin-input { font-size: 2rem; font-weight: 700; letter-spacing: 0.4em; text-align: center; padding: 12px; background: rgba(255,255,255,0.08); border: 2px solid rgba(255,255,255,0.2); border-radius: 12px; color: #fff; outline: none; }
-    .name-input { font-size: 0.95rem; text-align: center; padding: 10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #fff; outline: none; }
-    .btn-pair { background: #6366f1; border: none; color: #fff; padding: 14px; font-size: 1rem; font-weight: 600; border-radius: 12px; cursor: pointer; margin-top: 6px; }
-    .pair-error { color: #ef4444; font-size: 0.8125rem; min-height: 20px; }
+    #pairingView {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 20px calc(24px + env(safe-area-inset-bottom));
+    }
 
-    /* Views Container */
-    #mainViews { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-    .view-content { flex: 1; display: flex; flex-direction: column; padding: 12px; gap: 12px; overflow-y: auto; }
+    .pairing-card {
+      width: 100%;
+      max-width: 360px;
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius-lg);
+      padding: 28px 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .pairing-brand {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      text-align: center;
+    }
+
+    .pairing-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .pairing-sub {
+      font-size: 0.875rem;
+      line-height: 1.45;
+      color: var(--text-2);
+    }
+
+    .field-label {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text-2);
+      margin-bottom: 6px;
+    }
+
+    .pin-input {
+      width: 100%;
+      min-height: 56px;
+      font-size: 1.75rem;
+      font-weight: 800;
+      letter-spacing: 0.35em;
+      text-align: center;
+      padding: 10px 14px;
+      background: var(--surface-2);
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .text-input {
+      width: 100%;
+      min-height: 46px;
+      font-size: 0.95rem;
+      padding: 10px 14px;
+      background: var(--surface-2);
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      color: var(--text);
+    }
+
+    .text-input::placeholder,
+    .pin-input::placeholder {
+      color: var(--text-3);
+    }
+
+    .btn-primary {
+      width: 100%;
+      min-height: 48px;
+      background: var(--accent);
+      border: 1px solid var(--accent);
+      color: #ffffff;
+      font-size: 0.95rem;
+      font-weight: 700;
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: background-color 120ms ease, transform 90ms ease;
+    }
+
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-primary:active { background: var(--accent-active); transform: scale(0.98); }
+
+    .pair-error {
+      min-height: 20px;
+      font-size: 0.84rem;
+      color: var(--bad);
+      text-align: center;
+    }
+
+    /* Authenticated Main Shell */
+    #mainViews {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .view-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding: 14px 16px calc(var(--nav-h) + 22px + env(safe-area-inset-bottom));
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      max-width: 560px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    /* Feedback Toast */
+    .toast {
+      position: fixed;
+      top: calc(64px + env(safe-area-inset-top));
+      left: 50%;
+      transform: translateX(-50%) translateY(-8px);
+      z-index: 40;
+      background: var(--surface-3);
+      border: 1px solid var(--line-strong);
+      color: var(--text);
+      padding: 8px 14px;
+      border-radius: var(--radius);
+      font-size: 0.82rem;
+      font-weight: 600;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 150ms ease, transform 150ms ease;
+      max-width: calc(100vw - 32px);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
 
     /* Now Playing Card */
-    .now-playing { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
-    .np-title { font-size: 0.95rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .np-channel { font-size: 0.75rem; color: #94a3b8; }
-    .seek-row { display: flex; align-items: center; gap: 8px; }
-    .seek-time { font-size: 0.7rem; color: #94a3b8; font-variant-numeric: tabular-nums; min-width: 38px; }
+    .now-playing {
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .np-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .np-meta { min-width: 0; flex: 1; }
+
+    .np-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .np-channel {
+      font-size: 0.8rem;
+      color: var(--text-2);
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .live-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: var(--accent);
+      color: #ffffff;
+      font-size: 0.7rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      flex-shrink: 0;
+    }
+
+    .live-badge.vod {
+      background: var(--surface-3);
+      color: var(--text-2);
+      border: 1px solid var(--line-strong);
+    }
+
+    .seek-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .seek-time {
+      font-size: 0.74rem;
+      color: var(--text-2);
+      font-variant-numeric: tabular-nums;
+      min-width: 40px;
+    }
+
     .seek-time.right { text-align: right; }
-    .seek-slider { flex: 1; accent-color: #6366f1; height: 4px; cursor: pointer; }
-    .seek-slider:disabled { opacity: 0.45; cursor: default; }
-    .media-badge { display: inline-block; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.04em; background: rgba(99,102,241,0.22); color: #c7d2fe; padding: 2px 6px; border-radius: 4px; margin-right: 6px; font-weight: 600; }
 
-    /* D-Pad Controller */
-    .dpad-container { display: flex; align-items: center; justify-content: center; margin: 4px 0; }
-    .dpad { width: 210px; height: 210px; position: relative; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-    .dpad-btn { position: absolute; background: rgba(255,255,255,0.08); border: none; color: #fff; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 12px; }
-    .dpad-btn:active { background: rgba(99,102,241,0.4); transform: scale(0.95); }
-    .dpad-up { top: 10px; width: 62px; height: 48px; }
-    .dpad-down { bottom: 10px; width: 62px; height: 48px; }
-    .dpad-left { left: 10px; width: 48px; height: 62px; }
-    .dpad-right { right: 10px; width: 48px; height: 62px; }
-    .dpad-center { width: 70px; height: 70px; border-radius: 50%; background: #6366f1; font-weight: 700; font-size: 0.95rem; box-shadow: 0 4px 14px rgba(99,102,241,0.4); }
-    .dpad-center:active { transform: scale(0.92); }
+    .seek-slider {
+      flex: 1;
+      accent-color: var(--accent);
+      height: 6px;
+      cursor: pointer;
+    }
 
-    /* Key Clusters */
-    .row-cluster { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-    .btn-action { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); color: #fff; padding: 12px 0; border-radius: 12px; font-size: 0.875rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 80ms ease; }
-    .btn-action:active { background: rgba(255,255,255,0.22); transform: scale(0.96); }
+    .seek-slider:disabled {
+      opacity: 0.45;
+      cursor: default;
+    }
+
+    /* Sculpted Hardware D-Pad (One deliberate crimson focal point: OK center) */
+    .dpad-stage {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 0;
+    }
+
+    .dpad-ring {
+      width: 224px;
+      height: 224px;
+      position: relative;
+      border-radius: 50%;
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .dpad-btn {
+      position: absolute;
+      width: 58px;
+      height: 52px;
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      color: var(--text);
+      border-radius: var(--radius);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background-color 100ms ease, transform 90ms ease;
+    }
+
+    .dpad-btn:active {
+      background: var(--surface-3);
+      border-color: var(--line-strong);
+      transform: scale(0.94);
+    }
+
+    .dpad-up { top: 10px; left: 50%; transform: translateX(-50%); }
+    .dpad-up:active { transform: translateX(-50%) scale(0.94); }
+    .dpad-down { bottom: 10px; left: 50%; transform: translateX(-50%); }
+    .dpad-down:active { transform: translateX(-50%) scale(0.94); }
+    .dpad-left { left: 10px; top: 50%; width: 52px; height: 58px; transform: translateY(-50%); }
+    .dpad-left:active { transform: translateY(-50%) scale(0.94); }
+    .dpad-right { right: 10px; top: 50%; width: 52px; height: 58px; transform: translateY(-50%); }
+    .dpad-right:active { transform: translateY(-50%) scale(0.94); }
+
+    .dpad-ok {
+      width: 76px;
+      height: 76px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid #ff4d57;
+      color: #ffffff;
+      font-size: 0.95rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      box-shadow: 0 0 22px rgba(229, 9, 20, 0.35);
+      transition: background-color 100ms ease, transform 90ms ease;
+    }
+
+    .dpad-ok:active {
+      background: var(--accent-active);
+      transform: scale(0.93);
+    }
+
+    /* Action & Transport Rows */
+    .action-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .ctrl-btn {
+      min-height: 48px;
+      padding: 8px 6px;
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 0.84rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      cursor: pointer;
+      transition: background-color 100ms ease, transform 90ms ease;
+    }
+
+    .ctrl-btn:active {
+      background: var(--surface-3);
+      transform: scale(0.96);
+    }
+
+    .ctrl-btn.is-active {
+      background: rgba(229, 9, 20, 0.16);
+      border-color: var(--accent);
+      color: var(--text);
+    }
 
     /* Volume and Channel Rockers */
-    .rockers-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 2px; }
-    .rocker { display: flex; flex-direction: column; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; overflow: hidden; }
-    .rocker-btn { background: transparent; border: none; color: #fff; padding: 12px 0; font-size: 1.2rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-    .rocker-btn:active { background: rgba(255,255,255,0.15); }
-    .rocker-label { text-align: center; font-size: 0.7rem; color: #94a3b8; padding: 2px 0; font-weight: 600; text-transform: uppercase; }
+    .rockers {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
 
-    /* Keypad Grid */
-    .keypad-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 300px; margin: 0 auto; width: 100%; }
-    .key-btn { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); color: #fff; padding: 16px 0; font-size: 1.35rem; font-weight: 600; border-radius: 12px; cursor: pointer; }
-    .key-btn:active { background: rgba(99,102,241,0.5); }
+    .rocker {
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
 
-    /* Typing Card */
-    .typing-box { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
-    .typing-input { padding: 12px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; color: #fff; font-size: 1rem; outline: none; }
-    .typing-btn { background: #6366f1; border: none; color: #fff; padding: 12px; border-radius: 8px; font-weight: 600; font-size: 0.95rem; cursor: pointer; }
+    .rocker-btn {
+      min-height: 48px;
+      background: transparent;
+      border: none;
+      color: var(--text);
+      font-size: 1.25rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
 
-    /* Channel List */
-    .channel-search { padding: 10px 14px; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.15); border-radius: 10px; color: #fff; outline: none; width: 100%; font-size: 0.9rem; }
-    .channel-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; cursor: pointer; margin-bottom: 6px; }
-    .channel-item:active { background: rgba(99,102,241,0.2); border-color: #6366f1; }
-    .channel-num { font-weight: 700; color: #6366f1; margin-right: 10px; font-size: 0.9rem; min-width: 30px; }
-    .channel-title { font-weight: 600; font-size: 0.9rem; }
-    .channel-now { font-size: 0.75rem; color: #94a3b8; }
+    .rocker-btn:active { background: var(--surface-3); }
+
+    .rocker-label {
+      text-align: center;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-3);
+      padding: 4px 0;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      background: var(--surface-2);
+    }
+
+    /* Keypad & Typing View */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .section-heading {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--text-2);
+      letter-spacing: 0.02em;
+    }
+
+    .keypad-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      max-width: 340px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    .key-btn {
+      min-height: 54px;
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 1.25rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      cursor: pointer;
+    }
+
+    .key-btn:active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #ffffff;
+    }
+
+    .key-btn.key-action {
+      font-size: 0.88rem;
+      color: var(--text-2);
+      background: var(--surface-2);
+    }
+
+    /* Search & Filter Toolbar */
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .btn-ghost {
+      min-height: 46px;
+      padding: 0 14px;
+      background: var(--surface-2);
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .btn-ghost:active { background: var(--surface-3); }
+
+    /* Channel Rows with Real Logos / Kinora Monogram Tiles */
+    .list-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .channel-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: border-color 120ms ease, background-color 120ms ease;
+    }
+
+    .channel-item:active {
+      background: var(--surface-2);
+      border-color: var(--accent);
+    }
+
+    .art-tile {
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-sm);
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      overflow: hidden;
+      position: relative;
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      color: var(--text-2);
+    }
+
+    .art-tile.poster {
+      width: 48px;
+      height: 70px;
+    }
+
+    .art-tile img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .art-tile.logo-fit img {
+      object-fit: contain;
+      padding: 4px;
+    }
+
+    .item-body {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .item-head {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+
+    .channel-num {
+      font-size: 0.76rem;
+      font-weight: 700;
+      color: var(--accent-text);
+      font-variant-numeric: tabular-nums;
+      flex-shrink: 0;
+    }
+
+    .item-title {
+      font-size: 0.94rem;
+      font-weight: 700;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .item-sub {
+      font-size: 0.78rem;
+      color: var(--text-2);
+      margin-top: 3px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .kind-tag {
+      display: inline-block;
+      font-size: 0.66rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: var(--surface-3);
+      border: 1px solid var(--line-strong);
+      color: var(--text-2);
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    .btn-watch {
+      min-height: 38px;
+      padding: 0 12px;
+      background: var(--accent);
+      border: none;
+      border-radius: var(--radius-sm);
+      color: #ffffff;
+      font-size: 0.78rem;
+      font-weight: 700;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .btn-watch:active { background: var(--accent-active); }
+
+    /* EPG Guide Cards */
+    .epg-card {
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      cursor: pointer;
+    }
+
+    .epg-card:active {
+      background: var(--surface-2);
+      border-color: var(--accent);
+    }
+
+    .epg-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .epg-ch {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .epg-now {
+      font-size: 0.94rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .epg-meta {
+      font-size: 0.78rem;
+      color: var(--text-2);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .epg-bar {
+      width: 100%;
+      height: 4px;
+      background: var(--surface-3);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .epg-bar-fill {
+      height: 100%;
+      background: var(--accent);
+    }
+
+    .epg-next {
+      font-size: 0.78rem;
+      color: var(--text-2);
+      border-top: 1px solid var(--line);
+      padding-top: 7px;
+    }
+
+    /* Empty, Loading, and Error States (R-27) */
+    .state-box {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 28px 18px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .state-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .state-desc {
+      font-size: 0.84rem;
+      color: var(--text-2);
+      line-height: 1.45;
+      max-width: 280px;
+    }
+
+    /* Fixed Mobile Bottom Tab Bar */
+    .bottom-nav {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 30;
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      background: var(--nav);
+      border-top: 1px solid var(--line-strong);
+      padding-bottom: env(safe-area-inset-bottom);
+      padding-left: env(safe-area-inset-left);
+      padding-right: env(safe-area-inset-right);
+    }
+
+    .tab-btn {
+      min-height: var(--nav-h);
+      background: transparent;
+      border: none;
+      border-top: 2px solid transparent;
+      color: var(--text-3);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      padding: 6px 2px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: color 120ms ease, background-color 120ms ease;
+    }
+
+    .tab-btn.active {
+      color: var(--text);
+      border-top-color: var(--accent);
+      background: linear-gradient(180deg, rgba(229, 9, 20, 0.16) 0%, rgba(229, 9, 20, 0) 100%);
+    }
+
+    .tab-btn.active svg {
+      color: var(--accent-text);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        transition-duration: 0.01ms !important;
+      }
+    }
   </style>
 </head>
 <body>
   <header class="header">
-    <div class="logo">
-      <span class="dot"></span>
-      <span>Kinora Remote</span>
+    <div class="brand">
+      <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true">
+        <defs>
+          <linearGradient id="kp-stem" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#b80610"/>
+            <stop offset="40%" stop-color="#e50914"/>
+            <stop offset="100%" stop-color="#ff3d4a"/>
+          </linearGradient>
+          <linearGradient id="kp-up" x1="0" y1="1" x2="1" y2="0">
+            <stop offset="0%" stop-color="#e50914"/>
+            <stop offset="55%" stop-color="#ff3d4a"/>
+            <stop offset="100%" stop-color="#ff6b75"/>
+          </linearGradient>
+          <linearGradient id="kp-lo" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#9e040c"/>
+            <stop offset="100%" stop-color="#5e0105"/>
+          </linearGradient>
+          <linearGradient id="kp-core" x1="0" y1="0" x2="1" y2="0.5">
+            <stop offset="0%" stop-color="#ff4f5c"/>
+            <stop offset="50%" stop-color="#e50914"/>
+            <stop offset="100%" stop-color="#b80610"/>
+          </linearGradient>
+        </defs>
+        <path d="M6 5.5 C6 4.7 6.7 4 7.5 4 L10.5 4 C11.3 4 12 4.7 12 5.5 L12 26.5 C12 27.3 11.3 28 10.5 28 L7.5 28 C6.7 28 6 27.3 6 26.5 Z" fill="url(#kp-stem)"/>
+        <path d="M11 15 L20.5 4.8 C21 4.3 21.7 4 22.4 4 L25 4 C25.8 4 26.4 4.8 26 5.6 L24 10 L15.5 15.5 Z" fill="url(#kp-up)"/>
+        <path d="M15.5 16.5 L24 22 L26 26.4 C26.4 27.2 25.8 28 25 28 L22.4 28 C21.7 28 21 27.7 20.5 27.2 L11 17 Z" fill="url(#kp-lo)"/>
+        <path d="M7.5 9.5 C7.5 8.8 8.3 8.3 8.9 8.7 L19 15.2 C19.6 15.6 19.6 16.4 19 16.8 L8.9 23.3 C8.3 23.7 7.5 23.2 7.5 22.5 Z" fill="#050507" stroke="#1a1a22" stroke-width="0.6"/>
+        <path d="M9.2 11.4 C9.2 10.9 9.8 10.6 10.2 10.8 L17 15.5 C17.4 15.8 17.4 16.2 17 16.5 L10.2 21.2 C9.8 21.4 9.2 21.1 9.2 20.6 Z" fill="url(#kp-core)"/>
+      </svg>
+      <div class="brand-wordmark">
+        <span class="brand-name">KINORA</span>
+        <span class="brand-tag">TV</span>
+      </div>
     </div>
-    <button class="btn-disconnect" id="btnDisconnect" style="display:none;" onclick="disconnect()">Unpair</button>
+    <div class="header-right">
+      <span class="conn-pill" id="connPill" style="display:none;">
+        <span class="conn-dot" aria-hidden="true"></span>
+        <span id="connText">Connected</span>
+      </span>
+      <button type="button" class="btn-unpair" id="btnDisconnect" style="display:none;" onclick="disconnect()">Unpair</button>
+    </div>
   </header>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <!-- Pairing PIN View -->
   <main id="pairingView">
-    <div class="pairing-box">
-      <h2>Connect to Kinora</h2>
-      <p style="font-size:0.875rem;color:#94a3b8;">Enter the pairing PIN shown on your Kinora screen.</p>
-      <input type="text" id="pinInput" class="pin-input" pattern="[0-9]*" inputmode="numeric" maxlength="6" placeholder="0000" autofocus>
-      <input type="text" id="nameInput" class="name-input" placeholder="Device Name (e.g. Pixel Phone)">
-      <div id="pairError" class="pair-error"></div>
-      <button class="btn-pair" onclick="pairWithPin()">Pair Device</button>
+    <div class="pairing-card">
+      <div class="pairing-brand">
+        <svg width="48" height="48" viewBox="0 0 32 32" aria-hidden="true">
+          <path d="M6 5.5 C6 4.7 6.7 4 7.5 4 L10.5 4 C11.3 4 12 4.7 12 5.5 L12 26.5 C12 27.3 11.3 28 10.5 28 L7.5 28 C6.7 28 6 27.3 6 26.5 Z" fill="url(#kp-stem)"/>
+          <path d="M11 15 L20.5 4.8 C21 4.3 21.7 4 22.4 4 L25 4 C25.8 4 26.4 4.8 26 5.6 L24 10 L15.5 15.5 Z" fill="url(#kp-up)"/>
+          <path d="M15.5 16.5 L24 22 L26 26.4 C26.4 27.2 25.8 28 25 28 L22.4 28 C21.7 28 21 27.7 20.5 27.2 L11 17 Z" fill="url(#kp-lo)"/>
+          <path d="M7.5 9.5 C7.5 8.8 8.3 8.3 8.9 8.7 L19 15.2 C19.6 15.6 19.6 16.4 19 16.8 L8.9 23.3 C8.3 23.7 7.5 23.2 7.5 22.5 Z" fill="#050507" stroke="#1a1a22" stroke-width="0.6"/>
+          <path d="M9.2 11.4 C9.2 10.9 9.8 10.6 10.2 10.8 L17 15.5 C17.4 15.8 17.4 16.2 17 16.5 L10.2 21.2 C9.8 21.4 9.2 21.1 9.2 20.6 Z" fill="url(#kp-core)"/>
+        </svg>
+        <h1 class="pairing-title">Pair With Kinora</h1>
+        <p class="pairing-sub">Enter the pairing PIN shown on your Kinora screen to connect this remote.</p>
+      </div>
+      <div>
+        <label class="field-label" for="pinInput">Pairing PIN</label>
+        <input type="text" id="pinInput" class="pin-input" pattern="[0-9]*" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code" autofocus>
+      </div>
+      <div>
+        <label class="field-label" for="nameInput">Device Name</label>
+        <input type="text" id="nameInput" class="text-input" placeholder="Your Phone Name">
+      </div>
+      <div id="pairError" class="pair-error" role="alert"></div>
+      <button type="button" class="btn-primary" id="btnPair" onclick="pairWithPin()">Pair Remote</button>
     </div>
   </main>
 
-  <!-- Active Remote View with Navigation Tabs -->
+  <!-- Active Remote Shell -->
   <div id="mainViews" style="display:none;">
-    <nav class="tab-bar">
-      <button class="tab-btn active" id="tabRemoteBtn" onclick="switchTab('remote')">Remote</button>
-      <button class="tab-btn" id="tabKeypadBtn" onclick="switchTab('keypad')">Keypad</button>
-      <button class="tab-btn" id="tabChannelsBtn" onclick="switchTab('channels')">Channels</button>
-      <button class="tab-btn" id="tabGuideBtn" onclick="switchTab('guide')">Guide</button>
-      <button class="tab-btn" id="tabMediaBtn" onclick="switchTab('media')">Media</button>
-    </nav>
-
     <!-- Tab 1: Remote Control -->
     <main id="viewRemote" class="view-content">
-      <div class="now-playing">
-        <div class="np-title" id="npTitle">Kinora TV</div>
-        <div class="np-channel" id="npChannel">Connected & Ready</div>
+      <section class="now-playing" aria-label="Now Playing">
+        <div class="np-top">
+          <div class="np-meta">
+            <div class="np-title" id="npTitle">Kinora TV</div>
+            <div class="np-channel" id="npChannel">Connected and ready</div>
+          </div>
+          <span class="live-badge" id="npBadge">LIVE</span>
+        </div>
         <div class="seek-row">
           <span class="seek-time" id="npTimeCur">0:00</span>
           <input type="range" id="seekSlider" class="seek-slider" min="0" max="100" value="0" aria-label="Playback position" disabled>
           <span class="seek-time right" id="npTimeDur">LIVE</span>
         </div>
-      </div>
+      </section>
 
-      <div class="dpad-container">
-        <div class="dpad">
-          <button class="dpad-btn dpad-up" onclick="sendCmd('dpad_up')">&#9650;</button>
-          <button class="dpad-btn dpad-down" onclick="sendCmd('dpad_down')">&#9660;</button>
-          <button class="dpad-btn dpad-left" onclick="sendCmd('dpad_left')">&#9664;</button>
-          <button class="dpad-btn dpad-right" onclick="sendCmd('dpad_right')">&#9654;</button>
-          <button class="dpad-center" onclick="sendCmd('dpad_select')">OK</button>
+      <section class="dpad-stage" aria-label="Directional pad">
+        <div class="dpad-ring">
+          <button type="button" class="dpad-btn dpad-up" aria-label="Navigate Up" onclick="sendCmd('dpad_up')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+          </button>
+          <button type="button" class="dpad-btn dpad-down" aria-label="Navigate Down" onclick="sendCmd('dpad_down')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <button type="button" class="dpad-btn dpad-left" aria-label="Navigate Left" onclick="sendCmd('dpad_left')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <button type="button" class="dpad-btn dpad-right" aria-label="Navigate Right" onclick="sendCmd('dpad_right')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <button type="button" class="dpad-ok" aria-label="Select OK" onclick="sendCmd('dpad_select')">OK</button>
         </div>
+      </section>
+
+      <div class="action-grid">
+        <button type="button" class="ctrl-btn" onclick="sendCmd('back')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+          <span>Back</span>
+        </button>
+        <button type="button" class="ctrl-btn" onclick="sendCmd('home')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>
+          <span>Home</span>
+        </button>
+        <button type="button" class="ctrl-btn" id="btnPlayPause" onclick="sendCmd('play_pause')">Play/Pause</button>
       </div>
 
-      <div class="row-cluster">
-        <button class="btn-action" onclick="sendCmd('back')">Back</button>
-        <button class="btn-action" onclick="sendCmd('home')">Home</button>
-        <button class="btn-action" id="btnPlayPause" onclick="sendCmd('play_pause')">Play/Pause</button>
+      <div class="action-grid">
+        <button type="button" class="ctrl-btn" onclick="sendCmd('step_back')">-10s</button>
+        <button type="button" class="ctrl-btn" onclick="sendCmd('step_forward')">+30s</button>
+        <button type="button" class="ctrl-btn" id="btnMute" onclick="sendCmd('toggle_mute')">Mute</button>
       </div>
 
-      <div class="row-cluster">
-        <button class="btn-action" onclick="sendCmd('step_back')">-10s</button>
-        <button class="btn-action" onclick="sendCmd('step_forward')">+30s</button>
-        <button class="btn-action" id="btnMute" onclick="sendCmd('toggle_mute')">Mute</button>
-      </div>
-
-      <div class="rockers-grid">
+      <div class="rockers">
         <div class="rocker">
-          <button class="rocker-btn" onclick="sendCmd('volume_up')">+</button>
+          <button type="button" class="rocker-btn" aria-label="Volume Up" onclick="sendCmd('volume_up')">+</button>
           <div class="rocker-label">Volume</div>
-          <button class="rocker-btn" onclick="sendCmd('volume_down')">-</button>
+          <button type="button" class="rocker-btn" aria-label="Volume Down" onclick="sendCmd('volume_down')">-</button>
         </div>
         <div class="rocker">
-          <button class="rocker-btn" onclick="sendCmd('channel_up')">&#9650;</button>
+          <button type="button" class="rocker-btn" aria-label="Channel Up" onclick="sendCmd('channel_up')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+          </button>
           <div class="rocker-label">Channel</div>
-          <button class="rocker-btn" onclick="sendCmd('channel_down')">&#9660;</button>
+          <button type="button" class="rocker-btn" aria-label="Channel Down" onclick="sendCmd('channel_down')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
         </div>
       </div>
     </main>
 
     <!-- Tab 2: Keyboard & Number Keypad -->
     <main id="viewKeypad" class="view-content" style="display:none;">
-      <div class="typing-box">
-        <label style="font-size:0.85rem;font-weight:600;color:#cbd5e1;">Type to Kinora TV</label>
-        <input type="text" id="typeInput" class="typing-input" placeholder="Search title or type query...">
-        <button class="typing-btn" onclick="sendTypedText()">Send to TV</button>
-      </div>
+      <section class="panel">
+        <label class="section-heading" for="typeInput">Type to Kinora TV</label>
+        <input type="text" id="typeInput" class="text-input" placeholder="Search a title or type into TV...">
+        <button type="button" class="btn-primary" onclick="sendTypedText()">Send to TV</button>
+      </section>
 
-      <div style="text-align:center;font-size:0.8rem;color:#94a3b8;margin-top:6px;">Direct Channel Keypad</div>
+      <div class="section-heading" style="text-align:center;">Direct Channel Keypad</div>
       <div class="keypad-grid">
-        <button class="key-btn" onclick="sendDigit('1')">1</button>
-        <button class="key-btn" onclick="sendDigit('2')">2</button>
-        <button class="key-btn" onclick="sendDigit('3')">3</button>
-        <button class="key-btn" onclick="sendDigit('4')">4</button>
-        <button class="key-btn" onclick="sendDigit('5')">5</button>
-        <button class="key-btn" onclick="sendDigit('6')">6</button>
-        <button class="key-btn" onclick="sendDigit('7')">7</button>
-        <button class="key-btn" onclick="sendDigit('8')">8</button>
-        <button class="key-btn" onclick="sendDigit('9')">9</button>
-        <button class="key-btn" onclick="sendCmd('back')">&#9003;</button>
-        <button class="key-btn" onclick="sendDigit('0')">0</button>
-        <button class="key-btn" onclick="sendCmd('dpad_select')">Enter</button>
+        <button type="button" class="key-btn" onclick="sendDigit('1')">1</button>
+        <button type="button" class="key-btn" onclick="sendDigit('2')">2</button>
+        <button type="button" class="key-btn" onclick="sendDigit('3')">3</button>
+        <button type="button" class="key-btn" onclick="sendDigit('4')">4</button>
+        <button type="button" class="key-btn" onclick="sendDigit('5')">5</button>
+        <button type="button" class="key-btn" onclick="sendDigit('6')">6</button>
+        <button type="button" class="key-btn" onclick="sendDigit('7')">7</button>
+        <button type="button" class="key-btn" onclick="sendDigit('8')">8</button>
+        <button type="button" class="key-btn" onclick="sendDigit('9')">9</button>
+        <button type="button" class="key-btn key-action" onclick="sendCmd('back')">Back</button>
+        <button type="button" class="key-btn" onclick="sendDigit('0')">0</button>
+        <button type="button" class="key-btn key-action" onclick="sendCmd('dpad_select')">Enter</button>
       </div>
     </main>
 
     <!-- Tab 3: Channels Browser -->
     <main id="viewChannels" class="view-content" style="display:none;">
-      <input type="text" id="channelFilter" class="channel-search" placeholder="Search channels..." oninput="filterChannels()">
-      <div id="channelsList" style="margin-top:8px;"></div>
+      <div class="toolbar">
+        <input type="search" id="channelFilter" class="text-input" placeholder="Filter channels..." oninput="filterChannels()">
+        <button type="button" class="btn-ghost" onclick="fetchChannels()">Refresh</button>
+      </div>
+      <div id="channelsList" class="list-stack"></div>
     </main>
 
     <!-- Tab 4: EPG / TV Guide Browser -->
     <main id="viewGuide" class="view-content" style="display:none;">
-      <div style="display:flex;gap:8px;align-items:center;">
-        <input type="text" id="guideFilter" class="channel-search" placeholder="Search TV guide programmes..." oninput="filterGuide()">
-        <button type="button" class="btn-disconnect" style="padding:10px 12px;white-space:nowrap;" onclick="fetchGuide()">Refresh</button>
+      <div class="toolbar">
+        <input type="search" id="guideFilter" class="text-input" placeholder="Search TV guide..." oninput="filterGuide()">
+        <button type="button" class="btn-ghost" onclick="fetchGuide()">Refresh</button>
       </div>
-      <div id="guideList" style="margin-top:8px;"></div>
+      <div id="guideList" class="list-stack"></div>
     </main>
 
     <!-- Tab 5: Media Library Browser -->
     <main id="viewMedia" class="view-content" style="display:none;">
-      <input type="text" id="mediaFilter" class="channel-search" placeholder="Search movies, series, local files..." oninput="filterMedia()">
-      <div id="mediaList" style="margin-top:8px;"></div>
+      <div class="toolbar">
+        <input type="search" id="mediaFilter" class="text-input" placeholder="Search movies and series..." oninput="filterMedia()">
+        <button type="button" class="btn-ghost" onclick="fetchMedia()">Refresh</button>
+      </div>
+      <div id="mediaList" class="list-stack"></div>
     </main>
+
+    <!-- Fixed Mobile Bottom Navigation -->
+    <nav class="bottom-nav" aria-label="Remote views">
+      <button type="button" class="tab-btn active" id="tabRemoteBtn" onclick="switchTab('remote')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="4"/><circle cx="12" cy="9" r="2.2"/><line x1="9" y1="15" x2="15" y2="15"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
+        <span>Remote</span>
+      </button>
+      <button type="button" class="tab-btn" id="tabKeypadBtn" onclick="switchTab('keypad')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="6" y1="9" x2="6.01" y2="9"/><line x1="10" y1="9" x2="10.01" y2="9"/><line x1="14" y1="9" x2="14.01" y2="9"/><line x1="18" y1="9" x2="18.01" y2="9"/><line x1="7" y1="15" x2="17" y2="15"/></svg>
+        <span>Keypad</span>
+      </button>
+      <button type="button" class="tab-btn" id="tabChannelsBtn" onclick="switchTab('channels')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="18" x2="12" y2="21"/></svg>
+        <span>Channels</span>
+      </button>
+      <button type="button" class="tab-btn" id="tabGuideBtn" onclick="switchTab('guide')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="9" y1="4" x2="9" y2="20"/></svg>
+        <span>Guide</span>
+      </button>
+      <button type="button" class="tab-btn" id="tabMediaBtn" onclick="switchTab('media')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="18" rx="2"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+        <span>Media</span>
+      </button>
+    </nav>
   </div>
 
   <script>
@@ -2589,7 +3479,7 @@ pub fn get_embedded_remote_html() -> &'static str {
     let guideData = [];
     let mediaData = [];
     let isSeeking = false;
-    let currentDurationSec = 0;
+    let toastTimer = null;
 
     window.addEventListener('load', () => {
       initDelegatedHandlers();
@@ -2600,7 +3490,38 @@ pub fn get_embedded_remote_html() -> &'static str {
       }
     });
 
+    function showToast(msg) {
+      const el = document.getElementById('toast');
+      if (!el) return;
+      el.textContent = msg;
+      el.classList.add('show');
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.classList.remove('show'), 1800);
+    }
+
+    function setConnectionStatus(online) {
+      const pill = document.getElementById('connPill');
+      const txt = document.getElementById('connText');
+      if (!pill || !txt) return;
+      pill.classList.toggle('offline', !online);
+      txt.textContent = online ? 'Connected' : 'Reconnecting';
+    }
+
     function initDelegatedHandlers() {
+      const pinInput = document.getElementById('pinInput');
+      if (pinInput) {
+        pinInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') pairWithPin();
+        });
+      }
+
+      const typeInput = document.getElementById('typeInput');
+      if (typeInput) {
+        typeInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') sendTypedText();
+        });
+      }
+
       const seekSlider = document.getElementById('seekSlider');
       if (seekSlider) {
         const startSeek = () => { isSeeking = true; };
@@ -2611,13 +3532,14 @@ pub fn get_embedded_remote_html() -> &'static str {
         seekSlider.addEventListener('touchend', endSeek);
         seekSlider.addEventListener('input', () => {
           isSeeking = true;
-          document.getElementById('npTimeCur').innerText = formatTime(Number(seekSlider.value));
+          document.getElementById('npTimeCur').textContent = formatTime(Number(seekSlider.value));
         });
         seekSlider.addEventListener('change', () => {
           isSeeking = false;
           const pos = Math.max(0, Math.round(Number(seekSlider.value) || 0));
-          document.getElementById('npTimeCur').innerText = formatTime(pos);
+          document.getElementById('npTimeCur').textContent = formatTime(pos);
           sendCmd('seek_to', { positionSec: pos });
+          showToast('Seeked to ' + formatTime(pos));
         });
       }
 
@@ -2628,7 +3550,26 @@ pub fn get_embedded_remote_html() -> &'static str {
           if (!item) return;
           const id = item.getAttribute('data-channel-id') || '';
           const num = Number(item.getAttribute('data-channel-num') || '0');
-          if (id) tuneToChannel(id, num);
+          const name = item.getAttribute('data-channel-name') || 'Channel';
+          if (id) {
+            tuneToChannel(id, num);
+            showToast('Tuning ' + name);
+          }
+        });
+      }
+
+      const guideList = document.getElementById('guideList');
+      if (guideList) {
+        guideList.addEventListener('click', (e) => {
+          const card = e.target.closest('.epg-card');
+          if (!card) return;
+          const id = card.getAttribute('data-channel-id') || '';
+          const num = Number(card.getAttribute('data-channel-num') || '0');
+          const name = card.getAttribute('data-channel-name') || 'Channel';
+          if (id) {
+            tuneToChannel(id, num);
+            showToast('Tuning ' + name);
+          }
         });
       }
 
@@ -2642,18 +3583,8 @@ pub fn get_embedded_remote_html() -> &'static str {
           const kind = item.getAttribute('data-media-kind') || 'movie';
           if (mediaId || title) {
             sendCmd('play_media_item', { mediaId, title, kind });
+            showToast('Opening ' + (title || 'Media'));
           }
-        });
-      }
-
-      const guideList = document.getElementById('guideList');
-      if (guideList) {
-        guideList.addEventListener('click', (e) => {
-          const card = e.target.closest('.epg-card');
-          if (!card) return;
-          const id = card.getAttribute('data-channel-id') || '';
-          const num = Number(card.getAttribute('data-channel-num') || '0');
-          if (id) tuneToChannel(id, num);
         });
       }
     }
@@ -2671,17 +3602,48 @@ pub fn get_embedded_remote_html() -> &'static str {
       return m + ':' + ss;
     }
 
+    function formatClock(ts) {
+      const ms = ts > 1e12 ? ts : ts * 1000;
+      const d = new Date(ms);
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      return hh + ':' + mm;
+    }
+
+    function monogram(name) {
+      const words = String(name || 'TV').trim().split(/\s+/).filter(Boolean);
+      if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+      return String(name || 'TV').slice(0, 3).toUpperCase();
+    }
+
+    function artworkUrl(key) {
+      if (!key || !authToken) return '';
+      return '/api/artwork?key=' + encodeURIComponent(key) + '&token=' + encodeURIComponent(authToken);
+    }
+
+    function renderArtTile(key, fallbackText, extraClass) {
+      const url = artworkUrl(key);
+      const label = escapeHtml(monogram(fallbackText));
+      if (!url) {
+        return `<div class="art-tile ${extraClass || ''}" aria-hidden="true">${label}</div>`;
+      }
+      return `<div class="art-tile ${extraClass || ''}" aria-hidden="true"><img src="${url}" alt="" loading="lazy" onerror="this.remove();this.parentNode.textContent='${label}'"></div>`;
+    }
+
     function showPairing() {
       document.getElementById('pairingView').style.display = 'flex';
       document.getElementById('mainViews').style.display = 'none';
       document.getElementById('btnDisconnect').style.display = 'none';
+      document.getElementById('connPill').style.display = 'none';
       if (sseSource) { sseSource.close(); sseSource = null; }
     }
 
     function showRemote() {
       document.getElementById('pairingView').style.display = 'none';
       document.getElementById('mainViews').style.display = 'flex';
-      document.getElementById('btnDisconnect').style.display = 'block';
+      document.getElementById('btnDisconnect').style.display = 'inline-flex';
+      document.getElementById('connPill').style.display = 'inline-flex';
+      setConnectionStatus(true);
       connectSse();
       fetchChannels();
     }
@@ -2695,32 +3657,29 @@ pub fn get_embedded_remote_html() -> &'static str {
 
       document.getElementById('viewRemote').style.display = tab === 'remote' ? 'flex' : 'none';
       document.getElementById('viewKeypad').style.display = tab === 'keypad' ? 'flex' : 'none';
-      document.getElementById('viewChannels').style.display = tab === 'channels' ? 'block' : 'none';
-      document.getElementById('viewGuide').style.display = tab === 'guide' ? 'block' : 'none';
-      document.getElementById('viewMedia').style.display = tab === 'media' ? 'block' : 'none';
+      document.getElementById('viewChannels').style.display = tab === 'channels' ? 'flex' : 'none';
+      document.getElementById('viewGuide').style.display = tab === 'guide' ? 'flex' : 'none';
+      document.getElementById('viewMedia').style.display = tab === 'media' ? 'flex' : 'none';
 
-      if (tab === 'channels' && channelsData.length === 0) {
-        fetchChannels();
-      }
-      if (tab === 'guide' && guideData.length === 0) {
-        fetchGuide();
-      }
-      if (tab === 'media' && mediaData.length === 0) {
-        fetchMedia();
-      }
+      if (tab === 'channels' && channelsData.length === 0) fetchChannels();
+      if (tab === 'guide' && guideData.length === 0) fetchGuide();
+      if (tab === 'media' && mediaData.length === 0) fetchMedia();
     }
 
     async function pairWithPin() {
       const pin = document.getElementById('pinInput').value.trim();
       const deviceName = document.getElementById('nameInput').value.trim() || 'Mobile Remote';
       const errBox = document.getElementById('pairError');
-      errBox.innerText = '';
+      const btn = document.getElementById('btnPair');
+      errBox.textContent = '';
 
       if (pin.length < 4) {
-        errBox.innerText = 'PIN must be at least 4 digits.';
+        errBox.textContent = 'Enter at least 4 digits from your Kinora screen.';
         return;
       }
 
+      btn.disabled = true;
+      btn.textContent = 'Pairing...';
       try {
         const res = await fetch('/pair', {
           method: 'POST',
@@ -2733,17 +3692,23 @@ pub fn get_embedded_remote_html() -> &'static str {
           localStorage.setItem('kinora_token', authToken);
           showRemote();
         } else {
-          errBox.innerText = data.error || 'Pairing failed. Check PIN.';
+          errBox.textContent = data.error || 'Pairing failed. Check the PIN and try again.';
         }
       } catch (e) {
-        errBox.innerText = 'Connection error. Are you on the same Wi-Fi?';
+        errBox.textContent = 'Could not reach Kinora. Confirm both devices are on the same Wi-Fi.';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Pair Remote';
       }
     }
 
-    function disconnect() {
-      if (confirm('Disconnect this remote?')) {
+    function disconnect(skipConfirm) {
+      if (skipConfirm || confirm('Unpair this remote from Kinora?')) {
         authToken = null;
         localStorage.removeItem('kinora_token');
+        channelsData = [];
+        guideData = [];
+        mediaData = [];
         showPairing();
       }
     }
@@ -2760,17 +3725,19 @@ pub fn get_embedded_remote_html() -> &'static str {
           body: JSON.stringify({ command, payload })
         });
         if (res.status === 401) {
-          disconnect();
+          disconnect(true);
         }
-      } catch (e) {}
+      } catch (e) {
+        setConnectionStatus(false);
+      }
     }
 
     async function sendTypedText() {
       const input = document.getElementById('typeInput');
-      const text = input.value;
+      const text = input.value.trim();
       if (!text || !authToken) return;
       try {
-        await fetch('/api/input', {
+        const res = await fetch('/api/input', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -2778,41 +3745,66 @@ pub fn get_embedded_remote_html() -> &'static str {
           },
           body: JSON.stringify({ text })
         });
+        if (res.status === 401) {
+          disconnect(true);
+          return;
+        }
         input.value = '';
-      } catch (e) {}
+        showToast('Sent to TV');
+      } catch (e) {
+        showToast('Could not send text');
+      }
     }
 
     function sendDigit(d) {
       sendCmd('keypad_digit', { digit: d });
     }
 
+    function renderStateBox(boxId, title, desc, retryFnName) {
+      const box = document.getElementById(boxId);
+      if (!box) return;
+      box.innerHTML = `
+        <div class="state-box">
+          <div class="state-title">${escapeHtml(title)}</div>
+          <div class="state-desc">${escapeHtml(desc)}</div>
+          ${retryFnName ? `<button type="button" class="btn-ghost" onclick="${retryFnName}()">Try Again</button>` : ''}
+        </div>
+      `;
+    }
+
     async function fetchChannels() {
       if (!authToken) return;
+      renderStateBox('channelsList', 'Loading channels...', 'Reading live channels from Kinora Server.');
       try {
         const res = await fetch('/api/channels', {
           headers: { 'Authorization': 'Bearer ' + authToken }
         });
-        if (res.ok) {
-          channelsData = await res.json();
-          renderChannels(channelsData);
-        }
-      } catch (e) {}
+        if (res.status === 401) { disconnect(true); return; }
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        channelsData = await res.json();
+        renderChannels(channelsData);
+      } catch (e) {
+        renderStateBox('channelsList', 'Could not load channels', 'Check that Kinora Server is still running on your network.', 'fetchChannels');
+      }
     }
 
     function renderChannels(list) {
       const box = document.getElementById('channelsList');
       if (!list || list.length === 0) {
-        box.innerHTML = '<div style="color:#94a3b8;font-size:0.85rem;text-align:center;padding:20px;">No channels found on TV.</div>';
+        renderStateBox('channelsList', 'No channels available', 'Add a playlist source on Kinora Server, then tap Refresh.', 'fetchChannels');
         return;
       }
       box.innerHTML = list.map(c => `
-        <div class="channel-item" data-channel-id="${escapeHtml(c.id)}" data-channel-num="${Number(c.number) || 0}">
-          <div>
-            <span class="channel-num">${c.number ? '#' + escapeHtml(c.number) : ''}</span>
-            <span class="channel-title">${escapeHtml(c.name)}</span>
-            <div class="channel-now">${escapeHtml(c.currentProgramme || c.group || 'Live')}</div>
+        <div class="channel-item" role="button" tabindex="0" data-channel-id="${escapeHtml(c.id)}" data-channel-num="${Number(c.number) || 0}" data-channel-name="${escapeHtml(c.name)}">
+          ${renderArtTile('channel:' + c.id, c.name, 'logo-fit')}
+          <div class="item-body">
+            <div class="item-head">
+              ${c.number ? `<span class="channel-num">${escapeHtml(c.number)}</span>` : ''}
+              <span class="item-title">${escapeHtml(c.name)}</span>
+            </div>
+            <div class="item-sub">${escapeHtml(c.currentProgramme || c.group || 'Live TV')}</div>
           </div>
-          <button type="button" style="background:#6366f1;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:0.75rem;cursor:pointer;">Watch</button>
+          <button type="button" class="btn-watch">Watch</button>
         </div>
       `).join('');
     }
@@ -2820,37 +3812,37 @@ pub fn get_embedded_remote_html() -> &'static str {
     function filterChannels() {
       const q = document.getElementById('channelFilter').value.toLowerCase();
       const filtered = channelsData.filter(c => (c.name || '').toLowerCase().includes(q) || (c.group || '').toLowerCase().includes(q));
+      if (filtered.length === 0 && q) {
+        renderStateBox('channelsList', 'No matching channels', 'Try clearing your search filter.');
+        return;
+      }
       renderChannels(filtered);
-    }
-
-    function formatClock(ts) {
-      const ms = ts > 1e12 ? ts : ts * 1000;
-      const d = new Date(ms);
-      const hh = String(d.getHours()).padStart(2, '0');
-      const mm = String(d.getMinutes()).padStart(2, '0');
-      return hh + ':' + mm;
     }
 
     async function fetchGuide() {
       if (!authToken) return;
+      renderStateBox('guideList', 'Loading TV guide...', 'Fetching current and upcoming schedules from Kinora Server.');
       try {
         if (channelsData.length === 0) {
-          await fetchChannels();
+          const chRes = await fetch('/api/channels', { headers: { 'Authorization': 'Bearer ' + authToken } });
+          if (chRes.ok) channelsData = await chRes.json();
         }
         const res = await fetch('/api/epg', {
           headers: { 'Authorization': 'Bearer ' + authToken }
         });
-        if (res.ok) {
-          guideData = await res.json();
-          renderGuide(guideData);
-        }
-      } catch (e) {}
+        if (res.status === 401) { disconnect(true); return; }
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        guideData = await res.json();
+        renderGuide(guideData);
+      } catch (e) {
+        renderStateBox('guideList', 'Could not load TV guide', 'Check your Wi-Fi connection and retry.', 'fetchGuide');
+      }
     }
 
     function renderGuide(programmes) {
       const box = document.getElementById('guideList');
       if (!programmes || programmes.length === 0) {
-        box.innerHTML = '<div style="color:#94a3b8;font-size:0.85rem;text-align:center;padding:20px;">No TV guide listings loaded on server yet.</div>';
+        renderStateBox('guideList', 'No guide listings yet', 'Import an XMLTV guide on Kinora Server to browse schedules here.', 'fetchGuide');
         return;
       }
       const nowMs = Date.now();
@@ -2879,16 +3871,21 @@ pub fn get_embedded_remote_html() -> &'static str {
           : 0;
         const minsLeft = Math.max(1, Math.round((current.stopMs - nowMs) / 60000));
         cards.push(`
-          <div class="epg-card" data-channel-id="${escapeHtml(channelId)}" data-channel-num="${chNum}">
-            <div class="epg-head">
-              <div>
-                <span class="channel-num">${chNum ? '#' + escapeHtml(chNum) : ''}</span>
-                <span class="channel-title">${escapeHtml(chName)}</span>
+          <div class="epg-card" role="button" tabindex="0" data-channel-id="${escapeHtml(channelId)}" data-channel-num="${chNum}" data-channel-name="${escapeHtml(chName)}">
+            <div class="epg-top">
+              <div class="epg-ch">
+                ${renderArtTile('channel:' + channelId, chName, 'logo-fit')}
+                <div class="item-body">
+                  <div class="item-head">
+                    ${chNum ? `<span class="channel-num">${escapeHtml(chNum)}</span>` : ''}
+                    <span class="item-title">${escapeHtml(chName)}</span>
+                  </div>
+                  <div class="epg-meta">${formatClock(current.startMs)} - ${formatClock(current.stopMs)} (${minsLeft}m left)</div>
+                </div>
               </div>
-              <button type="button" style="background:#6366f1;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:0.72rem;cursor:pointer;">Watch</button>
+              <button type="button" class="btn-watch">Watch</button>
             </div>
-            <div class="epg-now-title">${escapeHtml(current.title)}</div>
-            <div class="epg-meta">${formatClock(current.startMs)} - ${formatClock(current.stopMs)} (${minsLeft}m left)${current.category ? ' - ' + escapeHtml(current.category) : ''}</div>
+            <div class="epg-now">${escapeHtml(current.title)}</div>
             <div class="epg-bar"><div class="epg-bar-fill" style="width:${pct}%"></div></div>
             ${next ? `<div class="epg-next">Next ${formatClock(next.startMs)}: ${escapeHtml(next.title)}</div>` : ''}
           </div>
@@ -2896,7 +3893,7 @@ pub fn get_embedded_remote_html() -> &'static str {
       }
 
       if (cards.length === 0) {
-        box.innerHTML = '<div style="color:#94a3b8;font-size:0.85rem;text-align:center;padding:20px;">No upcoming programmes match your search.</div>';
+        renderStateBox('guideList', 'No matching programmes', 'Try a different search term or tap Refresh.', 'fetchGuide');
         return;
       }
       box.innerHTML = cards.join('');
@@ -2904,10 +3901,7 @@ pub fn get_embedded_remote_html() -> &'static str {
 
     function filterGuide() {
       const q = document.getElementById('guideFilter').value.toLowerCase();
-      if (!q) {
-        renderGuide(guideData);
-        return;
-      }
+      if (!q) { renderGuide(guideData); return; }
       const chMap = new Map();
       for (const c of channelsData) chMap.set(c.id, (c.name || '').toLowerCase());
       const filtered = guideData.filter(p =>
@@ -2921,40 +3915,44 @@ pub fn get_embedded_remote_html() -> &'static str {
 
     async function fetchMedia() {
       if (!authToken) return;
+      renderStateBox('mediaList', 'Loading media library...', 'Reading movies and series from Kinora Server.');
       try {
         const res = await fetch('/api/media', {
           headers: { 'Authorization': 'Bearer ' + authToken }
         });
-        if (res.ok) {
-          mediaData = await res.json();
-          renderMedia(mediaData);
-        }
-      } catch (e) {}
+        if (res.status === 401) { disconnect(true); return; }
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        mediaData = await res.json();
+        renderMedia(mediaData);
+      } catch (e) {
+        renderStateBox('mediaList', 'Could not load media library', 'Check your Wi-Fi connection and retry.', 'fetchMedia');
+      }
     }
 
     function renderMedia(list) {
       const box = document.getElementById('mediaList');
       if (!list || list.length === 0) {
-        box.innerHTML = '<div style="color:#94a3b8;font-size:0.85rem;text-align:center;padding:20px;">No movies, series, or local media found on server.</div>';
+        renderStateBox('mediaList', 'No media items found', 'Add local libraries or VOD sources on Kinora Server, then tap Refresh.', 'fetchMedia');
         return;
       }
       box.innerHTML = list.map(m => {
         const metaParts = [];
         if (m.year) metaParts.push(String(m.year));
         if (Array.isArray(m.genres) && m.genres.length > 0) metaParts.push(m.genres.slice(0, 2).join(', '));
-        const subtitle = metaParts.join(' - ') || (m.group || 'Library');
+        const subtitle = metaParts.join(' / ') || 'Library';
         return `
-        <div class="channel-item media-item" data-media-id="${escapeHtml(m.id)}" data-media-title="${escapeHtml(m.title)}" data-media-kind="${escapeHtml(m.kind || 'movie')}">
-          <div>
-            <div>
-              <span class="media-badge">${escapeHtml(m.kind || 'media')}</span>
-              <span class="channel-title">${escapeHtml(m.title)}</span>
+          <div class="channel-item media-item" role="button" tabindex="0" data-media-id="${escapeHtml(m.id)}" data-media-title="${escapeHtml(m.title)}" data-media-kind="${escapeHtml(m.kind || 'movie')}">
+            ${renderArtTile(m.artworkKey || m.id, m.title, 'poster')}
+            <div class="item-body">
+              <div>
+                <span class="kind-tag">${escapeHtml(m.kind || 'movie')}</span>
+                <span class="item-title">${escapeHtml(m.title)}</span>
+              </div>
+              <div class="item-sub">${escapeHtml(subtitle)}</div>
             </div>
-            <div class="channel-now">${escapeHtml(subtitle)}</div>
+            <button type="button" class="btn-watch">Play</button>
           </div>
-          <button type="button" style="background:#6366f1;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:0.75rem;cursor:pointer;">Play on TV</button>
-        </div>
-      `;
+        `;
       }).join('');
     }
 
@@ -2965,6 +3963,10 @@ pub fn get_embedded_remote_html() -> &'static str {
         (m.kind || '').toLowerCase().includes(q) ||
         (Array.isArray(m.genres) && m.genres.some(g => String(g).toLowerCase().includes(q)))
       );
+      if (filtered.length === 0 && q) {
+        renderStateBox('mediaList', 'No matching titles', 'Try clearing your search filter.');
+        return;
+      }
       renderMedia(filtered);
     }
 
@@ -2985,6 +3987,7 @@ pub fn get_embedded_remote_html() -> &'static str {
     function connectSse() {
       if (sseSource) sseSource.close();
       sseSource = new EventSource('/api/events?token=' + encodeURIComponent(authToken || ''));
+      sseSource.onopen = () => setConnectionStatus(true);
       sseSource.onmessage = (e) => {
         try {
           const state = JSON.parse(e.data);
@@ -2994,43 +3997,54 @@ pub fn get_embedded_remote_html() -> &'static str {
         } catch (err) {}
       };
       sseSource.onerror = () => {
+        setConnectionStatus(false);
         if (sseSource) sseSource.close();
         setTimeout(connectSse, 4000);
       };
     }
 
     function updatePlaybackUi(state) {
-      document.getElementById('npTitle').innerText = state.title || 'Kinora TV';
-      document.getElementById('npChannel').innerText = state.channelName ? `${state.channelName} (${state.channelNumber || ''})` : (state.subtitle || 'Connected');
+      document.getElementById('npTitle').textContent = state.title || 'Kinora TV';
+      document.getElementById('npChannel').textContent = state.channelName
+        ? (state.channelNumber ? state.channelName + ' (' + state.channelNumber + ')' : state.channelName)
+        : (state.subtitle || 'Connected and ready');
+
       const playBtn = document.getElementById('btnPlayPause');
       if (playBtn && typeof state.isPlaying === 'boolean') {
-        playBtn.innerText = state.isPlaying ? 'Pause' : 'Play';
+        playBtn.textContent = state.isPlaying ? 'Pause' : 'Play';
+        playBtn.classList.toggle('is-active', state.isPlaying);
       }
       const muteBtn = document.getElementById('btnMute');
       if (muteBtn && typeof state.isMuted === 'boolean') {
-        muteBtn.innerText = state.isMuted ? 'Unmute' : 'Mute';
+        muteBtn.textContent = state.isMuted ? 'Unmute' : 'Mute';
+        muteBtn.classList.toggle('is-active', state.isMuted);
       }
+
       const slider = document.getElementById('seekSlider');
       const curLabel = document.getElementById('npTimeCur');
       const durLabel = document.getElementById('npTimeDur');
+      const badge = document.getElementById('npBadge');
       const dur = Number(state.durationSec) || 0;
       const pos = Math.max(0, Number(state.positionSec) || 0);
-      currentDurationSec = dur;
-      if (slider && curLabel && durLabel) {
+      if (slider && curLabel && durLabel && badge) {
         if (dur > 0 && !state.isLive) {
           slider.disabled = false;
           slider.max = String(Math.floor(dur));
-          durLabel.innerText = formatTime(dur);
+          durLabel.textContent = formatTime(dur);
+          badge.textContent = state.isPlaying ? 'PLAYING' : 'PAUSED';
+          badge.classList.add('vod');
           if (!isSeeking) {
             slider.value = String(Math.min(Math.floor(dur), Math.floor(pos)));
-            curLabel.innerText = formatTime(pos);
+            curLabel.textContent = formatTime(pos);
           }
         } else {
           slider.disabled = true;
           slider.max = '100';
           slider.value = '0';
-          curLabel.innerText = formatTime(pos);
-          durLabel.innerText = 'LIVE';
+          curLabel.textContent = formatTime(pos);
+          durLabel.textContent = 'LIVE';
+          badge.textContent = 'LIVE';
+          badge.classList.remove('vod');
         }
       }
     }
@@ -3060,6 +4074,12 @@ mod tests {
         assert!(html.contains("fetchGuide()"));
         assert!(html.contains("play_media_item"));
         assert!(!html.contains(r#"onclick="tuneToChannel("#));
+        // Brand identity: Kinora obsidian + crimson, zero generic AI indigo/purple
+        assert!(html.contains("#E50914"));
+        assert!(html.contains("#050507"));
+        assert!(html.contains("kp-stem"));
+        assert!(!html.contains("#6366f1"));
+        assert!(!html.contains("user-scalable=no"));
     }
 
     #[test]
