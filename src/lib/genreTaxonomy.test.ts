@@ -101,12 +101,23 @@ describe('Genre Artwork Engine & Strict Fallback Priority', () => {
   })
 
   it('inherits parent artwork for subgenres that do not have dedicated individual assets', () => {
-    const subgenreId = 'scifi-space-opera'
+    const subgenreId = 'scifi-dystopian'
     const resolved = resolveGenreArtwork(subgenreId, 'landscape')
 
     expect(resolved.provenance).toBe('verified')
     expect(resolved.url).toBe('/art/genres/science-fiction.jpg')
-    expect(resolved.ambient.primaryHue).toBe(200)
+    expect(resolved.ambient.primaryHue).toBe(210)
+  })
+
+  it('resolves dedicated unique artwork for premier subgenres', () => {
+    const spaceOpera = resolveGenreArtwork('scifi-space-opera', 'landscape')
+    expect(spaceOpera.url).toBe('/art/genres/space-opera.jpg')
+
+    const detective = resolveGenreArtwork('crime-detective', 'landscape')
+    expect(detective.url).toBe('/art/genres/detective.jpg')
+
+    const procedural = resolveGenreArtwork('crime-procedural', 'landscape')
+    expect(procedural.url).toBe('/art/genres/police-procedural.jpg')
   })
 
   it('generates procedural ambient SVG fallback for unknown genres', () => {
