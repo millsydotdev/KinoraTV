@@ -33,4 +33,34 @@ describe('qrCode', () => {
 
     expect(matrix.size).toBeGreaterThan(21)
   })
+
+  it('writes ISO 18004 format info 0x77C4 (EC-L, Mask 0) in top-left, bottom-left, and top-right', () => {
+    const matrix = generateQrMatrix('http://192.168.0.77:5198')
+    const s = matrix.size
+    // Expected 15 bits MSB-first for 0x77C4: 111011111000100
+    const expected = [true, true, true, false, true, true, true, true, true, false, false, false, true, false, false]
+    const topLeft = [
+      matrix.modules[8]?.[0],
+      matrix.modules[8]?.[1],
+      matrix.modules[8]?.[2],
+      matrix.modules[8]?.[3],
+      matrix.modules[8]?.[4],
+      matrix.modules[8]?.[5],
+      matrix.modules[8]?.[7],
+      matrix.modules[8]?.[8],
+      matrix.modules[7]?.[8],
+      matrix.modules[5]?.[8],
+      matrix.modules[4]?.[8],
+      matrix.modules[3]?.[8],
+      matrix.modules[2]?.[8],
+      matrix.modules[1]?.[8],
+      matrix.modules[0]?.[8],
+    ]
+    expect(topLeft).toEqual(expected)
+
+    // Bottom-left vertical (bits 14..8 bottom-to-top) and top-right horizontal (bits 7..0 left-to-right)
+    const bottomLeft = Array.from({ length: 7 }, (_, i) => matrix.modules[s - 1 - i]?.[8])
+    const topRight = Array.from({ length: 8 }, (_, i) => matrix.modules[8]?.[s - 8 + i])
+    expect([...bottomLeft, ...topRight]).toEqual(expected)
+  })
 })

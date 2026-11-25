@@ -38,8 +38,8 @@ function rsGeneratorPoly(degree: number): number[] {
     const res = new Array(poly.length + 1).fill(0)
     for (let j = 0; j < poly.length; j++) {
       const pVal = poly[j] ?? 0
-      res[j] ^= gfMul(pVal, root)
-      res[j + 1] ^= pVal
+      res[j] ^= pVal
+      res[j + 1] ^= gfMul(pVal, root)
     }
     poly = res
   }
@@ -226,11 +226,11 @@ export function generateQrMatrix(text: string): QrMatrix {
   }
 
   let col = size - 1
+  let upward = true
   while (col > 0) {
     if (col === 6) col-- // Skip vertical timing pattern
 
     for (let r = 0; r < size; r++) {
-      const upward = ((col + 1) / 2) % 2 === 1
       const row = upward ? size - 1 - r : r
 
       for (let c = 0; c < 2; c++) {
@@ -245,11 +245,13 @@ export function generateQrMatrix(text: string): QrMatrix {
       }
     }
     col -= 2
+    upward = !upward
   }
 
-  // Format Information for Error Correction L and Mask Pattern 0: 0x77c4
-  const formatBits = [0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0]
-  // Top-left
+  // Format Information for Error Correction L (01) and Mask Pattern 0 (000): 0x77C4 (15 bits MSB first)
+  // Bit indices: 14..0 = [1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0]
+  const formatBits = [1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0]
+  // Top-left horizontal (bits 14..7) and vertical (bits 6..0)
   setModule(8, 0, formatBits[0] === 1, true)
   setModule(8, 1, formatBits[1] === 1, true)
   setModule(8, 2, formatBits[2] === 1, true)
@@ -266,12 +268,13 @@ export function generateQrMatrix(text: string): QrMatrix {
   setModule(1, 8, formatBits[13] === 1, true)
   setModule(0, 8, formatBits[14] === 1, true)
 
-  // Top-right and bottom-left
+  // Bottom-left vertical (bits 14..8, bottom to top)
   for (let i = 0; i < 7; i++) {
-    setModule(8, size - 1 - i, formatBits[i] === 1, true)
+    setModule(size - 1 - i, 8, formatBits[i] === 1, true)
   }
-  for (let i = 7; i < 15; i++) {
-    setModule(size - 15 + i, 8, formatBits[i] === 1, true)
+  // Top-right horizontal (bits 7..0, left to right)
+  for (let i = 0; i < 8; i++) {
+    setModule(8, size - 8 + i, formatBits[7 + i] === 1, true)
   }
 
   return { size, modules }
