@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { PageHeader } from './PageHeader'
 import { Icon } from './Icon'
 import { ResourceCard, type ResourceCardVariant } from './ResourceCard'
@@ -203,6 +204,15 @@ export function MediaCategoryPage({ categoryId, customBannerHero, featuredIds, c
                 </button>
               )
             })}
+            <Link
+              to={categoryId === 'music' || categoryId === 'radio' || categoryId === 'podcasts' ? '/discover?type=audio' : categoryId === 'books' || categoryId === 'audiobooks' ? '/discover?type=books' : '/discover'}
+              className="media-subcat-chip media-genre-hub-link"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderColor: 'var(--accent)' }}
+              title="Explore canonical genres in Discovery"
+            >
+              <Icon name="tag" size={12} />
+              <span>Explore Genres</span>
+            </Link>
           </div>
         )}
 

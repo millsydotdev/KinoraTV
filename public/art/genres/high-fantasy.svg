@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0518"/>
+      <stop offset="50%" stop-color="#180b33"/>
+      <stop offset="100%" stop-color="#05020c"/>
+    </linearGradient>
+    <radialGradient id="mystic-glow" cx="50%" cy="30%" r="50%">
+      <stop offset="0%" stop-color="#e0aaff" stop-opacity="0.8"/>
+      <stop offset="50%" stop-color="#7b2cbf" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#0a0518" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="aurora" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#5a189a"/>
+      <stop offset="50%" stop-color="#ffd166"/>
+      <stop offset="100%" stop-color="#7b2cbf"/>
+    </linearGradient>
+    <linearGradient id="vignette" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#000000" stop-opacity="0.3"/>
+      <stop offset="60%" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.9"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <rect width="1280" height="720" fill="url(#mystic-glow)"/>
+  <circle cx="640" cy="220" r="160" stroke="url(#aurora)" stroke-width="2.5" fill="none" opacity="0.6"/>
+  <circle cx="640" cy="220" r="120" stroke="#ffd166" stroke-width="1.5" stroke-dasharray="6,8" fill="none" opacity="0.4"/>
+  <g opacity="0.9">
+    <polygon points="640,120 620,440 660,440" fill="#0f0724" stroke="#e0aaff" stroke-width="1.5"/>
+    <polygon points="560,200 540,460 580,460" fill="#0c051d" stroke="#7b2cbf" stroke-width="1"/>
+    <polygon points="720,200 700,460 740,460" fill="#0c051d" stroke="#7b2cbf" stroke-width="1"/>
+    <polygon points="460,300 440,540 480,540" fill="#080314"/>
+    <polygon points="820,300 800,540 840,540" fill="#080314"/>
+    <path d="M0,720 L380,480 L640,540 L900,480 L1280,720 Z" fill="#04010a"/>
+  </g>
+  <circle cx="640" cy="120" r="8" fill="#ffd166" opacity="0.95"/>
+  <rect width="1280" height="720" fill="url(#vignette)"/>
+</svg>

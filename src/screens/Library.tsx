@@ -516,6 +516,10 @@ function SavedList({ list }: { list: 'watchlist' | 'favourites' }) {
               {kindLabel[k]} <span className="count tnum">{k === 'all' ? all.length : all.filter((r) => r.kind === k).length}</span>
             </button>
           ))}
+          <Link to="/discover" className="chip" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} title="Explore by Genre in Discovery">
+            <Icon name="tag" size={14} />
+            <span>Explore Genres</span>
+          </Link>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button

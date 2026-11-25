@@ -95,6 +95,38 @@ for (const genre of CANONICAL_GENRES) {
   }
 }
 
+// Canonical common provider & international variants
+const COMMON_VARIANTS: Record<string, string> = {
+  documentaires: 'documentary',
+  documentales: 'documentary',
+  doku: 'documentary',
+  'sci fi & fantasy': 'science-fiction',
+  'sci fi and fantasy': 'science-fiction',
+  'science fiction & fantasy': 'science-fiction',
+  'science fiction and fantasy': 'science-fiction',
+  'reality tv': 'live-lifestyle',
+  reality: 'live-lifestyle',
+  soap: 'drama',
+  'soap opera': 'drama',
+  telenovela: 'drama',
+  'talk show': 'live-news',
+  'talk radio': 'audio-podcasts',
+  'business & economics': 'biography',
+  business: 'biography',
+  finances: 'live-news',
+  finance: 'live-news',
+}
+
+for (const [variant, targetId] of Object.entries(COMMON_VARIANTS)) {
+  const targetGenre = getGenreById(targetId)
+  if (targetGenre) {
+    const key = cleanKey(variant)
+    if (!NORMALIZED_LOOKUP.has(key)) {
+      NORMALIZED_LOOKUP.set(key, { genre: targetGenre, confidence: 0.85, matchedBy: 'provider' })
+    }
+  }
+}
+
 /**
  * Normalizes a raw genre or category string to a canonical GenreDefinition.
  */
