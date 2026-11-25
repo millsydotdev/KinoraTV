@@ -2563,7 +2563,7 @@ function DataSection() {
         </Row>
       </Group>
 
-      <Group title="Kinora Ecosystem & Platform Architecture">
+      <Group title="Server, Companion & Sync Architecture">
         <Row title="Platform Operating Mode" hint="Configure whether Kinora operates independently, acts as a home server, or connects to an existing server.">
           <div style={{ display: 'flex', gap: '8px' }}>
             {(['standalone', 'server', 'client'] as const).map((m) => (

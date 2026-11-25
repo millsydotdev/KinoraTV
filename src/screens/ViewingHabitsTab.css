@@ -130,7 +130,7 @@
 
 .vh-bar-fill {
   width: 100%;
-  background: linear-gradient(180deg, rgb(var(--accent, 220 38 38)), rgba(220, 38, 38, 0.4));
+  background: linear-gradient(180deg, var(--accent, #e50d24), rgb(var(--accent-rgb, 229 13 36) / 0.4));
   border-radius: 6px 6px 0 0;
   transition: height 0.3s ease;
   min-height: 4px;
@@ -186,7 +186,7 @@
 
 .vh-format-progress {
   height: 100%;
-  background: rgb(var(--accent, 220 38 38));
+  background: var(--accent, #e50d24);
   border-radius: 3px;
 }
 

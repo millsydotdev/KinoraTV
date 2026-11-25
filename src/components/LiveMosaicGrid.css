@@ -148,7 +148,7 @@
 .mosaic-tile.is-empty {
   border-style: dashed;
   border-color: var(--border-subtle);
-  background: rgba(var(--surface-rgb, 24, 24, 27), 0.4);
+  background: color-mix(in oklab, var(--surface-2) 65%, transparent);
 }
 
 .mosaic-tile-video-placeholder {
@@ -171,7 +171,6 @@
   font-weight: 700;
   padding: 0.15rem 0.5rem;
   border-radius: 4px;
-  backdrop-filter: blur(4px);
   z-index: 2;
 }
 
@@ -198,8 +197,7 @@
   width: 52px;
   height: 52px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(6px);
+  background: rgba(0, 0, 0, 0.75);
   display: flex;
   align-items: center;
   justify-content: center;

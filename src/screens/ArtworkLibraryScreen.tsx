@@ -475,7 +475,16 @@ function ArtworkUploadModal({
             ) : (
               <div
                 className="artwork-dropzone"
+                role="button"
+                tabIndex={0}
+                aria-label="Select image file or drag and drop"
                 onClick={() => fileInputRef.current?.click()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    fileInputRef.current?.click()
+                  }
+                }}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {
                   e.preventDefault()

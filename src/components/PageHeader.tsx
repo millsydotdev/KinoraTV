@@ -612,9 +612,18 @@ function HeaderSearch({ placeholder, onOpenQuickSearch }: { placeholder: string;
 
           <div
             className="header-search-footer"
+            role="button"
+            tabIndex={0}
             onClick={() => {
               setIsOpen(false)
               navigate(`/search?q=${encodeURIComponent(query.trim())}`)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                setIsOpen(false)
+                navigate(`/search?q=${encodeURIComponent(query.trim())}`)
+              }
             }}
           >
             <span>Press Enter to search catalog for &ldquo;{query.trim()}&rdquo;</span>

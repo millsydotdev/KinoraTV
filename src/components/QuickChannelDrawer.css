@@ -139,8 +139,8 @@
 }
 
 .quick-channel-row.is-current {
-  background: rgba(var(--accent-rgb) / 0.15);
-  border: 1px solid rgba(var(--accent-rgb) / 0.3);
+  background: rgb(var(--accent-rgb, 229 13 36) / 0.15);
+  border: 1px solid rgb(var(--accent-rgb, 229 13 36) / 0.35);
 }
 
 .quick-channel-tune-btn {

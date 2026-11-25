@@ -182,7 +182,20 @@ export function LiveMosaicGrid({
             <div
               key={index}
               className={`mosaic-tile slot-${index} ${isFocused ? 'is-focused' : ''} ${!channel ? 'is-empty' : ''}`}
+              role="button"
+              tabIndex={0}
               onClick={() => setFocusedIndex(index)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  if (isFocused && channel) {
+                    onTuneFullChannel(channel)
+                    onClose()
+                  } else {
+                    setFocusedIndex(index)
+                  }
+                }
+              }}
               onDoubleClick={() => {
                 if (channel) {
                   onTuneFullChannel(channel)

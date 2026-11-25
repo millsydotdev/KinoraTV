@@ -143,8 +143,8 @@
 }
 
 .syncplay-primary-btn {
-  background: rgb(var(--accent, 220 38 38));
-  color: #ffffff;
+  background: var(--accent, #e50d24);
+  color: var(--accent-ink, #ffffff);
 }
 
 .syncplay-primary-btn:hover {

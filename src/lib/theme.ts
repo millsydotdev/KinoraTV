@@ -181,6 +181,7 @@ export function applyThemeTokensToElement(
   const hex = accent === 'custom' ? customAccent : (ACCENTS[accent] ?? ACCENTS.red)
   const t = accentTokens(hex, theme)
   el.style.setProperty('--accent', t.accent)
+  el.style.setProperty('--accent-rgb', rgb(t.accent).join(' '))
   el.style.setProperty('--accent-ink', t.ink)
   el.style.setProperty('--accent-text', t.text)
   el.style.setProperty('--accent-primary', t.accent)

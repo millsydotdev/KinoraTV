@@ -173,6 +173,12 @@ export function StalkerServerModal({
                     key={p.id}
                     className="stalker-portal-chip"
                     onClick={() => handleLoadSaved(p)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        handleLoadSaved(p)
+                      }
+                    }}
                     role="button"
                     tabIndex={0}
                   >

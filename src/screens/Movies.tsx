@@ -556,7 +556,7 @@ export function Movies() {
               {activeMovie.rating && (
                 <div className="movies-side-rating-item" style={{ color: '#f59e0b' }}>
                   <Icon name="star" size={15} />
-                  <span>{activeMovie.rating} {activeMovie.ratingCount && <span style={{ color: 'rgba(255, 255, 255, 0.4)', fontWeight: 400 }}>({activeMovie.ratingCount})</span>}</span>
+                  <span>{activeMovie.rating} {activeMovie.ratingCount && <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>({activeMovie.ratingCount})</span>}</span>
                 </div>
               )}
               {activeMovie.tomatoRating && (
@@ -1246,9 +1246,17 @@ export function Movies() {
                 <div
                   key={col.id}
                   className="panel"
+                  role="button"
+                  tabIndex={0}
                   style={{ padding: 18, borderRadius: 8, cursor: 'pointer', background: 'var(--surface-1)', border: '1px solid var(--line)' }}
                   onClick={() => {
                     window.location.href = `/library?tab=collections&c=${encodeURIComponent(col.id)}`
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      window.location.href = `/library?tab=collections&c=${encodeURIComponent(col.id)}`
+                    }
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>

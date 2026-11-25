@@ -1457,8 +1457,8 @@
   position: absolute;
   top: 15%;
   right: 12%;
-  width: 480px;
-  height: 480px;
+  width: min(480px, 100%);
+  height: min(480px, 100%);
   background: radial-gradient(circle, rgba(229, 9, 20, 0.12) 0%, rgba(18, 22, 30, 0.04) 55%, transparent 75%);
   pointer-events: none;
   filter: blur(40px);

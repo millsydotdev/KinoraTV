@@ -150,8 +150,7 @@
   height: 44px;
   border-radius: 50%;
   border: 2px solid rgba(255, 255, 255, 0.95);
-  background: rgba(0, 0, 0, 0.42);
-  backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.62);
   display: grid;
   place-items: center;
   color: #ffffff;
