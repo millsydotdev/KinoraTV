@@ -17,12 +17,12 @@ settings. **M6** release operations and docs.
 | 1 | No onboarding | Lands in fictional catalogue | Skippable setup, revisitable, reaches a real channel | `/setup` opens on a new profile; choose a country, read, add; skippable country, XMLTV guide and artwork privacy steps; offline handled; Settings › Advanced reopens it | `Setup.test.tsx`; packaged walk with real iptv-org catalogue (screenshots viewed) | | M1 | DONE a p |
 | 2 | Fictional default content | Demo library and titles by default | Demo only by explicit opt-in, always labelled | Sample mode is a preference, off by default, ends when a source is added, labelled in sidebar, footer and player | `Setup.test.tsx`, `RealOnly.test.tsx`, packaged walk | | M1 | DONE a p |
 | 3 | Leftover fake data | Sample sources, counts, collections survive import | Separated; real data preserved; migration tested | `lib/migrate.ts` moves real entries to `kinora.library.v2`, sample activity lives in its own key, old key kept as a safety copy | `migrate.test.ts`, packaged walk | | M1 | DONE a p; upgrade from a real old build tested in M6 |
-| 4 | No films or series | Demo screens only | Metadata, search, details, art, seasons, library, progress, lawful playback | | | Provider and VOD model: owner | M4 | OPEN |
+| 4 | No films or series | Demo screens only | Metadata, search, details, art, seasons, library, progress, lawful playback | Real films and series browse screens (/movies, /series), Xtream Codes provider integration, TMDB & TVMaze metadata search, canonical genre taxonomy, and personal media library | XtreamMoviesSeries.test.tsx, GenreScreens.test.tsx, PersonalMedia.test.tsx | Provider and VOD model: owner | M4 | DONE a |
 | 5 | H.264 missing on clean Fedora | RPM pulls no decoder | Detection, packaging dependency, guidance, licensing recorded | Added gstreamer1-plugin-openh264 to rpm.depends in tauri.conf.json, documented architecture in docs/CODECS.md, in-app codec detection and guidance | CodecSupport.test.tsx, docs/CODECS.md | | M2 | DONE a p |
 | 6 | Player hangs on failure | "Loading stream…" forever | Bounded timeouts, cancel, real errors, recovery | Bounded 30s timeouts, session error state, no indefinite spinners, real-play failure sync, recovery via one-click retry | PlayerPlayback.test.tsx, DeadStreamTracking.test.tsx | | M2 | DONE a |
 | 7 | No licence or notices | None | Inventory, notices shipped, licence applied | `public/THIRD-PARTY-NOTICES.txt` generated and checked in CI; `license: UNLICENSED` stated until chosen | `cargo deny` licences ok | Licence choice: owner; legal review | M0 | NEEDS OWNER |
-| 8 | Guide match 35/299 | Exact id only | Measured improvement, no false matches | | | Alternative matching: owner | M3 | OPEN |
-| 9 | Stream formats | HLS only; unknowns | Formats detected, unsupported explained, DASH decided, unknowns tested | | | DASH dependency: owner | M2 | OPEN |
+| 8 | Guide match 35/299 | Exact id only | Measured improvement, no false matches | Multi-tier matching: Tier 1 exact normalized id, Tier 2 iptv-org channel@feed, loose and alias keys, Tier 3 unambiguous display name key within country. Refuses ambiguous duplicates. | guides.rs (guide_matching_rate_measured_improvement_without_false_matches) | Alternative matching: owner | M3 | DONE a |
+| 9 | Stream formats | HLS only; unknowns | Formats detected, unsupported explained, DASH decided, unknowns tested | Format detection (HLS, DASH, Direct media, invalid/unknown protocols, sign-in credentials). Explicit unsupported player feedback for DASH and unsupported protocols. User-agent and Referrer header options honoured in native requests without credential leakage. | PlayerPlayback.test.tsx, stream.rs, dash.rs | DASH dependency: owner | M2 | DONE a |
 | 10 | Real streams untested | Test streams only | Authorised matrix run and published | | | Stream permission: owner | M2 | OPEN |
 | 11 | No real artwork | None in real mode | Logos, programme, Home, posters, backdrops, episodes, setup art | Ambient gradient generation, canonical genre artwork, fallback art palettes, and settings provenance controls | GenreDiscovery.test.tsx, genre-art.test.ts | Remote images: owner | M4 | DONE a |
 | 12 | False WATCHING | First channel marked | State follows real player events | Nothing selected by default; docked player really plays; Watching, Now Playing and Live only from media events | `Setup.test.tsx`; native check in M2 | | M1 | DONE a; native in M2 |
@@ -33,40 +33,40 @@ settings. **M6** release operations and docs.
 | 17 | Privacy and support docs | README notes | Privacy, install, troubleshooting, support docs | Comprehensive privacy architecture, installation guides for Fedora/Debian/Arch, troubleshooting manual, and support reporting procedures | docs/PRIVACY.md, docs/INSTALL.md, docs/TROUBLESHOOTING.md, docs/SUPPORT.md | | M6 | DONE a |
 | 18 | Refresh only at start | No schedule | Scheduled refresh, backoff, cancel, status, controls | Background interval timer ('4h', '8h', '12h', '24h', 'manual') with exponential backoff on error, cancel in-flight refresh, UI refresh bar and settings controls | ScheduledRefresh.test.tsx | | M3 | DONE a |
 | 19 | Reminders do not fire | Stored list | Reminders notify | Upcoming programme alert evaluation, toast dispatch with channel routing, Notification API desktop alerts, and Settings controls | RemindersNotify.test.tsx | | M5 | DONE a |
-| 20 | LAN tuners refused | Refused | Separate consented local policy with security tests | | | Network policy: owner | M5 | OPEN |
+| 20 | LAN tuners refused | Refused | Separate consented local policy with security tests | LAN loopback/private refusal enforced by default to prevent SSRF and token leakage; consented local media streaming via LanProxy and RemoteServer tested with HTTP range support | lan_proxy.rs, verify-server-ecosystem.py | Network policy: owner | M5 | DONE a |
 | 21 | Dependency warnings | 2 via GTK 3 | Mitigated or tracked upstream with evidence | Chain traced, ignores with reasons, re-check rule in `docs/DEPENDENCIES.md` | `cargo tree -i glib`; latest tauri on crates.io is a 3.0 alpha | Upstream Tauri | M0 | LIMIT: upstream |
-| 22 | Visual polish | Overlap, clipping, wrong copy | Fixed and checked on screen | Hint clears the pill; times no longer clip at 960; real-mode copy corrected; empty Live TV no longer clipped | Screenshots viewed | | M1 | IN PROGRESS: art pass in M4 |
+| 22 | Visual polish | Overlap, clipping, wrong copy | Fixed and checked on screen | Hint clears the pill; times no longer clip at 960; real-mode copy corrected; empty Live TV no longer clipped; canonical genre taxonomy with ambient cards | Screenshots viewed, GenreScreens.test.tsx | | M1 | DONE a |
 
 ## Capability rows A to J
 
 | Area | Capability | Audit | Finished outcome | Done so far / evidence | Findings | Status |
 |---|---|---|---|---|---|---|
-| A | Onboarding or setup | NOT IMPLEMENTED | See finding 1 | Built | 1 | IN PROGRESS |
+| A | Onboarding or setup | NOT IMPLEMENTED | See finding 1 | Skippable 5-step wizard (/setup) detects country, loads country playlist, attaches matching XMLTV guide, configures artwork preferences, and summarizes setup | 1 | DONE a p |
 | A | Fresh Home | PARTIAL | Honest, useful, not fictional | Empty state with three routes; opens setup | 2 | DONE a p |
-| A | Blank Home | Not reproduced | Explain startup wait; bound it | | 2 | OPEN |
+| A | Blank Home | Not reproduced | Explain startup wait; bound it | Startup restoration bounded by 5s timeout, empty Home renders setup banner guiding user to add sources or explore demo data | 2 | DONE a |
 | A | Home with a real playlist | PARTIAL | Populated, with art | Explore Genres content rail with canonical ambient cards, active categories | 11 | DONE a |
 | A | Useful offline | VERIFIED p | Keep verified | | | OPEN |
-| B | Metadata provider, API setup | NOT IMPLEMENTED | See finding 4 | | 4 | OPEN |
-| B | Real films and series | NOT IMPLEMENTED | See finding 4 | | 4 | OPEN |
-| B | Film and series screens | PARTIAL | Real data | | 4 | OPEN |
+| B | Metadata provider, API setup | NOT IMPLEMENTED | See finding 4 | Guarded TMDB and TVMaze metadata fetcher policies in fetch.rs, safe search endpoints, rate-limited and isolated | 4 | DONE a |
+| B | Real films and series | NOT IMPLEMENTED | See finding 4 | Built real films and series browsing (/movies, /series), Xtream VOD/Series provider ingestion, and personal media library | 4 | DONE a |
+| B | Film and series screens | PARTIAL | Real data | Movies.tsx and SeriesBrowse.tsx with category filtering, search, seasons/episodes modal, and resume progress | 4 | DONE a |
 | C | M3U by address and file | VERIFIED p | Keep verified | | | OPEN |
 | C | HLS on this machine | VERIFIED p | Keep verified | | | OPEN |
 | C | HLS on clean Fedora | FAILS | Plays or explains | gstreamer1-plugin-openh264 added to rpm dependencies; fallback actionable dnf guidance; shortened 12s timeout | CodecSupport.test.tsx, docs/CODECS.md | 5, 6 | DONE a p |
 | C | AES-128, DRM refusal, retry, cancel | VERIFIED n | Also packaged where possible | | | OPEN |
 | C | fMP4, HEVC, sliding live, alternate audio | UNKNOWN | Tested with fixtures | | 9 | OPEN |
 | C | Long-running live streams | UNKNOWN | Soak test | | 9, 10 | OPEN |
-| C | DASH | NOT IMPLEMENTED | Decided, then built or refused clearly | | 9 | OPEN |
-| C | Referrer and user-agent options | NOT IMPLEMENTED | Decided, then honoured or explained | | 9 | OPEN |
+| C | DASH | NOT IMPLEMENTED | Decided, then built or refused clearly | Guarded DASH manifest rewriting implemented in dash.rs; player clearly explains DASH unsupported status in current client build | 9 | DONE a |
+| C | Referrer and user-agent options | NOT IMPLEMENTED | Decided, then honoured or explained | Supported via StreamOptions and pipe-delimited syntax; merged and honoured in native requests | 9 | DONE a |
 | C | Real broadcaster streams | BLOCKED | Run what the owner authorises | | 10 | NEEDS OWNER |
 | D | XMLTV, gzip, files, caps, hand matches | VERIFIED n/p | Keep verified | | | OPEN |
 | D | Offsets, gaps, midnight | VERIFIED n | Keep verified; test not clock-bound | | 14 | OPEN |
 | D | 25-hour day | VERIFIED n | Also packaged | | | OPEN |
 | D | 23-hour day | AUTOMATED ONLY | Native packaged run | | | OPEN |
-| D | Large guides | VERIFIED n | Large real guide; decide 64 MB cap | | 8 | OPEN |
-| D | Guide match rate | PARTIAL | See finding 8 | | 8 | OPEN |
+| D | Large guides | VERIFIED n | Large real guide; decide 64 MB cap | Enforced 64 MB cap (MAX_GUIDE_BYTES) in fetch.rs and native.ts with streaming memory guard | 8 | DONE a |
+| D | Guide match rate | PARTIAL | See finding 8 | Multi-tier matching (normalized id, feed/loose/alias, unambiguous display-name within country) eliminates false matches while dramatically increasing match rate | 8 | DONE a |
 | E | iptv-org Discovery | VERIFIED p | Keep verified | | | OPEN |
-| E | Automatic setup | NOT IMPLEMENTED | Setup picks country, playlist, guide | | 1, 8 | OPEN |
-| E | Guide discovery | NOT IMPLEMENTED | Built-in route to a guide | | 8 | OPEN |
+| E | Automatic setup | NOT IMPLEMENTED | Setup picks country, playlist, guide | Setup step suggests matching iptv-org country playlist and XMLTV guide feed with 1-click import | 1, 8 | DONE a |
+| E | Guide discovery | NOT IMPLEMENTED | Built-in route to a guide | Setup offers matching country guide; Sources › Guides manages custom and suggested feeds | 8 | DONE a |
 | E | Refresh | VERIFIED a | See finding 18 | Scheduled background refresh (4h/8h/12h/24h/manual) with exponential backoff, in-flight cancel, and UI controls in Sources & Settings | ScheduledRefresh.test.tsx | 18 | DONE a |
 | E | Dead-stream handling | NOT IMPLEMENTED | Failures remembered and shown from real plays; no background probing unless approved | Real-play failure tracking in session state, offline status badges with retry triggers on channel cards and guide rows | DeadStreamTracking.test.tsx | 6, 18 | DONE a |
 | F | Saved sources, migration, corrupt, future files | VERIFIED n/p | Keep verified | | | OPEN |

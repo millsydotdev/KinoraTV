@@ -312,6 +312,10 @@ export function useStreamPlayback(streamUrl: string | null, video: RefObject<HTM
         el.load()
         return
       }
+      if (opened.format === 'dash') {
+        disarm()
+        return set(state('unsupported', 'Kinora currently supports HLS and direct media streams. MPEG-DASH (.mpd) streams are not supported in this player build.'))
+      }
       const { default: Hls } = await import('hls.js')
       if (!live) return
       if (!Hls.isSupported()) { disarm(); return set(state('unsupported', 'This system cannot play HLS: Media Source Extensions are unavailable.')) }

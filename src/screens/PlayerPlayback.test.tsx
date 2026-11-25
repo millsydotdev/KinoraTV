@@ -256,6 +256,17 @@ describe('errors and retry', () => {
     await mount(watch(one.id))
     expect(text()).toContain('Playback needs the Kinora desktop app.')
   })
+
+  it('explains unsupported DASH streams clearly without mounting HLS', async () => {
+    native.openStream.mockResolvedValueOnce({
+      url: `kstream://localhost/${'d'.repeat(32)}`,
+      session: 42,
+      format: 'dash',
+    })
+    await mount(watch(one.id))
+    expect(text()).toContain('MPEG-DASH (.mpd) streams are not supported in this player build.')
+    expect(FakeHls.instances).toHaveLength(0)
+  })
 })
 
 describe('switching and leaving', () => {
