@@ -2393,7 +2393,8 @@ pub fn get_embedded_remote_html() -> &'static str {
       --radius: 8px;
       --radius-lg: 12px;
       --focus-ring: 0 0 0 2px #050507, 0 0 0 4px #ff6b73;
-      --nav-h: 64px;
+      --header-h: 52px;
+      --nav-h: 58px;
     }
 
     * {
@@ -2413,9 +2414,10 @@ pub fn get_embedded_remote_html() -> &'static str {
     }
 
     body {
-      min-height: 100dvh;
+      height: 100dvh;
       display: flex;
       flex-direction: column;
+      overflow: hidden;
       padding-top: env(safe-area-inset-top);
       padding-left: env(safe-area-inset-left);
       padding-right: env(safe-area-inset-right);
@@ -2434,51 +2436,61 @@ pub fn get_embedded_remote_html() -> &'static str {
 
     /* Top App Header */
     .header {
-      position: sticky;
-      top: 0;
+      flex: none;
+      height: var(--header-h);
       z-index: 20;
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      padding: 12px 16px;
+      padding: 0 16px;
       background: var(--nav);
       border-bottom: 1px solid var(--line);
     }
 
     .brand {
-      display: flex;
+      display: inline-flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       min-width: 0;
     }
 
+    .brand-mark {
+      flex: none;
+      filter: drop-shadow(0 2px 8px rgba(229, 9, 20, 0.35));
+    }
+
     .brand-wordmark {
-      display: flex;
-      align-items: baseline;
-      gap: 5px;
+      display: inline-flex;
+      align-items: flex-start;
+      gap: 3.5px;
+      white-space: nowrap;
       line-height: 1;
     }
 
     .brand-name {
       font-size: 1.05rem;
       font-weight: 800;
-      letter-spacing: 0.08em;
-      color: var(--text);
+      letter-spacing: 0.04em;
+      color: #ffffff;
+      line-height: 1;
     }
 
     .brand-tag {
-      font-size: 0.65rem;
+      font-size: 0.68rem;
       font-weight: 800;
-      letter-spacing: 0.08em;
-      padding: 2px 5px;
-      border-radius: 4px;
-      background: var(--accent);
-      color: #ffffff;
+      letter-spacing: 0.04em;
+      color: var(--accent);
+      background: transparent;
+      border: none;
+      padding: 0;
+      line-height: 1;
+      align-self: flex-start;
+      margin-top: 0.5px;
     }
 
     .header-right {
-      display: flex;
+      display: inline-flex;
       align-items: center;
       gap: 10px;
       flex-shrink: 0;
@@ -2490,6 +2502,7 @@ pub fn get_embedded_remote_html() -> &'static str {
       gap: 6px;
       font-size: 0.75rem;
       font-weight: 600;
+      line-height: 1;
       color: var(--ok);
     }
 
@@ -2504,7 +2517,10 @@ pub fn get_embedded_remote_html() -> &'static str {
     }
 
     .btn-unpair {
-      min-height: 36px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: 32px;
       padding: 0 12px;
       background: var(--surface-2);
       border: 1px solid var(--line-strong);
@@ -2512,6 +2528,7 @@ pub fn get_embedded_remote_html() -> &'static str {
       color: var(--text-2);
       font-size: 0.78rem;
       font-weight: 600;
+      line-height: 1;
       cursor: pointer;
     }
 
@@ -2630,34 +2647,44 @@ pub fn get_embedded_remote_html() -> &'static str {
       display: flex;
       flex-direction: column;
       min-height: 0;
+      overflow: hidden;
     }
 
     .view-content {
       flex: 1;
       display: flex;
       flex-direction: column;
-      gap: 14px;
-      padding: 14px 16px calc(var(--nav-h) + 22px + env(safe-area-inset-bottom));
+      gap: 12px;
+      padding: 12px 14px calc(var(--nav-h) + 16px + env(safe-area-inset-bottom));
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
-      max-width: 560px;
+      max-width: 520px;
       width: 100%;
       margin: 0 auto;
+      min-height: 0;
+    }
+
+    /* Main Remote Tab: engineered to fit cleanly on ONE phone screen without scrolling */
+    #viewRemote {
+      gap: 10px;
+      padding: 10px 14px calc(var(--nav-h) + 10px + env(safe-area-inset-bottom));
+      justify-content: space-between;
+      overflow-y: auto;
     }
 
     /* Feedback Toast */
     .toast {
       position: fixed;
-      top: calc(64px + env(safe-area-inset-top));
+      top: calc(var(--header-h) + 8px + env(safe-area-inset-top));
       left: 50%;
       transform: translateX(-50%) translateY(-8px);
       z-index: 40;
       background: var(--surface-3);
       border: 1px solid var(--line-strong);
       color: var(--text);
-      padding: 8px 14px;
+      padding: 7px 14px;
       border-radius: var(--radius);
-      font-size: 0.82rem;
+      font-size: 0.8rem;
       font-weight: 600;
       opacity: 0;
       pointer-events: none;
@@ -2675,13 +2702,14 @@ pub fn get_embedded_remote_html() -> &'static str {
 
     /* Now Playing Card */
     .now-playing {
+      flex: none;
       background: var(--surface);
       border: 1px solid var(--line-strong);
       border-radius: var(--radius);
-      padding: 14px 16px;
+      padding: 10px 14px;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 7px;
     }
 
     .np-top {
@@ -2694,7 +2722,7 @@ pub fn get_embedded_remote_html() -> &'static str {
     .np-meta { min-width: 0; flex: 1; }
 
     .np-title {
-      font-size: 1rem;
+      font-size: 0.94rem;
       font-weight: 700;
       color: var(--text);
       white-space: nowrap;
@@ -2703,7 +2731,7 @@ pub fn get_embedded_remote_html() -> &'static str {
     }
 
     .np-channel {
-      font-size: 0.8rem;
+      font-size: 0.76rem;
       color: var(--text-2);
       margin-top: 2px;
       white-space: nowrap;
@@ -2714,14 +2742,15 @@ pub fn get_embedded_remote_html() -> &'static str {
     .live-badge {
       display: inline-flex;
       align-items: center;
-      gap: 5px;
+      justify-content: center;
       padding: 3px 8px;
       border-radius: 4px;
       background: var(--accent);
       color: #ffffff;
-      font-size: 0.7rem;
+      font-size: 0.68rem;
       font-weight: 800;
       letter-spacing: 0.06em;
+      line-height: 1;
       flex-shrink: 0;
     }
 
@@ -2734,14 +2763,14 @@ pub fn get_embedded_remote_html() -> &'static str {
     .seek-row {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
     }
 
     .seek-time {
-      font-size: 0.74rem;
+      font-size: 0.72rem;
       color: var(--text-2);
       font-variant-numeric: tabular-nums;
-      min-width: 40px;
+      min-width: 36px;
     }
 
     .seek-time.right { text-align: right; }
@@ -2749,7 +2778,7 @@ pub fn get_embedded_remote_html() -> &'static str {
     .seek-slider {
       flex: 1;
       accent-color: var(--accent);
-      height: 6px;
+      height: 5px;
       cursor: pointer;
     }
 
@@ -2760,20 +2789,21 @@ pub fn get_embedded_remote_html() -> &'static str {
 
     /* Sculpted Hardware D-Pad (One deliberate crimson focal point: OK center) */
     .dpad-stage {
+      flex: 1;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 6px 0;
+      min-height: 176px;
     }
 
     .dpad-ring {
-      width: 224px;
-      height: 224px;
+      width: clamp(176px, 26dvh, 212px);
+      height: clamp(176px, 26dvh, 212px);
       position: relative;
       border-radius: 50%;
       background: var(--surface);
       border: 1px solid var(--line-strong);
-      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+      box-shadow: 0 10px 26px rgba(0, 0, 0, 0.55);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -2781,8 +2811,8 @@ pub fn get_embedded_remote_html() -> &'static str {
 
     .dpad-btn {
       position: absolute;
-      width: 58px;
-      height: 52px;
+      width: 50px;
+      height: 44px;
       background: var(--surface-2);
       border: 1px solid var(--line);
       color: var(--text);
@@ -2800,27 +2830,27 @@ pub fn get_embedded_remote_html() -> &'static str {
       transform: scale(0.94);
     }
 
-    .dpad-up { top: 10px; left: 50%; transform: translateX(-50%); }
+    .dpad-up { top: 8px; left: 50%; transform: translateX(-50%); }
     .dpad-up:active { transform: translateX(-50%) scale(0.94); }
-    .dpad-down { bottom: 10px; left: 50%; transform: translateX(-50%); }
+    .dpad-down { bottom: 8px; left: 50%; transform: translateX(-50%); }
     .dpad-down:active { transform: translateX(-50%) scale(0.94); }
-    .dpad-left { left: 10px; top: 50%; width: 52px; height: 58px; transform: translateY(-50%); }
+    .dpad-left { left: 8px; top: 50%; width: 44px; height: 50px; transform: translateY(-50%); }
     .dpad-left:active { transform: translateY(-50%) scale(0.94); }
-    .dpad-right { right: 10px; top: 50%; width: 52px; height: 58px; transform: translateY(-50%); }
+    .dpad-right { right: 8px; top: 50%; width: 44px; height: 50px; transform: translateY(-50%); }
     .dpad-right:active { transform: translateY(-50%) scale(0.94); }
 
     .dpad-ok {
-      width: 76px;
-      height: 76px;
+      width: 68px;
+      height: 68px;
       border-radius: 50%;
       background: var(--accent);
       border: 2px solid #ff4d57;
       color: #ffffff;
-      font-size: 0.95rem;
+      font-size: 0.92rem;
       font-weight: 800;
       letter-spacing: 0.04em;
       cursor: pointer;
-      box-shadow: 0 0 22px rgba(229, 9, 20, 0.35);
+      box-shadow: 0 0 20px rgba(229, 9, 20, 0.35);
       transition: background-color 100ms ease, transform 90ms ease;
     }
 
@@ -2830,20 +2860,27 @@ pub fn get_embedded_remote_html() -> &'static str {
     }
 
     /* Action & Transport Rows */
+    .remote-controls {
+      flex: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
     .action-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
+      gap: 8px;
     }
 
     .ctrl-btn {
-      min-height: 48px;
-      padding: 8px 6px;
+      min-height: 44px;
+      padding: 6px 6px;
       background: var(--surface);
       border: 1px solid var(--line-strong);
       border-radius: var(--radius);
       color: var(--text);
-      font-size: 0.84rem;
+      font-size: 0.82rem;
       font-weight: 600;
       display: flex;
       align-items: center;
@@ -2864,28 +2901,31 @@ pub fn get_embedded_remote_html() -> &'static str {
       color: var(--text);
     }
 
-    /* Volume and Channel Rockers */
+    /* Compact Horizontal Volume & Channel Rockers (fits one screen, >=44px targets) */
     .rockers {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 12px;
+      gap: 8px;
     }
 
     .rocker {
       background: var(--surface);
       border: 1px solid var(--line-strong);
       border-radius: var(--radius);
-      display: flex;
-      flex-direction: column;
+      display: grid;
+      grid-template-columns: 44px 1fr 44px;
+      align-items: center;
+      min-height: 46px;
       overflow: hidden;
     }
 
     .rocker-btn {
-      min-height: 48px;
-      background: transparent;
+      min-height: 46px;
+      width: 44px;
+      background: var(--surface-2);
       border: none;
       color: var(--text);
-      font-size: 1.25rem;
+      font-size: 1.15rem;
       font-weight: 700;
       cursor: pointer;
       display: flex;
@@ -2901,11 +2941,11 @@ pub fn get_embedded_remote_html() -> &'static str {
       font-weight: 700;
       letter-spacing: 0.08em;
       text-transform: uppercase;
-      color: var(--text-3);
-      padding: 4px 0;
-      border-top: 1px solid var(--line);
-      border-bottom: 1px solid var(--line);
-      background: var(--surface-2);
+      color: var(--text-2);
+      padding: 0 4px;
+      border-left: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+      line-height: 46px;
     }
 
     /* Keypad & Typing View */
@@ -2913,14 +2953,14 @@ pub fn get_embedded_remote_html() -> &'static str {
       background: var(--surface);
       border: 1px solid var(--line-strong);
       border-radius: var(--radius);
-      padding: 16px;
+      padding: 14px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 10px;
     }
 
     .section-heading {
-      font-size: 0.85rem;
+      font-size: 0.82rem;
       font-weight: 700;
       color: var(--text-2);
       letter-spacing: 0.02em;
@@ -2929,19 +2969,19 @@ pub fn get_embedded_remote_html() -> &'static str {
     .keypad-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
+      gap: 8px;
       max-width: 340px;
       width: 100%;
       margin: 0 auto;
     }
 
     .key-btn {
-      min-height: 54px;
+      min-height: 48px;
       background: var(--surface);
       border: 1px solid var(--line-strong);
       border-radius: var(--radius);
       color: var(--text);
-      font-size: 1.25rem;
+      font-size: 1.2rem;
       font-weight: 700;
       font-variant-numeric: tabular-nums;
       cursor: pointer;
@@ -2954,7 +2994,7 @@ pub fn get_embedded_remote_html() -> &'static str {
     }
 
     .key-btn.key-action {
-      font-size: 0.88rem;
+      font-size: 0.85rem;
       color: var(--text-2);
       background: var(--surface-2);
     }
@@ -2964,9 +3004,13 @@ pub fn get_embedded_remote_html() -> &'static str {
       display: flex;
       gap: 8px;
       align-items: center;
+      flex: none;
     }
 
     .btn-ghost {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       min-height: 46px;
       padding: 0 14px;
       background: var(--surface-2);
@@ -2975,13 +3019,14 @@ pub fn get_embedded_remote_html() -> &'static str {
       color: var(--text);
       font-size: 0.82rem;
       font-weight: 600;
+      line-height: 1;
       cursor: pointer;
       flex-shrink: 0;
     }
 
     .btn-ghost:active { background: var(--surface-3); }
 
-    /* Channel Rows with Real Logos / Kinora Monogram Tiles */
+    /* Channel Rows with Crisp Logos / Kinora Monogram Tiles */
     .list-stack {
       display: flex;
       flex-direction: column;
@@ -3006,26 +3051,26 @@ pub fn get_embedded_remote_html() -> &'static str {
     }
 
     .art-tile {
-      width: 48px;
-      height: 48px;
+      width: 52px;
+      height: 38px;
       border-radius: var(--radius-sm);
       background: var(--surface-2);
-      border: 1px solid var(--line);
+      border: 1px solid var(--line-strong);
       display: flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
       overflow: hidden;
       position: relative;
-      font-size: 0.78rem;
+      font-size: 0.76rem;
       font-weight: 800;
       letter-spacing: 0.04em;
-      color: var(--text-2);
+      color: var(--text);
     }
 
     .art-tile.poster {
-      width: 48px;
-      height: 70px;
+      width: 46px;
+      height: 68px;
     }
 
     .art-tile img {
@@ -3033,11 +3078,6 @@ pub fn get_embedded_remote_html() -> &'static str {
       height: 100%;
       object-fit: cover;
       display: block;
-    }
-
-    .art-tile.logo-fit img {
-      object-fit: contain;
-      padding: 4px;
     }
 
     .item-body {
@@ -3093,7 +3133,10 @@ pub fn get_embedded_remote_html() -> &'static str {
     }
 
     .btn-watch {
-      min-height: 38px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 36px;
       padding: 0 12px;
       background: var(--accent);
       border: none;
@@ -3101,6 +3144,7 @@ pub fn get_embedded_remote_html() -> &'static str {
       color: #ffffff;
       font-size: 0.78rem;
       font-weight: 700;
+      line-height: 1;
       cursor: pointer;
       flex-shrink: 0;
     }
@@ -3251,7 +3295,7 @@ pub fn get_embedded_remote_html() -> &'static str {
 <body>
   <header class="header">
     <div class="brand">
-      <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true">
+      <svg class="brand-mark" width="24" height="24" viewBox="0 0 32 32" aria-hidden="true">
         <defs>
           <linearGradient id="kp-stem" x1="0" y1="0" x2="1" y2="0">
             <stop offset="0%" stop-color="#b80610"/>
@@ -3359,38 +3403,40 @@ pub fn get_embedded_remote_html() -> &'static str {
         </div>
       </section>
 
-      <div class="action-grid">
-        <button type="button" class="ctrl-btn" onclick="sendCmd('back')">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
-          <span>Back</span>
-        </button>
-        <button type="button" class="ctrl-btn" onclick="sendCmd('home')">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>
-          <span>Home</span>
-        </button>
-        <button type="button" class="ctrl-btn" id="btnPlayPause" onclick="sendCmd('play_pause')">Play/Pause</button>
-      </div>
-
-      <div class="action-grid">
-        <button type="button" class="ctrl-btn" onclick="sendCmd('step_back')">-10s</button>
-        <button type="button" class="ctrl-btn" onclick="sendCmd('step_forward')">+30s</button>
-        <button type="button" class="ctrl-btn" id="btnMute" onclick="sendCmd('toggle_mute')">Mute</button>
-      </div>
-
-      <div class="rockers">
-        <div class="rocker">
-          <button type="button" class="rocker-btn" aria-label="Volume Up" onclick="sendCmd('volume_up')">+</button>
-          <div class="rocker-label">Volume</div>
-          <button type="button" class="rocker-btn" aria-label="Volume Down" onclick="sendCmd('volume_down')">-</button>
+      <div class="remote-controls">
+        <div class="action-grid">
+          <button type="button" class="ctrl-btn" onclick="sendCmd('back')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+            <span>Back</span>
+          </button>
+          <button type="button" class="ctrl-btn" onclick="sendCmd('home')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>
+            <span>Home</span>
+          </button>
+          <button type="button" class="ctrl-btn" id="btnPlayPause" onclick="sendCmd('play_pause')">Play/Pause</button>
         </div>
-        <div class="rocker">
-          <button type="button" class="rocker-btn" aria-label="Channel Up" onclick="sendCmd('channel_up')">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
-          </button>
-          <div class="rocker-label">Channel</div>
-          <button type="button" class="rocker-btn" aria-label="Channel Down" onclick="sendCmd('channel_down')">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-          </button>
+
+        <div class="action-grid">
+          <button type="button" class="ctrl-btn" onclick="sendCmd('step_back')">-10s</button>
+          <button type="button" class="ctrl-btn" onclick="sendCmd('step_forward')">+30s</button>
+          <button type="button" class="ctrl-btn" id="btnMute" onclick="sendCmd('toggle_mute')">Mute</button>
+        </div>
+
+        <div class="rockers">
+          <div class="rocker">
+            <button type="button" class="rocker-btn" aria-label="Volume Down" onclick="sendCmd('volume_down')">-</button>
+            <div class="rocker-label">Vol</div>
+            <button type="button" class="rocker-btn" aria-label="Volume Up" onclick="sendCmd('volume_up')">+</button>
+          </div>
+          <div class="rocker">
+            <button type="button" class="rocker-btn" aria-label="Channel Down" onclick="sendCmd('channel_down')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div class="rocker-label">Ch</div>
+            <button type="button" class="rocker-btn" aria-label="Channel Up" onclick="sendCmd('channel_up')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+            </button>
+          </div>
         </div>
       </div>
     </main>
@@ -3627,7 +3673,7 @@ pub fn get_embedded_remote_html() -> &'static str {
       if (!url) {
         return `<div class="art-tile ${extraClass || ''}" aria-hidden="true">${label}</div>`;
       }
-      return `<div class="art-tile ${extraClass || ''}" aria-hidden="true"><img src="${url}" alt="" loading="lazy" onerror="this.remove();this.parentNode.textContent='${label}'"></div>`;
+      return `<div class="art-tile ${extraClass || ''}" aria-hidden="true"><img src="${url}" alt="" loading="lazy" onerror="var p=this.parentNode;this.remove();if(p)p.textContent='${label}';"></div>`;
     }
 
     function showPairing() {
