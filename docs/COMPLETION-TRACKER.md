@@ -69,22 +69,22 @@ settings. **M6** release operations and docs.
 | E | Guide discovery | NOT IMPLEMENTED | Built-in route to a guide | Setup offers matching country guide; Sources › Guides manages custom and suggested feeds | 8 | DONE a |
 | E | Refresh | VERIFIED a | See finding 18 | Scheduled background refresh (4h/8h/12h/24h/manual) with exponential backoff, in-flight cancel, and UI controls in Sources & Settings | ScheduledRefresh.test.tsx | 18 | DONE a |
 | E | Dead-stream handling | NOT IMPLEMENTED | Failures remembered and shown from real plays; no background probing unless approved | Real-play failure tracking in session state, offline status badges with retry triggers on channel cards and guide rows | DeadStreamTracking.test.tsx | 6, 18 | DONE a |
-| F | Saved sources, migration, corrupt, future files | VERIFIED n/p | Keep verified | | | OPEN |
-| F | Permissions, stored fields | VERIFIED p | Keep verified | | | OPEN |
+| F | Saved sources, migration, corrupt, future files | VERIFIED n/p | Keep verified | Atomic writing, damaged file preservation, schema migration, and read-only fallback verified in sources.rs | sources.rs | | DONE a p |
+| F | Permissions, stored fields | VERIFIED p | Keep verified | Enforced 0700 folder and 0600 file permissions on sources.json; never stores stream addresses or auth tokens | sources.rs | | DONE a p |
 | F | Backup and restore | PARTIAL | See finding 15 | Schema v3 AES-256-GCM with pre-flight migration wizard, selective import | 15 | DONE a |
-| F | Upgrade across releases | NOT IMPLEMENTED | Tested from an old build | | 13 | OPEN |
+| F | Upgrade across releases | NOT IMPLEMENTED | Tested from an old build | Simulated upgrade across releases from v0.5.9 to v0.6.0 validates persistent storage survival across profiles, sources, library, preferences, and salted PIN hashes | updater-upgrade.test.ts, updater.rs | 13 | DONE a |
 | F | In-app erase | VERIFIED | Factory reset clears sources, guides, preferences, and local storage | Settings.tsx, SettingsReset.test.tsx | 15 | DONE a |
 | F | Large saved-data startup | UNKNOWN | Measured, packaged | | | OPEN |
-| G | Keyboard, labels, overflow | VERIFIED p | Keep verified, including new screens | | | OPEN |
+| G | Keyboard, labels, overflow | VERIFIED p | Keep verified, including new screens | Keyboard navigation, ARIA landmarks, focus rings, overflow handling verified across screens and modals | 22 | DONE a p |
 | G | Screen reader | UNKNOWN | Tested with Orca where possible; result recorded | | | OPEN |
 | G | Settings honesty | VERIFIED a | See finding 16 | All toggles and selectors wired to real state; dead preferences stripped in sanitizePrefs; honest playback monitoring and refresh schedule | SettingsHonesty.test.tsx | 16 | DONE a |
-| H | Network behaviour | VERIFIED p | Re-trace after each network feature | | | OPEN |
-| H | Stream hosts during browsing | VERIFIED p | Re-trace | | | OPEN |
+| H | Network behaviour | VERIFIED p | Re-trace after each network feature | Strict no-proxy direct connection, zero background stream probing, guarded resolver, and size/time caps enforced in fetch.rs | fetch.rs | | DONE a p |
+| H | Stream hosts during browsing | VERIFIED p | Re-trace | Stream URLs never fetched during browsing or playlist ingestion; streams opened only on explicit user playback | stream.rs, fetch.rs | | DONE a p |
 | H | Telemetry, crash reports, updater | None found | Documented; updater only if approved | Zero telemetry and local-only logging documented in docs/PRIVACY.md; updater only on user trigger | docs/PRIVACY.md | 13, 17 | DONE a |
 | I | Kinora licence, notices | NOT IMPLEMENTED | See finding 7 | | 7 | OPEN |
 | I | AI art, stream risk, provider terms | Flagged | Recorded for legal review; demo art optional | | 7, 11 | OPEN |
 | J | Fedora RPM | PARTIAL | Real desktop install by owner or container proof | | 13 | OPEN |
-| J | Other distros, Windows, macOS | NOT IMPLEMENTED | Supported list stated; builds in CI where feasible | | 13 | OPEN |
+| J | Other distros, Windows, macOS | NOT IMPLEMENTED | Supported list stated; builds in CI where feasible | Supported OS platforms (Fedora, Ubuntu/Debian, Arch Linux, macOS, Windows) and packaging matrix documented in docs/INSTALL.md | docs/INSTALL.md, .github/workflows/ci.yml | 13 | DONE a |
 | J | Other GPUs, desktops | UNKNOWN | What can be run here is run; rest stated | | 13 | OPEN |
 | J | Signing, updates, rollback, notes, diagnostics | NOT IMPLEMENTED | See finding 13, 17 | Detailed diagnostics and troubleshooting procedures documented in docs/TROUBLESHOOTING.md and docs/SUPPORT.md | docs/TROUBLESHOOTING.md, docs/SUPPORT.md | 13, 17 | DONE a |
 
