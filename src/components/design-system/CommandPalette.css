@@ -38,6 +38,11 @@
   flex-shrink: 0;
 }
 
+.ds-command-header:focus-within {
+  border-bottom-color: var(--focus, #ff6b73);
+  box-shadow: inset 0 -1px 0 var(--focus, #ff6b73);
+}
+
 .ds-command-input {
   flex: 1;
   background: none;
@@ -48,7 +53,7 @@
   outline: none;
 }
 .ds-command-input::placeholder {
-  color: var(--text-faint, #64748b);
+  color: var(--text-3, #858a93);
 }
 
 .ds-command-badge {

@@ -3,13 +3,15 @@
   position: sticky;
   top: 12px;
   height: calc(100vh - 24px);
+  height: calc(100dvh - 24px);
   max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
   margin: 12px 6px 12px 14px;
   width: calc(var(--side-w, 256px) - 20px);
   border-radius: 20px;
-  background: linear-gradient(180deg, #11141c 0%, #080a0e 100%);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  background: linear-gradient(180deg, var(--surface, #11141c) 0%, var(--nav, #080a0e) 100%);
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.07));
+  box-shadow: var(--shadow, 0 16px 44px rgba(0, 0, 0, 0.65));
   box-sizing: border-box;
   overflow: hidden;
   z-index: 40;
@@ -18,8 +20,6 @@
   gap: 0;
   padding: 10px;
   transition: width 220ms cubic-bezier(0.2, 0, 0, 1), margin 220ms ease, padding 220ms ease;
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
 }
 
 .sidebar::after {
@@ -98,7 +98,7 @@
   font-weight: 800;
   font-size: 1.05rem;
   letter-spacing: 0.04em;
-  color: #ffffff;
+  color: var(--text, #ffffff);
   white-space: nowrap;
   line-height: 1;
 }
@@ -108,7 +108,7 @@
   font-size: 0.68rem;
   font-weight: 850;
   letter-spacing: 0.04em;
-  color: #e50914;
+  color: var(--accent, #e50914);
   background: transparent;
   border: none;
   padding: 0;
@@ -126,21 +126,28 @@
 .sidebar-collapse-btn {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: 7px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  color: #9ca3af;
+  background: var(--state-hover, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.07));
+  color: var(--text-2, #b4b7bd);
   cursor: pointer;
   transition: all 140ms var(--ease);
   flex: none;
 }
 
+@media (pointer: coarse) {
+  .sidebar-collapse-btn {
+    width: 44px;
+    height: 44px;
+  }
+}
+
 .sidebar-collapse-btn:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.09);
-  border-color: rgba(255, 255, 255, 0.15);
+  color: var(--text, #ffffff);
+  background: var(--state-active, rgba(255, 255, 255, 0.09));
+  border-color: var(--line-strong, rgba(255, 255, 255, 0.15));
 }
 
 .sidebar.is-collapsed .sidebar-collapse-btn {
@@ -199,7 +206,7 @@
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #6b7280;
+  color: var(--text-3, #858a93);
 }
 
 /* Distinct Rounded Surface for Each Group */
@@ -247,7 +254,7 @@
   border-radius: 10px;
   background: transparent;
   border: 1px solid transparent;
-  color: #9ca3af;
+  color: var(--text-2, #b4b7bd);
   font-weight: 500;
   white-space: nowrap;
   font-size: 0.9375rem;
@@ -259,14 +266,14 @@
 }
 
 .sidebar-root-btn:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.06);
+  color: var(--text, #ffffff);
+  background: var(--state-hover, rgba(255, 255, 255, 0.05));
+  border-color: var(--line, rgba(255, 255, 255, 0.06));
   transform: translateX(2px);
 }
 
 .sidebar-root-btn:hover .sidebar-icon {
-  color: #ffffff;
+  color: var(--text, #ffffff);
 }
 
 .sidebar-icon-box {
@@ -281,7 +288,7 @@
   width: 20px;
   height: 20px;
   flex: none;
-  color: #9ca3af;
+  color: var(--text-2, #b4b7bd);
   transition: color 140ms var(--ease), filter 140ms var(--ease);
 }
 
@@ -295,7 +302,7 @@
 
 .sidebar-chevron {
   flex: none;
-  color: #6b7280;
+  color: var(--text-3, #858a93);
   transition: transform 200ms cubic-bezier(0.2, 0, 0, 1), color 140ms var(--ease);
 }
 
@@ -304,16 +311,16 @@
 }
 
 .sidebar-root-btn:hover .sidebar-chevron {
-  color: #9ca3af;
+  color: var(--text-2, #b4b7bd);
 }
 
-/* 5. Active Navigation Item: Selective Restrained Kinora Red with Left Luminescent Pill */
+/* 5. Active Navigation Item: Selective Restrained Kinora Red with Left Accent Bar */
 .sidebar-root-btn.is-active {
-  color: #ffffff;
+  color: var(--text, #ffffff);
   font-weight: 600;
   background: linear-gradient(90deg, color-mix(in oklab, var(--accent, #e50914) 16%, transparent) 0%, color-mix(in oklab, var(--accent, #e50914) 4%, transparent) 100%);
   border-color: color-mix(in oklab, var(--accent, #e50914) 28%, transparent);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
 }
 
 .sidebar-root-btn.is-active::before {
@@ -353,7 +360,6 @@
 .sidebar.is-collapsed .sidebar-root-btn.is-active {
   background: var(--accent-soft, rgba(229, 9, 20, 0.16));
   border-color: color-mix(in oklab, var(--accent, #e50914) 40%, transparent);
-  box-shadow: 0 0 14px var(--accent-glow, rgba(229, 9, 20, 0.35));
 }
 
 .sidebar.is-collapsed .sidebar-root-btn.is-active::before {
@@ -398,14 +404,8 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #ef4444;
-  animation: rec-badge-pulse 1.5s infinite ease-in-out;
+  background: var(--bad, #ff7070);
   flex: none;
-}
-
-@keyframes rec-badge-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.35; transform: scale(0.8); }
 }
 
 /* 8. Nested Child Links */
@@ -438,7 +438,7 @@
   min-height: 34px;
   padding: 0 10px 0 14px;
   border-radius: 8px;
-  color: #8c93a3;
+  color: var(--text-2, #b4b7bd);
   font-size: 0.85rem;
   font-weight: 500;
   text-decoration: none;
@@ -447,20 +447,20 @@
 }
 
 .sidebar-child-link:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.06);
+  color: var(--text, #ffffff);
+  background: var(--state-hover, rgba(255, 255, 255, 0.05));
+  border-color: var(--line, rgba(255, 255, 255, 0.06));
   transform: translateX(2px);
 }
 
 .sidebar-child-icon {
   flex: none;
-  color: #6b7280;
+  color: var(--text-3, #858a93);
   transition: color 140ms var(--ease);
 }
 
 .sidebar-child-link:hover .sidebar-child-icon {
-  color: #ffffff;
+  color: var(--text, #ffffff);
 }
 
 .sidebar-child-label {
@@ -471,7 +471,7 @@
 }
 
 .sidebar-child-link.is-active {
-  color: #ffffff;
+  color: var(--text, #ffffff);
   font-weight: 600;
   background: var(--accent-soft, rgba(229, 9, 20, 0.12));
   border-color: color-mix(in oklab, var(--accent, #e50914) 26%, transparent);
@@ -594,7 +594,9 @@
     bottom: 0;
     left: 0;
     height: 100vh;
+    height: 100dvh;
     max-height: 100vh;
+    max-height: 100dvh;
     margin: 0;
     width: 280px;
     max-width: 85vw;

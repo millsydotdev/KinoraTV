@@ -50,7 +50,7 @@
 }
 
 .stream-checker-title-icon {
-  color: var(--accent, #6366f1);
+  color: var(--accent-text, #ff6b73);
 }
 
 .stream-checker-title {
@@ -107,9 +107,9 @@
 }
 
 .stream-stat-pill.latency {
-  background: rgba(99, 102, 241, 0.15);
-  border-color: rgba(99, 102, 241, 0.35);
-  color: #a5b4fc;
+  background: var(--info-bg, rgba(125, 184, 255, 0.14));
+  border-color: color-mix(in oklab, var(--info, #7db8ff) 35%, transparent);
+  color: var(--info, #7db8ff);
 }
 
 .stream-checker-progress-container {
@@ -127,7 +127,7 @@
 
 .stream-checker-progress-fill {
   height: 100%;
-  background: var(--accent, #6366f1);
+  background: var(--accent, #e50914);
   transition: width 140ms ease-out;
 }
 
@@ -189,11 +189,16 @@
   min-width: 180px;
 }
 
+.stream-checker-search:focus-within {
+  border-color: var(--focus, #ff6b73);
+  box-shadow: 0 0 0 2px var(--accent-soft, rgba(229, 9, 20, 0.25));
+}
+
 .stream-checker-search input {
   background: transparent;
   border: none;
   outline: none;
-  color: #fff;
+  color: var(--text, #f5f5f5);
   font-size: 0.8125rem;
   width: 100%;
 }
@@ -264,21 +269,21 @@
 }
 
 .stream-status-badge.probing {
-  background: rgba(99, 102, 241, 0.2);
-  color: #818cf8;
+  background: var(--info-bg, rgba(125, 184, 255, 0.16));
+  color: var(--info, #7db8ff);
 }
 
 .stream-status-badge.pending {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text-2, rgba(255, 255, 255, 0.5));
+  background: var(--surface-3, rgba(255, 255, 255, 0.1));
+  color: var(--text-2, #b4b7bd);
 }
 
 .stream-checker-spinner {
   display: inline-block;
   width: 12px;
   height: 12px;
-  border: 2px solid rgba(99, 102, 241, 0.3);
-  border-top-color: #818cf8;
+  border: 2px solid color-mix(in oklab, var(--info, #7db8ff) 30%, transparent);
+  border-top-color: var(--info, #7db8ff);
   border-radius: 50%;
   animation: streamSpinnerRotate 0.8s linear infinite;
 }

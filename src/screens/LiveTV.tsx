@@ -48,7 +48,7 @@ const EPG_GENRES = [
   { name: 'Movies', color: '#f59e0b' },
   { name: 'Sports', color: '#10b981' },
   { name: 'News', color: '#3b82f6' },
-  { name: 'Series', color: '#8b5cf6' },
+  { name: 'Series', color: '#e50914' },
   { name: 'Kids', color: '#ec4899' },
   { name: 'Documentary', color: '#14b8a6' },
 ] as const

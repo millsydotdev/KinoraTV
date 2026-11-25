@@ -110,12 +110,7 @@
 .source-row.is-highlighted-source {
   border: 1px solid var(--accent);
   border-radius: var(--r-m);
-  animation: source-highlight-pulse 2s infinite ease-in-out;
-}
-
-@keyframes source-highlight-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgb(var(--accent-rgb, 229 13 36) / 0.4); }
-  50% { box-shadow: 0 0 0 6px rgb(var(--accent-rgb, 229 13 36) / 0); }
+  background: var(--accent-soft, rgba(229, 9, 20, 0.1));
 }
 
 /* Add Source page */

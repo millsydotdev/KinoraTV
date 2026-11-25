@@ -141,11 +141,12 @@
   border-radius: 8px;
   padding: 8px 36px 8px 36px;
   font-size: 0.85rem;
-  color: #ffffff;
-  outline: none;
+  color: var(--text, #f5f5f5);
 }
 
-.artwork-search-input:focus {
+.artwork-search-input:focus-visible {
+  outline: 2px solid var(--focus, #ff6b73);
+  outline-offset: 1px;
   border-color: var(--accent, #e50914);
 }
 
@@ -543,13 +544,18 @@
 
 .artwork-select {
   width: 100%;
-  background: rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: var(--surface-input, rgba(0, 0, 0, 0.4));
+  border: 1px solid var(--line-strong, rgba(255, 255, 255, 0.15));
   border-radius: 8px;
   padding: 10px 12px;
-  color: #ffffff;
+  color: var(--text, #f5f5f5);
   font-size: 0.85rem;
-  outline: none;
+}
+
+.artwork-select:focus-visible {
+  outline: 2px solid var(--focus, #ff6b73);
+  outline-offset: 1px;
+  border-color: var(--accent, #e50914);
 }
 
 .artwork-custom-inputs {
@@ -560,13 +566,18 @@
 
 .artwork-text-input {
   width: 100%;
-  background: rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: var(--surface-input, rgba(0, 0, 0, 0.4));
+  border: 1px solid var(--line-strong, rgba(255, 255, 255, 0.15));
   border-radius: 8px;
   padding: 10px 12px;
-  color: #ffffff;
+  color: var(--text, #f5f5f5);
   font-size: 0.85rem;
-  outline: none;
+}
+
+.artwork-text-input:focus-visible {
+  outline: 2px solid var(--focus, #ff6b73);
+  outline-offset: 1px;
+  border-color: var(--accent, #e50914);
 }
 
 .artwork-modal-footer {

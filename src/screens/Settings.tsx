@@ -2111,7 +2111,7 @@ function ProfilesSection() {
     setConfirmPinInput('')
   }
 
-  const colors = ['#e50914', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899']
+  const colors = ['#e50914', '#3b82f6', '#10b981', '#f59e0b', '#06b6d4', '#ec4899']
   const icons: IconName[] = ['user', 'heart', 'star', 'sparkles', 'tv', 'film', 'gaming', 'music']
 
   return (
@@ -2712,7 +2712,7 @@ function DataSection() {
           </Row>
         )}
         <Row
-          title="Intelligent AI & Voice Integration"
+          title="AI & Voice Services"
           hint="Capability-scoped service interfaces for AI agents and local voice models. Microphone hardware remains inactive until an approved voice engine is configured."
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '440px', width: '100%' }}>

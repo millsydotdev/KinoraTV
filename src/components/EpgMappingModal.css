@@ -55,8 +55,8 @@
   width: 40px;
   height: 40px;
   border-radius: var(--r-m, 8px);
-  background: rgba(var(--accent-rgb, 99, 102, 241), 0.15);
-  color: var(--accent, #6366f1);
+  background: var(--accent-soft, rgba(229, 9, 20, 0.15));
+  color: var(--accent-text, #ff6b73);
   flex-shrink: 0;
 }
 
@@ -108,7 +108,7 @@
 }
 
 .epg-mapping-current-val {
-  color: var(--accent, #6366f1);
+  color: var(--accent-text, #ff6b73);
   font-weight: 600;
   font-family: monospace;
 }
@@ -130,14 +130,15 @@
   border-radius: var(--r-m, 8px);
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid var(--line, rgba(255, 255, 255, 0.15));
-  color: #fff;
+  color: var(--text, #f5f5f5);
   font-size: 0.875rem;
-  outline: none;
   transition: border-color 0.15s ease;
 }
 
-.epg-mapping-search-box input:focus {
-  border-color: var(--accent, #6366f1);
+.epg-mapping-search-box input:focus-visible {
+  outline: 2px solid var(--focus, #ff6b73);
+  outline-offset: 1px;
+  border-color: var(--accent, #e50914);
 }
 
 .epg-mapping-search-icon {
@@ -178,8 +179,8 @@
 }
 
 .epg-mapping-result-item.is-selected {
-  background: rgba(var(--accent-rgb, 99, 102, 241), 0.12);
-  border-color: var(--accent, #6366f1);
+  background: var(--accent-soft, rgba(229, 9, 20, 0.12));
+  border-color: var(--accent, #e50914);
 }
 
 .epg-mapping-result-meta {

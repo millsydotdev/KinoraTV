@@ -93,9 +93,10 @@
   font-size: 0.9rem;
 }
 
-.enc-backup-input:focus {
-  border-color: var(--accent, #6366f1);
-  outline: none;
+.enc-backup-input:focus-visible {
+  border-color: var(--accent, #e50914);
+  outline: 2px solid var(--focus, #ff6b73);
+  outline-offset: 1px;
 }
 
 .enc-backup-error {
@@ -111,7 +112,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--accent, #6366f1);
+  color: var(--accent-text, #ff6b73);
 }
 
 .enc-inspection-grid {
@@ -158,7 +159,7 @@
 }
 
 .enc-checkbox-row input[type="checkbox"] {
-  accent-color: var(--accent, #6366f1);
+  accent-color: var(--accent, #e50914);
   cursor: pointer;
 }
 

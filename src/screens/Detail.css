@@ -120,13 +120,11 @@
   align-items: center;
   gap: 6px;
   padding: 4px 6px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 9999px;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
 }
-.title-actions-utility { display: inline-flex; align-items: center; gap: 8px; padding: 4px 8px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 9999px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.title-actions-utility { display: inline-flex; align-items: center; gap: 8px; padding: 4px 8px; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 9999px; }
 .title-actions-feedback .icon-btn.ringed,
 .title-actions-library .icon-btn.ringed,
 .title-actions-utility .icon-btn.ringed { width: 36px; height: 36px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(255, 255, 255, 0.08); color: var(--text-2); }
@@ -283,21 +281,19 @@
   padding: 2px 7px;
   border-radius: var(--r-s);
   letter-spacing: 0.04em;
-  backdrop-filter: blur(4px);
 }
 .episode-fallback-tag {
   position: absolute;
   top: 8px;
   right: 8px;
   z-index: 2;
-  background: rgba(30, 41, 59, 0.85);
+  background: rgba(30, 41, 59, 0.9);
   border: 1px solid rgba(148, 163, 184, 0.3);
   color: #e2e8f0;
   font-size: 0.6875rem;
   font-weight: 600;
   padding: 2px 6px;
   border-radius: var(--r-s);
-  backdrop-filter: blur(4px);
 }
 
 .episode-still-play {

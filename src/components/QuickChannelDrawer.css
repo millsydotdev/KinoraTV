@@ -58,6 +58,11 @@
   padding: 6px 10px;
 }
 
+.quick-drawer-search:focus-within {
+  border-color: var(--focus, #ff6b73);
+  box-shadow: 0 0 0 2px var(--accent-soft, rgba(229, 9, 20, 0.25));
+}
+
 .quick-search-input {
   flex: 1;
   background: transparent;

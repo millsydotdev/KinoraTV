@@ -179,10 +179,11 @@
   border-radius: var(--radius-sm, 6px);
   color: var(--text);
   font-size: 0.875rem;
-  outline: none;
 }
 
-.sc-text-input:focus {
+.sc-text-input:focus-visible {
+  outline: 2px solid var(--focus, #ff6b73);
+  outline-offset: 1px;
   border-color: var(--accent);
 }
 
@@ -289,7 +290,12 @@
   border-radius: var(--radius-sm, 4px);
   color: var(--text);
   font-size: 0.8rem;
-  outline: none;
+}
+
+.sc-rule-value-select:focus-visible {
+  outline: 2px solid var(--focus, #ff6b73);
+  outline-offset: 1px;
+  border-color: var(--accent);
 }
 
 .sc-rule-value-input {
@@ -300,9 +306,10 @@
   border-radius: var(--radius-sm, 4px);
   color: var(--text);
   font-size: 0.8rem;
-  outline: none;
 }
 
-.sc-rule-value-input:focus {
+.sc-rule-value-input:focus-visible {
+  outline: 2px solid var(--focus, #ff6b73);
+  outline-offset: 1px;
   border-color: var(--accent);
 }

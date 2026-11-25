@@ -25,7 +25,7 @@ export const V060_HIGHLIGHTS: ReleaseHighlight[] = [
   },
   {
     category: 'Feature',
-    title: 'Robust Multi-Platform Updater',
+    title: 'Signed Multi-Platform Updater',
     description: 'Complete signed release validation, auto-detection, and safe background application swaps across Linux, Windows, and macOS.',
   },
   {

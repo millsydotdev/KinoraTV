@@ -68,11 +68,16 @@
   padding: 4px 10px;
 }
 
+.opds-search-form:focus-within {
+  border-color: var(--focus, #ff6b73);
+  box-shadow: 0 0 0 2px var(--accent-soft, rgba(229, 9, 20, 0.25));
+}
+
 .opds-search-input {
   background: transparent;
   border: none;
   outline: none;
-  color: #fff;
+  color: var(--text, #f5f5f5);
   font-size: 0.85rem;
   width: 200px;
 }
@@ -144,7 +149,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--text-3, #858a93);
 }
 
 .opds-book-info {

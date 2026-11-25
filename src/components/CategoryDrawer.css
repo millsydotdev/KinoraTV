@@ -73,10 +73,11 @@
   border-radius: var(--radius-sm, 6px);
   color: var(--text);
   font-size: 0.85rem;
-  outline: none;
 }
 
-.category-search-field:focus {
+.category-search-field:focus-visible {
+  outline: 2px solid var(--focus, #ff6b73);
+  outline-offset: 1px;
   border-color: var(--accent);
 }
 

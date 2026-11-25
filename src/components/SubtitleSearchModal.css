@@ -50,7 +50,7 @@
 }
 
 .subtitle-modal-title-icon {
-  color: var(--accent, #6366f1);
+  color: var(--accent-text, #ff6b73);
 }
 
 .subtitle-modal-title {
@@ -83,29 +83,34 @@
 
 .subtitle-input-query {
   flex: 1;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: var(--surface-input, #171B22);
+  border: 1px solid var(--line-strong, rgba(255, 255, 255, 0.15));
   border-radius: 8px;
   padding: 8px 14px;
   font-size: 0.875rem;
-  color: #fff;
-  outline: none;
+  color: var(--text, #f5f5f5);
   transition: border-color 140ms ease;
 }
 
-.subtitle-input-query:focus {
-  border-color: var(--accent, #6366f1);
+.subtitle-input-query:focus-visible {
+  outline: 2px solid var(--focus, #ff6b73);
+  outline-offset: 1px;
+  border-color: var(--accent, #e50914);
 }
 
 .subtitle-select {
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: var(--surface-input, #171B22);
+  border: 1px solid var(--line-strong, rgba(255, 255, 255, 0.15));
   border-radius: 8px;
   padding: 8px 12px;
   font-size: 0.8125rem;
-  color: #fff;
-  outline: none;
+  color: var(--text, #f5f5f5);
   cursor: pointer;
+}
+
+.subtitle-select:focus-visible {
+  outline: 2px solid var(--focus, #ff6b73);
+  outline-offset: 1px;
 }
 
 .subtitle-options-row {
@@ -177,8 +182,8 @@
 .subtitle-lang-pill {
   padding: 2px 8px;
   border-radius: 4px;
-  background: rgba(99, 102, 241, 0.2);
-  color: #a5b4fc;
+  background: var(--info-bg, rgba(125, 184, 255, 0.16));
+  color: var(--info, #7db8ff);
   font-weight: 600;
 }
 

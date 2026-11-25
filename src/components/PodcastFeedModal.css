@@ -85,6 +85,11 @@
   max-width: 320px;
 }
 
+.podcast-search-wrap:focus-within {
+  border-color: var(--focus, #ff6b73);
+  box-shadow: 0 0 0 2px var(--accent-soft, rgba(229, 9, 20, 0.25));
+}
+
 .podcast-search-input {
   background: transparent;
   border: none;

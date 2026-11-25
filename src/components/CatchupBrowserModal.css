@@ -88,7 +88,7 @@
 }
 
 .catchup-day-tab.is-active {
-  background-color: var(--accent, #6366f1);
+  background-color: var(--accent, #e50914);
   color: #ffffff;
 }
 

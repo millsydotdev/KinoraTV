@@ -45,6 +45,7 @@
   inset: 0;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   z-index: 55;
   background: #000000;
   border-radius: 0;
@@ -142,13 +143,20 @@
   background: rgba(0, 0, 0, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.15);
   color: #FFFFFF;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: 6px;
   display: grid;
   place-items: center;
   cursor: pointer;
   transition: all 140ms ease;
+}
+
+@media (pointer: coarse) {
+  .pip-btn {
+    width: 44px;
+    height: 44px;
+  }
 }
 
 .pip-btn:hover {

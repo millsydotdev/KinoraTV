@@ -28,26 +28,14 @@
 }
 
 .voice-search-btn:focus-visible {
-  outline: 2px solid rgb(var(--accent) / 0.8);
-  outline-offset: 1px;
+  outline: 2px solid var(--focus, #ff6b73);
+  outline-offset: 2px;
 }
 
 .voice-search-btn.listening {
-  color: #fff;
-  background: rgb(var(--accent) / 0.85);
-  animation: voicePulse 1.5s infinite;
-}
-
-@keyframes voicePulse {
-  0% {
-    box-shadow: 0 0 0 0 rgb(var(--accent) / 0.7);
-  }
-  70% {
-    box-shadow: 0 0 0 8px rgb(var(--accent) / 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgb(var(--accent) / 0);
-  }
+  color: var(--accent-ink, #ffffff);
+  background: var(--accent, #e50914);
+  box-shadow: 0 0 0 3px var(--accent-soft, rgba(229, 9, 20, 0.28));
 }
 
 .voice-hud {
@@ -74,20 +62,14 @@
   align-items: center;
   gap: 6px;
   font-weight: 600;
-  color: rgb(var(--accent));
+  color: var(--accent-text, #ff6b73);
 }
 
 .voice-indicator-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: rgb(var(--accent));
-  animation: blinkDot 1s infinite alternate;
-}
-
-@keyframes blinkDot {
-  0% { opacity: 0.3; }
-  100% { opacity: 1; }
+  background: var(--accent, #e50914);
 }
 
 .voice-transcript {

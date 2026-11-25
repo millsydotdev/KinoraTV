@@ -496,11 +496,8 @@
   bottom: 100px;
   right: var(--gutter);
   z-index: 66;
-  background: rgba(15, 17, 23, 0.95);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--line-strong);
-  border-left: 3px solid var(--accent);
+  background: rgba(15, 17, 23, 0.96);
+  border: 1px solid color-mix(in oklab, var(--accent, #e50914) 55%, var(--line-strong));
   border-radius: var(--r-m);
   padding: 14px 18px;
   color: #fff;

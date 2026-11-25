@@ -223,8 +223,13 @@
   min-width: 240px;
 }
 
+.epg-search-box:focus-within {
+  border-color: var(--focus, #ff6b73);
+  box-shadow: 0 0 0 2px var(--accent-soft, rgba(229, 9, 20, 0.25));
+}
+
 .epg-search-icon {
-  color: var(--text-3, rgba(255, 255, 255, 0.4));
+  color: var(--text-3, #858a93);
 }
 
 .epg-search-input {

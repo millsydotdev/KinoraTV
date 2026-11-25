@@ -141,7 +141,7 @@
 }
 
 .xtream-mirror-item.is-active {
-  border-color: var(--accent, #6366f1);
+  border-color: var(--accent, #e50914);
   background-color: rgb(99 102 241 / 0.05);
 }
 

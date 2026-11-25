@@ -43,9 +43,7 @@ export interface GenreDefinition {
 }
 
 export const CANONICAL_GENRES: GenreDefinition[] = [
-  // ==========================================
   // 1. MOVIES & TELEVISION - ACTION & ADVENTURE
-  // ==========================================
   {
     id: 'action',
     name: 'Action',
@@ -156,9 +154,7 @@ export const CANONICAL_GENRES: GenreDefinition[] = [
     },
   },
 
-  // ==========================================
   // 2. ANIMATION & ANIME
-  // ==========================================
   {
     id: 'animation',
     name: 'Animation',
@@ -209,9 +205,7 @@ export const CANONICAL_GENRES: GenreDefinition[] = [
     },
   },
 
-  // ==========================================
   // 3. COMEDY & ENTERTAINMENT
-  // ==========================================
   {
     id: 'comedy',
     name: 'Comedy',
@@ -277,9 +271,7 @@ export const CANONICAL_GENRES: GenreDefinition[] = [
     },
   },
 
-  // ==========================================
   // 4. CRIME, DETECTIVE & MYSTERY
-  // ==========================================
   {
     id: 'crime',
     name: 'Crime',
@@ -365,9 +357,7 @@ export const CANONICAL_GENRES: GenreDefinition[] = [
     },
   },
 
-  // ==========================================
   // 5. DOCUMENTARY & FACTUAL
-  // ==========================================
   {
     id: 'documentary',
     name: 'Documentary',
@@ -393,9 +383,7 @@ export const CANONICAL_GENRES: GenreDefinition[] = [
     },
   },
 
-  // ==========================================
   // 6. DRAMA
-  // ==========================================
   {
     id: 'drama',
     name: 'Drama',
@@ -461,9 +449,7 @@ export const CANONICAL_GENRES: GenreDefinition[] = [
     },
   },
 
-  // ==========================================
   // 7. FANTASY
-  // ==========================================
   {
     id: 'fantasy',
     name: 'Fantasy',
@@ -489,9 +475,7 @@ export const CANONICAL_GENRES: GenreDefinition[] = [
     },
   },
 
-  // ==========================================
   // 8. HORROR
-  // ==========================================
   {
     id: 'horror',
     name: 'Horror',
@@ -557,9 +541,7 @@ export const CANONICAL_GENRES: GenreDefinition[] = [
     },
   },
 
-  // ==========================================
   // 9. SCIENCE FICTION
-  // ==========================================
   {
     id: 'science-fiction',
     name: 'Science Fiction',
@@ -625,9 +607,7 @@ export const CANONICAL_GENRES: GenreDefinition[] = [
     },
   },
 
-  // ==========================================
   // 10. THRILLER & SUSPENSE
-  // ==========================================
   {
     id: 'thriller',
     name: 'Thriller',
@@ -653,9 +633,7 @@ export const CANONICAL_GENRES: GenreDefinition[] = [
     },
   },
 
-  // ==========================================
   // 11. WESTERN
-  // ==========================================
   {
     id: 'western',
     name: 'Western',
@@ -680,9 +658,7 @@ export const CANONICAL_GENRES: GenreDefinition[] = [
     },
   },
 
-  // ==========================================
   // 12. WAR & MILITARY
-  // ==========================================
   {
     id: 'war',
     name: 'War & Military',
@@ -707,9 +683,7 @@ export const CANONICAL_GENRES: GenreDefinition[] = [
     },
   },
 
-  // ==========================================
   // 13. ROMANCE
-  // ==========================================
   {
     id: 'romance',
     name: 'Romance',
@@ -735,9 +709,7 @@ export const CANONICAL_GENRES: GenreDefinition[] = [
     },
   },
 
-  // ==========================================
   // 14. MUSIC & MUSICAL
-  // ==========================================
   {
     id: 'musical',
     name: 'Music & Musical',
@@ -762,9 +734,7 @@ export const CANONICAL_GENRES: GenreDefinition[] = [
     },
   },
 
-  // ==========================================
   // 14b. MYSTERY, FAMILY, HISTORY, TRAVEL & MUSIC
-  // ==========================================
   {
     id: 'mystery',
     name: 'Mystery',
@@ -884,9 +854,7 @@ export const CANONICAL_GENRES: GenreDefinition[] = [
     },
   },
 
-  // ==========================================
   // 15. LIVE TELEVISION BROADCASTING GENRES
-  // ==========================================
   {
     id: 'live-news',
     name: 'News & Current Affairs',
@@ -978,9 +946,7 @@ export const CANONICAL_GENRES: GenreDefinition[] = [
     },
   },
 
-  // ==========================================
   // 16. MUSIC & AUDIO GENRES
-  // ==========================================
   {
     id: 'audio-rock',
     name: 'Rock',
@@ -1099,9 +1065,7 @@ export const CANONICAL_GENRES: GenreDefinition[] = [
     },
   },
 
-  // ==========================================
   // 17. BOOKS & PUBLICATIONS
-  // ==========================================
   {
     id: 'books-fiction',
     name: 'Fiction & Literature',

@@ -253,7 +253,7 @@ function Overview({ go, onSelectResource }: { go: (t: TabId) => void; onSelectRe
           </div>
           <div className="lib-dist-bar" aria-hidden="true">
             <div style={{ width: `${Math.max(8, (films.length / Math.max(1, favs.length + 1)) * 100)}%`, background: '#f59e0b' }} title="Films" />
-            <div style={{ width: `${Math.max(8, (shows.length / Math.max(1, favs.length + 1)) * 100)}%`, background: '#8b5cf6' }} title="Series" />
+            <div style={{ width: `${Math.max(8, (shows.length / Math.max(1, favs.length + 1)) * 100)}%`, background: 'var(--accent, #e50914)' }} title="Series" />
             <div style={{ width: `${Math.max(8, (channels.length / Math.max(1, favs.length + 1)) * 100)}%`, background: '#3b82f6' }} title="Channels" />
           </div>
         </div>

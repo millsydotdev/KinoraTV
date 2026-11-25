@@ -76,7 +76,7 @@ export const PROVENANCE_REGISTRY: Record<DataProvenance, ProvenanceMeta> = {
     shortLabel: 'Local',
     description: 'Media file residing on your local filesystem or mounted storage volume.',
     badgeClass: 'provenance-local-media',
-    tone: 'var(--purple, #a855f7)',
+    tone: 'var(--ok, #3ecf8e)',
   },
   'metadata-only': {
     id: 'metadata-only',

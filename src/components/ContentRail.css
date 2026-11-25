@@ -49,14 +49,12 @@
   color: var(--accent-ink, #ffffff);
   display: inline-grid;
   place-items: center;
-  box-shadow: 0 0 10px var(--accent-glow, rgba(229, 9, 20, 0.55));
   margin-right: 2px;
   flex: none;
 }
 
 .content-rail-icon.is-clapperboard {
   color: var(--accent, #e50914);
-  filter: drop-shadow(0 0 6px var(--accent-glow, rgba(229, 9, 20, 0.6)));
   flex: none;
 }
 
@@ -193,6 +191,17 @@
   background: rgb(var(--scrim) / 0.85);
   color: #ffffff;
   border-color: rgba(255, 255, 255, 0.35);
+}
+
+@media (pointer: coarse) {
+  .card-more-btn,
+  .card-dismiss-btn {
+    width: 44px;
+    height: 44px;
+  }
+  .card-dismiss-btn {
+    right: 56px;
+  }
 }
 
 /* Card dismiss button on continue watching cards */

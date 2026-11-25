@@ -27,16 +27,16 @@
 }
 
 .ds-toast-success {
-  border-left: 4px solid #10b981;
+  border-color: color-mix(in oklab, var(--ok, #3ecf8e) 45%, var(--line));
 }
 .ds-toast-warning {
-  border-left: 4px solid #f59e0b;
+  border-color: color-mix(in oklab, var(--warn, #f2b84b) 45%, var(--line));
 }
 .ds-toast-error {
-  border-left: 4px solid #ef4444;
+  border-color: color-mix(in oklab, var(--bad, #ff7070) 45%, var(--line));
 }
 .ds-toast-info {
-  border-left: 4px solid var(--accent, #e50914);
+  border-color: color-mix(in oklab, var(--accent, #e50914) 45%, var(--line));
 }
 
 .ds-toast-content {
@@ -251,8 +251,8 @@
 }
 
 .ds-notif-item.is-unread {
-  background: rgb(var(--accent-rgb, 229 9 20) / 0.06);
-  border-left: 3px solid var(--accent, #e50914);
+  background: var(--accent-soft, rgba(229, 9, 20, 0.08));
+  border-color: color-mix(in oklab, var(--accent, #e50914) 38%, var(--line));
 }
 
 .ds-notif-item-icon {

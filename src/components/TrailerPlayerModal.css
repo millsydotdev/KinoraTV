@@ -177,9 +177,14 @@
   appearance: none;
   background: rgba(255, 255, 255, 0.25);
   border-radius: 999px;
-  outline: none;
   cursor: pointer;
   accent-color: var(--accent, #e50914);
+}
+
+.trailer-scrub-slider:focus-visible,
+.trailer-volume-slider:focus-visible {
+  outline: 2px solid var(--focus, #ff6b73);
+  outline-offset: 3px;
 }
 
 .trailer-volume-group {
@@ -196,7 +201,6 @@
   appearance: none;
   background: rgba(255, 255, 255, 0.25);
   border-radius: 999px;
-  outline: none;
   cursor: pointer;
   accent-color: var(--accent, #e50914);
 }
