@@ -10,7 +10,6 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import {
-  CANONICAL_GENRES,
   getGenreById,
   type GenreDefinition,
 } from '../data/genreTaxonomy'
@@ -43,7 +42,7 @@ export const initialGenreCustomizations: GenreCustomizationState = {
   lastRefreshedAt: null,
 }
 
-function loadSavedCustomizations(): GenreCustomizationState {
+export function loadSavedCustomizations(): GenreCustomizationState {
   if (typeof window === 'undefined') return initialGenreCustomizations
   try {
     const raw = localStorage.getItem(STORAGE_KEY)

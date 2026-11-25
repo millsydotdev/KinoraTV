@@ -37,6 +37,7 @@ import { useCasting } from '../lib/casting/manager'
 import { loadBingeSettings, saveBingeSettings } from '../lib/bingeMode'
 import { WhatsNewModal } from '../components/WhatsNewModal'
 import { KPlayMark } from '../components/KPlayMark'
+import { GenreArtworkSettings } from '../components/GenreArtworkSettings'
 import './Settings.css'
 
 // Categories follow the mockup's Settings list (Playback, Interface, EPG, Sources, Library, Advanced),
@@ -52,6 +53,7 @@ const sections: { id: string; label: string; icon: IconName; blurb: string }[] =
   { id: 'sources', label: 'Sources & Providers', icon: 'sources', blurb: 'How playlists are imported and refreshed' },
   { id: 'storage', label: 'Local Media Library', icon: 'library', blurb: 'Physical storage volumes, connected local folders, media indexing' },
   { id: 'metadata', label: 'Metadata & Art', icon: 'sparkles', blurb: 'TMDb and TVMaze enrichment providers, artwork and posters' },
+  { id: 'genres', label: 'Genres & Discovery Art', icon: 'tag', blurb: 'Canonical genre taxonomy, artwork library, provenance, and provider category mappings' },
   { id: 'notifications', label: 'Notifications', icon: 'bell', blurb: 'System notifications, episode reminders, recordings' },
   { id: 'shortcuts', label: 'Shortcuts & Remote', icon: 'keyboard', blurb: 'Keyboard shortcuts and remote control mapping' },
   { id: 'profiles', label: 'User Profile', icon: 'user', blurb: 'Household profiles, Kids mode, avatar, parental lock' },
@@ -914,13 +916,30 @@ function SubtitlesSection({
 
 function NotificationsSection() {
   const store = useStore()
+  const { prefs, setPref } = store
   const remindersCount = store.library.reminders?.length ?? 0
+  const [permission, setPermission] = useState<string>(() => {
+    return typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default'
+  })
+
+  const requestPermission = async () => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      try {
+        const perm = await Notification.requestPermission()
+        setPermission(perm)
+      } catch {}
+    }
+  }
 
   return (
     <>
       <Group title="Programme Reminders">
         <Row title="Upcoming Programme Alerts" hint="Show on-screen alerts 5 minutes before scheduled programmes begin airing.">
-          <Switch label="Upcoming programme alerts" checked={true} onChange={() => {}} />
+          <Switch
+            label="Upcoming programme alerts"
+            checked={prefs.reminderAlerts}
+            onChange={(v) => setPref('reminderAlerts', v)}
+          />
         </Row>
         <Row title="Active Reminders" hint="Number of upcoming programmes scheduled for reminder notification.">
           <span className="muted">{remindersCount === 1 ? '1 programme' : `${remindersCount} programmes`}</span>
@@ -928,17 +947,35 @@ function NotificationsSection() {
       </Group>
 
       <Group title="DVR & Recording Notifications">
-        <Row title="Recording Started Alerts" hint="Notify when a scheduled DVR recording begins capturing.">
-          <Switch label="Recording started alerts" checked={true} onChange={() => {}} />
-        </Row>
-        <Row title="Recording Completed Alerts" hint="Notify when a scheduled DVR recording finishes and is ready to watch.">
-          <Switch label="Recording completed alerts" checked={true} onChange={() => {}} />
+        <Row title="Recording Alerts" hint="Notify when a scheduled DVR recording begins capturing or completes.">
+          <Switch
+            label="Recording alerts"
+            checked={prefs.recordingAlerts}
+            onChange={(v) => setPref('recordingAlerts', v)}
+          />
         </Row>
       </Group>
 
       <Group title="System & Source Notices">
         <Row title="Background Refresh Alerts" hint="Notify when playlist sources or XMLTV guides finish refreshing.">
-          <Switch label="Background refresh alerts" checked={false} onChange={() => {}} />
+          <Switch
+            label="Background refresh alerts"
+            checked={prefs.refreshAlerts}
+            onChange={(v) => setPref('refreshAlerts', v)}
+          />
+        </Row>
+        <Row title="Desktop Alerts" hint="Deliver native desktop notifications when programmes air or recordings start.">
+          {permission === 'granted' ? (
+            <span className="muted">Enabled</span>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-secondary btn-small"
+              onClick={requestPermission}
+            >
+              Enable Desktop Alerts
+            </button>
+          )}
         </Row>
       </Group>
     </>
@@ -1277,6 +1314,8 @@ function Section({ id }: { id: string }) {
       return <StorageSettingsSection />
     case 'metadata':
       return <MetadataSection />
+    case 'genres':
+      return <GenreArtworkSettings />
     case 'notifications':
       return <NotificationsSection />
     case 'shortcuts':

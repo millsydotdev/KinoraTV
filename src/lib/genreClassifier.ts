@@ -246,6 +246,8 @@ export function classifyGenreList(
   }
 }
 
+export const classifyMedia = classifyGenreList
+
 /**
  * Classifies a movie title from any source (demo, open catalogue, Xtream, local media).
  */

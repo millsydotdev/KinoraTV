@@ -15,6 +15,7 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::net::IpAddr;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -42,10 +43,163 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const IDLE_TIMEOUT: Duration = Duration::from_secs(15);
 
 const PLAYLIST_TYPE: &str = "application/vnd.apple.mpegurl";
+const LOCAL_FILE_MAX_CHUNK_BYTES: u64 = 4 * 1024 * 1024;
 
 const DIRECT_MEDIA: &[&str] = &[
     ".ts", ".mp4", ".m4v", ".mkv", ".webm", ".avi", ".mov", ".flv", ".mp3", ".aac", ".m4a",
 ];
+
+/// Verifies that `file_path` resolves to an existing regular file strictly contained within
+/// at least one directory in `allowed_roots` (canonicalizing symlinks and `..` segments).
+pub fn canonicalize_contained_path(
+    file_path: &Path,
+    allowed_roots: &[PathBuf],
+) -> Result<PathBuf, String> {
+    if allowed_roots.is_empty() {
+        return Err("No authorized local media library folders are configured.".to_string());
+    }
+    let canonical_file = file_path
+        .canonicalize()
+        .map_err(|_| "Requested local media file could not be accessed.".to_string())?;
+    if !canonical_file.is_file() {
+        return Err("Requested local media target is not a readable file.".to_string());
+    }
+    for root in allowed_roots {
+        if let Ok(canonical_root) = root.canonicalize() {
+            if canonical_root.is_dir() && canonical_file.starts_with(&canonical_root) {
+                return Ok(canonical_file);
+            }
+        }
+    }
+    Err("Requested local media file is outside authorized library folders.".to_string())
+}
+
+fn local_media_content_type(path: &Path) -> Option<&'static str> {
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    match ext.as_str() {
+        "mp4" | "m4v" => Some("video/mp4"),
+        "mkv" => Some("video/x-matroska"),
+        "webm" => Some("video/webm"),
+        "mov" => Some("video/quicktime"),
+        "ts" | "m2ts" => Some("video/mp2t"),
+        "avi" => Some("video/x-msvideo"),
+        "mp3" => Some("audio/mpeg"),
+        "flac" => Some("audio/flac"),
+        "m4a" => Some("audio/mp4"),
+        "ogg" => Some("audio/ogg"),
+        "aac" => Some("audio/aac"),
+        "wav" => Some("audio/wav"),
+        _ => None,
+    }
+}
+
+fn parse_byte_range(header: &str, total_len: u64) -> Result<(u64, u64), ()> {
+    if total_len == 0 {
+        return Err(());
+    }
+    let spec = header.trim().strip_prefix("bytes=").ok_or(())?;
+    let first = spec.split(',').next().ok_or(())?.trim();
+    let (start_str, end_str) = first.split_once('-').ok_or(())?;
+    if start_str.is_empty() {
+        let suffix: u64 = end_str.trim().parse().map_err(|_| ())?;
+        if suffix == 0 {
+            return Err(());
+        }
+        let start = total_len.saturating_sub(suffix);
+        return Ok((start, total_len - 1));
+    }
+    let start: u64 = start_str.trim().parse().map_err(|_| ())?;
+    if start >= total_len {
+        return Err(());
+    }
+    let end = if end_str.trim().is_empty() {
+        total_len - 1
+    } else {
+        let parsed: u64 = end_str.trim().parse().map_err(|_| ())?;
+        if parsed < start {
+            return Err(());
+        }
+        parsed.min(total_len - 1)
+    };
+    Ok((start, end))
+}
+
+async fn serve_local_file(path: &Path, content_type: &'static str, range: Option<&str>) -> ProxyReply {
+    let path_owned = path.to_path_buf();
+    let range_owned = range.map(|s| s.to_string());
+
+    tokio::task::spawn_blocking(move || {
+        use std::io::{Read, Seek, SeekFrom};
+
+        let mut file = match std::fs::File::open(&path_owned) {
+            Ok(f) => f,
+            Err(_) => return ProxyReply::error(404, "Local media file is unavailable."),
+        };
+        let total_len = match file.metadata() {
+            Ok(m) if m.is_file() => m.len(),
+            _ => return ProxyReply::error(404, "Local media file is unavailable."),
+        };
+        if total_len == 0 {
+            return ProxyReply {
+                status: 200,
+                content_type: content_type.to_string(),
+                content_range: None,
+                extra_headers: vec![("Accept-Ranges", "bytes".to_string())],
+                body: Vec::new(),
+            };
+        }
+
+        let (start, end, is_partial) = match range_owned.as_deref() {
+            Some(hdr) => match parse_byte_range(hdr, total_len) {
+                Ok((s, e)) => {
+                    let capped_end = e
+                        .min(s.saturating_add(LOCAL_FILE_MAX_CHUNK_BYTES - 1))
+                        .min(total_len - 1);
+                    (s, capped_end, true)
+                }
+                Err(()) => {
+                    return ProxyReply {
+                        status: 416,
+                        content_type: "text/plain; charset=utf-8".to_string(),
+                        content_range: Some(format!("bytes */{total_len}")),
+                        extra_headers: vec![("Accept-Ranges", "bytes".to_string())],
+                        body: b"Range Not Satisfiable".to_vec(),
+                    };
+                }
+            },
+            None => {
+                if total_len <= LOCAL_FILE_MAX_CHUNK_BYTES {
+                    (0, total_len - 1, false)
+                } else {
+                    (0, LOCAL_FILE_MAX_CHUNK_BYTES - 1, true)
+                }
+            }
+        };
+
+        let read_len = (end - start + 1) as usize;
+        if file.seek(SeekFrom::Start(start)).is_err() {
+            return ProxyReply::error(500, "Failed to seek local media file.");
+        }
+        let mut buf = vec![0u8; read_len];
+        if file.read_exact(&mut buf).is_err() {
+            return ProxyReply::error(500, "Failed to read local media file.");
+        }
+
+        ProxyReply {
+            status: if is_partial { 206 } else { 200 },
+            content_type: content_type.to_string(),
+            content_range: if is_partial {
+                Some(format!("bytes {start}-{end}/{total_len}"))
+            } else {
+                None
+            },
+            extra_headers: vec![("Accept-Ranges", "bytes".to_string())],
+            body: buf,
+        }
+    })
+    .await
+    .unwrap_or_else(|_| ProxyReply::error(500, "Failed to serve local media file."))
+}
 
 const MEDIA_TYPES: &[&str] = &[
     "video/mp2t",
@@ -119,9 +273,20 @@ impl ProxyReply {
     }
 }
 
+#[derive(Clone)]
+enum ProxyTarget {
+    Remote {
+        url: Url,
+        kind: Kind,
+    },
+    LocalFile {
+        path: PathBuf,
+        content_type: &'static str,
+    },
+}
+
 struct ProxyEntry {
-    url: Url,
-    kind: Kind,
+    target: ProxyTarget,
 }
 
 struct LanSession {
@@ -187,8 +352,10 @@ impl LanStreamProxy {
         handles.insert(
             root_handle.clone(),
             ProxyEntry {
-                url,
-                kind: root_kind,
+                target: ProxyTarget::Remote {
+                    url,
+                    kind: root_kind,
+                },
             },
         );
 
@@ -239,6 +406,82 @@ impl LanStreamProxy {
             session_key,
             root_handle,
             format: format.to_string(),
+        })
+    }
+
+    /// Opens a guarded direct-file proxy session for a local media file strictly contained
+    /// within `allowed_roots`. Host filesystem paths never leave the server.
+    pub fn open_local_file(
+        &self,
+        device_id: &str,
+        file_path: &Path,
+        allowed_roots: &[PathBuf],
+    ) -> Result<OpenedLanStream, String> {
+        let canonical = canonicalize_contained_path(file_path, allowed_roots)?;
+        let content_type = local_media_content_type(&canonical)
+            .ok_or_else(|| "Unsupported local media file format.".to_string())?;
+
+        let stream_policy = Policy {
+            connect_timeout: CONNECT_TIMEOUT,
+            read_timeout: Some(IDLE_TIMEOUT),
+            total_timeout: SEGMENT_TIMEOUT,
+            ..self.policy.clone()
+        };
+        let client = fetch::guarded_client(&stream_policy).map_err(|e| e.message)?;
+        let session_key = random_hex_128();
+        let root_handle = random_hex_128();
+
+        let mut handles = HashMap::new();
+        handles.insert(
+            root_handle.clone(),
+            ProxyEntry {
+                target: ProxyTarget::LocalFile {
+                    path: canonical,
+                    content_type,
+                },
+            },
+        );
+
+        let session = LanSession {
+            device_id: device_id.to_string(),
+            handles,
+            by_url: HashMap::new(),
+            order: VecDeque::new(),
+            client,
+            requests: Arc::new(Semaphore::new(CONCURRENT_PER_SESSION)),
+            budget: Arc::new(Semaphore::new(SESSION_BUDGET_BYTES)),
+            policy: stream_policy,
+        };
+
+        let mut sessions = self.sessions.lock().unwrap_or_else(|p| p.into_inner());
+        let mut order = self.session_order.lock().unwrap_or_else(|p| p.into_inner());
+
+        let prev_keys: Vec<String> = sessions
+            .iter()
+            .filter(|(_, s)| s.device_id == device_id)
+            .map(|(k, _)| k.clone())
+            .collect();
+        for k in prev_keys {
+            sessions.remove(&k);
+            order.retain(|item| item != &k);
+        }
+
+        while sessions.len() >= MAX_LAN_SESSIONS {
+            if let Some(old_key) = order.pop_front() {
+                sessions.remove(&old_key);
+            } else {
+                break;
+            }
+        }
+
+        sessions.insert(session_key.clone(), session);
+        order.push_back(session_key.clone());
+
+        Ok(OpenedLanStream {
+            proxy_path: format!("/api/stream/h/{session_key}/{root_handle}"),
+            session_key,
+            root_handle,
+            format: "direct".to_string(),
         })
     }
 
@@ -295,7 +538,9 @@ impl LanStreamProxy {
         while session.handles.len() >= MAX_HANDLES_PER_SESSION {
             if let Some(old) = session.order.pop_front() {
                 if let Some(entry) = session.handles.remove(&old) {
-                    session.by_url.remove(&(entry.url.to_string(), entry.kind));
+                    if let ProxyTarget::Remote { url: old_url, kind: old_kind } = entry.target {
+                        session.by_url.remove(&(old_url.to_string(), old_kind));
+                    }
                 }
             } else {
                 break;
@@ -305,7 +550,12 @@ impl LanStreamProxy {
         let handle = random_hex_128();
         session.order.push_back(handle.clone());
         session.by_url.insert(key, handle.clone());
-        session.handles.insert(handle.clone(), ProxyEntry { url, kind });
+        session.handles.insert(
+            handle.clone(),
+            ProxyEntry {
+                target: ProxyTarget::Remote { url, kind },
+            },
+        );
         Ok(handle)
     }
 
@@ -320,7 +570,7 @@ impl LanStreamProxy {
             return ProxyReply::error(404, "Stream resource not found.");
         }
 
-        let (url, kind, client, requests, budget, policy) = {
+        let (target, client, requests, budget, policy) = {
             let sessions = self.sessions.lock().unwrap_or_else(|p| p.into_inner());
             let Some(session) = sessions.get(session_key) else {
                 return ProxyReply::error(410, "Stream session has ended.");
@@ -329,8 +579,7 @@ impl LanStreamProxy {
                 return ProxyReply::error(404, "Stream resource not found.");
             };
             (
-                entry.url.clone(),
-                entry.kind,
+                entry.target.clone(),
                 session.client.clone(),
                 session.requests.clone(),
                 session.budget.clone(),
@@ -340,6 +589,13 @@ impl LanStreamProxy {
 
         let Ok(_req_permit) = requests.acquire_owned().await else {
             return ProxyReply::error(503, "Stream proxy is busy.");
+        };
+
+        let (url, kind) = match target {
+            ProxyTarget::LocalFile { path, content_type } => {
+                return serve_local_file(&path, content_type, range).await;
+            }
+            ProxyTarget::Remote { url, kind } => (url, kind),
         };
 
         let (max_bytes, timeout, allow_range) = match kind {
@@ -1410,5 +1666,72 @@ mod tests {
             )
             .await;
         assert_eq!(after_close.status, 410);
+    }
+
+    #[tokio::test]
+    async fn local_file_proxy_streams_ranges_and_enforces_root_containment() {
+        let base = std::env::temp_dir().join(format!(
+            "kinora_lan_local_file_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let lib_root = base.join("library");
+        let outside_dir = base.join("outside");
+        std::fs::create_dir_all(&lib_root).unwrap();
+        std::fs::create_dir_all(&outside_dir).unwrap();
+
+        let movie_path = lib_root.join("Solaris.mp4");
+        let payload = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        std::fs::write(&movie_path, payload).unwrap();
+
+        let text_path = lib_root.join("notes.txt");
+        std::fs::write(&text_path, b"not a video").unwrap();
+
+        let outside_path = outside_dir.join("secret.mp4");
+        std::fs::write(&outside_path, b"secret video").unwrap();
+
+        let proxy = LanStreamProxy::default();
+        let roots = vec![lib_root.clone()];
+
+        // Reject file outside authorized library roots
+        assert!(proxy.open_local_file("dev-tv", &outside_path, &roots).is_err());
+        // Reject unsupported file extension inside root
+        assert!(proxy.open_local_file("dev-tv", &text_path, &roots).is_err());
+        // Reject empty allowed roots
+        assert!(proxy.open_local_file("dev-tv", &movie_path, &[]).is_err());
+
+        // Valid media file inside root succeeds and serves full & partial HTTP ranges
+        let opened = proxy.open_local_file("dev-tv", &movie_path, &roots).unwrap();
+        assert_eq!(opened.format, "direct");
+        assert!(!opened.proxy_path.contains("Solaris"));
+
+        let full = proxy.serve(&opened.session_key, &opened.root_handle, None).await;
+        assert_eq!(full.status, 200);
+        assert_eq!(full.content_type, "video/mp4");
+        assert_eq!(full.body, payload);
+        assert!(full.extra_headers.iter().any(|(k, v)| *k == "Accept-Ranges" && v == "bytes"));
+
+        let partial = proxy
+            .serve(&opened.session_key, &opened.root_handle, Some("bytes=10-19"))
+            .await;
+        assert_eq!(partial.status, 206);
+        assert_eq!(
+            partial.content_range.as_deref(),
+            Some("bytes 10-19/36")
+        );
+        assert_eq!(partial.body, b"ABCDEFGHIJ");
+
+        let invalid = proxy
+            .serve(&opened.session_key, &opened.root_handle, Some("bytes=999-1000"))
+            .await;
+        assert_eq!(invalid.status, 416);
+
+        proxy.revoke_device("dev-tv");
+        let revoked = proxy.serve(&opened.session_key, &opened.root_handle, None).await;
+        assert_eq!(revoked.status, 410);
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

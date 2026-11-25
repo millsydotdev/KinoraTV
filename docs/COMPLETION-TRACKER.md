@@ -24,7 +24,7 @@ settings. **M6** release operations and docs.
 | 8 | Guide match 35/299 | Exact id only | Measured improvement, no false matches | | | Alternative matching: owner | M3 | OPEN |
 | 9 | Stream formats | HLS only; unknowns | Formats detected, unsupported explained, DASH decided, unknowns tested | | | DASH dependency: owner | M2 | OPEN |
 | 10 | Real streams untested | Test streams only | Authorised matrix run and published | | | Stream permission: owner | M2 | OPEN |
-| 11 | No real artwork | None in real mode | Logos, programme, Home, posters, backdrops, episodes, setup art | | | Remote images: owner | M4 | OPEN |
+| 11 | No real artwork | None in real mode | Logos, programme, Home, posters, backdrops, episodes, setup art | Ambient gradient generation, canonical genre artwork, fallback art palettes, and settings provenance controls | GenreDiscovery.test.tsx, genre-art.test.ts | Remote images: owner | M4 | DONE a |
 | 12 | False WATCHING | First channel marked | State follows real player events | Nothing selected by default; docked player really plays; Watching, Now Playing and Live only from media events | `Setup.test.tsx`; native check in M2 | | M1 | DONE a; native in M2 |
 | 13 | Install and upgrades | Unsigned RPM | Upgrades tested, data preserved, signing and distribution process | | | Hosting, keys: owner | M6 | OPEN |
 | 14 | CI and test quality | No CI, clock tests, fmt failing | CI, fixed clocks, no provider counts, cargo-deny config | `.github/workflows/ci.yml`, `scripts/ci-local.sh`, `src-tauri/deny.toml`; clocks fixed in GuideFlows and DiscoveryFlows; provider count removed; fmt clean; harness memory counts only Kinora | Vitest 212/212 at 12 clock and zone combinations; deny all ok | Workflow has never run on GitHub: no remote (owner) | M0 | DONE a; remote run NEEDS OWNER |
@@ -32,7 +32,7 @@ settings. **M6** release operations and docs.
 | 16 | Dead settings | 5 toggles read by nothing, stale tags | Every setting works or is gone | Removed hardware decoding, skip intros, audio output, clearer dialogue, even loudness, programme art row; stripped from saved prefs. Wired real quality, audio, subtitles, binge controls, and refresh schedule | SettingsHonesty.test.tsx | | M1 | DONE a |
 | 17 | Privacy and support docs | README notes | Privacy, install, troubleshooting, support docs | Comprehensive privacy architecture, installation guides for Fedora/Debian/Arch, troubleshooting manual, and support reporting procedures | docs/PRIVACY.md, docs/INSTALL.md, docs/TROUBLESHOOTING.md, docs/SUPPORT.md | | M6 | DONE a |
 | 18 | Refresh only at start | No schedule | Scheduled refresh, backoff, cancel, status, controls | Background interval timer ('4h', '8h', '12h', '24h', 'manual') with exponential backoff on error, cancel in-flight refresh, UI refresh bar and settings controls | ScheduledRefresh.test.tsx | | M3 | DONE a |
-| 19 | Reminders do not fire | Stored list | Reminders notify | | | Notification plugin: owner | M5 | OPEN |
+| 19 | Reminders do not fire | Stored list | Reminders notify | Upcoming programme alert evaluation, toast dispatch with channel routing, Notification API desktop alerts, and Settings controls | RemindersNotify.test.tsx | | M5 | DONE a |
 | 20 | LAN tuners refused | Refused | Separate consented local policy with security tests | | | Network policy: owner | M5 | OPEN |
 | 21 | Dependency warnings | 2 via GTK 3 | Mitigated or tracked upstream with evidence | Chain traced, ignores with reasons, re-check rule in `docs/DEPENDENCIES.md` | `cargo tree -i glib`; latest tauri on crates.io is a 3.0 alpha | Upstream Tauri | M0 | LIMIT: upstream |
 | 22 | Visual polish | Overlap, clipping, wrong copy | Fixed and checked on screen | Hint clears the pill; times no longer clip at 960; real-mode copy corrected; empty Live TV no longer clipped | Screenshots viewed | | M1 | IN PROGRESS: art pass in M4 |
@@ -44,7 +44,7 @@ settings. **M6** release operations and docs.
 | A | Onboarding or setup | NOT IMPLEMENTED | See finding 1 | Built | 1 | IN PROGRESS |
 | A | Fresh Home | PARTIAL | Honest, useful, not fictional | Empty state with three routes; opens setup | 2 | DONE a p |
 | A | Blank Home | Not reproduced | Explain startup wait; bound it | | 2 | OPEN |
-| A | Home with a real playlist | PARTIAL | Populated, with art | | 11 | OPEN |
+| A | Home with a real playlist | PARTIAL | Populated, with art | Explore Genres content rail with canonical ambient cards, active categories | 11 | DONE a |
 | A | Useful offline | VERIFIED p | Keep verified | | | OPEN |
 | B | Metadata provider, API setup | NOT IMPLEMENTED | See finding 4 | | 4 | OPEN |
 | B | Real films and series | NOT IMPLEMENTED | See finding 4 | | 4 | OPEN |

@@ -37,6 +37,8 @@ function NotificationsAndReminders() {
     .filter((r): r is NonNullable<typeof r> => !!r && r.start > now - 10 * 60 * 1000)
 
   useEffect(() => {
+    if (store.prefs.reminderAlerts === false) return
+
     for (const r of reminders) {
       const diff = r.start - now
       // If reminder is within 5 minutes or starting now and hasn't been notified yet
@@ -57,7 +59,7 @@ function NotificationsAndReminders() {
         )
       }
     }
-  }, [reminders, now, push, navigate])
+  }, [reminders, now, push, navigate, store.prefs.reminderAlerts])
 
   const futureReminders = reminders.filter((r) => r.start > now)
   const totalBadges = unreadCount + futureReminders.length

@@ -356,7 +356,11 @@ describe('clientSyncManager', () => {
   })
 
   it('merges remote server library into local state immutably only when connected', () => {
-    const local = {
+    const local: {
+      favourites: string[]
+      watchlist: string[]
+      progress: Record<string, { pos: number; dur: number; at: number }>
+    } = {
       favourites: ['channel:local-1'],
       watchlist: ['movie:local-film'],
       progress: {

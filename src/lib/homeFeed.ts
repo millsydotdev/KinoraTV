@@ -14,6 +14,8 @@ import {
 } from './featuredSelection'
 import { computeRecommendations, type RecommendationResults } from './recommendations'
 import type { TechnicalFormat } from '../components/TechnicalBadges'
+import { PARENT_GENRES, type GenreDefinition } from '../data/genreTaxonomy'
+import { classifyMovie, classifySeries, classifyChannel } from './genreClassifier'
 
 export type { FeaturedSlide } from './featuredSelection'
 
@@ -131,6 +133,7 @@ export interface HomeFeedData {
     reason?: string
   }>
   recentlyAdded: Array<Movie | Series>
+  exploreGenres: Array<{ genre: GenreDefinition; count: number }>
 }
 
 /** Format remaining seconds into a concise display string. */
@@ -677,6 +680,32 @@ export function buildHomeFeed(inputs: HomeFeedInputs): HomeFeedData {
     .sort((a, b) => b.added.localeCompare(a.added))
     .slice(0, 12)
 
+  // 12. Explore Genres (Active canonical genres matching available library content)
+  const genreCounts = new Map<string, number>()
+  for (const m of safeMovies) {
+    const c = classifyMovie(m)
+    for (const g of c.canonicalGenres) {
+      genreCounts.set(g.id, (genreCounts.get(g.id) ?? 0) + 1)
+    }
+  }
+  for (const s of safeSeries) {
+    const c = classifySeries(s)
+    for (const g of c.canonicalGenres) {
+      genreCounts.set(g.id, (genreCounts.get(g.id) ?? 0) + 1)
+    }
+  }
+  for (const ch of safeChannels) {
+    const c = classifyChannel(ch)
+    for (const g of c.canonicalGenres) {
+      genreCounts.set(g.id, (genreCounts.get(g.id) ?? 0) + 1)
+    }
+  }
+
+  const exploreGenres = PARENT_GENRES
+    .map((g) => ({ genre: g, count: genreCounts.get(g.id) || 0 }))
+    .filter(({ genre, count }) => count > 0 || genre.featured)
+    .slice(0, 12)
+
   return {
     featuredSlides,
     continueWatching: continueWatchingItems,
@@ -689,5 +718,6 @@ export function buildHomeFeed(inputs: HomeFeedInputs): HomeFeedData {
     recommendations: recs,
     masterRecommendations: masterRefRecommendations,
     recentlyAdded,
+    exploreGenres,
   }
 }

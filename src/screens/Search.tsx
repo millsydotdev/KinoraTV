@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { genresOf, movies, series, titles } from '../data/catalog'
+import { movies, series } from '../data/catalog'
 import { OPEN_MOVIES, OPEN_SERIES } from '../data/openCatalogue'
 import { startOfDay } from '../data/channels'
 import { episodeCode, episodeRef } from '../data/refs'
@@ -13,6 +13,7 @@ import { categoryLabel, cleanChannelTitle } from '../state/playlists'
 import { isLogoArtwork, getRoleLabel } from '../components/ResourceCard'
 import { classifyMediaResource } from '../data/provenance'
 import { DISCOVERED_RESOURCES } from '../data/discoveredResources'
+import { CANONICAL_GENRES, getGenreById } from '../data/genreTaxonomy'
 import '../components/ResourceCard.css'
 import { useStore } from '../state/store'
 import { useLocalMedia } from '../state/localMedia'
@@ -85,6 +86,31 @@ export function Search() {
   const input = useRef<HTMLInputElement>(null)
   const results = useRef<HTMLDivElement>(null)
   const needle = q.trim().toLowerCase()
+
+  const matchingGenres = useMemo(() => {
+    if (!needle || needle.length < 2) return []
+    const matches: Array<{ id: string; name: string; to: string; subgenreOf?: string }> = []
+    for (const g of CANONICAL_GENRES) {
+      if (
+        g.name.toLowerCase().includes(needle) ||
+        g.aliases.some((a: string) => a.toLowerCase().includes(needle)) ||
+        g.description.toLowerCase().includes(needle)
+      ) {
+        if (g.parentId) {
+          const parent = getGenreById(g.parentId)
+          matches.push({
+            id: `${g.parentId}/${g.id}`,
+            name: g.name,
+            to: `/genres/${g.parentId}/${g.id}`,
+            subgenreOf: parent?.name,
+          })
+        } else {
+          matches.push({ id: g.id, name: g.name, to: `/genres/${g.id}` })
+        }
+      }
+    }
+    return matches.slice(0, 8)
+  }, [needle])
 
   const unifiedCatalog = useMemo(() => {
     return buildUnifiedMediaCatalog(
@@ -600,6 +626,14 @@ export function Search() {
   // Quick suggestions
   const suggestions: Array<{ title: string; type: string; to: string }> = []
   if (needle.length >= 2 && !isSafeSearchBlocked) {
+    for (const mg of matchingGenres) {
+      suggestions.push({
+        title: mg.name,
+        type: mg.subgenreOf ? `Subgenre (${mg.subgenreOf})` : 'Genre',
+        to: mg.to,
+      })
+      if (suggestions.length >= 2) break
+    }
     for (const c of channels) {
       if (c.name.toLowerCase().includes(needle)) {
         suggestions.push({ title: c.name, type: 'Channel', to: `/live?channel=${c.id}` })
@@ -796,6 +830,24 @@ export function Search() {
         </div>
       )}
 
+      {needle && matchingGenres.length > 0 && (
+        <div className="search-genre-matches" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '8px 0 16px', alignItems: 'center' }}>
+          <span className="faint" style={{ fontSize: '0.8125rem', fontWeight: 600 }}>Matching Genres:</span>
+          {matchingGenres.map((mg) => (
+            <Link
+              key={mg.id}
+              to={mg.to}
+              className="chip is-active"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <Icon name="tag" size={12} />
+              <span>{mg.name}</span>
+              {mg.subgenreOf && <span className="faint" style={{ fontSize: '0.75rem' }}>({mg.subgenreOf})</span>}
+            </Link>
+          ))}
+        </div>
+      )}
+
       <div ref={results} onKeyDown={onResultsKey} aria-live="polite">
         {!needle && (
           <div className="search-idle">
@@ -868,11 +920,17 @@ export function Search() {
                 </ul>
               )}
             </section>
-            <section aria-labelledby="browse-h">
-              <h2 id="browse-h" className="section-title"><Icon name="film" size={18} />Browse by Genre</h2>
-              <div className="genre-links">
-                {genresOf(titles).map((g) => (
-                  <Link key={g} to={`/movies?genre=${encodeURIComponent(g)}`} className="chip" data-result>{g}</Link>
+            <section aria-labelledby="browse-h" style={{ marginTop: 24 }}>
+              <div className="recent-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <h2 id="browse-h" className="section-title"><Icon name="tag" size={18} />Browse by Genre</h2>
+                <Link to="/discover" className="faint" style={{ fontSize: '0.8125rem' }}>View All in Discovery</Link>
+              </div>
+              <div className="genre-links" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {CANONICAL_GENRES.slice(0, 16).map((g) => (
+                  <Link key={g.id} to={`/genres/${g.id}`} className="chip" data-result style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <Icon name="tag" size={12} />
+                    <span>{g.name}</span>
+                  </Link>
                 ))}
               </div>
             </section>

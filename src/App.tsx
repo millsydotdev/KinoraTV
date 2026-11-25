@@ -19,6 +19,8 @@ const Movies = lazy(() => import('./screens/Movies').then((m) => ({ default: m.M
 const Player = lazy(() => import('./screens/Player').then((m) => ({ default: m.Player })))
 const Search = lazy(() => import('./screens/Search').then((m) => ({ default: m.Search })))
 const Setup = lazy(() => import('./screens/Setup').then((m) => ({ default: m.Setup })))
+const DiscoverScreen = lazy(() => import('./screens/DiscoverScreen').then((m) => ({ default: m.DiscoverScreen })))
+const GenreBrowseScreen = lazy(() => import('./screens/GenreBrowseScreen').then((m) => ({ default: m.GenreBrowseScreen })))
 const ArtworkLibraryScreen = lazy(() => import('./screens/ArtworkLibraryScreen').then((m) => ({ default: m.ArtworkLibraryScreen })))
 const SeriesBrowse = lazy(() => import('./screens/SeriesBrowse').then((m) => ({ default: m.SeriesBrowse })))
 const SeriesDetail = lazy(() => import('./screens/SeriesDetail').then((m) => ({ default: m.SeriesDetail })))
@@ -443,6 +445,10 @@ function Shell() {
           <Suspense fallback={<div className="page-loader" aria-label="Loading page..."><span className="spinner" /></div>}>
             <Routes>
               <Route path="/" element={<Home />} />
+              <Route path="/discover" element={<DiscoverScreen />} />
+              <Route path="/genres" element={<DiscoverScreen />} />
+              <Route path="/genres/:genreId" element={<GenreBrowseScreen />} />
+              <Route path="/genres/:genreId/:subgenreId" element={<GenreBrowseScreen />} />
               <Route path="/live" element={<LiveTV />} />
               <Route path="/guide" element={<Navigate to="/live" replace />} />
               <Route path="/recordings" element={<Recordings />} />

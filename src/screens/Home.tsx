@@ -18,6 +18,7 @@ import { useLocalMedia } from '../state/localMedia'
 import { isLogoArtwork } from '../components/ResourceCard'
 import type { MediaResource } from '../data/personalLibrary'
 import { HomeCustomizeModal } from '../components/HomeCustomizeModal'
+import { GenreCard } from '../components/GenreCard'
 import { DEFAULT_HOME_SECTIONS } from '../state/userPreferences'
 import {
   buildHomeFeed,
@@ -1030,6 +1031,25 @@ export function Home() {
     },
 
     // Legacy section mapping for existing profile compatibility
+    'explore-genres': () => {
+      if (!feed.exploreGenres || feed.exploreGenres.length === 0) return null
+      return (
+        <ContentRail
+          key="explore-genres"
+          id="explore-genres"
+          icon="tag"
+          title="Explore Genres"
+          sub="Browse curated film, television, broadcast, and audio collections"
+          viewAll="/discover"
+          layout="wide"
+        >
+          {feed.exploreGenres.map(({ genre, count }) => (
+            <GenreCard key={genre.id} genre={genre} count={count} to={`/genres/${genre.id}`} />
+          ))}
+        </ContentRail>
+      )
+    },
+
     'recently-added': () => {
       // If cultural vault is already an active section, render recently added titles
       if (feed.recentlyAdded.length === 0) return null
@@ -1074,6 +1094,9 @@ export function Home() {
     }
     if (!visibleSections.some((s) => s.id === 'cultural-vault')) {
       visibleSections.push({ id: 'cultural-vault', title: 'Cultural Film Vault & Archives', visible: true, order: 7 })
+    }
+    if (!visibleSections.some((s) => s.id === 'explore-genres')) {
+      visibleSections.push({ id: 'explore-genres', title: 'Explore Genres', visible: true, order: 8 })
     }
 
     if (isTvMode) {

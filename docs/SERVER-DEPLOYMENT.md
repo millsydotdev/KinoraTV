@@ -5,7 +5,7 @@ Kinora Media Server runs as a standalone, zero-GUI Rust binary (`kinora-server`)
 ## Capabilities Provided by the Headless Server
 
 - **LAN Client API & Sync**: Serves shared channels, sources, XMLTV EPG listings, cached raster artwork, local media catalogues, and live SSE watch-progress / library synchronization on TCP port `5198`.
-- **Guarded LAN Stream Proxy**: Rewrites HLS playlists and proxies live/media streams on the server so upstream provider URLs and credentials never leave the server.
+- **Guarded LAN Stream Proxy**: Rewrites HLS playlists and proxies live IPTV streams plus local media library files (bounded 4 MiB HTTP Range `206 Partial Content` streaming with canonicalized library root containment) so upstream URLs, credentials, and host file paths never leave the server.
 - **Mobile & Tablet Web Remote**: Serves the embedded 5-tab browser remote (Remote, Keypad, Channels, TV Guide EPG, Media) at `http://<server-ip>:5198/`.
 - **UDP LAN Discovery**: Broadcasts `KINORA_BEACON_V1` on UDP port `5197` so Kinora Clients on the same subnet find the server automatically.
 - **Trusted Devices & Capability Scoping**: Enforces pairing PINs, 30-second lockout after 5 failed attempts, device revocation, capability checks, and an audit trail persisted under `KINORA_DATA_DIR` (`0700` directory, `0600` files).

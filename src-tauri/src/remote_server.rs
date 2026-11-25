@@ -3,7 +3,7 @@
 // Manages persistent trusted devices, capability-based security, and AI agent interfaces.
 // Strictly adheres to typography standards: zero em-dashes across all code and comments.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
@@ -270,6 +270,9 @@ struct ServerInner {
     library: RemoteLibrarySummary,
     epg: Vec<RemoteEpgProgramme>,
     media: Vec<RemoteMediaItem>,
+    local_media_roots: Vec<PathBuf>,
+    local_media_files: HashMap<String, PathBuf>,
+    local_artwork_files: HashMap<String, PathBuf>,
     failed_attempts: u32,
     lockout_until: Option<Instant>,
     playback_state: RemotePlaybackState,
@@ -354,6 +357,9 @@ impl RemoteServerManager {
                 library: RemoteLibrarySummary::default(),
                 epg: Vec::new(),
                 media: Vec::new(),
+                local_media_roots: Vec::new(),
+                local_media_files: HashMap::new(),
+                local_artwork_files: HashMap::new(),
                 failed_attempts: 0,
                 lockout_until: None,
                 playback_state: RemotePlaybackState::default(),
@@ -528,6 +534,19 @@ impl RemoteServerManager {
     pub async fn get_media(&self) -> Vec<RemoteMediaItem> {
         let state = self.inner.lock().await;
         state.media.clone()
+    }
+
+    /// Registers server-internal local media roots and file/artwork paths (never serialized to clients).
+    pub async fn update_local_media_paths(
+        &self,
+        roots: Vec<PathBuf>,
+        media_files: HashMap<String, PathBuf>,
+        artwork_files: HashMap<String, PathBuf>,
+    ) {
+        let mut state = self.inner.lock().await;
+        state.local_media_roots = roots;
+        state.local_media_files = media_files;
+        state.local_artwork_files = artwork_files;
     }
 
     pub async fn update_playback_state(&self, new_state: RemotePlaybackState) {
@@ -1179,10 +1198,42 @@ async fn handle_connection<F>(
                 }
             }
 
-            let cached = art_key
+            let mut cached = art_key
                 .as_deref()
                 .filter(|k| !k.is_empty() && k.len() <= 256)
                 .and_then(|k| manager.artwork_store.read_cached(k));
+
+            if cached.is_none() {
+                if let Some(ref k) = art_key {
+                    let local_lookup = {
+                        let state = manager.inner.lock().await;
+                        state
+                            .local_artwork_files
+                            .get(k)
+                            .cloned()
+                            .map(|p| (p, state.local_media_roots.clone()))
+                    };
+                    if let Some((art_path, roots)) = local_lookup {
+                        cached = tokio::task::spawn_blocking(move || {
+                            let safe_path =
+                                crate::lan_proxy::canonicalize_contained_path(&art_path, &roots).ok()?;
+                            let meta = std::fs::metadata(&safe_path).ok()?;
+                            if !meta.is_file() || meta.len() == 0 || meta.len() > 5 * 1024 * 1024 {
+                                return None;
+                            }
+                            let bytes = std::fs::read(&safe_path).ok()?;
+                            let mime = crate::artwork::detect_raster_mime(&bytes)?;
+                            Some(crate::artwork::Artwork {
+                                mime_type: mime,
+                                bytes,
+                            })
+                        })
+                        .await
+                        .ok()
+                        .flatten();
+                    }
+                }
+            }
 
             if let Some(art) = cached {
                 let hdr = format!(
@@ -1315,6 +1366,7 @@ async fn handle_connection<F>(
                 410 => "Gone",
                 413 => "Payload Too Large",
                 415 => "Unsupported Media Type",
+                416 => "Range Not Satisfiable",
                 502 => "Bad Gateway",
                 503 => "Service Unavailable",
                 504 => "Gateway Timeout",
@@ -1330,6 +1382,9 @@ async fn handle_connection<F>(
             );
             if let Some(cr) = reply.content_range {
                 hdr.push_str(&format!("Content-Range: {cr}\r\n"));
+            }
+            for (k, v) in reply.extra_headers {
+                hdr.push_str(&format!("{k}: {v}\r\n"));
             }
             hdr.push_str("\r\n");
             let _ = stream.write_all(hdr.as_bytes()).await;
@@ -2198,7 +2253,7 @@ async fn handle_open_proxy_stream(
     target_mid: Option<String>,
     host_header: Option<&str>,
 ) {
-    let (found_stream, local_ip, port) = {
+    let (found_stream, found_local_file, local_roots, local_ip, port) = {
         let state = manager.inner.lock().await;
         let found = if let Some(ref cid) = target_cid {
             state
@@ -2215,10 +2270,33 @@ async fn handle_open_proxy_stream(
         } else {
             None
         };
-        (found, state.local_ip.clone(), state.port)
+        let local_file = target_mid
+            .as_ref()
+            .and_then(|mid| state.local_media_files.get(mid).cloned());
+        (
+            found,
+            local_file,
+            state.local_media_roots.clone(),
+            state.local_ip.clone(),
+            state.port,
+        )
     };
 
-    let Some(upstream_url) = found_stream else {
+    let target_label = if let Some(ref cid) = target_cid {
+        format!("channelId={cid}")
+    } else if let Some(ref mid) = target_mid {
+        format!("mediaId={mid}")
+    } else {
+        "unknown".to_string()
+    };
+
+    let open_result = if let Some(ref local_path) = found_local_file {
+        manager
+            .stream_proxy
+            .open_local_file(&caller.id, local_path, &local_roots)
+    } else if let Some(upstream_url) = found_stream {
+        manager.stream_proxy.open(&caller.id, &upstream_url)
+    } else {
         let err_body = r#"{"ok":false,"error":"Channel or media stream not found"}"#;
         let resp = format!(
             "HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
@@ -2229,14 +2307,7 @@ async fn handle_open_proxy_stream(
         return;
     };
 
-    let target_label = if let Some(ref cid) = target_cid {
-        format!("channelId={cid}")
-    } else if let Some(ref mid) = target_mid {
-        format!("mediaId={mid}")
-    } else {
-        "unknown".to_string()
-    };
-    match manager.stream_proxy.open(&caller.id, &upstream_url) {
+    match open_result {
         Ok(opened) => {
             {
                 let mut state = manager.inner.lock().await;

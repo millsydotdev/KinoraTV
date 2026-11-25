@@ -290,12 +290,34 @@ pub async fn hydrate_headless_epg(
     count
 }
 
-/// Reads an existing `local_catalogue.json` (if present in `data_dir`) and publishes safe
-/// movie and series summaries to the server's `/api/media` cache without exposing host paths.
+/// Reads an existing `local_catalogue.json` and `local_libraries.json` (if present in `data_dir`),
+/// publishes safe movie and series summaries to `/api/media` without exposing host paths, and
+/// registers server-internal contained media/artwork paths for guarded LAN range streaming.
 pub async fn hydrate_headless_local_media(
     data_dir: &Path,
     manager: &remote_server::RemoteServerManager,
 ) -> usize {
+    let mut allowed_roots = Vec::new();
+    let lib_candidates = [
+        data_dir.join("local_libraries.json"),
+        data_dir.join("sources").join("local_libraries.json"),
+    ];
+    if let Some(lib_path) = lib_candidates.into_iter().find(|p| p.is_file()) {
+        if let Ok(raw_libs) = std::fs::read_to_string(&lib_path) {
+            if let Ok(libs) = serde_json::from_str::<Vec<serde_json::Value>>(&raw_libs) {
+                for lib in libs {
+                    if let Some(folders) = lib.get("folders").and_then(|v| v.as_array()) {
+                        for f in folders {
+                            if let Some(path_str) = f.as_str().map(str::trim).filter(|s| !s.is_empty()) {
+                                allowed_roots.push(PathBuf::from(path_str));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     let candidates = [
         data_dir.join("local_catalogue.json"),
         data_dir.join("sources").join("local_catalogue.json"),
@@ -311,6 +333,9 @@ pub async fn hydrate_headless_local_media(
     };
 
     let mut items = Vec::new();
+    let mut media_files: HashMap<String, PathBuf> = HashMap::new();
+    let mut artwork_files: HashMap<String, PathBuf> = HashMap::new();
+
     if let Some(movies) = doc.get("movies").and_then(|v| v.as_array()) {
         for m in movies.iter().take(1500) {
             let Some(id) = m.get("id").and_then(|v| v.as_str()) else {
@@ -325,16 +350,32 @@ pub async fn hydrate_headless_local_media(
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
             let duration_secs = m.get("durationSecs").and_then(|v| v.as_u64());
+            let media_key = format!("local:{id}");
+            if let Some(fp) = m.get("filePath").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+                media_files.insert(media_key.clone(), PathBuf::from(fp));
+            }
+            if let Some(ap) = m.get("artPath").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+                artwork_files.insert(media_key.clone(), PathBuf::from(ap));
+            }
+            let backdrop_key = m
+                .get("backdropPath")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(|bp| {
+                    let key = format!("local:backdrop:{id}");
+                    artwork_files.insert(key.clone(), PathBuf::from(bp));
+                    key
+                });
             items.push(remote_server::RemoteMediaItem {
-                id: format!("local:{id}"),
+                id: media_key.clone(),
                 kind: "movie".to_string(),
                 title: title.to_string(),
                 year,
                 overview: None,
                 genres: vec!["Local Library".to_string()],
                 rating: None,
-                artwork_key: Some(format!("local:{id}")),
-                backdrop_key: None,
+                artwork_key: Some(media_key),
+                backdrop_key,
                 duration_secs,
                 source_id: library_id,
                 stream_url: None,
@@ -355,16 +396,45 @@ pub async fn hydrate_headless_local_media(
                 .get("libraryId")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
+            let media_key = format!("local:{id}");
+            if let Some(ap) = s.get("artPath").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+                artwork_files.insert(media_key.clone(), PathBuf::from(ap));
+            }
+            let backdrop_key = s
+                .get("backdropPath")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(|bp| {
+                    let key = format!("local:backdrop:{id}");
+                    artwork_files.insert(key.clone(), PathBuf::from(bp));
+                    key
+                });
+            if let Some(seasons) = s.get("seasons").and_then(|v| v.as_array()) {
+                for season in seasons {
+                    if let Some(episodes) = season.get("episodes").and_then(|v| v.as_array()) {
+                        for ep in episodes {
+                            if let (Some(ep_id), Some(ep_path)) = (
+                                ep.get("id").and_then(|v| v.as_str()),
+                                ep.get("filePath").and_then(|v| v.as_str()),
+                            ) {
+                                if !ep_path.is_empty() {
+                                    media_files.insert(format!("local:{ep_id}"), PathBuf::from(ep_path));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             items.push(remote_server::RemoteMediaItem {
-                id: format!("local:{id}"),
+                id: media_key.clone(),
                 kind: "series".to_string(),
                 title: title.to_string(),
                 year,
                 overview: None,
                 genres: vec!["Local Library".to_string()],
                 rating: None,
-                artwork_key: Some(format!("local:{id}")),
-                backdrop_key: None,
+                artwork_key: Some(media_key),
+                backdrop_key,
                 duration_secs: None,
                 source_id: library_id,
                 stream_url: None,
@@ -373,6 +443,9 @@ pub async fn hydrate_headless_local_media(
     }
 
     let count = items.len();
+    manager
+        .update_local_media_paths(allowed_roots, media_files, artwork_files)
+        .await;
     if count > 0 {
         manager.update_media(items).await;
     }

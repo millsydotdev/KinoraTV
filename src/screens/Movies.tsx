@@ -23,6 +23,7 @@ import {
   type GenreItem,
 } from '../components/StreamingComponents'
 import { filterKidSafeResources, filterKidSafeTitles, filterKidSafeXtreamTitles } from '../lib/kidsMode'
+import { GENRES_BY_MEDIA_TYPE, getGenreById, getSubgenresForParent, type GenreDefinition } from '../data/genreTaxonomy'
 import { useProfiles } from '../state/profiles'
 import { useStore } from '../state/store'
 import { useLocalMedia } from '../state/localMedia'
@@ -66,19 +67,11 @@ export function NoTitles({ kind, disabledSources, emptyCatalogue }: { kind: 'fil
   )
 }
 
-const MOVIE_GENRES: GenreItem[] = [
-  { id: 'action', name: 'Action', art: '/art/the-outpost.jpg' },
-  { id: 'adventure', name: 'Adventure', art: '/art/salt-meridian.jpg' },
-  { id: 'animation', name: 'Animation', art: '/art/live-kids.jpg' },
-  { id: 'comedy', name: 'Comedy', art: '/art/midnight-arcade.jpg' },
-  { id: 'crime', name: 'Crime', art: '/art/harbour-lights.jpg' },
-  { id: 'documentary', name: 'Documentary', art: '/art/live-ocean.jpg' },
-  { id: 'drama', name: 'Drama', art: '/art/kingsmoor.jpg' },
-  { id: 'fantasy', name: 'Fantasy', art: '/art/ash-and-ivory.jpg' },
-  { id: 'horror', name: 'Horror', art: '/art/undertow.jpg' },
-  { id: 'sci-fi', name: 'Sci-Fi', art: '/art/low-orbit.jpg' },
-  { id: 'thriller', name: 'Thriller', art: '/art/northern-trace.jpg' },
-]
+const MOVIE_GENRES: GenreItem[] = GENRES_BY_MEDIA_TYPE.movies.map((g) => ({
+  id: g.id,
+  name: g.name,
+  art: g.artwork.landscape,
+}))
 
 const MOVIE_TABS: NavTabItem[] = [
   { id: 'browse', label: 'All Movies', icon: 'grid' },
@@ -110,6 +103,7 @@ export function Movies() {
   const [activeTab, setActiveTab] = useState<string>('browse')
   const [selectedMovie, setSelectedMovie] = useState<any>(null)
   const [selectedGenre, setSelectedGenre] = useState<string | null>(null)
+  const [selectedSubgenre, setSelectedSubgenre] = useState<string | null>(null)
   const [heroIndex, setHeroIndex] = useState(0)
   const [trailerModal, setTrailerModal] = useState<{
     open: boolean
@@ -179,6 +173,46 @@ export function Movies() {
     setParams(next, { replace: true })
   }
 
+  const activeParentGenre = useMemo(() => {
+    if (!selectedGenre) return null
+    return getGenreById(selectedGenre)
+  }, [selectedGenre])
+
+  const subgenres = useMemo(() => {
+    if (!activeParentGenre) return []
+    return getSubgenresForParent(activeParentGenre.id)
+  }, [activeParentGenre])
+
+  const genreMatches = (itemGenres: string[], itemCat?: string, itemText?: string): boolean => {
+    if (!selectedGenre) return true
+    if (selectedSubgenre && activeParentGenre) {
+      const sub = subgenres.find((s: GenreDefinition) => s.id === selectedSubgenre)
+      const targetName = (sub?.name ?? selectedSubgenre).toLowerCase()
+      const targetId = selectedSubgenre.toLowerCase()
+      return (
+        itemGenres.some((g) => g.toLowerCase().includes(targetName) || g.toLowerCase().includes(targetId)) ||
+        Boolean(itemCat && (itemCat.toLowerCase().includes(targetName) || itemCat.toLowerCase().includes(targetId))) ||
+        Boolean(itemText && (itemText.toLowerCase().includes(targetName) || itemText.toLowerCase().includes(targetId)))
+      )
+    }
+    if (activeParentGenre) {
+      const names = [
+        activeParentGenre.name.toLowerCase(),
+        activeParentGenre.id.toLowerCase(),
+        ...activeParentGenre.aliases.map((a: string) => a.toLowerCase()),
+      ]
+      return (
+        itemGenres.some((g) => names.some((n) => g.toLowerCase().includes(n))) ||
+        Boolean(itemCat && names.some((n) => itemCat.toLowerCase().includes(n))) ||
+        Boolean(itemText && names.some((n) => itemText.toLowerCase().includes(n)))
+      )
+    }
+    return (
+      itemGenres.some((g) => g.toLowerCase() === selectedGenre.toLowerCase()) ||
+      Boolean(itemCat && itemCat.toLowerCase().includes(selectedGenre.toLowerCase()))
+    )
+  }
+
   // Filtered Xtream movies for catalogue searches/filters
   const filteredXtream = useMemo(() => {
     if (!hasXtream) return []
@@ -186,7 +220,7 @@ export function Movies() {
       .filter((m) => category === 'All' || m.categoryId === category || m.categoryName === category)
       .filter((m) => provider === 'All' || m.sourceId === provider)
       .filter((m) => year === 'All' || String(m.year) === year)
-      .filter((m) => !selectedGenre || m.categoryName?.toLowerCase().includes(selectedGenre.toLowerCase()))
+      .filter((m) => genreMatches([], m.categoryName ?? undefined, m.name))
       .filter((m) => !prefs.hideWatched || !library.watched.includes(`movie:xt:${m.sourceId}:${m.id}`))
       .filter((m) => !normalizedQuery || m.name.toLowerCase().includes(normalizedQuery))
       .sort((a, b) => {
@@ -195,7 +229,7 @@ export function Movies() {
         if (activeTab === 'top-rated') return (b.rating ?? 0) - (a.rating ?? 0) || (b.year ?? 0) - (a.year ?? 0)
         return a.name.localeCompare(b.name)
       })
-  }, [hasXtream, safeXtreamMovies, category, provider, year, selectedGenre, prefs.hideWatched, library.watched, normalizedQuery, sort, activeTab])
+  }, [hasXtream, safeXtreamMovies, category, provider, year, selectedGenre, selectedSubgenre, activeParentGenre, prefs.hideWatched, library.watched, normalizedQuery, sort, activeTab])
 
   const sourceNames = useMemo(() => {
     const map: Record<string, string> = {}
@@ -220,7 +254,7 @@ export function Movies() {
     return activeCinemaMovies
       .filter((m) => category === 'All' || m.genres.some((g) => g.toLowerCase() === category.toLowerCase()))
       .filter((m) => year === 'All' || String(m.year) === year)
-      .filter((m) => !selectedGenre || m.genres.some((g) => g.toLowerCase() === selectedGenre.toLowerCase()))
+      .filter((m) => genreMatches(m.genres, undefined, m.title + ' ' + m.synopsis))
       .filter((m) => !prefs.hideWatched || !library.watched.includes(movieRef(m.id)))
       .filter((m) => !normalizedQuery || m.title.toLowerCase().includes(normalizedQuery))
       .sort((a, b) => {
@@ -233,20 +267,20 @@ export function Movies() {
         }
         return sorts[sort]?.fn(a, b) ?? a.title.localeCompare(b.title)
       })
-  }, [hasDemo, openMovies.length, activeCinemaMovies, category, year, selectedGenre, prefs.hideWatched, library.watched, normalizedQuery, sort, activeTab])
+  }, [hasDemo, openMovies.length, activeCinemaMovies, category, year, selectedGenre, selectedSubgenre, activeParentGenre, prefs.hideWatched, library.watched, normalizedQuery, sort, activeTab])
 
   // Filtered public discovery movies
   const filteredPublicDiscovery = useMemo(() => {
     if (hasXtream || hasDemo) return []
     return publicDiscoveryFilms
-      .filter((r) => !selectedGenre || r.tags.some((t) => t.toLowerCase().includes(selectedGenre.toLowerCase())) || r.subcategory.toLowerCase().includes(selectedGenre.toLowerCase()))
+      .filter((r) => genreMatches(r.tags ?? [], r.subcategory, r.name + ' ' + r.description))
       .filter((r) => !normalizedQuery || r.name.toLowerCase().includes(normalizedQuery) || r.description.toLowerCase().includes(normalizedQuery) || r.provider.toLowerCase().includes(normalizedQuery))
       .sort((a, b) => {
         if (sort === 'newest') return b.dateDiscovered.localeCompare(a.dateDiscovered)
         if (sort === 'oldest') return a.dateDiscovered.localeCompare(b.dateDiscovered)
         return a.name.localeCompare(b.name)
       })
-  }, [hasXtream, hasDemo, publicDiscoveryFilms, selectedGenre, normalizedQuery, sort])
+  }, [hasXtream, hasDemo, publicDiscoveryFilms, selectedGenre, selectedSubgenre, activeParentGenre, normalizedQuery, sort])
 
   // Top featured hero slides
   const heroSlides = useMemo<HeroSlideData[]>(() => {
@@ -737,18 +771,57 @@ export function Movies() {
         </div>
 
         {selectedGenre && (
-          <button
-            type="button"
-            className="pill pill-pending"
-            style={{ cursor: 'pointer', border: '1px solid var(--accent)', display: 'inline-flex', alignItems: 'center', gap: 6 }}
-            onClick={() => setSelectedGenre(null)}
-            title="Clear genre filter"
-          >
-            <span>Genre: {selectedGenre}</span>
-            <Icon name="close" size={14} />
-          </button>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="pill pill-pending"
+              style={{ cursor: 'pointer', border: '1px solid var(--accent)', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              onClick={() => {
+                setSelectedGenre(null)
+                setSelectedSubgenre(null)
+              }}
+              title="Clear genre filter"
+            >
+              <span>Genre: {selectedGenre}</span>
+              <Icon name="close" size={14} />
+            </button>
+            {activeParentGenre && (
+              <Link
+                to={`/genres/${activeParentGenre.id}${selectedSubgenre ? `/${selectedSubgenre}` : ''}`}
+                className="btn btn-ghost btn-small"
+                style={{ fontSize: '0.75rem' }}
+                title="Open dedicated genre browse page"
+              >
+                <Icon name="tag" size={12} />
+                <span>Open {activeParentGenre.name} Hub</span>
+              </Link>
+            )}
+          </div>
         )}
       </div>
+
+      {activeParentGenre && subgenres.length > 0 && (
+        <div className="subgenre-filter-chips" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '8px 0 16px', alignItems: 'center', padding: '0 24px' }}>
+          <span className="faint" style={{ fontSize: '0.75rem', fontWeight: 600 }}>Subgenres:</span>
+          <button
+            type="button"
+            className={`chip ${!selectedSubgenre ? 'is-active' : ''}`}
+            onClick={() => setSelectedSubgenre(null)}
+          >
+            All {activeParentGenre.name}
+          </button>
+          {subgenres.map((sub: GenreDefinition) => (
+            <button
+              key={sub.id}
+              type="button"
+              className={`chip ${selectedSubgenre === sub.id ? 'is-active' : ''}`}
+              onClick={() => setSelectedSubgenre(selectedSubgenre === sub.id ? null : sub.id)}
+            >
+              {sub.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Main Streaming Discovery View (Browse Tab) */}
       {activeTab === 'browse' && !isFiltering && (
@@ -1195,11 +1268,17 @@ export function Movies() {
       {/* Genres Tab View (Full Grid when no specific genre selected) */}
       {activeTab === 'genres' && !selectedGenre && (
         <div className="streaming-body" style={{ paddingTop: 24 }}>
-          <div style={{ marginBottom: 20 }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Browse by Genre</h2>
-            <p className="faint" style={{ margin: '4px 0 0 0', fontSize: '0.875rem' }}>
-              Explore feature films categorized by themes, moods and storytelling styles.
-            </p>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+            <div>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Browse by Genre</h2>
+              <p className="faint" style={{ margin: '4px 0 0 0', fontSize: '0.875rem' }}>
+                Explore feature films categorized by themes, moods and storytelling styles.
+              </p>
+            </div>
+            <Link to="/discover" className="btn btn-secondary">
+              <Icon name="tag" size={14} />
+              <span>Full Taxonomy &amp; Discovery</span>
+            </Link>
           </div>
           <div className="streaming-genre-grid">
             {MOVIE_GENRES.map((g) => (

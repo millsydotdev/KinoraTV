@@ -156,16 +156,55 @@ def seed_isolated_data(data_dir: str) -> bytes:
     with open(os.path.join(artwork_dir, artwork_cache_filename("channel:pl-smoke~bbc1.uk")), "wb") as f:
         f.write(png_bytes)
 
+    # Seed an authorized local library folder with a test MP4 + poster PNG, plus an outside file
+    media_root = os.path.join(data_dir, "local_movies")
+    outside_root = os.path.join(data_dir, "outside_secret")
+    os.makedirs(media_root, exist_ok=True)
+    os.makedirs(outside_root, exist_ok=True)
+
+    movie_file = os.path.join(media_root, "Solaris.mp4")
+    with open(movie_file, "wb") as f:
+        f.write(b"KINORA_LOCAL_MP4_RANGE_TEST_PAYLOAD_0123456789")
+    poster_file = os.path.join(media_root, "solaris-poster.png")
+    with open(poster_file, "wb") as f:
+        f.write(png_bytes)
+    escaped_file = os.path.join(outside_root, "escaped.mp4")
+    with open(escaped_file, "wb") as f:
+        f.write(b"SHOULD_NEVER_BE_STREAMED")
+
+    local_libs = [
+        {
+            "id": "lib-local",
+            "name": "Home Movies",
+            "mediaType": "movies",
+            "folders": [media_root],
+            "lastScannedAt": now_ms,
+            "autoScan": False,
+            "scanIntervalHours": 24,
+        }
+    ]
+    with open(os.path.join(data_dir, "local_libraries.json"), "w", encoding="utf-8") as f:
+        json.dump(local_libs, f)
+
     local_cat = {
         "movies": [
             {
                 "id": "mov-solaris",
                 "libraryId": "lib-local",
-                "filePath": "/mnt/private-nas/Solaris.mkv",
+                "filePath": movie_file,
+                "artPath": poster_file,
                 "title": "Solaris",
                 "year": 1972,
                 "durationSecs": 9900,
-            }
+            },
+            {
+                "id": "mov-escaped",
+                "libraryId": "lib-local",
+                "filePath": escaped_file,
+                "title": "Escaped Movie",
+                "year": 2020,
+                "durationSecs": 1200,
+            },
         ],
         "series": [],
         "totalMediaBytes": 123456,
@@ -397,13 +436,49 @@ def main():
         assert {"PairDevice", "CastMedia", "InputText", "SyncProgress", "toggle_favourite"}.issubset(actions), f"Unexpected audit actions: {actions}"
         print("[PASS] 8. Cast handoff, remote keyboard input, and audit trail verified")
 
-        # 8. Restart persistence check (SIGTERM clean shutdown + 0600 permissions + local media hydration)
+        # 8. Headless local media range streaming, local artwork serving & root containment
         st, _, raw = http_req(f"{base}/api/media", headers=tv_hdr)
         assert st == 200
         media_list = json.loads(raw)
         assert any(m["title"] == "Solaris" for m in media_list), f"Expected Solaris in /api/media, got {media_list}"
-        assert b"/mnt/private-nas" not in raw, "Host filesystem path leaked in /api/media"
+        assert b"local_movies" not in raw and b"outside_secret" not in raw, "Host filesystem path leaked in /api/media"
 
+        st, hdrs, local_art = http_req(f"{base}/api/artwork?key=local:mov-solaris", headers=tv_hdr)
+        assert st == 200 and local_art == png_bytes, f"Local artwork failed: {st}"
+
+        st, _, raw = http_req(
+            f"{base}/api/stream/open",
+            method="POST",
+            headers=tv_hdr,
+            body={"mediaId": "local:mov-solaris"},
+        )
+        assert st == 200, f"Expected 200 opening local movie, got {st}: {raw}"
+        opened_local = json.loads(raw)
+        assert opened_local["format"] == "direct"
+        assert opened_local["proxyPath"].startswith("/api/stream/h/")
+        assert b"Solaris.mp4" not in raw and b"local_movies" not in raw
+
+        st, hdrs, chunk = http_req(
+            f"{base}{opened_local['proxyPath']}",
+            headers={"Range": "bytes=0-15"},
+        )
+        assert st == 206, f"Expected 206 Partial Content, got {st}"
+        assert chunk == b"KINORA_LOCAL_MP4"
+        hdrs_lower = {k.lower(): v for k, v in hdrs.items()}
+        assert hdrs_lower.get("accept-ranges") == "bytes"
+        assert hdrs_lower.get("content-range", "").startswith("bytes 0-15/")
+
+        # Attempt to open a file outside authorized local_libraries.json roots must be refused (403)
+        st, _, _ = http_req(
+            f"{base}/api/stream/open",
+            method="POST",
+            headers=tv_hdr,
+            body={"mediaId": "local:mov-escaped"},
+        )
+        assert st == 403, f"Escaped local file outside library root must return 403, got {st}"
+        print("[PASS] 9. Headless local media HTTP Range streaming, local artwork & root containment verified")
+
+        # 9. Restart persistence check (SIGTERM clean shutdown + 0600 permissions)
         proc.send_signal(signal.SIGTERM)
         exit_code = proc.wait(timeout=5)
         assert exit_code == 0, f"Expected clean SIGTERM exit 0, got {exit_code}"
@@ -423,9 +498,9 @@ def main():
         wait_for_server(base)
         st, _, raw = http_req(f"{base}/api/channels", headers=tv_hdr)
         assert st == 200, "Previously paired device token must remain valid after server restart"
-        print("[PASS] 9. Server restart persistence and 0600 file permissions verified")
+        print("[PASS] 10. Server SIGTERM shutdown, restart persistence, and 0600 file permissions verified")
 
-        print("\nALL 9 END-TO-END MULTI-DEVICE SERVER CHECKS PASSED.")
+        print("\nALL 10 END-TO-END MULTI-DEVICE SERVER CHECKS PASSED.")
     finally:
         if proc is not None and proc.poll() is None:
             proc.send_signal(signal.SIGINT)
