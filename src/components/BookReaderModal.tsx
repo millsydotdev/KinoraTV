@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Icon } from './Icon'
 import { useToast } from './Toast'
 import { useProfiles } from '../state/profiles'
+import { PdfCanvasViewer } from './PdfCanvasViewer'
 import {
   loadAllBookProgress,
   parseLocalBookFile,
@@ -89,7 +90,7 @@ export function BookReaderModal({
   const bookKey = loadedBook?.id ?? `book:${effectiveTitle.toLowerCase().trim()}`
   const totalPages = Math.max(1, effectiveChapters.length)
   const activeChapter = effectiveChapters[currentPage] ?? effectiveChapters[0] ?? null
-  const isPdfMode = loadedBook?.format === 'pdf' && Boolean(loadedBook.pdfBlobUrl)
+  const isPdfMode = loadedBook?.format === 'pdf' && Boolean(loadedBook.pdfBytes || loadedBook.pdfBlobUrl)
 
   // Restore saved reading progress & bookmarks on open
   useEffect(() => {
@@ -409,14 +410,29 @@ export function BookReaderModal({
           </div>
         )}
 
-        {isPdfMode && loadedBook?.pdfBlobUrl ? (
-          <div style={{ width: '100%', height: '100%', minHeight: '70vh', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <iframe
-              src={loadedBook.pdfBlobUrl}
-              title={effectiveTitle}
-              style={{ width: '100%', flex: 1, minHeight: '68vh', border: 'none', borderRadius: '8px', background: '#111' }}
-            />
-          </div>
+        {isPdfMode && loadedBook?.pdfBytes ? (
+          <PdfCanvasViewer
+            bytes={loadedBook.pdfBytes}
+            title={effectiveTitle}
+            initialPage={currentPage}
+            onPageChange={(pageIdx, pdfTotal) => {
+              const percent = Math.round(((pageIdx + 1) / Math.max(1, pdfTotal)) * 100)
+              saveBookProgress(
+                {
+                  bookKey,
+                  title: effectiveTitle,
+                  author: effectiveAuthor,
+                  format: 'pdf',
+                  chapterIndex: pageIdx,
+                  totalChapters: pdfTotal,
+                  percent,
+                  bookmarks,
+                  updatedAt: new Date().toISOString(),
+                },
+                profileId,
+              )
+            }}
+          />
         ) : activeChapter ? (
           <article className={`book-reader-page font-${fontFamily}`} style={{ fontSize: `${fontSize}px`, lineHeight }}>
             <header className="book-reader-page-header">

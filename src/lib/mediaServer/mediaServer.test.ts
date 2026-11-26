@@ -427,3 +427,36 @@ describe('MediaServerManager', () => {
     expect(cached[0]!.title).toBe('Dune')
   })
 })
+
+describe('Native guarded transport routing', () => {
+  it('routes Jellyfin, Emby, and Plex requests through native mediaServerRequest IPC inside Tauri', async () => {
+    const nativeMod = await import('../native')
+    const inNativeSpy = vi.spyOn(nativeMod, 'inNativeShell').mockReturnValue(true)
+    const ipcSpy = vi.spyOn(nativeMod, 'mediaServerRequest').mockImplementation(async (url) => {
+      if (url.includes('/System/Info/Public')) {
+        return { ok: true, status: 200, body: JSON.stringify({ ServerName: 'Guarded LAN Server', Version: '10.9.0' }) }
+      }
+      if (url.includes('/identity')) {
+        return { ok: true, status: 200, body: JSON.stringify({ MediaContainer: { machineIdentifier: 'px-1', version: '1.40' } }) }
+      }
+      return { ok: true, status: 200, body: JSON.stringify({ MediaContainer: { friendlyName: 'Guarded Plex' } }) }
+    })
+    const fetchSpy = vi.fn(() => {
+      throw new Error('Browser fetch must not be called inside Tauri desktop shell')
+    })
+    global.fetch = fetchSpy
+
+    const jf = new JellyfinAdapter({ url: 'http://192.168.1.40:8096', authToken: 'tok-jf', userId: 'u1' })
+    const emby = new EmbyAdapter({ url: 'http://192.168.1.41:8096', authToken: 'tok-emby', userId: 'u2' })
+    const plex = new PlexAdapter({ url: 'http://192.168.1.42:32400', authToken: 'tok-plex' })
+
+    expect((await jf.testConnection()).success).toBe(true)
+    expect((await emby.testConnection()).success).toBe(true)
+    expect((await plex.testConnection()).success).toBe(true)
+    expect(ipcSpy).toHaveBeenCalled()
+    expect(fetchSpy).not.toHaveBeenCalled()
+
+    inNativeSpy.mockRestore()
+    ipcSpy.mockRestore()
+  })
+})

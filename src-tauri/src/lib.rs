@@ -172,6 +172,17 @@ mod desktop {
         fetch::fetch_feed_xml(&url, accept.as_deref()).await
     }
 
+    /// Executes a guarded native HTTP request to a user-configured Jellyfin, Emby, or Plex media server.
+    #[tauri::command]
+    async fn media_server_request(
+        url: String,
+        method: String,
+        headers: std::collections::HashMap<String, String>,
+        body: Option<String>,
+    ) -> Result<fetch::MediaServerResponse, ingest::IngestError> {
+        fetch::media_server_request(&url, &method, &headers, body.as_deref()).await
+    }
+
     /// Sends an authenticated or public request to Trakt.tv REST API.
     #[tauri::command]
     async fn fetch_trakt(
@@ -1591,6 +1602,7 @@ mod desktop {
                 fetch_metadata,
                 fetch_subtitle,
                 fetch_feed_xml,
+                media_server_request,
                 fetch_trakt,
                 check_for_updates,
                 get_local_libraries,

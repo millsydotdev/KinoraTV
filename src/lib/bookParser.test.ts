@@ -4,6 +4,7 @@ import {
   extractParagraphsFromHtml,
   loadAllBookProgress,
   parseEpubBuffer,
+  parseLocalBookFile,
   parsePlainTextToChapters,
   saveBookProgress,
 } from './bookParser'
@@ -148,5 +149,27 @@ describe('bookParser real EPUB, HTML, TXT parsing and reading progress', () => {
 
     expect(loadAllBookProgress('profile-a')['epub:northern-meridian']?.percent).toBe(100)
     expect(loadAllBookProgress('profile-b')['epub:northern-meridian']).toBeUndefined()
+  })
+
+  it('validates real PDF headers and stores raw PDF bytes for canvas rendering', async () => {
+    const validPdfBytes = new TextEncoder().encode('%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n')
+    const validFile = {
+      name: 'Kinora_Guide.pdf',
+      arrayBuffer: async () => validPdfBytes.buffer.slice(0),
+    } as unknown as File
+
+    const parsed = await parseLocalBookFile(validFile)
+    expect(parsed.format).toBe('pdf')
+    expect(parsed.title).toBe('Kinora Guide')
+    expect(parsed.pdfBytes).toBeInstanceOf(Uint8Array)
+    expect(parsed.pdfBytes?.byteLength).toBe(validPdfBytes.byteLength)
+
+    const bogusBytes = new TextEncoder().encode('<html>not a pdf</html>')
+    const invalidFile = {
+      name: 'Fake.pdf',
+      arrayBuffer: async () => bogusBytes.buffer.slice(0),
+    } as unknown as File
+
+    await expect(parseLocalBookFile(invalidFile)).rejects.toThrow('missing %PDF- header')
   })
 })

@@ -83,6 +83,7 @@ fn main() {
             "fetch_metadata",
             "fetch_subtitle",
             "fetch_feed_xml",
+            "media_server_request",
             "fetch_trakt",
             "check_for_updates",
             "get_local_libraries",

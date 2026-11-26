@@ -181,10 +181,10 @@ impl Policy {
         }
     }
 
-    /// Official application update manifest policy: bounded to 64 KB, HTTPS only, 10s timeout.
+    /// Official application update manifest policy: bounded to 512 KB, HTTPS only, 10s timeout.
     pub fn updater() -> Self {
         Self {
-            max_bytes: 64 * 1024,
+            max_bytes: 512 * 1024,
             max_redirects: 3,
             connect_timeout: Duration::from_secs(5),
             total_timeout: Duration::from_secs(10),
@@ -834,7 +834,13 @@ pub async fn fetch_updater_manifest(raw_url: &str) -> Result<String, IngestError
     let client = guarded_client(&policy)?;
     let noun = policy.noun;
 
-    let req = client.get(url).header(ACCEPT, "application/json");
+    let req = client
+        .get(url)
+        .header(ACCEPT, "application/vnd.github+json, application/json")
+        .header(
+            reqwest::header::USER_AGENT,
+            concat!("Kinora/", env!("CARGO_PKG_VERSION")),
+        );
 
     let mut response = req
         .send()
@@ -925,6 +931,237 @@ pub async fn fetch_feed_xml(raw_url: &str, accept: Option<&str>) -> Result<Strin
     }
 
     Ok(String::from_utf8_lossy(&body).into_owned())
+}
+
+/// Structured HTTP response returned by `media_server_request` to Jellyfin, Emby, and Plex adapters.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct MediaServerResponse {
+    pub status: u16,
+    pub ok: bool,
+    pub body: String,
+}
+
+const MEDIA_SERVER_ALLOWED_HEADERS: &[&str] = &[
+    "accept",
+    "content-type",
+    "x-emby-authorization",
+    "x-emby-token",
+    "x-mediabrowser-token",
+    "x-plex-token",
+    "x-plex-client-identifier",
+    "x-plex-product",
+    "x-plex-version",
+    "authorization",
+];
+
+/// Blocks cloud metadata, link-local, loopback (in production), CGNAT, multicast, and reserved IPs
+/// while permitting self-hosted RFC1918 LAN and public media servers (Jellyfin, Emby, Plex).
+pub fn is_prohibited_media_server_ip(ip: IpAddr, allow_loopback: bool) -> bool {
+    let canonical = ip.to_canonical();
+    if canonical.is_loopback() {
+        return !allow_loopback;
+    }
+    match canonical {
+        IpAddr::V4(v4) => {
+            let [a, b, c, _] = v4.octets();
+            a == 0                                            // 0.0.0.0/8
+                || (a == 100 && (64..128).contains(&b))       // 100.64.0.0/10 CGNAT
+                || (a == 169 && b == 254)                     // 169.254.0.0/16 link-local / cloud metadata
+                || (a == 192 && b == 0 && (c == 0 || c == 2)) // IETF / TEST-NET-1
+                || (a == 192 && b == 88 && c == 99)           // deprecated 6to4
+                || (a == 198 && (b == 18 || b == 19))         // benchmark
+                || (a == 198 && b == 51 && c == 100)          // TEST-NET-2
+                || (a == 203 && b == 0 && c == 113)           // TEST-NET-3
+                || a >= 224 // multicast, reserved, broadcast
+        }
+        IpAddr::V6(v6) => {
+            let s = v6.segments();
+            v6.is_unspecified()
+                || (s[0] & 0xffc0) == 0xfe80             // link-local
+                || (s[0] & 0xff00) == 0xff00             // multicast
+                || (s[0] == 0x2001 && s[1] == 0x0db8)    // documentation
+                || (s[0] == 0x0100 && s[1] == 0 && s[2] == 0 && s[3] == 0)
+        }
+    }
+}
+
+struct MediaServerResolver {
+    allow_loopback: bool,
+}
+
+impl Resolve for MediaServerResolver {
+    fn resolve(&self, name: Name) -> Resolving {
+        let host = name.as_str().to_owned();
+        let allow_loopback = self.allow_loopback;
+        Box::pin(async move {
+            let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host.as_str(), 0))
+                .await
+                .map_err(|_| network(format!("Could not find media server host {host}.")))?
+                .collect();
+            if addrs.is_empty() {
+                return Err(network(format!("Could not find media server host {host}.")).into());
+            }
+            if addrs
+                .iter()
+                .any(|a| is_prohibited_media_server_ip(a.ip(), allow_loopback))
+            {
+                return Err(blocked(&host, "media server").into());
+            }
+            Ok(Box::new(addrs.into_iter()) as Addrs)
+        })
+    }
+}
+
+pub fn validate_media_server_url(raw_url: &str, allow_loopback: bool) -> Result<Url, IngestError> {
+    let trimmed = raw_url.trim();
+    if trimmed.is_empty() {
+        return Err(IngestError::new(
+            ErrorCode::InvalidUrl,
+            "Media server address is empty.",
+        ));
+    }
+    let parsed = Url::parse(trimmed)
+        .map_err(|_| IngestError::new(ErrorCode::InvalidUrl, "Media server address is invalid."))?;
+    match parsed.scheme() {
+        "http" | "https" => {}
+        _ => {
+            return Err(IngestError::new(
+                ErrorCode::InvalidUrl,
+                "Media server address must use http or https.",
+            ));
+        }
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err(IngestError::new(
+            ErrorCode::InvalidUrl,
+            "Media server address must not embed credentials in the URL.",
+        ));
+    }
+    let host = parsed.host_str().ok_or_else(|| {
+        IngestError::new(ErrorCode::InvalidUrl, "Media server address has no host.")
+    })?;
+    if host.eq_ignore_ascii_case("localhost") && !allow_loopback {
+        return Err(blocked(host, "media server"));
+    }
+    if let Ok(ip) = host
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .parse::<IpAddr>()
+    {
+        if is_prohibited_media_server_ip(ip, allow_loopback) {
+            return Err(blocked(host, "media server"));
+        }
+    }
+    Ok(parsed)
+}
+
+/// Executes a guarded HTTP request to a user-configured Jellyfin, Emby, or Plex media server.
+/// Enforces no-proxy, no-redirect (preventing auth token leakage across redirects),
+/// guarded DNS/IP checks (blocking cloud metadata, link-local, and loopback in production),
+/// strict header allowlisting, bounded body size (16 MiB), and scrubbed host-only errors.
+pub async fn media_server_request(
+    raw_url: &str,
+    method: &str,
+    headers: &std::collections::HashMap<String, String>,
+    body: Option<&str>,
+) -> Result<MediaServerResponse, IngestError> {
+    let allow_loopback = cfg!(test) || (cfg!(dev) && cfg!(feature = "loopback-fixtures"));
+    media_server_request_inner(raw_url, method, headers, body, allow_loopback).await
+}
+
+async fn media_server_request_inner(
+    raw_url: &str,
+    method: &str,
+    headers: &std::collections::HashMap<String, String>,
+    body: Option<&str>,
+    allow_loopback: bool,
+) -> Result<MediaServerResponse, IngestError> {
+    const MAX_MEDIA_SERVER_BYTES: usize = 16 * 1024 * 1024;
+    let url = validate_media_server_url(raw_url, allow_loopback)?;
+    let host = url.host_str().unwrap_or_default().to_owned();
+
+    let method_upper = method.trim().to_ascii_uppercase();
+    if method_upper != "GET" && method_upper != "POST" {
+        return Err(IngestError::new(
+            ErrorCode::InvalidUrl,
+            "Media server requests support only GET and POST.",
+        ));
+    }
+
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .referer(false)
+        .redirect(redirect::Policy::none())
+        .dns_resolver(Arc::new(MediaServerResolver { allow_loopback }))
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(15))
+        .user_agent(concat!("Kinora/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|_| network(format!("Could not initialize request for {host}.")))?;
+
+    let mut req = if method_upper == "POST" {
+        client.post(url)
+    } else {
+        client.get(url)
+    };
+
+    for (k, v) in headers {
+        let lower = k.trim().to_ascii_lowercase();
+        if !MEDIA_SERVER_ALLOWED_HEADERS.contains(&lower.as_str()) {
+            continue;
+        }
+        if v.contains(['\r', '\n']) || v.len() > 2048 {
+            return Err(IngestError::new(
+                ErrorCode::InvalidUrl,
+                "Media server request header is invalid.",
+            ));
+        }
+        req = req.header(lower.as_str(), v.trim());
+    }
+
+    if let Some(b) = body {
+        req = req.body(b.to_owned());
+    }
+
+    let mut response = req
+        .send()
+        .await
+        .map_err(|e| from_reqwest(&e, &host, "media server"))?;
+
+    if let Some(peer) = response.remote_addr() {
+        if is_prohibited_media_server_ip(peer.ip(), allow_loopback) {
+            return Err(blocked(&host, "media server"));
+        }
+    }
+
+    let status = response.status();
+    if status.is_redirection() {
+        return Err(IngestError::new(
+            ErrorCode::Blocked,
+            format!("{host} attempted a redirect; media server requests refuse redirects to protect credentials."),
+        ));
+    }
+
+    let mut out = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|e| from_reqwest(&e, &host, "media server"))?
+    {
+        if out.len() + chunk.len() > MAX_MEDIA_SERVER_BYTES {
+            return Err(IngestError::new(
+                ErrorCode::TooLarge,
+                format!("Media server response from {host} exceeded the 16 MB limit."),
+            ));
+        }
+        out.extend_from_slice(&chunk);
+    }
+
+    Ok(MediaServerResponse {
+        status: status.as_u16(),
+        ok: status.is_success(),
+        body: String::from_utf8_lossy(&out).into_owned(),
+    })
 }
 
 /// A media resource fetched for the stream protocol.
@@ -2055,9 +2292,113 @@ mod tests {
         let policy = Policy::feed();
         assert!(check_url("https://m.gutenberg.org/ebooks.opds/", &policy).is_ok());
         assert!(check_url("https://feeds.example.org/podcast.xml", &policy).is_ok());
+        #[cfg(not(feature = "loopback-fixtures"))]
         assert!(check_url("http://127.0.0.1:5198/feed.xml", &policy).is_err());
         assert!(check_url("http://192.168.1.10/opds", &policy).is_err());
         assert!(check_url("http://169.254.169.254/latest/meta-data", &policy).is_err());
         assert!(check_url("file:///etc/passwd", &policy).is_err());
+    }
+
+    #[test]
+    fn media_server_validation_blocks_metadata_loopback_and_embedded_creds() {
+        // Permits RFC1918 LAN and public HTTPS media servers
+        assert!(
+            validate_media_server_url("http://192.168.1.100:8096/System/Info/Public", false)
+                .is_ok()
+        );
+        assert!(validate_media_server_url("http://10.0.0.12:32400/identity", false).is_ok());
+        assert!(
+            validate_media_server_url("https://jellyfin.example.org/Users/Views", false).is_ok()
+        );
+
+        // Blocks cloud metadata, link-local, loopback (in production), file://, embedded credentials
+        assert!(
+            validate_media_server_url("http://169.254.169.254/latest/meta-data", false).is_err()
+        );
+        assert!(
+            validate_media_server_url("http://127.0.0.1:8096/System/Info/Public", false).is_err()
+        );
+        assert!(
+            validate_media_server_url("http://localhost:8096/System/Info/Public", false).is_err()
+        );
+        assert!(
+            validate_media_server_url("http://user:secret@192.168.1.100:8096/Views", false)
+                .is_err()
+        );
+        assert!(validate_media_server_url("file:///etc/passwd", false).is_err());
+    }
+
+    #[tokio::test]
+    async fn media_server_request_connects_to_local_jellyfin_fixture_and_refuses_redirects() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut socket, _)) = listener.accept().await else {
+                    break;
+                };
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 4096];
+                    let n = socket.read(&mut buf).await.unwrap_or(0);
+                    let req = String::from_utf8_lossy(&buf[..n]);
+                    let first_line = req.lines().next().unwrap_or("");
+                    if first_line.starts_with("GET /Users/u1/Views") {
+                        let has_token = req
+                            .to_ascii_lowercase()
+                            .contains("x-mediabrowser-token: tok-abc");
+                        let body = if has_token {
+                            r#"{"Items":[{"Id":"lib-1","Name":"Movies","CollectionType":"movies"}]}"#
+                        } else {
+                            r#"{"error":"unauthorized"}"#
+                        };
+                        let status = if has_token {
+                            "200 OK"
+                        } else {
+                            "401 Unauthorized"
+                        };
+                        let resp = format!(
+                            "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                            body.len()
+                        );
+                        let _ = socket.write_all(resp.as_bytes()).await;
+                    } else if first_line.starts_with("GET /redirect-leak") {
+                        let resp = "HTTP/1.1 302 Found\r\nLocation: http://169.254.169.254/latest/meta-data\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                        let _ = socket.write_all(resp.as_bytes()).await;
+                    }
+                });
+            }
+        });
+
+        let mut headers = std::collections::HashMap::new();
+        headers.insert("Accept".into(), "application/json".into());
+        headers.insert("X-MediaBrowser-Token".into(), "tok-abc".into());
+
+        // Real library retrieval succeeds with auth header preserved
+        let res = media_server_request(
+            &format!("http://{addr}/Users/u1/Views"),
+            "GET",
+            &headers,
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(res.ok);
+        assert_eq!(res.status, 200);
+        assert!(res.body.contains("Movies"));
+
+        // Redirect attempt is refused to protect credentials
+        let redir = media_server_request(
+            &format!("http://{addr}/redirect-leak"),
+            "GET",
+            &headers,
+            None,
+        )
+        .await;
+        assert!(redir.is_err());
+        assert_eq!(redir.unwrap_err().code, ErrorCode::Blocked);
     }
 }

@@ -12,6 +12,7 @@
  * Strictly adheres to the zero em-dash typography standard.
  */
 
+import { mediaServerFetch } from './transport'
 import type {
   MediaServerConnectionTest,
   MediaServerLibrary,
@@ -58,7 +59,7 @@ export class JellyfinAdapter {
   async testConnection(username?: string, password?: string): Promise<MediaServerConnectionTest> {
     try {
       // 1. Check server public info
-      const infoRes = await fetch(`${this.baseUrl}/System/Info/Public`, {
+      const infoRes = await mediaServerFetch(`${this.baseUrl}/System/Info/Public`, {
         headers: { Accept: 'application/json' },
       })
       if (!infoRes.ok) {
@@ -76,7 +77,7 @@ export class JellyfinAdapter {
 
       // 2. If credentials are provided, authenticate
       if (username) {
-        const authRes = await fetch(`${this.baseUrl}/Users/AuthenticateByName`, {
+        const authRes = await mediaServerFetch(`${this.baseUrl}/Users/AuthenticateByName`, {
           method: 'POST',
           headers: this.headers(),
           body: JSON.stringify({ Username: username, Pw: password || '' }),
@@ -134,7 +135,7 @@ export class JellyfinAdapter {
    */
   async getLibraries(): Promise<MediaServerLibrary[]> {
     const url = `${this.baseUrl}/Users/${this.userId}/Views`
-    const res = await fetch(url, { headers: this.headers() })
+    const res = await mediaServerFetch(url, { headers: this.headers() })
     if (!res.ok) throw new Error(`Failed to load Jellyfin libraries: HTTP ${res.status}`)
 
     const data = await res.json()
@@ -161,7 +162,7 @@ export class JellyfinAdapter {
    */
   async getItems(libraryId: string, serverId: string): Promise<MediaServerItem[]> {
     const url = `${this.baseUrl}/Users/${this.userId}/Items?ParentId=${libraryId}&IncludeItemTypes=Movie,Series&Fields=Overview,MediaSources,UserData,ProviderIds&SortBy=SortName&SortOrder=Ascending`
-    const res = await fetch(url, { headers: this.headers() })
+    const res = await mediaServerFetch(url, { headers: this.headers() })
     if (!res.ok) throw new Error(`Failed to load items for library ${libraryId}: HTTP ${res.status}`)
 
     const data = await res.json()
@@ -207,7 +208,7 @@ export class JellyfinAdapter {
    */
   async getSeasons(seriesId: string): Promise<MediaServerSeason[]> {
     const url = `${this.baseUrl}/Shows/${seriesId}/Seasons?userId=${this.userId}&Fields=Overview`
-    const res = await fetch(url, { headers: this.headers() })
+    const res = await mediaServerFetch(url, { headers: this.headers() })
     if (!res.ok) throw new Error(`Failed to load seasons for series ${seriesId}: HTTP ${res.status}`)
 
     const data = await res.json()
@@ -234,7 +235,7 @@ export class JellyfinAdapter {
    */
   async getEpisodes(seriesId: string, seasonId: string): Promise<MediaServerEpisode[]> {
     const url = `${this.baseUrl}/Shows/${seriesId}/Episodes?seasonId=${seasonId}&userId=${this.userId}&Fields=Overview,UserData`
-    const res = await fetch(url, { headers: this.headers() })
+    const res = await mediaServerFetch(url, { headers: this.headers() })
     if (!res.ok) throw new Error(`Failed to load episodes for season ${seasonId}: HTTP ${res.status}`)
 
     const data = await res.json()
@@ -273,7 +274,7 @@ export class JellyfinAdapter {
   async reportProgress(update: PlaybackProgressUpdate): Promise<void> {
     try {
       if (update.isCompleted) {
-        await fetch(`${this.baseUrl}/Users/${this.userId}/PlayedItems/${update.itemId}`, {
+        await mediaServerFetch(`${this.baseUrl}/Users/${this.userId}/PlayedItems/${update.itemId}`, {
           method: 'POST',
           headers: this.headers(),
         })
@@ -281,7 +282,7 @@ export class JellyfinAdapter {
       }
 
       const ticks = update.positionMs * 10000
-      await fetch(`${this.baseUrl}/Sessions/Playing/Progress`, {
+      await mediaServerFetch(`${this.baseUrl}/Sessions/Playing/Progress`, {
         method: 'POST',
         headers: this.headers(),
         body: JSON.stringify({

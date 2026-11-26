@@ -3129,6 +3129,37 @@ export async function clientServerRequest(
   })
 }
 
+export interface MediaServerNativeResponse {
+  status: number
+  ok: boolean
+  body: string
+}
+
+/**
+ * Executes a guarded HTTP request to a user-configured Jellyfin, Emby, or Plex server
+ * through Rust IPC so Tauri's strict CSP remains intact and redirects/cloud-metadata are blocked.
+ */
+export async function mediaServerRequest(
+  url: string,
+  method: 'GET' | 'POST',
+  headers: Record<string, string>,
+  body?: string | null,
+): Promise<MediaServerNativeResponse> {
+  if (!isTauri()) {
+    throw new Error('Native media server transport requires the Tauri desktop shell.')
+  }
+  try {
+    return await invoke<MediaServerNativeResponse>('media_server_request', {
+      url,
+      method,
+      headers,
+      body: body ?? null,
+    })
+  } catch (e) {
+    throw toIngestError(e)
+  }
+}
+
 /** Connects a CSP-safe background SSE stream from a paired Kinora Server via Rust IPC. */
 export async function connectClientServerSse(
   serverUrl: string,
