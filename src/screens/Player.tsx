@@ -29,7 +29,6 @@ import { AudioEnhancer, type EqPreset } from '../lib/audioEnhancer'
 import {
   parseSubtitleText,
   cuesToVttBlobUrl,
-  generateSubtitleCss,
   DEFAULT_SUBTITLE_STYLES,
   type SubtitleStyleSettings,
 } from '../lib/subtitles'
@@ -188,6 +187,20 @@ export function Player() {
   const [externalSubTitle, setExternalSubTitle] = useState<string | null>(null)
   const externalSubTrackRef = useRef<HTMLTrackElement | null>(null)
   const subFileInputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const root = document.documentElement.style
+    root.setProperty('--cue-font-size', `${subStyles.fontSizePercent}%`)
+    root.setProperty('--cue-color', subStyles.color)
+    root.setProperty('--cue-bg', `rgba(0, 0, 0, ${subStyles.backgroundOpacity.toFixed(2)})`)
+    root.setProperty(
+      '--cue-text-shadow',
+      subStyles.outline
+        ? '0px 2px 4px rgba(0, 0, 0, 0.9), -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000'
+        : 'none',
+    )
+  }, [subStyles])
 
   const showControls = useCallback(() => {
     setControlsVisible(true)
@@ -1392,7 +1405,6 @@ export function Player() {
         style={{ display: 'none' }}
         aria-hidden="true"
       />
-      <style>{generateSubtitleCss(subStyles)}</style>
 
       {/* Dynamic Chapter & Heuristic Skip Action (Intro, Recap, Credits) */}
       {activeSkip.active && activeSkip.interval && (

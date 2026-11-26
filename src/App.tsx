@@ -53,6 +53,7 @@ import { channelRef, downloadRef } from './data/refs'
 import { loadTraktConfig, performTraktSync } from './lib/trakt'
 import { registerCommandHandler } from './lib/commands'
 import { kinoraCapabilities, type LiveProgrammeHit, type MediaSearchHit } from './lib/capabilities'
+import { getAllReleases } from './lib/changelog'
 import { initGlobalRemoteNav, restoreRouteFocus, saveRouteFocus } from './lib/remoteNav'
 import { initializeRemoteControlBridge } from './lib/remoteServerSync'
 import { GamepadController } from './lib/gamepadNav'
@@ -187,6 +188,15 @@ function Shell() {
         history: store.library.history.length,
         collections: store.library.collections.length,
       }),
+      getLatestReleaseSummary: () => {
+        const latest = getAllReleases()[0]
+        if (!latest) return null
+        return {
+          version: latest.version,
+          releaseDate: latest.releaseDate,
+          title: latest.title,
+        }
+      },
     })
     return unregister
   }, [navigate, store, mediaLibrary])

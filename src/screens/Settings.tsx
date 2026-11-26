@@ -2772,10 +2772,19 @@ function DataSection() {
               )}
             </div>
             <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center', fontSize: '0.8125rem' }}>
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+              <label
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  cursor: voiceControl.isSpeechSupported ? 'pointer' : 'not-allowed',
+                  opacity: voiceControl.isSpeechSupported ? 1 : 0.65,
+                }}
+              >
                 <input
                   type="checkbox"
-                  checked={voiceControl.config.microphoneEnabled}
+                  disabled={!voiceControl.isSpeechSupported}
+                  checked={voiceControl.isSpeechSupported && voiceControl.config.microphoneEnabled}
                   onChange={(e) => {
                     voiceControl.updateConfig({ microphoneEnabled: e.target.checked })
                     toast(e.target.checked ? 'Push-to-talk microphone enabled (manual trigger only)' : 'Microphone access disabled')
@@ -2792,6 +2801,11 @@ function DataSection() {
                 <span>Spoken Replies</span>
               </label>
             </div>
+            {!voiceControl.isSpeechSupported && (
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-2)', lineHeight: 1.45 }}>
+                Microphone speech recognition is not exposed by this desktop WebView runtime (such as Linux WebKitGTK). Microphone capture stays disabled. Typed natural-language commands above work locally; native Linux speech-to-text is planned for Kinora 0.7.0.
+              </div>
+            )}
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
               <select
                 aria-label="External AI provider"

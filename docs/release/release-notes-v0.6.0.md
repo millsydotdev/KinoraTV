@@ -3,12 +3,12 @@
 **Release Date:** 2026-11-26  
 **Channel:** stable
 
-Kinora 0.6.0 expands the standalone desktop app into a complete multi-device media platform with an optional headless Kinora Server, a touch-optimised mobile web remote, a virtualised Live TV guide, real EPUB/PDF reading, encrypted migration backups, and a structured in-app release history.
+Kinora 0.6.0 expands the standalone desktop app into a complete multi-device media platform with an optional headless Kinora Server, a touch-optimised mobile web remote, a virtualised Live TV guide, a CSP-safe EPUB/PDF canvas reader, guarded Jellyfin/Emby/Plex transport, full native transactional encrypted backups, opt-in prerelease update discovery, and a structured in-app release history.
 
 ## New Features
 
-- **Structured What's New, Offline Version History & Hardened Updater:** Review categorised release notes after every update, browse full version history offline, select update channels, track verified download and installation stages, and check client/server version compatibility.
-  Single version-controlled release database generates the in-app What's New view, CHANGELOG.md, and updater release notes consistently.
+- **Structured What's New, Offline Version History & Hardened Updater:** Review categorised release notes after every update, browse full version history offline, choose stable or opt-in prerelease update channels via GitHub Releases discovery, track verified download and installation stages, and check client/server version compatibility.
+  Single version-controlled release database generates the in-app What's New view, CHANGELOG.md, and updater release notes consistently, with WebKitGTK layout fixes for the version bar.
 
 ## UI Upgrades
 
@@ -39,8 +39,8 @@ Kinora 0.6.0 expands the standalone desktop app into a complete multi-device med
 
 ## Books and Reading
 
-- **Real EPUB, PDF & Text Reader with OPDS Catalogue Browser:** Open local EPUB, PDF, Markdown, HTML, and plain text books directly inside Kinora with a table of contents, multiple bookmarks, customisable reading themes, saved reading progress, and a built-in OPDS catalogue browser.
-  Browse Project Gutenberg, Standard Ebooks, Feedbooks, or custom OPDS feeds through Kinora's guarded fetcher.
+- **Real EPUB, CSP-Safe PDF Canvas Reader & OPDS Browser:** Open local EPUB, PDF, Markdown, HTML, and plain text books directly inside Kinora with a PDF.js canvas viewer (page controls, zoom, and saved page progress), a table of contents, multiple bookmarks, customisable reading themes, and an OPDS catalogue browser.
+  Renders PDFs natively to canvas without weakening Kinora's strict Content Security Policy and validates %PDF- headers before rendering.
 
 ## AI and Automation
 
@@ -69,13 +69,13 @@ Kinora 0.6.0 expands the standalone desktop app into a complete multi-device med
 
 ## Security and Privacy
 
-- **API Rate Limiting, Guarded Feed Fetching & Profile Isolation:** Added sliding-window API rate limiting on Kinora Server, routed podcast and OPDS network requests through Rust's anti-SSRF fetcher, isolated profile libraries with cascading deletion, and hardened parental PIN hashing.
+- **API Rate Limiting, Guarded Media Server & Feed Fetching, and Profile Isolation:** Added sliding-window API rate limiting on Kinora Server, routed Jellyfin/Emby/Plex and podcast/OPDS network requests through Rust's guarded no-redirect anti-SSRF fetcher, updated vulnerable Rust crates (cookie, url), isolated profile libraries, and hardened parental PIN hashing.
   Maintains strict Content Security Policy, direct no-proxy fetching, memory-only stream handles, and full token redaction in errors.
 
 ## Reliability Improvements
 
-- **Full Encrypted Backup, Migration Wizard & Atomic Rollback:** Back up preferences, sources, guides, bouquets, DVR rules, podcasts, reading progress, and non-secret platform settings into an AES-256-GCM encrypted archive with SHA-256 verification and automatic rollback if restoration fails.
-  Never exports plaintext provider passwords or pairing tokens; pre-flight inspection flags missing local paths and accounts requiring re-authentication.
+- **Full Encrypted Backup, Migration Wizard & Native Transactional Rollback:** Back up preferences, sources, guides, bouquets, DVR rules, podcasts, reading progress, and non-secret platform settings into an AES-256-GCM encrypted archive with SHA-256 verification and full rollback across frontend and native Rust stores if restoration fails.
+  Never exports plaintext provider passwords or pairing tokens; rejects incompatible future backup schemas and flags missing local paths before restore.
 
 ## Bug Fixes
 
