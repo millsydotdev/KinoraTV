@@ -6,6 +6,7 @@ import { useToast } from './Toast'
 import { useCardContextMenu, XtreamArt } from './Tiles'
 import { Art } from './ui'
 import { useArtwork } from '../lib/useArtwork'
+import { useGenreCustomizations } from '../state/genreCustomizations'
 import type { ArtworkType } from '../data/artworkEngine'
 import '../screens/MediaStreaming.css'
 
@@ -277,7 +278,7 @@ export function StreamingHero({
 export interface GenreItem {
   id: string
   name: string
-  art: string
+  art?: string
 }
 
 export function StreamingGenreRow({
@@ -291,6 +292,7 @@ export function StreamingGenreRow({
   onSelectGenre: (genreName: string) => void
   onViewAll: () => void
 }) {
+  const { resolveArtwork } = useGenreCustomizations()
   return (
     <section className="streaming-genre-section" aria-label="Browse by Genre">
       <div className="streaming-genre-header">
@@ -310,16 +312,26 @@ export function StreamingGenreRow({
       <div className="streaming-genre-track" role="list">
         {genres.map((g) => {
           const isActive = selectedGenre === g.name
+          const resolved = resolveArtwork(g.id, 'landscape')
+          const artSrc = resolved.url || g.art || ''
           return (
             <button
               key={g.id}
               type="button"
               role="listitem"
               className={`streaming-genre-tile ${isActive ? 'is-active' : ''}`}
+              style={{ background: resolved.cssGradient }}
               onClick={() => onSelectGenre(g.name)}
               title={`Browse ${g.name}`}
             >
-              <Art src={g.art} alt={g.name} className="streaming-genre-tile-art" fallbackIcon="film" />
+              {artSrc && (
+                <img
+                  src={artSrc}
+                  alt={g.name}
+                  className="streaming-genre-tile-art"
+                  loading="lazy"
+                />
+              )}
               <div className="streaming-genre-tile-scrim" />
               <span className="streaming-genre-tile-label">{g.name}</span>
             </button>
@@ -460,6 +472,8 @@ export function StreamingCard({
   artworkKey,
   badges,
   episodeBadge,
+  seasonNumber,
+  episodeNumber,
   itemRef,
   watched = false,
   progress = null,
@@ -472,6 +486,8 @@ export function StreamingCard({
   artworkKey?: string | null
   badges?: string[]
   episodeBadge?: string
+  seasonNumber?: number | null
+  episodeNumber?: number | null
   itemRef?: string
   watched?: boolean
   progress?: number | null
@@ -479,22 +495,67 @@ export function StreamingCard({
 }) {
   const { onContextMenu, menu } = useCardContextMenu(to, title, itemRef)
   const isPoster = layout === 'poster'
-  const isSeries = Boolean(episodeBadge) || to.startsWith('/series') || Boolean(itemRef?.startsWith('series:'))
+  const isEpisode = Boolean(episodeBadge) || Boolean(itemRef?.startsWith('episode:'))
+  const isSeries = isEpisode || to.startsWith('/series') || Boolean(itemRef?.startsWith('series:'))
   const cardArtType: ArtworkType = isPoster
     ? isSeries
       ? 'series-poster'
       : 'movie-poster'
-    : isSeries
-      ? 'series-backdrop'
-      : 'movie-backdrop'
+    : isEpisode
+      ? 'episode-still'
+      : isSeries
+        ? 'series-backdrop'
+        : 'movie-backdrop'
   const resolvedId = itemRef || (to.startsWith('/movies/') ? `movie:${to.slice(8)}` : to.startsWith('/series/') ? `series:${to.slice(8)}` : undefined)
   const resolvedCard = useArtwork({
     contentId: resolvedId,
     title,
     type: cardArtType,
     providerArt: art,
+    seasonNumber,
+    episodeNumber,
   })
   const effectiveArt = resolvedCard.src || art || ''
+
+  const mediaElement = artworkKey ? (
+    <XtreamArt
+      artworkKey={artworkKey}
+      contentId={resolvedId}
+      artType={cardArtType}
+      alt={title}
+      className="streaming-card-art"
+      fallbackTitle={title}
+      fallbackIcon={isSeries ? 'series' : 'film'}
+    />
+  ) : (
+    <Art
+      src={effectiveArt}
+      alt={title}
+      contentId={resolvedId || to}
+      fitMode={isPoster ? 'poster' : 'cover'}
+      className="streaming-card-art"
+      fallbackIcon={isSeries ? 'series' : isPoster ? 'film' : 'tv'}
+    />
+  )
+
+  const topBadgesElement = (
+    <div className="streaming-card-top-badges">
+      {episodeBadge && (
+        <span className="streaming-card-badge is-episode">{episodeBadge}</span>
+      )}
+      {badges?.includes('4K') && (
+        <span className="streaming-card-badge">4K</span>
+      )}
+      {badges?.includes('HDR') && (
+        <span className="streaming-card-badge is-hdr">HDR</span>
+      )}
+      {watched && (
+        <span className="streaming-card-badge" title="Watched">
+          <Icon name="check" size={11} />
+        </span>
+      )}
+    </div>
+  )
 
   return (
     <>
@@ -504,57 +565,43 @@ export function StreamingCard({
         onContextMenu={onContextMenu}
         aria-label={`${title}${sub ? `, ${sub}` : ''}`}
       >
-        {artworkKey ? (
-          <XtreamArt
-            artworkKey={artworkKey}
-            contentId={resolvedId}
-            artType={cardArtType}
-            alt={title}
-            className="streaming-card-art"
-            fallbackTitle={title}
-            fallbackIcon={isSeries ? 'series' : 'film'}
-          />
+        {isPoster ? (
+          <>
+            <div className="streaming-card-poster-media">
+              {mediaElement}
+              {topBadgesElement}
+              {progress != null && progress > 0 && progress < 1 && (
+                <div className="streaming-card-progress" aria-hidden="true">
+                  <div
+                    className="streaming-card-progress-fill"
+                    style={{ width: `${Math.round(progress * 100)}%` }}
+                  />
+                </div>
+              )}
+            </div>
+            <div className="streaming-card-poster-caption">
+              <strong className="streaming-card-title">{title}</strong>
+              {sub && <span className="streaming-card-sub">{sub}</span>}
+            </div>
+          </>
         ) : (
-          <Art
-            src={effectiveArt}
-            alt={title}
-            contentId={resolvedId || to}
-            className="streaming-card-art"
-            fallbackIcon={isSeries ? 'series' : isPoster ? 'film' : 'tv'}
-          />
-        )}
-
-        <div className="streaming-card-scrim" />
-
-        <div className="streaming-card-top-badges">
-          {episodeBadge && (
-            <span className="streaming-card-badge is-episode">{episodeBadge}</span>
-          )}
-          {badges?.includes('4K') && (
-            <span className="streaming-card-badge">4K</span>
-          )}
-          {badges?.includes('HDR') && (
-            <span className="streaming-card-badge is-hdr">HDR</span>
-          )}
-          {watched && (
-            <span className="streaming-card-badge" title="Watched">
-              <Icon name="check" size={11} />
-            </span>
-          )}
-        </div>
-
-        <div className="streaming-card-bottom">
-          <strong className="streaming-card-title">{title}</strong>
-          {sub && <span className="streaming-card-sub">{sub}</span>}
-        </div>
-
-        {progress != null && progress > 0 && progress < 1 && (
-          <div className="streaming-card-progress" aria-hidden="true">
-            <div
-              className="streaming-card-progress-fill"
-              style={{ width: `${Math.round(progress * 100)}%` }}
-            />
-          </div>
+          <>
+            {mediaElement}
+            <div className="streaming-card-scrim" />
+            {topBadgesElement}
+            <div className="streaming-card-bottom">
+              <strong className="streaming-card-title">{title}</strong>
+              {sub && <span className="streaming-card-sub">{sub}</span>}
+            </div>
+            {progress != null && progress > 0 && progress < 1 && (
+              <div className="streaming-card-progress" aria-hidden="true">
+                <div
+                  className="streaming-card-progress-fill"
+                  style={{ width: `${Math.round(progress * 100)}%` }}
+                />
+              </div>
+            )}
+          </>
         )}
       </Link>
       {menu}

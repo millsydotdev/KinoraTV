@@ -17,7 +17,9 @@ export interface ParsedBook {
   author: string
   format: 'epub' | 'pdf' | 'txt' | 'html' | 'md'
   chapters: BookChapter[]
-  /** Present for PDF files so the reader can display the native PDF blob viewer. */
+  /** Raw PDF bytes rendered directly to canvas via PDF.js without loosening CSP. */
+  pdfBytes?: Uint8Array
+  /** Legacy object URL retained only for backward compatibility with callers. */
   pdfBlobUrl?: string
 }
 
@@ -383,14 +385,25 @@ export async function parseLocalBookFile(file: File): Promise<ParsedBook> {
   }
 
   if (lower.endsWith('.pdf')) {
-    const pdfBlobUrl = URL.createObjectURL(file)
+    const buffer = await file.arrayBuffer()
+    const pdfBytes = new Uint8Array(buffer)
+    const isPdfHeader =
+      pdfBytes.length >= 5 &&
+      pdfBytes[0] === 0x25 && // %
+      pdfBytes[1] === 0x50 && // P
+      pdfBytes[2] === 0x44 && // D
+      pdfBytes[3] === 0x46 && // F
+      pdfBytes[4] === 0x2d // -
+    if (!isPdfHeader) {
+      throw new Error('Selected file is not a valid PDF document (missing %PDF- header).')
+    }
     return {
       id: `pdf:${cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
       title: cleanTitle,
       author: 'Local PDF Document',
       format: 'pdf',
-      chapters: [{ title: cleanTitle, content: ['PDF document loaded in viewer.'] }],
-      pdfBlobUrl,
+      chapters: [{ title: cleanTitle, content: ['PDF document loaded in canvas reader.'] }],
+      pdfBytes,
     }
   }
 

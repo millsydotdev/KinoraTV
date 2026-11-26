@@ -349,9 +349,9 @@ export const CANONICAL_GENRES: GenreDefinition[] = [
     relatedGenreIds: ['crime', 'documentary'],
     sortOrder: 63,
     artwork: {
-      landscape: '/art/genres/documentary.jpg',
-      portrait: '/art/genres/documentary.jpg',
-      banner: '/art/genres/documentary.jpg',
+      landscape: '/art/genres/crime.jpg',
+      portrait: '/art/genres/crime.jpg',
+      banner: '/art/genres/crime.jpg',
       icon: 'documentary',
       ambient: { primaryHue: 210, secondaryHue: 0, saturation: 70, lightness: 14 },
     },

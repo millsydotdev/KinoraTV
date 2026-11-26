@@ -195,7 +195,7 @@ export function SeriesDetail() {
     autoEnrich: false,
   })
 
-  const seasonBackdrop = resolvedBackdrop.src || episodes[0]?.still || s.backdropUrl || s.art
+  const seasonBackdrop = resolvedBackdrop.src || episodes[0]?.still || s.backdropUrl || ''
   const effectiveSeriesPoster = resolvedPoster.src || s.posterUrl || s.art
   const effectiveSeriesGenres = richSeriesMeta?.genres?.length ? richSeriesMeta.genres : s.genres
   const effectiveSeriesSynopsis = richSeriesMeta?.overview || s.synopsis
@@ -210,6 +210,7 @@ export function SeriesDetail() {
           alt={s.title}
           contentId={seriesContentId}
           focus={s.focus}
+          fitMode="backdrop"
           eager
           className="detail-backdrop"
           fallbackIcon="series"
@@ -223,6 +224,7 @@ export function SeriesDetail() {
                   src={effectiveSeriesPoster}
                   alt={`${s.title} poster`}
                   contentId={`${seriesContentId}:poster`}
+                  fitMode="poster"
                   eager
                   fallbackIcon="series"
                   fallbackYear={firstYear}
@@ -314,6 +316,8 @@ export function SeriesDetail() {
                 src={effectiveSeasonPoster}
                 alt={`${s.title} Season ${seasonNo} poster`}
                 contentId={`season:${s.id}:${seasonNo}`}
+                fitMode="poster"
+                eager
                 fallbackIcon="series"
               />
             </div>
@@ -343,7 +347,7 @@ export function SeriesDetail() {
                   seasonNumber={e.season}
                   episodeNumber={e.number}
                   stillUrl={e.still}
-                  seriesBackdropUrl={s.backdropUrl || s.art}
+                  seriesBackdropUrl={s.backdropUrl || ''}
                   runtimeMin={e.runtime}
                   synopsis={e.synopsis}
                   progress={prog}
@@ -374,7 +378,7 @@ export function SeriesDetail() {
         onClose={() => setSelectedEpisodeId(null)}
         seriesId={s.id}
         seriesTitle={s.title}
-        seriesBackdropUrl={s.backdropUrl || s.art}
+        seriesBackdropUrl={s.backdropUrl || ''}
         seriesCertificate={s.certificate}
         seriesGenres={s.genres}
         cast={seriesCast}

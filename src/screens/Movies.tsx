@@ -7,6 +7,7 @@ import type { Movie } from '../data/types'
 import { Icon } from '../components/Icon'
 import { PageHeader } from '../components/PageHeader'
 import { PosterCard, XtreamPosterCard } from '../components/Tiles'
+import { GenreCard } from '../components/GenreCard'
 import { Art, StateBlock } from '../components/ui'
 import { useToast } from '../components/Toast'
 import { ShareModal } from '../components/ShareModal'
@@ -67,10 +68,10 @@ export function NoTitles({ kind, disabledSources, emptyCatalogue }: { kind: 'fil
   )
 }
 
-const MOVIE_GENRES: GenreItem[] = GENRES_BY_MEDIA_TYPE.movies.map((g) => ({
+const MOVIE_GENRE_DEFS: GenreDefinition[] = GENRES_BY_MEDIA_TYPE.movies
+const MOVIE_GENRES: GenreItem[] = MOVIE_GENRE_DEFS.map((g) => ({
   id: g.id,
   name: g.name,
-  art: g.artwork.landscape,
 }))
 
 const MOVIE_TABS: NavTabItem[] = [
@@ -490,7 +491,7 @@ export function Movies() {
       cast: 'Cast',
       language: 'English',
       subtitles: 'Multiple',
-      art: '/art/low-orbit.jpg',
+      art: '',
       playUrl: '/movies',
       imdbId: 'tt0000000',
       similar: [],
@@ -930,7 +931,7 @@ export function Movies() {
                       to={`/movies/${encodeURIComponent(routeId)}`}
                       title={movie.name || movie.title}
                       sub={[movie.year, isXt ? sourceName(movie.sourceId) : movie.genres?.[0]].filter(Boolean).join(' · ')}
-                      art={movie.art || movie.posterUrl}
+                      art={movie.posterUrl || movie.art}
                       artworkKey={movie.artworkKey}
                       badges={getTechnicalBadges(movie)}
                       itemRef={isXt ? `movie:${routeId}` : movieRef(movie.id)}
@@ -1289,16 +1290,13 @@ export function Movies() {
             </Link>
           </div>
           <div className="streaming-genre-grid">
-            {MOVIE_GENRES.map((g) => (
-              <button
+            {MOVIE_GENRE_DEFS.map((g) => (
+              <GenreCard
                 key={g.id}
-                type="button"
-                className="streaming-genre-tile"
+                genre={g}
+                showSubgenres={false}
                 onClick={() => setSelectedGenre(g.name)}
-              >
-                <Art src={g.art} alt={g.name} className="streaming-genre-art" fallbackIcon="film" />
-                <span className="streaming-genre-label">{g.name}</span>
-              </button>
+              />
             ))}
           </div>
         </div>

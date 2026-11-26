@@ -2277,6 +2277,12 @@ export interface UpdateCheckResult {
   platformKey: string
   platformSupported: boolean
   error: string | null
+  manifestUrl?: string | null
+  assetSizeBytes?: number | null
+  releaseUrl?: string | null
+  cached?: boolean
+  buildCommit?: string | null
+  sameVersionRefresh?: boolean
 }
 
 /**
@@ -2292,11 +2298,12 @@ export async function fetchFeedXml(url: string, accept?: string): Promise<string
 
 /**
  * Checks for application updates from the official release manifest via Rust IPC.
- * Evaluates current platform, architecture and semver numbers.
+ * Evaluates current platform, architecture, semver numbers, and ETag/TTL cache.
  */
 export async function checkForUpdates(
   endpoint?: string | null,
   allowPrereleases = false,
+  force = false,
 ): Promise<UpdateCheckResult | null> {
   if (!inNativeShell()) {
     return {
@@ -2313,13 +2320,14 @@ export async function checkForUpdates(
     }
   }
   try {
-    const payload: { endpoint?: string; allowPrereleases?: boolean } = {}
+    const payload: { endpoint?: string; allowPrereleases?: boolean; force?: boolean } = {}
     if (endpoint) payload.endpoint = endpoint
     if (allowPrereleases) payload.allowPrereleases = true
+    if (force) payload.force = true
     const raw = await invoke('check_for_updates', payload)
     if (!raw || typeof raw !== 'object') return null
     const r = raw as Record<string, unknown>
-    return {
+    const result: UpdateCheckResult = {
       status: (r.status as UpdateCheckResult['status']) ?? 'error',
       currentVersion: typeof r.currentVersion === 'string' ? r.currentVersion : APP_VERSION,
       latestVersion: typeof r.latestVersion === 'string' ? r.latestVersion : null,
@@ -2331,6 +2339,25 @@ export async function checkForUpdates(
       platformSupported: Boolean(r.platformSupported),
       error: typeof r.error === 'string' ? r.error : null,
     }
+    if ('manifestUrl' in r) {
+      result.manifestUrl = typeof r.manifestUrl === 'string' ? r.manifestUrl : null
+    }
+    if ('assetSizeBytes' in r) {
+      result.assetSizeBytes = typeof r.assetSizeBytes === 'number' ? r.assetSizeBytes : null
+    }
+    if ('releaseUrl' in r) {
+      result.releaseUrl = typeof r.releaseUrl === 'string' ? r.releaseUrl : null
+    }
+    if ('cached' in r) {
+      result.cached = Boolean(r.cached)
+    }
+    if ('buildCommit' in r) {
+      result.buildCommit = typeof r.buildCommit === 'string' ? r.buildCommit : null
+    }
+    if ('sameVersionRefresh' in r) {
+      result.sameVersionRefresh = Boolean(r.sameVersionRefresh)
+    }
+    return result
   } catch (e) {
     return {
       status: 'error',
@@ -2354,63 +2381,94 @@ export interface UpdateInstallProgress {
   totalBytes?: number
 }
 
+export interface UpdateInstallResult {
+  success: boolean
+  restartRequired?: boolean
+  installedVersion?: string | null
+  error?: string
+}
+
 /**
- * Downloads, verifies the Minisign signature, and installs an application update
- * using Tauri's native updater plugin. Separates download from verification and installation.
+ * Downloads, cryptographically verifies the Minisign signature against the bundled public key,
+ * and installs a discovered update through Rust's `install_discovered_update` command.
+ * Supports both Stable and Pre-release endpoints validated against official Kinora GitHub URLs.
  */
 export async function installUpdate(
-  onProgress?: (progress: UpdateInstallProgress) => void
-): Promise<{ success: boolean; restartRequired?: boolean; error?: string }> {
+  onProgress?: (progress: UpdateInstallProgress) => void,
+  manifestUrl?: string | null,
+): Promise<UpdateInstallResult> {
   if (!inNativeShell()) {
     return { success: false, error: 'Cannot install updates in web preview.' }
   }
+  let unlisten: (() => void) | null = null
   try {
-    const { check } = await import('@tauri-apps/plugin-updater')
-    const update = await check()
-    if (!update) {
-      return { success: false, error: 'No update available to install.' }
-    }
-    let totalBytes = 0
-    let downloadedBytes = 0
-    if (typeof update.download === 'function' && typeof update.install === 'function') {
-      await update.download((event) => {
-        if (event.event === 'Started') {
-          totalBytes = event.data.contentLength ?? 0
-          onProgress?.({ stage: 'downloading', percent: 0, downloadedBytes: 0, totalBytes })
-        } else if (event.event === 'Progress') {
-          downloadedBytes += event.data.chunkLength
-          const percent = totalBytes > 0 ? Math.min(100, Math.round((downloadedBytes / totalBytes) * 100)) : undefined
-          onProgress?.({ stage: 'downloading', percent, downloadedBytes, totalBytes })
-        } else if (event.event === 'Finished') {
-          onProgress?.({ stage: 'downloaded', percent: 100, downloadedBytes, totalBytes })
-          onProgress?.({ stage: 'verifying', percent: 100, downloadedBytes, totalBytes })
-        }
-      })
-      onProgress?.({ stage: 'verified', percent: 100, downloadedBytes, totalBytes })
-      onProgress?.({ stage: 'installing', percent: 100, downloadedBytes, totalBytes })
-      await update.install()
-      onProgress?.({ stage: 'restartRequired', percent: 100, downloadedBytes, totalBytes })
-      return { success: true, restartRequired: true }
+    if (onProgress) {
+      try {
+        const { listen } = await import('@tauri-apps/api/event')
+        unlisten = await listen<{
+          stage?: string
+          percent?: number | null
+          downloadedBytes?: number
+          totalBytes?: number
+        }>('kinora:update_progress', (event) => {
+          const p = event.payload
+          if (!p || typeof p.stage !== 'string') return
+          const validStages: UpdateInstallProgress['stage'][] = [
+            'downloading',
+            'downloaded',
+            'verifying',
+            'verified',
+            'installing',
+            'restartRequired',
+            'done',
+          ]
+          if (!validStages.includes(p.stage as UpdateInstallProgress['stage'])) return
+          onProgress({
+            stage: p.stage as UpdateInstallProgress['stage'],
+            percent: typeof p.percent === 'number' ? p.percent : undefined,
+            downloadedBytes: typeof p.downloadedBytes === 'number' ? p.downloadedBytes : undefined,
+            totalBytes: typeof p.totalBytes === 'number' ? p.totalBytes : undefined,
+          })
+        })
+      } catch {
+        // Proceed even if event bridge is unavailable in mocked test shells
+      }
     }
 
-    await update.downloadAndInstall((event) => {
-      if (event.event === 'Started') {
-        totalBytes = event.data.contentLength ?? 0
-        onProgress?.({ stage: 'downloading', percent: 0, downloadedBytes: 0, totalBytes })
-      } else if (event.event === 'Progress') {
-        downloadedBytes += event.data.chunkLength
-        const percent = totalBytes > 0 ? Math.min(100, Math.round((downloadedBytes / totalBytes) * 100)) : undefined
-        onProgress?.({ stage: 'downloading', percent, downloadedBytes, totalBytes })
-      } else if (event.event === 'Finished') {
-        onProgress?.({ stage: 'downloaded', percent: 100, downloadedBytes, totalBytes })
-        onProgress?.({ stage: 'installing', percent: 100, downloadedBytes, totalBytes })
-      }
+    const raw = await invoke('install_discovered_update', {
+      manifestUrl: manifestUrl ?? null,
     })
-    onProgress?.({ stage: 'restartRequired', percent: 100, downloadedBytes, totalBytes })
-    return { success: true, restartRequired: true }
+    if (!raw || typeof raw !== 'object') {
+      return { success: false, error: 'Unexpected response from native updater.' }
+    }
+    const r = raw as Record<string, unknown>
+    const success = Boolean(r.success)
+    return {
+      success,
+      restartRequired: Boolean(r.restartRequired),
+      installedVersion: typeof r.installedVersion === 'string' ? r.installedVersion : null,
+      error: typeof r.error === 'string' ? r.error : success ? undefined : 'Update installation failed.',
+    }
   } catch (e) {
+    if (e && typeof e === 'object' && 'message' in e && typeof (e as { message: unknown }).message === 'string') {
+      return { success: false, error: (e as { message: string }).message }
+    }
     return { success: false, error: e instanceof Error ? e.message : 'Update installation failed.' }
+  } finally {
+    if (unlisten) {
+      try {
+        unlisten()
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
   }
+}
+
+/** Cleanly restarts the native Kinora desktop application to apply an installed update. */
+export async function restartApp(): Promise<void> {
+  if (!inNativeShell()) return
+  await invoke('restart_app')
 }
 
 export interface LocalLibrary {
@@ -3127,6 +3185,37 @@ export async function clientServerRequest(
     authToken: authToken ?? null,
     body: body ?? null,
   })
+}
+
+export interface MediaServerNativeResponse {
+  status: number
+  ok: boolean
+  body: string
+}
+
+/**
+ * Executes a guarded HTTP request to a user-configured Jellyfin, Emby, or Plex server
+ * through Rust IPC so Tauri's strict CSP remains intact and redirects/cloud-metadata are blocked.
+ */
+export async function mediaServerRequest(
+  url: string,
+  method: 'GET' | 'POST',
+  headers: Record<string, string>,
+  body?: string | null,
+): Promise<MediaServerNativeResponse> {
+  if (!isTauri()) {
+    throw new Error('Native media server transport requires the Tauri desktop shell.')
+  }
+  try {
+    return await invoke<MediaServerNativeResponse>('media_server_request', {
+      url,
+      method,
+      headers,
+      body: body ?? null,
+    })
+  } catch (e) {
+    throw toIngestError(e)
+  }
 }
 
 /** Connects a CSP-safe background SSE stream from a paired Kinora Server via Rust IPC. */

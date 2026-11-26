@@ -7,7 +7,8 @@ import { OPEN_SERIES } from '../data/openCatalogue'
 import { Icon } from '../components/Icon'
 import { PageHeader } from '../components/PageHeader'
 import { PosterCard, XtreamPosterCard } from '../components/Tiles'
-import { Art, StateBlock } from '../components/ui'
+import { GenreCard } from '../components/GenreCard'
+import { StateBlock } from '../components/ui'
 import {
   StreamingHero,
   StreamingGenreRow,
@@ -30,10 +31,10 @@ import { aggregateVodTitles } from '../lib/vodAggregation'
 import './Browse.css'
 import './MediaStreaming.css'
 
-const TV_GENRES: GenreItem[] = GENRES_BY_MEDIA_TYPE.series.map((g) => ({
+const TV_GENRE_DEFS: GenreDefinition[] = GENRES_BY_MEDIA_TYPE.series
+const TV_GENRES: GenreItem[] = TV_GENRE_DEFS.map((g) => ({
   id: g.id,
   name: g.name,
-  art: g.artwork.landscape,
 }))
 
 const TV_TABS: NavTabItem[] = [
@@ -358,7 +359,7 @@ export function SeriesBrowse() {
               episodeTitle: lastEp.title,
               season: lastEp.season,
               number: lastEp.number,
-              art: lastEp.still || s.backdropUrl || s.art,
+              art: lastEp.still || s.backdropUrl || '',
             })
           }
         }
@@ -721,6 +722,8 @@ export function SeriesBrowse() {
                     sub={`S${ep.season} E${ep.number} · ${ep.episodeTitle}`}
                     art={ep.art}
                     episodeBadge={`S${ep.season} E${ep.number}`}
+                    seasonNumber={ep.season}
+                    episodeNumber={ep.number}
                     badges={getTechnicalBadges({ title: ep.episodeTitle })}
                     itemRef={episodeRef(ep.showId, `s${ep.season}e${ep.number}`)}
                   />
@@ -910,16 +913,13 @@ export function SeriesBrowse() {
             </Link>
           </div>
           <div className="streaming-genre-grid">
-            {TV_GENRES.map((g) => (
-              <button
+            {TV_GENRE_DEFS.map((g) => (
+              <GenreCard
                 key={g.id}
-                type="button"
-                className="streaming-genre-tile"
+                genre={g}
+                showSubgenres={false}
                 onClick={() => setSelectedGenre(g.name)}
-              >
-                <Art src={g.art} alt={g.name} className="streaming-genre-art" fallbackIcon="series" />
-                <span className="streaming-genre-label">{g.name}</span>
-              </button>
+              />
             ))}
           </div>
         </div>

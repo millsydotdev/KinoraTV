@@ -43,6 +43,7 @@ const LanguageScreen = lazy(() => import('./screens/LanguageScreen').then((m) =>
 const ArchivesScreen = lazy(() => import('./screens/ArchivesScreen').then((m) => ({ default: m.ArchivesScreen })))
 import { AudioPlayerBar } from './components/AudioPlayerBar'
 import { OfflineBanner } from './components/OfflineBanner'
+import { UpdateNotificationBanner } from './components/UpdateNotificationBanner'
 import { WhatsNewModal, hasSeenWhatsNew } from './components/WhatsNewModal'
 import { AmbientScreensaver } from './components/AmbientScreensaver'
 import { RemoteControlModal } from './components/RemoteControlModal'
@@ -53,6 +54,7 @@ import { channelRef, downloadRef } from './data/refs'
 import { loadTraktConfig, performTraktSync } from './lib/trakt'
 import { registerCommandHandler } from './lib/commands'
 import { kinoraCapabilities, type LiveProgrammeHit, type MediaSearchHit } from './lib/capabilities'
+import { getAllReleases } from './lib/changelog'
 import { initGlobalRemoteNav, restoreRouteFocus, saveRouteFocus } from './lib/remoteNav'
 import { initializeRemoteControlBridge } from './lib/remoteServerSync'
 import { GamepadController } from './lib/gamepadNav'
@@ -61,9 +63,11 @@ import { APP_VERSION } from './lib/native'
 import { ProfileProvider } from './state/profiles'
 import { StoreProvider, useStore } from './state/store'
 import { LocalMediaProvider } from './state/localMedia'
+import { UpdaterProvider, useUpdater } from './state/updater'
 
 function Shell() {
   const store = useStore()
+  const updater = useUpdater()
   const { prefs, setPref, setupDone, mediaLibrary } = store
   const navigate = useNavigate()
   useEffect(() => {
@@ -187,6 +191,15 @@ function Shell() {
         history: store.library.history.length,
         collections: store.library.collections.length,
       }),
+      getLatestReleaseSummary: () => {
+        const latest = getAllReleases()[0]
+        if (!latest) return null
+        return {
+          version: latest.version,
+          releaseDate: latest.releaseDate,
+          title: latest.title,
+        }
+      },
     })
     return unregister
   }, [navigate, store, mediaLibrary])
@@ -546,13 +559,30 @@ function Shell() {
     }
   }, [navigate, prefs.viewMode, setPref])
 
+  useEffect(() => {
+    if (updater.state.stage === 'updated' && !hasSeenWhatsNew(APP_VERSION)) {
+      setWhatsNewOpen(true)
+    }
+  }, [updater.state.stage])
+
+  const anyOverlayOpen =
+    paletteOpen ||
+    shortcutsOpen ||
+    whatsNewOpen ||
+    remoteModalOpen ||
+    traktModalOpen ||
+    downloadsModalOpen ||
+    screensaverActive
+  const showRemoteHint = prefs.viewMode === 'tv' && !inPlayer && !anyOverlayOpen
+
   return (
     <NavMenuContext.Provider value={openNav}>
       <a href="#main" className="skip-link">Skip to content</a>
       <OfflineBanner />
-      <div className={inPlayer ? '' : `shell${mediaLibrary.currentAudio ? ' has-audio-bar' : ''}`}>
+      <div className={inPlayer ? '' : `shell${mediaLibrary.currentAudio ? ' has-audio-bar' : ''}${showRemoteHint ? ' has-remote-hint' : ''}`}>
       {!inPlayer && <Sidebar open={navOpen} onClose={closeNav} />}
       <main id="main" className="main" tabIndex={-1}>
+        {!inPlayer && <UpdateNotificationBanner onViewReleaseNotes={() => setWhatsNewOpen(true)} />}
         <ErrorBoundary key={pathname}>
           <Suspense fallback={<div className="page-loader" aria-label="Loading page..."><span className="spinner" /></div>}>
             <Routes>
@@ -600,6 +630,17 @@ function Shell() {
             </Routes>
           </Suspense>
         </ErrorBoundary>
+        {showRemoteHint && (
+          <RemoteHintBar
+            red="Live Guide"
+            green="Channels"
+            yellow="Audio"
+            blue="Settings"
+            ok="Select"
+            back="Back"
+            className={mediaLibrary.currentAudio ? 'remote-hint-with-audio' : ''}
+          />
+        )}
       </main>
       </div>
       {!inPlayer && (
@@ -619,20 +660,21 @@ function Shell() {
           onUpdateLyrics={mediaLibrary.updateAudioLyrics}
         />
       )}
-      {prefs.viewMode === 'tv' && !inPlayer && (
-        <RemoteHintBar
-          red="Live Guide"
-          green="Channels"
-          yellow="Audio"
-          blue="Settings"
-          ok="Select"
-          back="Back"
-          className={!inPlayer && mediaLibrary.currentAudio ? 'remote-hint-with-audio' : ''}
-        />
-      )}
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
-      <WhatsNewModal open={whatsNewOpen} onClose={() => setWhatsNewOpen(false)} />
+      <WhatsNewModal
+        open={whatsNewOpen}
+        onClose={() => setWhatsNewOpen(false)}
+        onlineReleaseNotice={
+          updater.state.stage === 'available' && updater.state.targetVersion
+            ? {
+                version: updater.state.targetVersion,
+                releaseDate: updater.state.releaseDate,
+                notes: updater.state.releaseNotes,
+              }
+            : null
+        }
+      />
       <RemoteControlModal open={remoteModalOpen} onClose={() => setRemoteModalOpen(false)} />
       <TraktSettingsModal open={traktModalOpen} onClose={() => setTraktModalOpen(false)} />
       <DownloadsModal
@@ -674,7 +716,9 @@ export function App() {
             <NotificationProvider>
               <BackgroundTaskProvider>
                 <ToastProvider>
-                  <Shell />
+                  <UpdaterProvider>
+                    <Shell />
+                  </UpdaterProvider>
                 </ToastProvider>
               </BackgroundTaskProvider>
             </NotificationProvider>

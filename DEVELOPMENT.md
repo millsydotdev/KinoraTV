@@ -2,7 +2,7 @@
 
 Welcome to Kinora development.
 
-Kinora is a modern desktop entertainment platform built using React 19, TypeScript, and Tailwind CSS inside a security-hardened Rust + Tauri 2 native desktop shell.
+Kinora is a desktop media platform built using React 19, TypeScript, and CSS design tokens inside a security-hardened Rust + Tauri 2 native desktop shell.
 
 This guide provides everything needed to onboard, configure, develop, test, and package Kinora efficiently.
 
@@ -14,8 +14,8 @@ Get a fully working local development environment in two steps:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/millsydotdev/kinora.git
-cd kinora
+git clone https://github.com/millsydotdev/KinoraTV.git
+cd KinoraTV
 
 # 2. Run automated setup (validates toolchains, installs dependencies, creates .env)
 make setup
@@ -34,7 +34,7 @@ The setup script checks Node.js 22+, Rust, system desktop libraries, installs NP
 
 ### Toolchains
 - **Node.js:** Version 22 LTS or newer (with npm 10+).
-- **Rust Toolchain:** Version 1.85+ stable (`rustup default stable`).
+- **Rust Toolchain:** Version 1.90+ stable (`rustup default stable`).
 - **Docker & Docker Compose:** Version 24+ (optional for native host builds; required for containerized services).
 
 ### Operating System Build Libraries

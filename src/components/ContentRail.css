@@ -135,7 +135,9 @@
 .content-rail-track.is-wide .card-wide,
 .content-rail-track.is-wide .channel-card,
 .content-rail-track.is-wide .res-card,
-.content-rail-track.is-wide .resource-card {
+.content-rail-track.is-wide .resource-card,
+.content-rail-track.is-wide > .genre-card,
+.content-rail-track.is-wide .genre-card {
   flex: 0 0 clamp(250px, calc((100% - 3 * var(--gap, 16px)) / 4), 380px);
   width: clamp(250px, calc((100% - 3 * var(--gap, 16px)) / 4), 380px);
   scroll-snap-align: start;

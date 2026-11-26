@@ -2,12 +2,19 @@ name: Release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Dry run (build artifacts without publishing release)'
+        description: 'Dry run (build and verify artifacts without modifying GitHub Releases)'
+        required: true
+        type: boolean
+        default: true
+      publish_release:
+        description: 'Publish verified assets atomically to the matching v<version> GitHub Release (main branch only)'
         required: true
         type: boolean
         default: false
@@ -15,6 +22,10 @@ on:
 permissions:
   contents: write
   id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -61,9 +72,15 @@ jobs:
         run: npm ci
 
       - name: Run verification checks
+        shell: bash
         run: |
           node scripts/validate-version.cjs
           node scripts/generate-changelog.cjs --check
+          if command -v python3 >/dev/null 2>&1 && python3 --version >/dev/null 2>&1; then
+            python3 scripts/third-party-notices.py --check
+          else
+            python scripts/third-party-notices.py --check
+          fi
           npm run typecheck
           npm test
 
@@ -112,18 +129,21 @@ jobs:
           echo "Scanning bundle directory: $BUNDLE_DIR for version $VERSION"
           find "$BUNDLE_DIR" -maxdepth 3 -ls
           if [ "${{ matrix.platform }}" = "macos-arm64" ]; then
-            find "$BUNDLE_DIR" -type f -name "Kinora.app.tar.gz" -exec cp {} "$BUNDLE_DIR/Kinora_${VERSION}_aarch64.app.tar.gz" \;
-            find "$BUNDLE_DIR" -type f -name "Kinora.app.tar.gz.sig" -exec cp {} "$BUNDLE_DIR/Kinora_${VERSION}_aarch64.app.tar.gz.sig" \;
+            find "$BUNDLE_DIR" -type f -name "Kinora.app.tar.gz" -exec mv {} "$BUNDLE_DIR/Kinora_${VERSION}_aarch64.app.tar.gz" \;
+            find "$BUNDLE_DIR" -type f -name "Kinora.app.tar.gz.sig" -exec mv {} "$BUNDLE_DIR/Kinora_${VERSION}_aarch64.app.tar.gz.sig" \;
           elif [ "${{ matrix.platform }}" = "macos-x64" ]; then
-            find "$BUNDLE_DIR" -type f -name "Kinora.app.tar.gz" -exec cp {} "$BUNDLE_DIR/Kinora_${VERSION}_x64.app.tar.gz" \;
-            find "$BUNDLE_DIR" -type f -name "Kinora.app.tar.gz.sig" -exec cp {} "$BUNDLE_DIR/Kinora_${VERSION}_x64.app.tar.gz.sig" \;
+            find "$BUNDLE_DIR" -type f -name "Kinora.app.tar.gz" -exec mv {} "$BUNDLE_DIR/Kinora_${VERSION}_x64.app.tar.gz" \;
+            find "$BUNDLE_DIR" -type f -name "Kinora.app.tar.gz.sig" -exec mv {} "$BUNDLE_DIR/Kinora_${VERSION}_x64.app.tar.gz.sig" \;
           fi
 
       - name: Generate SHA-256 checksums (Linux / macOS)
         if: runner.os != 'Windows'
         run: |
           cd src-tauri/target/${{ matrix.target }}/release/bundle
-          find . -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" -o -name "*.dmg" -o -name "*.tar.gz" -o -name "*.zip" \) -exec sha256sum {} + > SHA256SUMS-${{ matrix.platform }}.txt
+          find . -type f \( -name "Kinora*" -a \( -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" -o -name "*.dmg" -o -name "*.tar.gz" -o -name "*.zip" \) \) -print0 | while IFS= read -r -d '' f; do
+            hash=$(sha256sum "$f" | awk '{print $1}')
+            printf "%s  %s\n" "$hash" "$(basename "$f")"
+          done > SHA256SUMS-${{ matrix.platform }}.txt
           cat SHA256SUMS-${{ matrix.platform }}.txt
 
       - name: Generate SHA-256 checksums (Windows)
@@ -150,26 +170,46 @@ jobs:
           retention-days: 90
 
   publish:
-    name: Publish Production Release
+    name: Verify & Publish Production Release
     needs: build
-    if: (startsWith(github.ref, 'refs/tags/v') || github.event.inputs.dry_run == false) && !cancelled()
+    if: success() && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     environment: production
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Validate version and determine release channel
+      - name: Validate version, release notes, and publishing eligibility
         id: ver
         run: |
           node scripts/validate-version.cjs
+          node scripts/generate-changelog.cjs --check
           VERSION=$(node -p "require('./package.json').version")
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          if [[ "$VERSION" =~ - ]]; then
-            echo "is_prerelease=true" >> $GITHUB_OUTPUT
-          else
-            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          SHORT_SHA=$(git rev-parse --short=8 HEAD)
+          NOTES_FILE="docs/release/release-notes-v${VERSION}.md"
+          if [ ! -s "$NOTES_FILE" ]; then
+            echo "::error::Missing or empty release notes file: $NOTES_FILE"
+            exit 1
           fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "notes_file=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+          if [[ "$VERSION" =~ - ]]; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          SHOULD_PUBLISH="false"
+          if [[ "${{ github.ref }}" == refs/tags/v* ]] && [[ "${{ inputs.dry_run }}" != "true" ]]; then
+            SHOULD_PUBLISH="true"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]] && [[ "${{ github.ref }}" == "refs/heads/main" ]] && [[ "${{ inputs.publish_release }}" == "true" ]] && [[ "${{ inputs.dry_run }}" != "true" ]]; then
+            SHOULD_PUBLISH="true"
+          elif [[ "${{ github.event_name }}" == "push" ]] && [[ "${{ github.ref }}" == "refs/heads/main" ]] && [[ "${{ vars.AUTO_PUBLISH_MAIN_RELEASE }}" == "true" ]]; then
+            SHOULD_PUBLISH="true"
+          fi
+          echo "should_publish=$SHOULD_PUBLISH" >> "$GITHUB_OUTPUT"
+          echo "Version: $VERSION | Commit: $SHORT_SHA | Publish mode: $SHOULD_PUBLISH"
 
       - name: Download all built artifacts
         uses: actions/download-artifact@v4
@@ -181,6 +221,7 @@ jobs:
           mkdir -p release-dist
           find release-artifacts -type f -name "SHA256SUMS-*.txt" -exec cat {} + > release-dist/SHA256SUMS.txt
           find release-artifacts -type f \( -name "Kinora*" -a \( -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage*" -o -name "*.dmg" -o -name "*.exe*" -o -name "*.msi*" -o -name "*.tar.gz*" -o -name "*.zip*" \) \) -exec cp {} release-dist/ \;
+          rm -f release-dist/Kinora.app.tar.gz release-dist/Kinora.app.tar.gz.sig
           echo "=== Release distribution contents ==="
           ls -la release-dist
           cat release-dist/SHA256SUMS.txt
@@ -188,18 +229,108 @@ jobs:
       - name: Generate CycloneDX Software Bill of Materials (SBOM)
         run: |
           node scripts/generate-sbom.cjs release-dist/kinora-sbom.json
-          sha256sum release-dist/kinora-sbom.json >> release-dist/SHA256SUMS.txt
+          hash=$(sha256sum release-dist/kinora-sbom.json | awk '{print $1}')
+          printf "%s  kinora-sbom.json\n" "$hash" >> release-dist/SHA256SUMS.txt
 
       - name: Generate latest.json updater manifest
         run: |
           node scripts/generate-updater-manifest.cjs
 
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Verify all release assets, checksums, Minisign signatures, and updater manifest
+        run: |
+          node scripts/verify-release-assets.cjs --dir release-dist
+
+      - name: Upload verified manifest and checksums (audit artifact)
+        uses: actions/upload-artifact@v4
         with:
-          files: |
-            release-dist/*
-          name: Kinora v${{ steps.ver.outputs.version }}
-          generate_release_notes: true
-          draft: false
-          prerelease: ${{ steps.ver.outputs.is_prerelease == 'true' }}
+          name: kinora-release-verification-${{ steps.ver.outputs.version }}
+          path: |
+            release-dist/latest.json
+            release-dist/SHA256SUMS.txt
+            release-dist/kinora-sbom.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Stage A - Upload signed release assets, checksums and SBOM (excluding latest.json)
+        if: steps.ver.outputs.should_publish == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ steps.ver.outputs.version }}"
+          TITLE="Kinora v${{ steps.ver.outputs.version }}"
+          NOTES="${{ steps.ver.outputs.notes_file }}"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Existing GitHub Release $TAG found: updating assets and release notes in place without altering the Git tag."
+            gh release delete-asset "$TAG" "Kinora.app.tar.gz" --yes 2>/dev/null || true
+            gh release delete-asset "$TAG" "Kinora.app.tar.gz.sig" --yes 2>/dev/null || true
+            gh release edit "$TAG" --title "$TITLE" --notes-file "$NOTES"
+          else
+            echo "Creating GitHub Release $TAG targeting ${{ github.sha }}."
+            EXTRA_ARGS=()
+            if [ "${{ steps.ver.outputs.is_prerelease }}" = "true" ]; then
+              EXTRA_ARGS+=(--prerelease)
+            fi
+            gh release create "$TAG" --target "${{ github.sha }}" --title "$TITLE" --notes-file "$NOTES" "${EXTRA_ARGS[@]}"
+          fi
+
+          ASSETS=()
+          for f in release-dist/*; do
+            base=$(basename "$f")
+            if [ "$base" = "latest.json" ]; then
+              continue
+            fi
+            ASSETS+=("$f")
+          done
+
+          echo "Uploading ${#ASSETS[@]} release assets (before latest.json)..."
+          gh release upload "$TAG" "${ASSETS[@]}" --clobber
+
+      - name: Stage B - Verify HTTP 200 reachability of all asset URLs before publishing latest.json
+        if: steps.ver.outputs.should_publish == 'true'
+        run: |
+          TAG="v${{ steps.ver.outputs.version }}"
+          URLS=$(TAG="$TAG" node -e '
+            const m = require("./release-dist/latest.json");
+            const urls = Object.values(m.platforms).map(p => p.url);
+            urls.push(`https://github.com/${process.env.GITHUB_REPOSITORY}/releases/download/${process.env.TAG}/SHA256SUMS.txt`);
+            urls.push(`https://github.com/${process.env.GITHUB_REPOSITORY}/releases/download/${process.env.TAG}/kinora-sbom.json`);
+            console.log(urls.join("\n"));
+          ')
+          while IFS= read -r url; do
+            [ -z "$url" ] && continue
+            echo "Checking reachability: $url"
+            curl -fsIL --retry 5 --retry-delay 3 --retry-all-errors "$url" >/dev/null
+          done <<< "$URLS"
+          echo "All platform updater assets, checksums, and SBOM verified reachable (HTTP 200)."
+
+      - name: Stage C - Publish latest.json updater manifest last
+        if: steps.ver.outputs.should_publish == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ steps.ver.outputs.version }}"
+          gh release upload "$TAG" release-dist/latest.json --clobber
+          MANIFEST_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/latest.json"
+          echo "Verifying live manifest at $MANIFEST_URL"
+          LIVE_JSON=$(curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors "$MANIFEST_URL")
+          node -e '
+            const expected = require("./release-dist/latest.json");
+            const live = JSON.parse(process.argv[1]);
+            if (live.version !== expected.version || live.build_commit !== expected.build_commit) {
+              console.error("Live latest.json mismatch:", { expected: { version: expected.version, build_commit: expected.build_commit }, live: { version: live.version, build_commit: live.build_commit } });
+              process.exit(1);
+            }
+            console.log("Verified live latest.json:", live.version, "build_commit:", live.build_commit);
+          ' "$LIVE_JSON"
+
+      - name: Write release provenance summary
+        run: |
+          {
+            echo "### Kinora Release Pipeline Summary"
+            echo "- **Version:** \`${{ steps.ver.outputs.version }}\`"
+            echo "- **Git Ref:** \`${{ github.ref }}\`"
+            echo "- **Exact Commit:** \`${{ github.sha }}\` (\`${{ steps.ver.outputs.short_sha }}\`)"
+            echo "- **Published to GitHub Releases:** \`${{ steps.ver.outputs.should_publish }}\`"
+            echo "- **Platforms Verified:** \`linux-x86_64\`, \`windows-x86_64\`, \`darwin-aarch64\`, \`darwin-x86_64\`"
+          } >> "$GITHUB_STEP_SUMMARY"

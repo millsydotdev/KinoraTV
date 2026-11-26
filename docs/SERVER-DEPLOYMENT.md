@@ -15,8 +15,8 @@ Kinora Media Server runs as a standalone, zero-GUI Rust binary (`kinora-server`)
 Build and run the dedicated `server` target from the repository root:
 
 ```bash
-docker compose up -d --build kinora-server
-docker compose logs -f kinora-server
+docker compose up -d --build server
+docker compose logs -f server
 ```
 
 The container stores persistent data in `/data` (`KINORA_DATA_DIR=/data`), exposes `5198/tcp` and `5197/udp`, runs as non-root user `kinora` (UID 1000), and shuts down cleanly on `SIGTERM`.
@@ -73,6 +73,10 @@ CLI flags override environment variables:
 ## Upgrading, Health Verification & Rollback
 
 ### Safe Upgrade Procedure (Docker)
+
+> **Important:** Desktop application updates (handled by the signed Tauri updater inside the Kinora desktop app) are completely separate from headless Kinora Server / Docker updates. Updating a desktop client never mutates your Docker container, and upgrading the Docker image never touches desktop installations.
+
+Versioned server images are published to GitHub Container Registry as `ghcr.io/millsydotdev/kinoratv/kinora-server:<version>` (for example `:0.6.0` and `:latest`) alongside local `docker compose build server`.
 
 Persistent volumes (`kinora-server-data` mounted at `/data`) store `sources.json`, `devices.json`, `library_sync.json`, `platform_config.json`, and cached EPG/artwork files. Never run `docker compose down -v` during an upgrade, as `-v` deletes named volumes.
 

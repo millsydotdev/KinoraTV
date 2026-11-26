@@ -1,0 +1,116 @@
+name: Promote Branch to Main
+
+on:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      source_branch:
+        description: 'Development or release branch to promote into main (e.g. v0.6.0 or release/0.7.0)'
+        required: true
+        type: string
+      dry_run:
+        description: 'Validate merge and quality gates without pushing to main'
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: promote-to-main
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Gated Promotion to Main
+    runs-on: ubuntu-24.04
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch != 'main' &&
+        (
+          startsWith(github.event.workflow_run.head_branch, 'v') ||
+          startsWith(github.event.workflow_run.head_branch, 'release/')
+        ) &&
+        vars.AUTO_MERGE_TO_MAIN == 'true'
+      )
+    steps:
+      - name: Determine source branch and mode
+        id: target
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            SRC="${{ inputs.source_branch }}"
+            DRY="${{ inputs.dry_run }}"
+          else
+            SRC="${{ github.event.workflow_run.head_branch }}"
+            DRY="false"
+          fi
+          if [ "$SRC" = "main" ]; then
+            echo "::error::Source branch cannot be main."
+            exit 1
+          fi
+          echo "source_branch=$SRC" >> "$GITHUB_OUTPUT"
+          echo "dry_run=$DRY" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout repository with full history
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Verify CI passed for the exact source commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SRC="${{ steps.target.outputs.source_branch }}"
+          git fetch origin "$SRC"
+          SRC_SHA=$(git rev-parse "origin/$SRC")
+          echo "Source branch: $SRC ($SRC_SHA)"
+          CI_STATUS=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=${SRC_SHA}&per_page=10" \
+            --jq '[.workflow_runs[] | select(.status == "completed" and .conclusion == "success")] | length')
+          if [ "${CI_STATUS:-0}" -lt 1 ]; then
+            echo "::error::Refusing to promote $SRC ($SRC_SHA): no passing CI workflow run found for this exact commit."
+            exit 1
+          fi
+          echo "Verified passing CI run for $SRC ($SRC_SHA)."
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Merge source branch cleanly into main and validate release metadata
+        run: |
+          SRC="${{ steps.target.outputs.source_branch }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git merge-base --is-ancestor "origin/$SRC" HEAD; then
+            echo "main already contains all commits from origin/$SRC. Nothing to merge."
+            exit 0
+          fi
+
+          git merge --no-ff "origin/$SRC" -m "Merge branch '${SRC}' into main (verified automated promotion)"
+
+          node scripts/validate-version.cjs
+          node scripts/generate-changelog.cjs --check
+
+          VERSION=$(node -p "require('./package.json').version")
+          NOTES_FILE="docs/release/release-notes-v${VERSION}.md"
+          if [ ! -s "$NOTES_FILE" ]; then
+            echo "::error::Missing or empty release notes file: $NOTES_FILE"
+            exit 1
+          fi
+
+          if [ "${{ steps.target.outputs.dry_run }}" = "true" ]; then
+            echo "Dry-run complete: merge and release checks succeeded without pushing."
+          else
+            git push origin main
+            echo "Successfully promoted $SRC to main at $(git rev-parse HEAD)."
+          fi

@@ -667,4 +667,62 @@ describe('updater boundary', () => {
     expect(res?.status).toBe('error')
     expect(res?.error).toBe('Network unreachable')
   })
+
+  it('forwards allowPrereleases, force, and extended manifest metadata over IPC', async () => {
+    shell.inside = true
+    shell.invoke.mockResolvedValueOnce({
+      status: 'available',
+      currentVersion: '0.6.0',
+      latestVersion: '0.7.0-rc.1',
+      releaseDate: '2026-12-01T10:00:00Z',
+      releaseNotes: 'Release candidate',
+      downloadUrl: 'https://github.com/millsydotdev/KinoraTV/releases/download/v0.7.0-rc.1/Kinora.AppImage',
+      hasSignature: true,
+      platformKey: 'linux-x86_64',
+      platformSupported: true,
+      error: null,
+      manifestUrl: 'https://github.com/millsydotdev/KinoraTV/releases/download/v0.7.0-rc.1/latest.json',
+      assetSizeBytes: 64_000_000,
+      releaseUrl: 'https://github.com/millsydotdev/KinoraTV/releases/tag/v0.7.0-rc.1',
+      cached: false,
+    })
+
+    const res = await checkForUpdates(null, true, true)
+    expect(shell.invoke).toHaveBeenCalledWith('check_for_updates', {
+      allowPrereleases: true,
+      force: true,
+    })
+    expect(res?.manifestUrl).toContain('v0.7.0-rc.1/latest.json')
+    expect(res?.assetSizeBytes).toBe(64_000_000)
+    expect(res?.releaseUrl).toContain('/releases/tag/v0.7.0-rc.1')
+    expect(res?.cached).toBe(false)
+  })
+
+  it('invokes install_discovered_update and restart_app inside the native shell', async () => {
+    const { installUpdate, restartApp } = await import('./native')
+    shell.inside = true
+    shell.invoke.mockResolvedValueOnce({
+      success: true,
+      restartRequired: true,
+      installedVersion: '0.6.5',
+      error: null,
+    })
+    const outcome = await installUpdate(
+      undefined,
+      'https://github.com/millsydotdev/KinoraTV/releases/download/v0.6.5/latest.json',
+    )
+    expect(shell.invoke).toHaveBeenCalledWith('install_discovered_update', {
+      manifestUrl: 'https://github.com/millsydotdev/KinoraTV/releases/download/v0.6.5/latest.json',
+    })
+    expect(outcome).toEqual({
+      success: true,
+      restartRequired: true,
+      installedVersion: '0.6.5',
+      error: undefined,
+    })
+
+    shell.invoke.mockResolvedValueOnce(undefined)
+    await restartApp()
+    expect(shell.invoke).toHaveBeenCalledWith('restart_app')
+  })
 })

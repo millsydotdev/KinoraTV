@@ -16,7 +16,7 @@ def texts(folder):
     return out
 
 def npm_packages():
-    lock = json.load(open(os.path.join(ROOT, 'package-lock.json')))['packages']
+    lock = json.load(open(os.path.join(ROOT, 'package-lock.json'), encoding='utf-8'))['packages']
     for key, p in lock.items():
         if key and not p.get('dev') and not p.get('optional'):
             yield key.split('node_modules/')[-1], p['version'], p.get('license', 'UNKNOWN'), os.path.join(ROOT, key)

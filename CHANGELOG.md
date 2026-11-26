@@ -7,10 +7,10 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.6.0] - 2026-11-26 (Complete Media Platform, Central Server & Multi-Device Experience)
 
-Kinora 0.6.0 expands the standalone desktop app into a complete multi-device media platform with an optional headless Kinora Server, a touch-optimised mobile web remote, a virtualised Live TV guide, real EPUB/PDF reading, encrypted migration backups, and a structured in-app release history.
+Kinora 0.6.0 expands the standalone desktop app into a complete multi-device media platform with an optional headless Kinora Server, a touch-optimised mobile web remote, a virtualised Live TV guide, a CSP-safe EPUB/PDF canvas reader, guarded Jellyfin/Emby/Plex transport, full native transactional encrypted backups, opt-in prerelease update discovery, and a structured in-app release history.
 
 ### New Features
-- **Structured What's New, Offline Version History & Hardened Updater:** Review categorised release notes after every update, browse full version history offline, select update channels, track verified download and installation stages, and check client/server version compatibility.
+- **Automatic Update Notifications, Signed Updater & Offline What's New:** Receive non-intrusive update notifications when a signed GitHub release is available, toggle background checks, switch between Stable and opt-in Pre-release channels, review release notes, verify Minisign signatures before installing, restart cleanly to apply, and browse full version history offline.
 
 ### UI Upgrades
 - **Cinematic Home Stage & Full-Width Layouts:** Redesigned Home with a widescreen featured spotlight, Quick Jump navigation ribbon, curated rails, and a collapsible companion hub, while expanding Live TV, Movies, Search, and Settings to use the full viewport width.
@@ -29,7 +29,7 @@ Kinora 0.6.0 expands the standalone desktop app into a complete multi-device med
 - **Guarded Podcast RSS Subscriptions & Episode Progress:** Subscribe directly to RSS and Atom podcast feeds through Kinora's guarded native fetcher, resume in-progress episodes, mark episodes played, and queue audio in the persistent audio bar.
 
 ### Books and Reading
-- **Real EPUB, PDF & Text Reader with OPDS Catalogue Browser:** Open local EPUB, PDF, Markdown, HTML, and plain text books directly inside Kinora with a table of contents, multiple bookmarks, customisable reading themes, saved reading progress, and a built-in OPDS catalogue browser.
+- **Real EPUB, CSP-Safe PDF Canvas Reader & OPDS Browser:** Open local EPUB, PDF, Markdown, HTML, and plain text books directly inside Kinora with a PDF.js canvas viewer (page controls, zoom, and saved page progress), a table of contents, multiple bookmarks, customisable reading themes, and an OPDS catalogue browser.
 
 ### AI and Automation
 - **Unified Capability Layer, AI Controls & Opt-In Push-to-Talk Voice:** Operate playback, channel tuning, EPG queries, search, and device checks through one capability-gated service shared by the UI, remote, authorised AI agents, and strictly opt-in push-to-talk voice input.
@@ -47,16 +47,18 @@ Kinora 0.6.0 expands the standalone desktop app into a complete multi-device med
 - **Dedicated Genre Artwork Collection & 5-Stage Artwork Pipeline:** Replaced generic geometric genre placeholders with dedicated cinematic genre artwork across parent genres and subgenres, backed by a 5-stage artwork resolver and custom artwork library.
 
 ### Security and Privacy
-- **API Rate Limiting, Guarded Feed Fetching & Profile Isolation:** Added sliding-window API rate limiting on Kinora Server, routed podcast and OPDS network requests through Rust's anti-SSRF fetcher, isolated profile libraries with cascading deletion, and hardened parental PIN hashing.
+- **API Rate Limiting, Guarded Media Server & Feed Fetching, and Profile Isolation:** Added sliding-window API rate limiting on Kinora Server, routed Jellyfin/Emby/Plex and podcast/OPDS network requests through Rust's guarded no-redirect anti-SSRF fetcher, updated vulnerable Rust crates (cookie, url), isolated profile libraries, and hardened parental PIN hashing.
 
 ### Reliability Improvements
-- **Full Encrypted Backup, Migration Wizard & Atomic Rollback:** Back up preferences, sources, guides, bouquets, DVR rules, podcasts, reading progress, and non-secret platform settings into an AES-256-GCM encrypted archive with SHA-256 verification and automatic rollback if restoration fails.
+- **Full Encrypted Backup, Migration Wizard & Native Transactional Rollback:** Back up preferences, sources, guides, bouquets, DVR rules, podcasts, reading progress, and non-secret platform settings into an AES-256-GCM encrypted archive with SHA-256 verification and full rollback across frontend and native Rust stores if restoration fails.
 
 ### Bug Fixes
 - **Cache Clearing, QR Encoding, Sidebar Contrast & Routing Fixes:** Fixed artwork cache clearing in Settings to invoke native storage cleanup, corrected QR code Reed-Solomon format bits for reliable phone scanning, elevated sidebar contrast, and unified BrowserRouter navigation across voice and remote commands.
+- **Bottom Navigation Hint Bar Containment & Sidebar Clearance:** Anchored the TV mode bottom navigation hint bar strictly to the bottom-right of the main content viewport using the dynamic shell inset so it never overlaps the expanded, collapsed, or drawer sidebar, clears the persistent audio bar, and hides automatically when overlays or playback views are open.
+- **TV Series Poster Framing, Image Loading & Genre Artwork Consistency:** Fixed poster image loading stalls, moved TV show poster captions cleanly below 2:3 artwork, enforced top-weighted poster framing and aspect-aware fitting across series and detail screens, fixed Home Explore Genres card sizing, unified genre tabs across Movies and TV Shows, and added automatic legacy genre cache migration.
 
 ### Developer and Infrastructure Improvements
-- **Staging Isolation, Headless Server Docker Target & Automated Changelog Pipeline:** Added isolated staging build configuration, a zero-GUI headless server Docker image, systemd service unit, automated changelog validation, and end-to-end multi-device verification scripts.
+- **Atomic Release Publishing, Build-Revision Detection & Automated Promotion:** Added atomic two-stage GitHub Release publishing (verifying HTTP 200 reachability of all platform assets before publishing latest.json), build-commit and timestamp revision metadata for safe maintenance refresh detection, gated branch-to-main promotion, container health verification before GHCR publish, full release verification (latest.json, Minisign, SHA256SUMS, CycloneDX SBOM with commit provenance), and a zero-GUI headless server Docker image.
 
 ---
 

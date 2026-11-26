@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 const pkg = require('../package.json');
 
 const authVersion = pkg.version;
@@ -9,7 +10,11 @@ if (!authVersion) {
 }
 
 const tag = `v${authVersion}`;
-const distDir = path.resolve(__dirname, '..', 'release-dist');
+const distArgIdx = process.argv.indexOf('--dist-dir');
+const distDir =
+  distArgIdx >= 0 && process.argv[distArgIdx + 1]
+    ? path.resolve(process.argv[distArgIdx + 1])
+    : path.resolve(__dirname, '..', 'release-dist');
 if (!fs.existsSync(distDir)) {
   fs.mkdirSync(distDir, { recursive: true });
 }
@@ -17,19 +22,34 @@ if (!fs.existsSync(distDir)) {
 const files = fs.readdirSync(distDir);
 console.log(`Generating latest.json updater manifest for ${tag} from release-dist files:`, files);
 
+function isValidMinisign(sig) {
+  if (!sig || sig.length < 40) return false;
+  try {
+    const decoded = Buffer.from(sig, 'base64').toString('utf8');
+    return decoded.includes('untrusted comment:') && decoded.includes('trusted comment:');
+  } catch {
+    return false;
+  }
+}
+
 function findAssetAndSig(patterns) {
   for (const pattern of patterns) {
     const asset = files.find(f => pattern.test(f) && !f.endsWith('.sig'));
     if (asset) {
+      const assetPath = path.join(distDir, asset);
+      if (fs.statSync(assetPath).size === 0) {
+        throw new Error(`Updater asset "${asset}" is empty (0 bytes).`);
+      }
       const sigFile = files.find(f => f === `${asset}.sig`);
       if (sigFile) {
         const sig = fs.readFileSync(path.join(distDir, sigFile), 'utf8').trim();
-        if (sig && sig.length >= 10) {
+        if (isValidMinisign(sig)) {
           return {
             url: `https://github.com/millsydotdev/KinoraTV/releases/download/${tag}/${asset}`,
             signature: sig
           };
         }
+        throw new Error(`Signature file "${sigFile}" does not contain a valid Base64 Minisign signature.`);
       }
     }
   }
@@ -82,10 +102,30 @@ const defaultNotes = loadStructuredReleaseNotes(authVersion) || (
   '- Zero em-dashes and strict privacy-first local architecture'
 );
 
+function readBuildProvenance() {
+  const repoRoot = path.resolve(__dirname, '..');
+  let commit = (process.env.GITHUB_SHA || '').trim().slice(0, 8);
+  let timestamp = null;
+  try {
+    if (!commit) {
+      commit = execFileSync('git', ['rev-parse', '--short=8', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim();
+    }
+    const rawTs = execFileSync('git', ['show', '-s', '--format=%ct', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim();
+    const parsed = Number.parseInt(rawTs, 10);
+    if (Number.isFinite(parsed) && parsed > 0) timestamp = parsed;
+  } catch {
+    // Fallback to environment or null outside git checkout
+  }
+  return { commit: commit || null, timestamp };
+}
+
+const provenance = readBuildProvenance();
 const manifest = {
   version: authVersion,
   notes: process.env.RELEASE_NOTES || defaultNotes,
   pub_date: new Date().toISOString(),
+  ...(provenance.commit ? { build_commit: provenance.commit } : {}),
+  ...(provenance.timestamp ? { build_timestamp: provenance.timestamp } : {}),
   platforms
 };
 

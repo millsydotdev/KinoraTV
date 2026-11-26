@@ -1,22 +1,23 @@
 /**
- * Bundled photographic fallback artwork for real-mode programmes and channels.
- * All paths must correspond to verified photographic assets bundled in `public/art/`.
+ * Authoritative genre artwork helper backed by the dedicated `/art/genres/` collection.
+ * All paths map strictly to verified genre assets under `public/art/genres/` and never
+ * return obsolete demo title imagery from `public/art/`.
  */
 
-export const DEFAULT_GENRE_ARTWORK = '/art/harbour-lights.jpg'
+export const DEFAULT_GENRE_ARTWORK = '/art/genres/drama.jpg'
 
 export const GENRE_ARTWORK = {
-  sport: '/art/live-football.jpg',
-  news: '/art/live-news.jpg',
-  kids: '/art/live-kids.jpg',
-  music: '/art/live-concert.jpg',
-  lifestyle: '/art/live-cooking.jpg',
-  entertainment: '/art/live-quiz.jpg',
-  wildlife: '/art/live-wildlife.jpg',
-  documentary: '/art/live-ocean.jpg',
-  movie: '/art/harbour-lights.jpg',
-  drama: '/art/kingsmoor.jpg',
-  scifi: '/art/salt-meridian.jpg',
+  sport: '/art/genres/sports.jpg',
+  news: '/art/genres/news.jpg',
+  kids: '/art/genres/family.jpg',
+  music: '/art/genres/music.jpg',
+  lifestyle: '/art/genres/lifestyle-cooking.jpg',
+  entertainment: '/art/genres/comedy.jpg',
+  wildlife: '/art/genres/nature-wildlife.jpg',
+  documentary: '/art/genres/documentary.jpg',
+  movie: '/art/genres/action.jpg',
+  drama: '/art/genres/drama.jpg',
+  scifi: '/art/genres/science-fiction.jpg',
   default: DEFAULT_GENRE_ARTWORK,
 } as const
 

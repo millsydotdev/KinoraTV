@@ -13,6 +13,20 @@ fn main() {
         }
     }
 
+    if let Ok(output) = std::process::Command::new("git")
+        .args(["show", "-s", "--format=%ct", "HEAD"])
+        .output()
+    {
+        if output.status.success() {
+            if let Ok(ts) = String::from_utf8(output.stdout) {
+                let trimmed = ts.trim();
+                if !trimmed.is_empty() && trimmed.chars().all(|c| c.is_ascii_digit()) {
+                    println!("cargo:rustc-env=KINORA_BUILD_TIMESTAMP={}", trimmed);
+                }
+            }
+        }
+    }
+
     #[cfg(not(feature = "desktop"))]
     println!("cargo::rustc-check-cfg=cfg(dev)");
 
@@ -83,8 +97,11 @@ fn main() {
             "fetch_metadata",
             "fetch_subtitle",
             "fetch_feed_xml",
+            "media_server_request",
             "fetch_trakt",
             "check_for_updates",
+            "install_discovered_update",
+            "restart_app",
             "get_local_libraries",
             "save_local_library",
             "delete_local_library",

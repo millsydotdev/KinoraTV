@@ -558,6 +558,10 @@
     gap: 0 !important;
   }
 
+  .sidebar .sidebar-label,
+  .sidebar .sidebar-chevron,
+  .sidebar .sidebar-badge,
+  .sidebar .sidebar-children-list,
   .sidebar .sidebar-item-label,
   .sidebar .sidebar-item-chevron,
   .sidebar .sidebar-item-badge,

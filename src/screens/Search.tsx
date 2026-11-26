@@ -446,7 +446,7 @@ export function Search() {
         return {
           key: m.id,
           to: `/movies/${m.id}`,
-          thumb: <Art src={poster} alt={m.title} contentId={`movie:${m.id}`} eager focus={m.focus} fallbackIcon="film" fallbackYear={m.year} />,
+          thumb: <Art src={poster} alt={m.title} contentId={`movie:${m.id}`} fitMode="poster" eager focus={m.focus} fallbackIcon="film" fallbackYear={m.year} />,
           title: m.title,
           sub: `Movie · ${m.year} · ${m.genres.join(' / ')}`,
           badge: (
@@ -469,7 +469,7 @@ export function Search() {
         return {
           key: s.id,
           to: `/series/${s.id}`,
-          thumb: <Art src={poster} alt={s.title} contentId={`series:${s.id}`} eager focus={s.focus} fallbackIcon="series" />,
+          thumb: <Art src={poster} alt={s.title} contentId={`series:${s.id}`} fitMode="poster" eager focus={s.focus} fallbackIcon="series" />,
           title: s.title,
           sub: `Series · ${s.seasons.length} season${s.seasons.length > 1 ? 's' : ''} · ${s.genres.join(' / ')}`,
           badge: (
@@ -487,7 +487,7 @@ export function Search() {
       s.seasons.flat().filter((e) => has(e.title, e.synopsis)).map((e) => {
         const epKey = `episode:still:${s.id}:${e.season || 1}:${e.number || 1}`
         const enrichedStill = artworkEngine.getArtwork(epKey, 'episode-still')?.sourceUrl
-        const still = enrichedStill || e.still || s.backdropUrl || s.art
+        const still = enrichedStill || e.still || s.backdropUrl || ''
         return {
           key: `${s.id}/${e.id}`,
           to: `/watch/${encodeURIComponent(episodeRef(s.id, e.id))}`,

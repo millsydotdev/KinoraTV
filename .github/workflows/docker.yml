@@ -5,16 +5,21 @@ on:
     branches:
       - main
       - v0.6.0
+      - 'release/**'
     paths:
       - 'Dockerfile'
       - 'docker/**'
       - 'docker-compose.yml'
       - '.dockerignore'
       - '.github/workflows/docker.yml'
+      - 'package.json'
+      - 'src-tauri/Cargo.toml'
+      - 'src-tauri/Cargo.lock'
+      - 'src-tauri/src/**'
   workflow_dispatch:
     inputs:
       push_images:
-        description: 'Publish images to GitHub Container Registry (GHCR)'
+        description: 'Publish verified container images to GitHub Container Registry (GHCR)'
         required: true
         type: boolean
         default: false
@@ -30,11 +35,20 @@ concurrency:
 
 jobs:
   build-and-publish:
-    name: Build & Publish Container Images
+    name: Build, Verify & Publish Container Images
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Read authoritative version and commit provenance
+        id: ver
+        run: |
+          node scripts/validate-version.cjs
+          VERSION=$(node -p "require('./package.json').version")
+          SHORT_SHA=$(git rev-parse --short=8 HEAD)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -42,8 +56,39 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Build and smoke-test Kinora Server image locally before publishing
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: server
+          tags: kinora-server:verify
+          load: true
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify Kinora Server container startup and /api/info health endpoint
+        run: |
+          CID=$(docker run -d -p 127.0.0.1:5198:5198 kinora-server:verify)
+          trap 'docker logs "$CID" || true; docker rm -f "$CID" >/dev/null 2>&1 || true' EXIT
+          READY=false
+          for i in $(seq 1 20); do
+            if RESP=$(curl -fsS http://127.0.0.1:5198/api/info 2>/dev/null); then
+              echo "Kinora Server /api/info response: $RESP"
+              echo "$RESP" | grep -q "${{ steps.ver.outputs.version }}"
+              READY=true
+              break
+            fi
+            sleep 1
+          done
+          if [ "$READY" != "true" ]; then
+            echo "::error::Kinora Server container failed health check on /api/info"
+            exit 1
+          fi
+          echo "Kinora Server container verified successfully for version ${{ steps.ver.outputs.version }}."
+
       - name: Log in to GitHub Container Registry
-        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event.inputs.push_images == 'true'
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || inputs.push_images == true
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -56,15 +101,18 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}/kinora-fixtures
           tags: |
-            type=raw,value=0.6.0
+            type=raw,value=${{ steps.ver.outputs.version }}
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=short
+          labels: |
+            org.opencontainers.image.version=${{ steps.ver.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
 
       - name: Build and push Kinora Fixtures image
         uses: docker/build-push-action@v6
         with:
           context: ./docker/fixtures
-          push: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event.inputs.push_images == 'true' }}
+          push: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || inputs.push_images == true }}
           tags: ${{ steps.meta-fixtures.outputs.tags }}
           labels: ${{ steps.meta-fixtures.outputs.labels }}
           provenance: true
@@ -78,19 +126,58 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}/kinora-builder
           tags: |
-            type=raw,value=0.6.0
+            type=raw,value=${{ steps.ver.outputs.version }}
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=short
+          labels: |
+            org.opencontainers.image.version=${{ steps.ver.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
 
       - name: Build and push Kinora Builder image
         uses: docker/build-push-action@v6
         with:
           context: .
           target: builder
-          push: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event.inputs.push_images == 'true' }}
+          push: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || inputs.push_images == true }}
           tags: ${{ steps.meta-builder.outputs.tags }}
           labels: ${{ steps.meta-builder.outputs.labels }}
           provenance: true
           sbom: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Extract metadata for Kinora Server image
+        id: meta-server
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/kinora-server
+          tags: |
+            type=raw,value=${{ steps.ver.outputs.version }}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+          labels: |
+            org.opencontainers.image.version=${{ steps.ver.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Build and push Kinora Server image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: server
+          push: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || inputs.push_images == true }}
+          tags: ${{ steps.meta-server.outputs.tags }}
+          labels: ${{ steps.meta-server.outputs.labels }}
+          provenance: true
+          sbom: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Write container release summary
+        run: |
+          {
+            echo "### Kinora Container Build Summary"
+            echo "- **Version:** \`${{ steps.ver.outputs.version }}\`"
+            echo "- **Commit:** \`${{ github.sha }}\`"
+            echo "- **Kinora Server Health Check:** Passed (\`/api/info\`)"
+            echo "- **Published to GHCR:** \`${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || inputs.push_images == true }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

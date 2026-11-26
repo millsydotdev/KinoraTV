@@ -12,6 +12,7 @@
  * Strictly adheres to the zero em-dash typography standard.
  */
 
+import { mediaServerFetch } from './transport'
 import type {
   MediaServerConnectionTest,
   MediaServerLibrary,
@@ -54,7 +55,7 @@ export class PlexAdapter {
    */
   async testConnection(): Promise<MediaServerConnectionTest> {
     try {
-      const res = await fetch(`${this.baseUrl}/identity`, {
+      const res = await mediaServerFetch(`${this.baseUrl}/identity`, {
         headers: this.headers(),
       })
 
@@ -74,7 +75,7 @@ export class PlexAdapter {
       // Check server root for friendly name
       let serverName = 'Plex Media Server'
       try {
-        const rootRes = await fetch(`${this.baseUrl}/`, { headers: this.headers() })
+        const rootRes = await mediaServerFetch(`${this.baseUrl}/`, { headers: this.headers() })
         if (rootRes.ok) {
           const rootData = await rootRes.json()
           serverName = rootData.MediaContainer?.friendlyName || rootData.MediaContainer?.myPlexUsername || serverName
@@ -106,7 +107,7 @@ export class PlexAdapter {
    */
   async getLibraries(): Promise<MediaServerLibrary[]> {
     const url = `${this.baseUrl}/library/sections`
-    const res = await fetch(url, { headers: this.headers() })
+    const res = await mediaServerFetch(url, { headers: this.headers() })
     if (!res.ok) throw new Error(`Failed to load Plex libraries: HTTP ${res.status}`)
 
     const data = await res.json()
@@ -133,7 +134,7 @@ export class PlexAdapter {
    */
   async getItems(libraryId: string, serverId: string): Promise<MediaServerItem[]> {
     const url = `${this.baseUrl}/library/sections/${libraryId}/all`
-    const res = await fetch(url, { headers: this.headers() })
+    const res = await mediaServerFetch(url, { headers: this.headers() })
     if (!res.ok) throw new Error(`Failed to load items for Plex section ${libraryId}: HTTP ${res.status}`)
 
     const data = await res.json()
@@ -193,7 +194,7 @@ export class PlexAdapter {
    */
   async getSeasons(seriesId: string): Promise<MediaServerSeason[]> {
     const url = `${this.baseUrl}/library/metadata/${seriesId}/children`
-    const res = await fetch(url, { headers: this.headers() })
+    const res = await mediaServerFetch(url, { headers: this.headers() })
     if (!res.ok) throw new Error(`Failed to load seasons for Plex series ${seriesId}: HTTP ${res.status}`)
 
     const data = await res.json()
@@ -221,7 +222,7 @@ export class PlexAdapter {
    */
   async getEpisodes(seriesId: string, seasonId: string): Promise<MediaServerEpisode[]> {
     const url = `${this.baseUrl}/library/metadata/${seasonId}/children`
-    const res = await fetch(url, { headers: this.headers() })
+    const res = await mediaServerFetch(url, { headers: this.headers() })
     if (!res.ok) throw new Error(`Failed to load episodes for Plex season ${seasonId}: HTTP ${res.status}`)
 
     const data = await res.json()
@@ -272,7 +273,7 @@ export class PlexAdapter {
     try {
       if (update.isCompleted) {
         // Scrobble item as watched
-        await fetch(`${this.baseUrl}/:/scrobble?key=${update.itemId}&identifier=com.plexapp.plugins.library&X-Plex-Token=${this.token}`, {
+        await mediaServerFetch(`${this.baseUrl}/:/scrobble?key=${update.itemId}&identifier=com.plexapp.plugins.library&X-Plex-Token=${this.token}`, {
           headers: this.headers(),
         })
         return
@@ -282,7 +283,7 @@ export class PlexAdapter {
       const timeMs = Math.round(update.positionMs)
       const durationMs = Math.round(update.durationMs)
 
-      await fetch(
+      await mediaServerFetch(
         `${this.baseUrl}/:/timeline?ratingKey=${update.itemId}&key=%2Flibrary%2Fmetadata%2F${update.itemId}&state=${state}&time=${timeMs}&duration=${durationMs}&X-Plex-Token=${this.token}`,
         { headers: this.headers() },
       )

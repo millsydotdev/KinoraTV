@@ -1,236 +1,278 @@
-# Kinora (KinoraTV)
+<div align="center">
 
-A TV, movie and series app: a React + TypeScript interface running inside a Rust (Tauri 2)
-desktop shell.
+# Kinora
 
-![Kinora Desktop Home Screen](docs/images/kinora-home.png)
+**A desktop TV, cinema, audio, and local media platform built with Rust, Tauri 2, React 19, and TypeScript.**
 
-## Creator & Attribution
+[Installation](#installation) · [Screenshots](#screenshots) · [Features](#features) · [Supported Sources](#supported-sources-and-integrations) · [Development](#development) · [Documentation](#documentation)
 
-**Created by millsydotdev**
-- GitHub Profile: [https://github.com/millsydotdev](https://github.com/millsydotdev)
-- Canonical Repository: [https://github.com/millsydotdev/KinoraTV](https://github.com/millsydotdev/KinoraTV)
+![Version 0.6.0](https://img.shields.io/badge/version-0.6.0-e50d24?style=flat-square)
+![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows%20%7C%20macOS-1b2332?style=flat-square)
+![Tauri 2](https://img.shields.io/badge/shell-Tauri%202%20%2B%20Rust-1b2332?style=flat-square)
+![Licence](https://img.shields.io/badge/licence-Source--Available%20(All%20Rights%20Reserved)-1b2332?style=flat-square)
 
-**Status:** Sources can import real M3U playlists, by http(s) address or local file, through the
-Rust shell (Gates D2 and D3), and playlist channels whose streams are HLS over http(s) can be played
-(Gate D4). While any imported playlist exists, Live TV, Home, Search, Library and
-the player show only its channels; otherwise the fictional demonstration catalogue is shown. Imported
-sources are saved on this device and refreshed at startup (Gate D5); stream addresses are not saved,
-so a restored channel plays once its source has been refreshed. Streams are not checked in advance: a channel is fetched only
-when you play it, and other formats (raw MPEG-TS, MP4, RTMP, RTSP, UDP...) or DRM streams are
-refused with a message. XMLTV guides, by address (plain or `.gz`) or local file, give playlist
-channels real programme listings in Live TV and elsewhere (Gate D6); without a playlist, the guide
-shows the demonstration schedule. Sources › Discovery browses the iptv-org catalogue of public
-playlists and adds one only when you choose to (Gate D7). Movies and series remain demonstration
-data. There is no stream validation; that waits for the owner's approval. What has been tested,
-where, and what has not: `docs/RELEASE-READINESS.md`.
+<br />
 
-## Architecture
+<a href="docs/images/kinora-home.png">
+  <img src="docs/images/kinora-home.png" alt="Kinora desktop Home screen showing live broadcast hero, active channels, and navigation sidebar" width="100%" />
+</a>
 
-```
-React 19 + TypeScript (src/)          Rust + Tauri 2 (src-tauri/)
-  screens, routing, theme,   ── IPC ──▶  native shell: window, startup, errors,
-  demo data, local prefs     invoke()    `app_info`, playlist ingestion
-  built by Vite into dist/  ◀── JSON ──  (serde, validated on arrival)
-```
+<sub>Captured directly from the native Kinora 0.6.0 Linux desktop application with real configured broadcast playlists and XMLTV programme guides.</sub>
 
-- **React** (`src/`): all UI, navigation, forms, theme controls and demo state. The UI also runs
-  in an ordinary browser for development and tests.
-- **Rust** (`src-tauri/`): the native application. It loads the Vite dev server in development and
-  the built `dist/` in release, and owns anything native: `app_info` (version, build profile,
-  platform, shown in Settings › About), playlist ingestion, playback, saved sources and XMLTV guides. `fetch_playlist` downloads an M3U
-  from a user-supplied http(s) address; `parse_playlist_text` parses text from a file the user
-  picked in the webview. Both return parsed channel metadata. Stream addresses are never fetched.
-- **IPC boundary**: `src/lib/native.ts` is the only place React calls Rust. It mirrors the Rust
-  structs, validates every response before use, and returns `null` outside Tauri.
-- **Security**: each app command is deny-by-default (`build.rs`). `capabilities/default.json` grants
-  the main window only the app's own commands: `app_info`, `fetch_channel_logo`, `fetch_playlist`, `parse_playlist_text`,
-  `open_stream`, `close_stream`, `load_sources`, `save_sources`, `fetch_guide`, `import_guide_file`,
-  `load_guide`, `guide_channels`, `guide_programmes`, `remove_guide`, `load_catalogue` and
-  `refresh_catalogue`. No filesystem, shell, HTTP, dialog or other plugins. A strict Content Security
-  Policy is set in `tauri.conf.json`; remote image origins stay blocked. Visible playlist logos are
-  fetched by Rust through the guarded resolver, with a 256 KiB cap, a 10 s timeout and raster
-  signature checks, then passed to the UI as data images. They are cached only in memory and are not
-  saved with the source. Developer tools exist only in debug builds.
-- **Playlist fetching** (`src-tauri/src/fetch.rs`): http(s) only, no credentials in the address, no
-  proxies. Local, private, link-local, CGNAT, multicast and reserved IPv4/IPv6 destinations are
-  refused. Host names go through a resolver that checks every answer, which is the address
-  connected to. IP literals and every redirect hop (at most 5) are checked again. Limits: 10 s
-  connect, 30 s total, 25 MB, 50,000 channels. Errors name only the host; full addresses, queries
-  and tokens are never logged or shown. LAN tuners are therefore not supported.
-- **Direct connection required**: proxy settings, including `HTTP_PROXY`, `HTTPS_PROXY` and
-  `ALL_PROXY`, are deliberately ignored, because a proxy would make the connection on Kinora's
-  behalf and bypass the address checks. On a network that only allows traffic through a proxy,
-  playlist fetching fails with a connection error.
-- **Playback (`kstream`)**: `open_stream` returns an opaque `kstream://localhost/<handle>`; Rust
-  fetches every playlist, segment, key and rendition through the same guarded client (private,
-  loopback and reserved destinations refused, every redirect rechecked, no proxy, no Referer),
-  rewrites HLS playlists to handles, refuses DRM and unknown resource tags, and answers CORS for the
-  app's own origin only. Limits per session: 10 s connect, 15 s idle, 10 s per playlist or key, 60 s
-  per segment, 4 MiB playlists, 32 MiB segments, 64 MiB buffered at once, 4 requests at a time,
-  20,000 handles. Closing or switching cancels in-flight requests. hls.js 1.7.3 (Apache-2.0, light
-  build, about 113 KB gzipped) loads only when a playlist channel is played. The CSP gained only
-  `connect-src kstream://localhost` and `media-src blob:`.
-- **Saved sources** (`src-tauri/src/sources.rs`): `load_sources` and `save_sources` read and write
-  one JSON file, `<app data>/sources/sources.json` (on Linux
-  `~/.local/share/io.github.millsydotdev.kinora/sources/`). The folder is `0700` and the file
-  `0600`. Each save is validated (the same address check as Add Source, no `user:pass@`), then
-  written to a temporary file, flushed and renamed over the old one, so a crash leaves the last
-  complete file. The file has a schema version (1). A damaged or invalid file is moved aside to
-  `sources.json.corrupt-<time>`, never deleted, and Kinora starts without it. A file from a newer
-  version, or one that cannot be read, is left untouched and nothing is saved that session. Errors
-  never contain the path or an address.
-- **What is saved**: each source's name, origin, label, times, counts and, for an address source,
-  the address itself, plus each channel's key, `tvg-id`, name, group and number, enough to rebuild
-  the source-channel link so favourites and history keep working. Stream addresses, logos, stream
-  sessions, `kstream` handles, playback state and parser warnings are never saved. Preferences,
-  theme, favourites, history and collections stay in the webview's localStorage (`kinora.prefs.v2`,
-  `kinora.library.v1`). Library refs to a removed source's channels are dropped with it.
-- **Startup**: the UI waits for the saved sources (at most 5 s; after that it starts and saves
-  nothing that session), shows them as saved, then refreshes address sources one at a time
-  through `fetch_playlist`. A failed refresh keeps the saved channels and says so. File sources
-  cannot refresh themselves: their channels are listed, and the player asks for the file again.
-- **Third-party streams**: Kinora does not run, check or endorse catalogue playlists or the streams
-  in them, and cannot say whether they are legal to watch where you live; Discovery says so.
-- **Residual risk of saved addresses**: a playlist or guide address can carry an account token. It is stored
-  in plain text, readable only by your OS user, but also by anything running as that user, by root,
-  and by backup or sync tools that copy your home folder. Kinora does not export it. If that matters,
-  exclude the folder above from cloud backups and remove sources you no longer use; removing a
-  source rewrites the file without it (older copies in backups are outside Kinora's control).
-- **XMLTV guides** (`src-tauri/src/xmltv.rs`, `guides.rs`): `fetch_guide` downloads a guide through
-  the same guarded client as playlists (`fetch::Policy::guide()`: every destination and redirect
-  check is the same; only the limits differ, 64 MB and 90 s, and playlist and stream limits are
-  unchanged). `import_guide_file` takes the bytes of a file picked in the webview, never a path.
-  Gzip is decompressed with a 128 MB cap, so a small file cannot expand without limit. Text must be
-  UTF-8. The parser (quick-xml) never loads a DTD or any external resource and expands only XML's
-  five built-in entities and character references; a `<!DOCTYPE>` that declares its own entities is
-  refused, as is any reference to an undefined entity, so entity-expansion attacks have nothing to
-  work with. Nesting (16 levels), channels (20,000), programmes (150,000 in the window) and every
-  kept text field are capped. Icons, artwork and links in a guide are ignored, never fetched.
-- **Guide times**: `YYYYMMDDhhmmss` (or a leading part, down to `YYYYMMDD`) with an optional offset
-  (`+0100`, `-05:30`, `Z`). A time without an offset is UTC, as the XMLTV DTD says. Everything is
-  stored in UTC and shown in this device's time zone; guide days run from local midnight to local
-  midnight, so a day with a clock change shows 23 or 25 hours. Programmes from 12 hours ago to 8
-  days ahead are kept. A missing stop time is taken from the next programme on the channel (the
-  XMLTV convention, and the details panel says so); a programme with no stop and nothing after it,
-  invalid or impossible times, or one overlapping an earlier programme on the same channel is
-  skipped and counted. Gaps stay gaps: nothing is invented, and "on now" means the current time is
-  between the listed start and stop.
-- **Channel matching**: a playlist channel's `tvg-id` is compared with the guide's channel ids after
-  trimming spaces and ignoring the case of ASCII letters; no punctuation stripping and no display
-  names. One fallback: iptv-org playlists write ids as `channel@feed` (`BBCNews.uk@UKHD`) while most
-  guides list `BBCNews.uk`, so an id that matches nothing exactly is tried without its `@feed` part.
-  Each guide is used for the playlists you choose. A channel takes its
-  programmes from the first of its guides that lists its id, or from a guide channel you match it
-  to by hand in the guide's details (the search lists the guide's channels; nothing is matched until
-  you choose one). Unmatched channels are listed there with the reason, and Live TV says why a row
-  is empty.
-- **Guide storage**: guide definitions (name, address or file label, which playlists use it) and
-  hand matches are saved in `sources.json`, now schema 2. A schema 1 file loads unchanged and is
-  copied to `sources.v1.json` before it is first rewritten. Each guide's programmes are also kept
-  in `sources/guide-<id>.json` (`0600`, written atomically): the last good copy, so listings show at
-  startup and offline and a failed refresh never loses them. It holds channel ids, names and
-  programme text only, never the guide's address. It is derived data: one that cannot be read is
-  ignored and replaced by the next successful update. Removing a guide deletes it and its hand
-  matches; caches no saved guide owns are deleted at startup. Rust holds parsed guides in memory and
-  the page asks for one local day at a time, for the matched channels only.
-- **Guide refresh**: at startup, cached programmes are read first, then address guides are updated
-  one at a time alongside playlists, and on request. Neither blocks the window. Each update has a
-  generation number in Rust and an operation token in the page, so a slow, older update never
-  replaces a newer one, and a guide removed while updating stays removed.
-- **Discovery catalogue** (`src-tauri/src/catalogue.rs`): the provider is
-  [iptv-org](https://github.com/iptv-org/iptv). Its lists are released under the Unlicense (public
-  domain, no attribution required; Kinora credits it anyway), it is actively maintained (tens of
-  thousands of commits, automated updates), and it documents its playlist addresses. Its legal note
-  says the repository holds user-submitted links to publicly available streams and no video. The
-  index is its generated `PLAYLISTS.md`, the only list of the per-country, language, category,
-  region, subdivision and city playlists that actually exist (the iptv-org API lists thousands of
-  codes with no playlist). `refresh_catalogue` takes no input and fetches that one fixed https
-  address through the guarded client with `Policy::catalogue()`: only `raw.githubusercontent.com`,
-  https only, on every redirect hop too, 2 MB and 20 s, with every existing destination check. The
-  text is untrusted: only lines whose address is exactly
-  `https://iptv-org.github.io/iptv/<folder>/<code>.m3u` become entries (5,000 at most, names
-  stripped of markup and capped), and nothing else in the file is followed. Entries with a
-  provider count of 0 are left out (that is iptv-org's withdrawn NSFW category).
-- **Discovery cache and freshness**: the parsed catalogue is kept in
-  `sources/catalogue.json` (`0600`, atomic, 4 MB cap, re-checked entry by entry when read). It is
-  only read when Discovery is opened, never at startup, so no network does not affect sources,
-  guides, favourites or playback. A copy over a day old is refreshed when Discovery opens and shown
-  as possibly out of date; a failed refresh keeps the copy shown and says why. Refreshes run one at
-  a time in Rust, and the page drops answers to older requests. The provider does not publish when
-  its index last changed, so Kinora shows when it fetched it.
-- **Adding from Discovery**: an entry shows the provider's facts only (type, place, the channel
-  count iptv-org prints where it prints one, the address, licence). "Read this playlist" is an
-  ordinary `fetch_playlist`, so Kinora's own result (channels, groups, skipped entries) is shown
-  separately before anything is added, and no stream is opened. A read can be cancelled; its late
-  result is ignored. The added playlist is an ordinary saved source, refreshed and removed like any
-  other. An entry counts as already added only when a source has exactly its address, never by name.
-  No guide, reminder or playback starts as a side effect.
-- **Codecs**: decoding is done by WebKitGTK through GStreamer. H.264/AAC streams need the
-  corresponding GStreamer plugins (for example `gstreamer1-plugin-openh264` or `gstreamer1-plugin-libav`);
-  without them Kinora shows a decode error.
-- **Stream addresses**: `streamUrl` is kept exactly as written for a future player and may contain
-  account names, passwords or tokens. Show `streamDisplay` (`scheme://host[:port]/…`) instead, and
-  never log either. Channel keys come from `tvg-id`, or from name and group, never from the address.
-- **Webview compatibility fix**: the release build inlined a small font subset as a `data:` URL,
-  which the CSP blocked. `vite.config.ts` now emits `.woff2` fonts as files rather than allowing
-  `data:` fonts.
+</div>
 
-## Prerequisites
+---
 
-- Node.js 22+ and npm
-- Rust 1.90+ (`rustup`)
-- Linux (Fedora): `sudo dnf install webkit2gtk4.1-devel openssl-devel curl file libappindicator-gtk3-devel librsvg2-devel gtk3-devel libsoup3-devel javascriptcoregtk4.1-devel`
-- Building the `.rpm` bundle also needs `rpm-build`. Other platforms: see https://v2.tauri.app/start/prerequisites/
+## About Kinora
 
-## Commands
+Kinora brings live television, programme guides, on-demand films and series, local media folders, internet radio, podcasts, and ebooks into one native desktop application.
 
-```bash
-npm install                  # frontend dependencies + pinned Tauri CLI/API (2.12.4)
-npm run dev                  # React UI only, in a browser: http://localhost:5199
-npm run tauri:dev            # native app in development (starts Vite, opens the Tauri window)
-npm run tauri:dev:staging    # native app in staging mode with isolated staging identifier
-npm test                     # frontend tests (Vitest)
-npm run test:rust            # Rust tests
-npm run typecheck            # TypeScript
-npm run test:gate            # full multi-gate quality pipeline
-npm run build                # frontend production build into dist/
-npm run build:staging        # frontend staging build into dist/
-npm run tauri:build:staging  # native staging desktop packages (.rpm, .deb, AppImage)
-npm run tauri:build          # native production release binary + packages
-```
+Your playlists, guide schedules, preferences, and viewing history stay on your own machine. Network requests, stream proxying, XMLTV parsing, artwork caching, and encrypted backups run inside the Rust shell behind strict destination guards and a locked-down Content Security Policy. You can run Kinora standalone on one computer, or pair household desktop clients and phone browsers with the optional headless `kinora-server` binary on a Linux host, NAS, or Docker container.
 
-Release output: `src-tauri/target/release/kinora` and `src-tauri/target/release/bundle/` (RPM and DEB packages on Linux; NSIS and MSI on Windows; DMG on macOS). Staging releases use an isolated identifier (`io.github.millsydotdev.kinora.staging`) so staging never modifies production data.
+Kinora does not host, bundle, or sell television channels or streams. You supply the playlists, guides, servers, or local folders you are authorised to access.
 
-For comprehensive architectural standards, environment configuration, DevOps pipelines, and release procedures, see:
-- [DEVELOPMENT.md](DEVELOPMENT.md): Developer quickstart, system prerequisites, and local commands.
-- [DOCKER.md](DOCKER.md): Containerized development, mock IPTV/EPG fixtures, and multi-stage builds.
-- [DEVOPS.md](DEVOPS.md): CI/CD architecture, GHCR strategy, observability, and release operations.
-- [STAGING.md](STAGING.md): Staging architecture, data isolation guarantees, and staging deployment.
-- [DEVELOPMENT-AND-RELEASE-WORKFLOW.md](docs/DEVELOPMENT-AND-RELEASE-WORKFLOW.md): Comprehensive lifecycle and release gates.
+---
 
-The native app keeps its own local storage, separate from the browser at localhost:5199, so it starts
-with the default demo library and appearance settings.
+## Screenshots
 
-## Supported Platforms
+Every screenshot below was captured from the native Kinora 0.6.0 application running against real configured sources. Select any image to view it at full resolution.
 
-| Platform | Distribution Formats | Minimum System Requirements | Runtime Engine |
-| :--- | :--- | :--- | :--- |
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/images/screenshots/live-tv-guide.png"><img src="docs/images/screenshots/live-tv-guide.png" alt="Virtualised Live TV Guide (EPG) showing live channels and programme grid" width="100%" /></a>
+      <br />
+      <strong>Live TV Guide (EPG)</strong>: Virtualised schedule grid supporting 10,000+ channels, multi-tier XMLTV matching, time jump, and category filters.
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/images/screenshots/live-tv-channels.png"><img src="docs/images/screenshots/live-tv-channels.png" alt="Live TV Channels grid with programme artwork and multi-server indicators" width="100%" /></a>
+      <br />
+      <strong>Live TV Channels</strong>: Browse deduplicated channels by country, provider, or category with active programme artwork and server counts.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/images/screenshots/movies.png"><img src="docs/images/screenshots/movies.png" alt="Movies screen with featured hero and 2:3 theatrical poster cards" width="100%" /></a>
+      <br />
+      <strong>Movies</strong>: Featured cinema hero, unobstructed 2:3 poster rails, genre browsing, and provider integration for on-demand films.
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/images/screenshots/series-posters.png"><img src="docs/images/screenshots/series-posters.png" alt="TV Shows poster grid with unobstructed captions below 2:3 series artwork" width="100%" /></a>
+      <br />
+      <strong>TV Shows and Series</strong>: Top-weighted 2:3 series poster framing with captions placed below artwork, plus season and episode browsing.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/images/screenshots/movie-detail.png"><img src="docs/images/screenshots/movie-detail.png" alt="Movie detail page with theatrical poster, backdrop, synopsis, and technical specifications" width="100%" /></a>
+      <br />
+      <strong>Movie Detail</strong>: Full synopsis, cast, playback actions, technical specifications, watchlist toggle, and custom artwork inspection.
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/images/screenshots/series-detail.png"><img src="docs/images/screenshots/series-detail.png" alt="Series detail page with season selector, poster art, and episode list" width="100%" /></a>
+      <br />
+      <strong>Series Detail</strong>: Season selectors, episode progress tracking, and role-matched poster, backdrop, and episode artwork.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/images/screenshots/discover-genres.png"><img src="docs/images/screenshots/discover-genres.png" alt="Discover screen with canonical genre collections and category filters" width="100%" /></a>
+      <br />
+      <strong>Discover and Genres</strong>: Browse unified genre collections across films, series, live TV, audio, and books with customisable genre art.
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/images/screenshots/media-library.png"><img src="docs/images/screenshots/media-library.png" alt="Media Library showing viewing metrics and saved sources" width="100%" /></a>
+      <br />
+      <strong>Media Library</strong>: Local folders, saved media resources, watchlists, favourites, custom artwork management, and per-profile metrics.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/images/screenshots/audio-radio.png"><img src="docs/images/screenshots/audio-radio.png" alt="Internet Radio and spoken audio catalogue" width="100%" /></a>
+      <br />
+      <strong>Audio, Radio, and Podcasts</strong>: Live internet radio stations, RSS/Atom podcast subscriptions with episode resume, and a persistent audio bar.
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/images/screenshots/tv-mode-home.png"><img src="docs/images/screenshots/tv-mode-home.png" alt="10-foot TV Mode Home screen with bottom-right remote navigation legend" width="100%" /></a>
+      <br />
+      <strong>10-Foot TV Mode</strong>: Scaled living-room interface with spatial D-pad/gamepad focus and a compact bottom-right remote legend clear of the sidebar.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/images/screenshots/settings.png"><img src="docs/images/screenshots/settings.png" alt="Settings screen showing themes, accent colours, and layout modes" width="100%" /></a>
+      <br />
+      <strong>Appearance and Settings</strong>: Six themes (Dark, Midnight, Dim, Slate, OLED, Light), custom contrast-checked accents, playback, EPG, backup, and updater controls.
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/images/screenshots/sources.png"><img src="docs/images/screenshots/sources.png" alt="Sources screen listing configured public playlists and XMLTV guides" width="100%" /></a>
+      <br />
+      <strong>Sources Management</strong>: Manage M3U playlists, XMLTV guides, refresh schedules, iptv-org Discovery, and provider connections in one view.
+    </td>
+  </tr>
+</table>
+
+---
+
+## Features
+
+- **Live TV and Virtualised EPG:** Browse 10,000+ channels smoothly with 2D row and time virtualisation, multi-tier XMLTV channel matching (exact ID, `@feed` fallback, loose country-verified key, and saved manual matching), custom channel bouquets, catch-up playback, and DVR series recording rules.
+- **Movies and TV Series:** Unified catalogue views for Xtream Codes providers, guarded Jellyfin/Emby/Plex connections, local video folders, and open preservation archives, with cross-source deduplication, per-profile watch progress, and cast/technical metadata views.
+- **Artwork and Metadata Pipeline:** Lazy guarded raster logo fetching, 5-stage artwork resolution with role validation (2:3 posters, 16:9 backdrops and episode stills, square/clean logos), aspect-aware framing so titles and subjects stay visible, and per-item custom artwork overrides.
+- **Audio, Podcasts, and Reading:** Live internet radio directory, guarded RSS/Atom podcast subscriptions with resume and played state, persistent mini audio player bar, OPDS catalogue browsing, and a built-in EPUB, Markdown, HTML, plain text, and CSP-safe PDF.js canvas reader.
+- **Persistent Playback and Codecs:** Native Rust `kstream` HLS stream proxy with memory-only 128-bit handles, persistent Picture-in-Picture dock while browsing, audio/subtitle track selection, sleep timer HUD, stream header profiles, and honest system codec diagnostics.
+- **Desktop, 10-Foot TV Mode, and Remote Control:** Toggle between Desktop and TV Mode with `Ctrl+Shift+T` (`Cmd+Shift+T` on macOS), navigate with keyboard, D-pad, or gamepad, or pair any phone/tablet over LAN via 6-digit PIN or QR code to use the embedded 5-tab mobile web remote.
+- **Standalone, Central Server, and Client Modes:** Run standalone on desktop, deploy the zero-GUI `kinora-server` binary (Linux, Raspberry Pi, systemd, or Docker) for always-on shared sources and bounded HTTP Range local streaming, and sync watchlists/progress across LAN clients via Server-Sent Events.
+- **Encrypted Backup and Signed Updates:** Export and restore settings, sources, guides, bouquets, DVR rules, and reading progress in AES-256-GCM encrypted archives with SHA-256 verification and transactional rollback; receive ETag-cached GitHub Release update notifications with Minisign signature verification and offline What's New history.
+
+---
+
+## Supported Sources and Integrations
+
+| Source / Integration | Status | Notes and Limitations |
+|---|---|---|
+| **M3U / M3U8 Playlists (URL or local file)** | Complete | Parsed in Rust (up to 25 MB / 50,000 channels), saved locally, refreshed at startup. HLS over HTTP(S) plays via `kstream`; raw MPEG-TS, RTMP, RTSP, UDP, and DRM streams are refused with an explicit message. |
+| **XMLTV Guides (`.xml` / `.xml.gz` URL or file)** | Complete | Parsed with `quick-xml` (DTD loading and custom entities disabled; 64 MB download / 128 MB decompressed cap). Cached per guide for offline startup. |
+| **iptv-org Public Discovery Catalogue** | Complete | Reads the fixed public `PLAYLISTS.md` index on demand when Discovery is opened; entries import as standard playlists only when chosen. |
+| **Xtream Codes API Providers** | Complete | Live TV, VOD movies, series, and EPG via guarded native Rust commands; credentials never exposed in URLs or logs. |
+| **Local Media Folders** | Complete | Scans local video, audio, and book directories with change detection and bounded Range streaming via `kinora-server`. |
+| **Podcast RSS / Atom & OPDS Catalogues** | Complete | Fetched through Rust's guarded native fetcher with episode progress and book catalogue browsing. |
+| **Jellyfin / Emby / Plex Servers** | Partial | Guarded native transport and library browsing implemented; full transcoding/server-side session control is not included. |
+| **Stalker / MAG Portals** | Experimental | Basic portal connection and catalogue support exist; provider compatibility varies widely. |
+
+---
+
+## Installation
+
+### Desktop Packages
+
+Signed installers and checksums for `v0.6.0` are published on [GitHub Releases](https://github.com/millsydotdev/KinoraTV/releases/tag/v0.6.0).
+
+| Platform | Available Formats | Requirements | Webview Engine |
+|---|---|---|---|
 | **Linux (x86_64)** | `.rpm`, `.deb`, `.AppImage` | WebKitGTK 4.1, GTK 3, OpenSSL 1.1/3.0 | WebKitGTK 2.44+ |
 | **Windows (x64)** | `.exe` (NSIS), `.msi` (WiX) | Windows 10 (1809+) or Windows 11 | Microsoft Edge WebView2 |
-| **macOS (Apple Silicon / Intel)** | `.dmg`, `.app` bundle | macOS Catalina 10.15 or later | Apple WebKit (WKWebView) |
+| **macOS (Apple Silicon & Intel)** | `.dmg`, `.app.tar.gz` | macOS Catalina 10.15 or later | Apple WebKit (WKWebView) |
 
-## Community & Security
+Every release includes `SHA256SUMS.txt`, Minisign `.sig` files, a CycloneDX SBOM (`kinora-sbom.json`), and `latest.json` for verified in-app updates.
 
-- **Contributing Guidelines:** See [CONTRIBUTING.md](file:///mnt/storage/TVMovie/CONTRIBUTING.md) for architectural rules, coding standards, and PR workflows.
-- **Security Policy:** See [SECURITY.md](file:///mnt/storage/TVMovie/SECURITY.md) for vulnerability reporting and security invariants.
-- **Code of Conduct:** See [CODE_OF_CONDUCT.md](file:///mnt/storage/TVMovie/CODE_OF_CONDUCT.md).
-- **Changelog:** See [CHANGELOG.md](file:///mnt/storage/TVMovie/CHANGELOG.md) for milestone release history.
+#### Linux Video Codecs
 
-## Licensing & Intellectual Property
+Video decoding on Linux runs through WebKitGTK and GStreamer. To play H.264/AAC HLS streams, install your distribution's GStreamer plugins:
 
-Kinora is published under the **Kinora Proprietary Source-Available Licence - All Rights Reserved**. See [LICENSE](file:///mnt/storage/TVMovie/LICENSE) for the full licence text.
+```bash
+# Fedora
+sudo dnf install -y gstreamer1-plugin-openh264 gstreamer1-plugins-good
 
-This is **not** an OSI-approved open-source licence. Commercial use, public redistribution, unauthorized forks, and ingestion for AI/ML training are prohibited without prior written permission. For details on intellectual property scope and brand protections, see [Kinora Licensing and IP Protection](file:///mnt/storage/TVMovie/docs/legal/kinora-licensing-and-ip-protection.md).
+# Ubuntu / Debian
+sudo apt-get install -y gstreamer1.0-libav gstreamer1.0-plugins-good
 
-Third-party runtime dependencies and libraries are inventoried with their respective permissive licences in [public/THIRD-PARTY-NOTICES.txt](file:///mnt/storage/TVMovie/public/THIRD-PARTY-NOTICES.txt). Shipped packages are strictly permissive (MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, Unlicense). No GPL-licensed components are statically linked into the application binary. System media decoders and WebKit libraries are dynamically linked from the host operating system.
+# Arch Linux
+sudo pacman -S gst-plugin-openh264 gst-plugins-good
+```
+
+You can verify available codecs inside the app under **Settings > Playback & Video > What this system can play**.
+
+### Headless Kinora Server (Optional)
+
+To run Kinora as an always-on LAN media server without GUI dependencies (for Docker, NAS, or Linux hosts), see [docs/SERVER-DEPLOYMENT.md](docs/SERVER-DEPLOYMENT.md).
+
+```bash
+docker compose up -d --build server
+```
+
+---
+
+## Configuration and Setup
+
+1. **Add Sources:** Open **Sources > + Add Source** to import an M3U playlist by HTTPS URL or local file, attach an XMLTV guide, connect an Xtream Codes provider, or browse **Sources > Discovery** for public `iptv-org` playlists.
+2. **Add Local Media:** Open **Settings > Local Media Libraries** to add folders containing films, series, audio, or EPUB/PDF books.
+3. **Switch Desktop and TV Mode:** Click the monitor/TV icon in the top header or press `Ctrl+Shift+T` (`Cmd+Shift+T` on macOS). Use `Ctrl+B` to collapse or expand the sidebar.
+4. **Pair the Mobile Web Remote:** Open **Settings > Shortcuts & Remote** (or **Platform & Devices**), enable the local server, and scan the QR code or enter the 6-digit PIN from any phone or tablet on the same Wi-Fi network.
+5. **Back Up Your Setup:** Use **Settings > Advanced > Backup & Migration** to export an AES-256-GCM encrypted backup file before switching machines.
+
+For playback headers, EPG manual matching, and storage recovery, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+
+---
+
+## Platform, Architecture, and Security
+
+```text
+React 19 + TypeScript (src/)          Rust + Tauri 2 (src-tauri/)
+  UI, routing, themes, state  ── IPC ──▶  window shell, guarded HTTP fetcher,
+  built by Vite into dist/    ◀── JSON ──  M3U/XMLTV parsers, kstream HLS proxy,
+                                           atomic 0600 stores, updater, LAN server
+```
+
+- **Strict IPC & Capability Boundary:** `src/lib/native.ts` is the sole bridge from React to Rust, validating every response. Commands are deny-by-default in `src-tauri/build.rs` and explicitly allow-listed in `src-tauri/capabilities/default.json`.
+- **Direct Anti-SSRF Networking:** All remote playlist, guide, logo, and stream fetches live in `src-tauri/src/fetch.rs` with `no_proxy()` enforced, DNS resolution checks blocking loopback/private/CGNAT/multicast/reserved IPv4 and IPv6 addresses, per-redirect revalidation (max 5 hops), no `Referer`, bounded timeouts/byte limits, and host-only error messages that never log paths, queries, or tokens.
+- **Memory-Only Stream Handles:** Upstream stream URLs are never sent to the webview DOM or written to disk. `open_stream` returns an opaque `kstream://localhost/<128-bit handle>` served by `src-tauri/src/stream.rs`, rewriting HLS manifests and cancelling in-flight requests on close or channel switch.
+- **Strict Content Security Policy:** `tauri.conf.json` locks down script, font, and remote image origins (`connect-src kstream://localhost`, `media-src blob:`). Logos and artwork are fetched through guarded Rust commands and validated as raster bytes before rendering.
+- **Local Storage and Residual Risk:** Sources and guides are stored atomically (`0700` directory, `0600` file) under `<app data>/sources/sources.json` (on Linux: `~/.local/share/io.github.millsydotdev.kinora/sources/`). Saved playlist or guide URLs may contain provider account tokens readable by your OS user; exclude that directory from untrusted cloud sync tools if needed. See [docs/PRIVACY.md](docs/PRIVACY.md) for full details.
+- **Known Limitations:** Because `no_proxy()` and private-IP guards are mandatory in release builds, corporate proxy-only networks and LAN-only IPTV tuners are not supported by the public playlist fetcher. Non-HLS live streams and DRM-encrypted streams are refused rather than failing silently.
+
+---
+
+## Development
+
+### Prerequisites
+
+- **Node.js 22+** and npm 10+
+- **Rust 1.90+** (`rustup default stable`, with `clippy` and `rustfmt`)
+- **Platform build libraries:**
+  - **Fedora:** `sudo dnf install webkit2gtk4.1-devel openssl-devel curl file libayatana-appindicator-gtk3-devel librsvg2-devel gtk3-devel libsoup3-devel javascriptcoregtk4.1-devel patchelf rpm-build`
+  - **Ubuntu / Debian:** `sudo apt-get install libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev patchelf rpm build-essential curl`
+  - **macOS / Windows:** See [Tauri 2 Prerequisites](https://v2.tauri.app/start/prerequisites/)
+
+### Common Commands
+
+```bash
+npm install                  # Install frontend dependencies and Tauri CLI
+npm run dev                  # Run React UI in a browser at http://localhost:5199
+npm run tauri:dev            # Launch native desktop app in development mode
+npm run tauri:dev:staging    # Launch isolated staging desktop app
+npm run typecheck            # Run TypeScript compiler checks (tsc -b)
+npm test                     # Run Vitest frontend test suite
+npm run test:rust            # Run Rust unit and integration tests (cargo test)
+bash scripts/ci-local.sh     # Run full CI parity suite (multi-TZ, clippy, fmt, audits)
+npm run tauri:build          # Build native release binary and platform packages
+```
+
+For environment variables, Docker fixtures, and staging build workflows, see [DEVELOPMENT.md](DEVELOPMENT.md).
+
+---
+
+## Documentation
+
+| Document | Purpose |
+|---|---|
+| [DEVELOPMENT.md](DEVELOPMENT.md) | Developer onboarding, prerequisites, environment setup, and local commands |
+| [DOCKER.md](DOCKER.md) | Multi-stage Docker builds, mock IPTV/EPG fixtures, and Compose services |
+| [DEVOPS.md](DEVOPS.md) | CI/CD workflows, GHCR images, supply-chain security, and release gates |
+| [STAGING.md](STAGING.md) | Isolated staging identifiers, data directories, and staging builds |
+| [docs/SERVER-DEPLOYMENT.md](docs/SERVER-DEPLOYMENT.md) | Deploying headless `kinora-server` via Docker, binary, or Linux `systemd` |
+| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Codec setup, stream headers, EPG matching, and storage recovery |
+| [docs/PRIVACY.md](docs/PRIVACY.md) | Local-only data handling, credential boundaries, and residual risk notes |
+| [docs/RELEASE-READINESS.md](docs/RELEASE-READINESS.md) | Verification matrix, tested vs untested cases, and performance measurements |
+| [CHANGELOG.md](CHANGELOG.md) | Structured release history for Kinora |
+
+---
+
+## Contributing and Support
+
+**Created and maintained by [millsydotdev](https://github.com/millsydotdev)** · Canonical repository: [github.com/millsydotdev/KinoraTV](https://github.com/millsydotdev/KinoraTV)
+
+- **Contributing:** Read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes.
+- **Support and Bug Reports:** Follow [docs/SUPPORT.md](docs/SUPPORT.md) and always scrub private playlist URLs, tokens, or credentials before posting logs.
+- **Security Vulnerabilities:** Follow responsible disclosure in [SECURITY.md](SECURITY.md).
+- **Community Standards:** See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+
+---
+
+## Licensing and Acknowledgements
+
+Kinora is published under the **Kinora Proprietary Source-Available Licence - All Rights Reserved**. See [LICENSE](LICENSE) for the full licence terms.
+
+This is **not** an OSI-approved open-source licence. Commercial use, public redistribution, unauthorised forks, and ingestion for AI/ML training are prohibited without prior written permission. For intellectual property and brand scope details, see [docs/legal/kinora-licensing-and-ip-protection.md](docs/legal/kinora-licensing-and-ip-protection.md).
+
+Third-party runtime libraries are documented with their respective permissive licences in [public/THIRD-PARTY-NOTICES.txt](public/THIRD-PARTY-NOTICES.txt). Shipped packages use permissive third-party dependencies only (MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, Unlicense), with system WebKit and GStreamer decoders linked dynamically from the host OS. Public playlist discovery credits [iptv-org](https://github.com/iptv-org/iptv) (Unlicense).

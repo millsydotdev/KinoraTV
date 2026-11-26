@@ -9,6 +9,7 @@ import {
   loadUpdateChannel,
 } from './updaterState'
 import { evaluateServerCompatibility } from './clientSync'
+import { APP_VERSION } from './native'
 import { hasSeenWhatsNew, markWhatsNewSeen } from '../components/WhatsNewModal'
 
 describe('Structured changelog, offline history, and updater state machine', () => {
@@ -16,10 +17,11 @@ describe('Structured changelog, offline history, and updater state machine', () 
     localStorage.clear()
   })
 
-  it('loads complete offline version history starting with 0.6.0 and 0.5.0', () => {
+  it('loads complete offline version history starting with current version, 0.6.0, and 0.5.0', () => {
     const releases = getAllReleases()
     expect(releases.length).toBeGreaterThanOrEqual(10)
-    expect(releases[0]?.version).toBe('0.6.0')
+    expect(releases[0]?.version).toBe(APP_VERSION)
+    expect(releases.some((r) => r.version === '0.6.0')).toBe(true)
     expect(releases.some((r) => r.version === '0.5.0')).toBe(true)
 
     const v060 = getReleaseByVersion('0.6.0')!

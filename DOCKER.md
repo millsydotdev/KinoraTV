@@ -75,6 +75,7 @@ The root `Dockerfile` defines three specialized targets:
 | **web** | `Dockerfile (target: web-dev)` | 5199 | `${WEB_PORT:-5199}` | React 19 web development server with hot reload |
 | **test** | `Dockerfile (target: builder)` | - | - | Runs full `bash scripts/quality-gate.sh` in container |
 | **builder** | `Dockerfile (target: builder)` | - | - | Compiles native `.deb`, `.rpm`, and `.AppImage` packages |
+| **server** | `Dockerfile (target: server)` | 5198/tcp, 5197/udp | `${SERVER_PORT:-5198}`, `${DISCOVERY_PORT:-5197}` | Headless Kinora Media Server (zero GUI dependencies) |
 
 ### Persistent Build Caching
 Docker Compose utilizes named persistent volumes to eliminate redundant dependency compilation:

@@ -113,7 +113,7 @@ jobs:
         shell: bash
         run: |
           cd src-tauri/target/${{ matrix.target }}/release/bundle
-          find . -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" -o -name "*.dmg" -o -name "*.tar.gz" -o -name "*.zip" \) -exec sha256sum {} + > SHA256SUMS-staging-${{ matrix.platform }}.txt
+          find . -type f \( \( -name "*Kinora*" -o -name "*kinora*" \) -a \( -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" -o -name "*.dmg" -o -name "*.tar.gz" -o -name "*.zip" \) \) -exec sha256sum {} + > SHA256SUMS-staging-${{ matrix.platform }}.txt
           cat SHA256SUMS-staging-${{ matrix.platform }}.txt
 
       - name: Generate SHA-256 Checksums (Windows)
@@ -142,7 +142,7 @@ jobs:
   publish-staging:
     name: Publish Staging Release
     needs: build-staging
-    if: (github.event.inputs.dry_run != 'true') && !cancelled()
+    if: (inputs.dry_run != true) && !cancelled()
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository

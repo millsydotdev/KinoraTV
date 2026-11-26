@@ -8,10 +8,23 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 const repoRoot = path.resolve(__dirname, '..');
 const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
 const cargoLockPath = path.join(repoRoot, 'src-tauri', 'Cargo.lock');
+
+function readBuildCommit() {
+  const envSha = (process.env.GITHUB_SHA || '').trim();
+  if (/^[0-9a-f]{7,40}$/i.test(envSha)) return envSha.toLowerCase();
+  try {
+    return execSync('git rev-parse HEAD', { cwd: repoRoot, encoding: 'utf8' }).trim().toLowerCase();
+  } catch {
+    return 'unknown';
+  }
+}
+
+const buildCommit = readBuildCommit();
 
 const components = [];
 
@@ -83,7 +96,13 @@ const sbom = {
         version: '0.6.0'
       }
     ],
-    component: rootComponent
+    component: rootComponent,
+    properties: [
+      {
+        name: 'kinora:git-commit',
+        value: buildCommit
+      }
+    ]
   },
   components
 };
