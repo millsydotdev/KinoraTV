@@ -98,8 +98,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root developer user (UID 1000)
-RUN useradd -m -s /bin/bash -u 1000 developer \
+# Create non-root developer user (reclaiming UID/GID 1000 from Ubuntu 24.04's default 'ubuntu' user)
+RUN (id -nu 1000 >/dev/null 2>&1 && userdel -r "$(id -nu 1000)" || true) \
+    && (getent group 1000 >/dev/null 2>&1 && groupdel "$(getent group 1000 | cut -d: -f1)" || true) \
+    && useradd -m -s /bin/bash -u 1000 developer \
     && mkdir -p /home/developer/.cargo /home/developer/.npm /app \
     && chown -R developer:developer /home/developer /app /usr/local/cargo /usr/local/rustup
 

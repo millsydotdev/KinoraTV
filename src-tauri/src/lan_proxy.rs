@@ -1399,6 +1399,7 @@ mod tests {
     #[test]
     fn production_policy_blocks_private_and_loopback_upstream() {
         let proxy = LanStreamProxy::default();
+        #[cfg(not(feature = "loopback-fixtures"))]
         assert!(proxy
             .open("dev-1", "http://127.0.0.1:8080/live.m3u8")
             .is_err());

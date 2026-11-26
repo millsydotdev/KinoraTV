@@ -76,7 +76,7 @@ describe('Viewing Habits & Analytics Engine', () => {
   })
 
   it('computes 7-day daily activity array and peak viewing hour', () => {
-    const fixedNow = new Date('2026-11-23T20:30:00Z').getTime() // 8:30 PM
+    const fixedNow = new Date(2026, 10, 23, 20, 30, 0).getTime() // 8:30 PM local time
     const testLibrary: Library = {
       ...emptyLibrary,
       progress: {
