@@ -9,6 +9,7 @@ import { StoreContext, type Library, type Prefs } from '../state/store'
 import {
   decryptBackupPayload,
   encryptBackupPayload,
+  executeTransactionalRestore,
   inspectBackupPayload,
   triggerBackupDownload,
   type KinoraBackupPayload,
@@ -18,6 +19,10 @@ import {
 import {
   APP_VERSION,
   checkLocalPathsExist,
+  deleteLocalLibrary,
+  dvrDeleteRule,
+  dvrGetConfig,
+  dvrGetRules,
   dvrSaveConfig,
   dvrSaveRule,
   getLocalLibraries,
@@ -334,173 +339,63 @@ export function EncryptedBackupModal({
 
     const profileId = store.activeProfile?.id ?? 'default'
     const progressKey = readingProgressStorageKey(profileId)
-    const managedKeys = [
-      'kinora.userPreferences.v1',
-      `kinora.userPreferences.v1.${profileId}`,
-      'kinora.bouquet_config.v1.default',
-      `kinora.bouquet_config.v1.${profileId}`,
-      'kinora.xtream_fallback.v1',
-      'kinora.smart_collections.v1.default',
-      `kinora.smart_collections.v1.${profileId}`,
-      'kinora.custom_artwork.v1',
-      'kinora.media_servers.v1',
-      'kinora.podcast.subscriptions.v1',
-      'kinora.podcast.progress.v1',
-      'kinora.opds.catalogs.v1',
-      progressKey,
-      'kinora.stalker.portals.v1',
-      'kinora.platform.mode.v1',
-      'kinora.platform.serverUrl.v1',
-      AI_VOICE_CONFIG_STORAGE_KEY,
-      'kinora.whats_new_seen.v1',
-    ]
-
-    // Transactional snapshot so any mid-restore failure rolls back cleanly without partial corruption
-    const prevPrefs = { ...store.prefs }
-    const prevLibrary = { ...store.library }
-    const prevStorage = new Map<string, string | null>()
-    if (typeof localStorage !== 'undefined') {
-      for (const k of managedKeys) {
-        prevStorage.set(k, localStorage.getItem(k))
-      }
-    }
 
     try {
-      if (options.restorePrefs && decryptedPayload.prefs && typeof decryptedPayload.prefs === 'object') {
-        store.importPrefs(decryptedPayload.prefs as unknown as Prefs)
-      }
-
-      if (options.restoreLibrary && decryptedPayload.library && typeof decryptedPayload.library === 'object') {
-        store.importLibrary(decryptedPayload.library as unknown as Library)
-      }
-
-      if (options.restorePrefs && decryptedPayload.userPreferences && typeof localStorage !== 'undefined') {
-        localStorage.setItem(`kinora.userPreferences.v1.${profileId}`, JSON.stringify(decryptedPayload.userPreferences))
-        if (profileId === 'default') {
-          localStorage.setItem('kinora.userPreferences.v1', JSON.stringify(decryptedPayload.userPreferences))
-        }
-      }
-
-      if (options.restorePersonalMedia && decryptedPayload.personalMedia && store.mediaLibrary?.importPersonalLibrary) {
-        store.mediaLibrary.importPersonalLibrary(
-          decryptedPayload.personalMedia as Parameters<typeof store.mediaLibrary.importPersonalLibrary>[0]
-        )
-      }
-
-      if (options.restoreBouquets && decryptedPayload.bouquets && typeof localStorage !== 'undefined') {
-        localStorage.setItem(`kinora.bouquet_config.v1.${profileId}`, JSON.stringify(decryptedPayload.bouquets))
-      }
-
-      if (decryptedPayload.xtreamFallback && typeof localStorage !== 'undefined') {
-        localStorage.setItem('kinora.xtream_fallback.v1', JSON.stringify(decryptedPayload.xtreamFallback))
-      }
-
-      if (options.restoreSmartCollections && decryptedPayload.smartCollections && typeof localStorage !== 'undefined') {
-        localStorage.setItem(`kinora.smart_collections.v1.${profileId}`, JSON.stringify(decryptedPayload.smartCollections))
-      }
-
-      if (options.restoreCustomArtwork !== false && decryptedPayload.customArtwork && typeof localStorage !== 'undefined') {
-        localStorage.setItem('kinora.custom_artwork.v1', JSON.stringify(decryptedPayload.customArtwork))
-      }
-
-      if (options.restoreSources && decryptedPayload.nativeSourcesState && typeof decryptedPayload.nativeSourcesState === 'object') {
-        await saveSources(decryptedPayload.nativeSourcesState as SavedState)
-      }
-
-      if (options.restoreSources && Array.isArray(decryptedPayload.localLibraries) && decryptedPayload.localLibraries.length > 0) {
-        const paths = decryptedPayload.localLibraries.flatMap((l) => l.folders?.length ? l.folders : (l.path ? [l.path] : []))
-        const existsFlags = await checkLocalPathsExist(paths)
-        for (let i = 0; i < decryptedPayload.localLibraries.length; i++) {
-          const lib = decryptedPayload.localLibraries[i]
-          const libFolders = lib?.folders?.length ? lib.folders : (lib?.path ? [lib.path] : [])
-          if (lib && existsFlags[i] !== false) {
-            await saveLocalLibrary({
-              id: lib.id,
-              name: lib.name,
-              folders: libFolders,
-              mediaType: (lib.mediaType as 'movies' | 'tv') || (lib.kind === 'tv' ? 'tv' : 'movies'),
-              lastScannedAt: lib.lastScannedAt ?? null,
-              autoScan: lib.autoScan ?? true,
-              scanIntervalHours: lib.scanIntervalHours ?? 24,
-            }).catch(() => {})
+      await executeTransactionalRestore<
+        Prefs,
+        Library,
+        ReturnType<NonNullable<typeof store.mediaLibrary>['exportPersonalLibrary']>,
+        SavedState,
+        DvrConfig,
+        SeriesRule
+      >(decryptedPayload, options, {
+        profileId,
+        progressStorageKey: progressKey,
+        aiVoiceStorageKey: AI_VOICE_CONFIG_STORAGE_KEY,
+        storage: typeof localStorage !== 'undefined' ? localStorage : null,
+        getPrefs: () => store.prefs,
+        importPrefs: (p) => store.importPrefs(p),
+        getLibrary: () => store.library,
+        importLibrary: (l) => store.importLibrary(l),
+        exportPersonalMedia: store.mediaLibrary
+          ? () => store.mediaLibrary.exportPersonalLibrary()
+          : undefined,
+        importPersonalMedia: store.mediaLibrary
+          ? (m) => store.mediaLibrary.importPersonalLibrary(m)
+          : undefined,
+        loadSources: async () => {
+          const loaded = await loadSources()
+          if (!loaded) return null
+          return {
+            sources: loaded.sources,
+            guides: loaded.guides,
+            mappings: loaded.mappings,
+            ...(loaded.xtreamSources ? { xtreamSources: loaded.xtreamSources } : {}),
           }
-        }
-      }
+        },
+        saveSources: (saved) => saveSources(saved),
+        getLocalLibraries: () => getLocalLibraries(),
+        saveLocalLibrary: (lib) => saveLocalLibrary(lib),
+        deleteLocalLibrary: (id) => deleteLocalLibrary(id),
+        checkLocalPathsExist: (paths) => checkLocalPathsExist(paths),
+        dvrGetConfig: () => dvrGetConfig(),
+        dvrSaveConfig: (cfg) => dvrSaveConfig(cfg),
+        dvrGetRules: () => dvrGetRules(),
+        dvrSaveRule: (rule) => dvrSaveRule(rule),
+        dvrDeleteRule: (id) => dvrDeleteRule(id),
+      })
 
-      if (options.restoreDvr !== false) {
-        if (decryptedPayload.dvrConfig && typeof decryptedPayload.dvrConfig === 'object') {
-          await dvrSaveConfig(decryptedPayload.dvrConfig as DvrConfig).catch(() => {})
-        }
-        if (Array.isArray(decryptedPayload.dvrRules)) {
-          for (const rule of decryptedPayload.dvrRules) {
-            if (rule && typeof rule === 'object') {
-              await dvrSaveRule(rule as SeriesRule).catch(() => {})
-            }
-          }
-        }
-      }
-
-      if (options.restoreMediaServers !== false && decryptedPayload.mediaServers && typeof localStorage !== 'undefined') {
-        localStorage.setItem('kinora.media_servers.v1', JSON.stringify(decryptedPayload.mediaServers))
-      }
-
-      if (options.restorePodcasts !== false && typeof localStorage !== 'undefined') {
-        if (decryptedPayload.podcastSubscriptions) {
-          localStorage.setItem('kinora.podcast.subscriptions.v1', JSON.stringify(decryptedPayload.podcastSubscriptions))
-        }
-        if (decryptedPayload.podcastProgress) {
-          localStorage.setItem('kinora.podcast.progress.v1', JSON.stringify(decryptedPayload.podcastProgress))
-        }
-      }
-
-      if (options.restoreOpds !== false && typeof localStorage !== 'undefined') {
-        if (decryptedPayload.opdsCatalogs) {
-          localStorage.setItem('kinora.opds.catalogs.v1', JSON.stringify(decryptedPayload.opdsCatalogs))
-        }
-        if (decryptedPayload.readingProgress) {
-          localStorage.setItem(progressKey, JSON.stringify(decryptedPayload.readingProgress))
-        }
-      }
-
-      if (options.restoreStalker !== false && decryptedPayload.stalkerPortals && typeof localStorage !== 'undefined') {
-        localStorage.setItem('kinora.stalker.portals.v1', JSON.stringify(decryptedPayload.stalkerPortals))
-      }
-
-      if (options.restorePrefs && typeof localStorage !== 'undefined') {
-        if (decryptedPayload.platformConfig?.mode) {
-          localStorage.setItem('kinora.platform.mode.v1', decryptedPayload.platformConfig.mode)
-        }
-        if (decryptedPayload.platformConfig?.serverUrl) {
-          localStorage.setItem('kinora.platform.serverUrl.v1', decryptedPayload.platformConfig.serverUrl)
-        }
-        if (decryptedPayload.aiVoiceConfig) {
-          localStorage.setItem(AI_VOICE_CONFIG_STORAGE_KEY, JSON.stringify(decryptedPayload.aiVoiceConfig))
-        }
-        if (Array.isArray(decryptedPayload.whatsNewSeen)) {
-          localStorage.setItem('kinora.whats_new_seen.v1', JSON.stringify(decryptedPayload.whatsNewSeen))
-        }
-      }
-
-      recordBackupHistory('restore', decryptedPayload.deviceInfo?.version ?? APP_VERSION, `Restored backup from ${decryptedPayload.exportedAt.slice(0, 10)}`)
+      recordBackupHistory(
+        'restore',
+        decryptedPayload.deviceInfo?.version ?? APP_VERSION,
+        `Restored backup from ${decryptedPayload.exportedAt.slice(0, 10)}`,
+      )
       toast('Encrypted backup restored and migrated successfully.')
       onRestoreSuccess?.()
       onClose()
     } catch (err: unknown) {
-      // Atomic rollback of all mutated state
-      try {
-        store.importPrefs(prevPrefs)
-        store.importLibrary(prevLibrary)
-        if (typeof localStorage !== 'undefined') {
-          for (const [k, v] of prevStorage.entries()) {
-            if (v === null) localStorage.removeItem(k)
-            else localStorage.setItem(k, v)
-          }
-        }
-      } catch {
-        // Best effort rollback
-      }
       const msg = err instanceof Error ? err.message : 'Restore failed.'
-      setErrorMsg(`Restore failed and previous settings were rolled back safely: ${msg}`)
+      setErrorMsg(`Restore failed and all previous settings and native stores were rolled back safely: ${msg}`)
     } finally {
       setBusy(false)
     }
@@ -786,7 +681,7 @@ export function EncryptedBackupModal({
                 type="button"
                 className="btn btn-primary btn-small"
                 onClick={handleExecuteRestore}
-                disabled={busy}
+                disabled={busy || inspectionReport?.compatibility.isCompatible === false}
               >
                 {busy ? 'Restoring...' : 'Apply Restoration & Migrate'}
               </button>

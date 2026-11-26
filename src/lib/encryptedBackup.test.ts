@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest'
 import {
   decryptBackupPayload,
   encryptBackupPayload,
+  executeTransactionalRestore,
   inspectBackupPayload,
   computePayloadChecksum,
   type KinoraBackupPayload,
+  type RestoreSelectionOptions,
+  type TransactionalRestoreLocalLib,
 } from './encryptedBackup'
 
 describe('Encrypted Backup & Restore Engine (.kinorabackup)', () => {
@@ -180,5 +183,239 @@ describe('Encrypted Backup & Restore Engine (.kinorabackup)', () => {
     expect(Array.isArray(decrypted.podcastSubscriptions)).toBe(true)
     expect(Array.isArray(decrypted.opdsCatalogs)).toBe(true)
     expect(Array.isArray(decrypted.stalkerPortals)).toBe(true)
+  })
+
+  it('rolls back all React, localStorage, and native Rust stores when restoration fails mid-way', async () => {
+    const kv = new Map<string, string>([
+      ['kinora.bouquet_config.v1.profile-a', JSON.stringify({ bouquets: [{ id: 'bq-orig', name: 'Original' }] })],
+      ['kinora.reading_progress.v1.profile-a', JSON.stringify({ 'epub:old': { percent: 40 } })],
+    ])
+    const storage = {
+      getItem: (k: string) => kv.get(k) ?? null,
+      setItem: (k: string, v: string) => { kv.set(k, v) },
+      removeItem: (k: string) => { kv.delete(k) },
+    }
+
+    let currentPrefs: Record<string, unknown> = { theme: 'dark', volume: 50 }
+    let currentLibrary: Record<string, unknown> = { favourites: ['channel:orig'], watchlist: [] }
+    let currentPersonal: unknown = { resources: ['orig-res'] }
+    let currentSources: Record<string, unknown> = { sources: [{ id: 'pl-orig' }], guides: [], mappings: [] }
+    let currentLocalLibs: TransactionalRestoreLocalLib[] = [
+      { id: 'lib-orig', name: 'Original Movies', folders: ['/orig'], mediaType: 'movies', lastScannedAt: null, autoScan: true, scanIntervalHours: 24 },
+    ]
+    let currentDvrConfig: Record<string, unknown> = { storagePath: '/orig/dvr', maxGb: 50 }
+    let currentDvrRules: Array<{ id: string; query: string }> = [{ id: 'rule-orig', query: 'Original Show' }]
+
+    const incomingPayload: KinoraBackupPayload = {
+      app: 'Kinora',
+      version: 3,
+      exportedAt: '2026-11-26T18:00:00.000Z',
+      prefs: { theme: 'light', volume: 95 },
+      library: { favourites: ['channel:new'], watchlist: ['movie:new'] },
+      personalMedia: { resources: ['new-res'] },
+      bouquets: { bouquets: [{ id: 'bq-new', name: 'Restored' }] },
+      readingProgress: { 'epub:new': { percent: 90 } },
+      nativeSourcesState: { sources: [{ id: 'pl-new' }], guides: [{ id: 'gd-new' }], mappings: [] },
+      localLibraries: [
+        { id: 'lib-new', name: 'New NAS', folders: ['/mnt/nas'], mediaType: 'movies' },
+      ],
+      dvrConfig: { storagePath: '/new/dvr', maxGb: 200 },
+      dvrRules: [{ id: 'rule-new', query: 'New Show' }],
+    }
+
+    const allOptions: RestoreSelectionOptions = {
+      restorePrefs: true,
+      restoreLibrary: true,
+      restoreSources: true,
+      restoreBouquets: true,
+      restoreSmartCollections: true,
+      restorePersonalMedia: true,
+      restoreCustomArtwork: true,
+      restoreDvr: true,
+    }
+
+    await expect(
+      executeTransactionalRestore(incomingPayload, allOptions, {
+        profileId: 'profile-a',
+        progressStorageKey: 'kinora.reading_progress.v1.profile-a',
+        aiVoiceStorageKey: 'kinora.ai_voice_config.v1',
+        storage,
+        getPrefs: () => currentPrefs,
+        importPrefs: (p) => { currentPrefs = p },
+        getLibrary: () => currentLibrary,
+        importLibrary: (l) => { currentLibrary = l },
+        exportPersonalMedia: () => currentPersonal,
+        importPersonalMedia: (m) => { currentPersonal = m },
+        loadSources: async () => structuredClone(currentSources),
+        saveSources: async (s) => { currentSources = structuredClone(s) },
+        getLocalLibraries: async () => structuredClone(currentLocalLibs),
+        saveLocalLibrary: async (lib) => {
+          const idx = currentLocalLibs.findIndex((l) => l.id === lib.id)
+          if (idx >= 0) currentLocalLibs[idx] = lib
+          else currentLocalLibs.push(lib)
+        },
+        deleteLocalLibrary: async (id) => {
+          currentLocalLibs = currentLocalLibs.filter((l) => l.id !== id)
+        },
+        checkLocalPathsExist: async (paths) => paths.map(() => true),
+        dvrGetConfig: async () => structuredClone(currentDvrConfig),
+        dvrSaveConfig: async () => {
+          throw new Error('Simulated disk full error while writing DVR config')
+        },
+        dvrGetRules: async () => structuredClone(currentDvrRules),
+        dvrSaveRule: async (rule) => {
+          currentDvrRules = [...currentDvrRules.filter((r) => r.id !== rule.id), rule]
+        },
+        dvrDeleteRule: async (id) => {
+          currentDvrRules = currentDvrRules.filter((r) => r.id !== id)
+        },
+      }),
+    ).rejects.toThrow('Simulated disk full error')
+
+    expect(currentPrefs).toEqual({ theme: 'dark', volume: 50 })
+    expect(currentLibrary).toEqual({ favourites: ['channel:orig'], watchlist: [] })
+    expect(currentPersonal).toEqual({ resources: ['orig-res'] })
+    expect(currentSources).toEqual({ sources: [{ id: 'pl-orig' }], guides: [], mappings: [] })
+    expect(currentLocalLibs).toEqual([
+      { id: 'lib-orig', name: 'Original Movies', folders: ['/orig'], mediaType: 'movies', lastScannedAt: null, autoScan: true, scanIntervalHours: 24 },
+    ])
+    expect(currentDvrConfig).toEqual({ storagePath: '/orig/dvr', maxGb: 50 })
+    expect(currentDvrRules).toEqual([{ id: 'rule-orig', query: 'Original Show' }])
+    expect(JSON.parse(kv.get('kinora.bouquet_config.v1.profile-a')!)).toEqual({
+      bouquets: [{ id: 'bq-orig', name: 'Original' }],
+    })
+    expect(JSON.parse(kv.get('kinora.reading_progress.v1.profile-a')!)).toEqual({
+      'epub:old': { percent: 40 },
+    })
+  })
+
+  it('exports an encrypted backup and restores cleanly into a fresh empty profile', async () => {
+    const sourcePayload: KinoraBackupPayload = {
+      app: 'Kinora',
+      version: 3,
+      exportedAt: '2026-11-26T18:00:00.000Z',
+      prefs: { theme: 'dark', volume: 78 },
+      library: { favourites: ['channel:bbc1'], watchlist: ['movie:arrival'], watched: ['movie:arrival'], collections: [] },
+      bouquets: { bouquets: [{ id: 'bq-uk', name: 'UK Freeview' }] },
+      readingProgress: { 'pdf:handbook': { chapterIndex: 4, totalChapters: 12, percent: 42 } },
+      mediaServers: [{ id: 'jf-1', serverType: 'jellyfin', name: 'Home Jellyfin', url: 'http://192.168.1.50:8096', authToken: '[PROTECTED]' }],
+      nativeSourcesState: { sources: [{ id: 'pl-1', name: 'Freeview' }], guides: [{ id: 'gd-1' }], mappings: [] },
+      localLibraries: [{ id: 'lib-1', name: 'Cinema', folders: ['/media/cinema'], mediaType: 'movies' }],
+      dvrConfig: { storagePath: '/media/dvr', maxGb: 100 },
+      dvrRules: [{ id: 'rule-1', query: 'Horizon' }],
+    }
+
+    const encrypted = await encryptBackupPayload(sourcePayload, 'FreshProfilePass2026!')
+    const decrypted = await decryptBackupPayload(encrypted, 'FreshProfilePass2026!')
+
+    const freshKv = new Map<string, string>()
+    const freshStorage = {
+      getItem: (k: string) => freshKv.get(k) ?? null,
+      setItem: (k: string, v: string) => { freshKv.set(k, v) },
+      removeItem: (k: string) => { freshKv.delete(k) },
+    }
+    let freshPrefs: Record<string, unknown> = {}
+    let freshLibrary: Record<string, unknown> = { favourites: [], watchlist: [] }
+    let freshSources: Record<string, unknown> = { sources: [], guides: [], mappings: [] }
+    let freshLocalLibs: TransactionalRestoreLocalLib[] = []
+    let freshDvrConfig: Record<string, unknown> | null = null
+    let freshDvrRules: Array<{ id: string; query: string }> = []
+
+    await executeTransactionalRestore(
+      decrypted,
+      {
+        restorePrefs: true,
+        restoreLibrary: true,
+        restoreSources: true,
+        restoreBouquets: true,
+        restoreSmartCollections: true,
+        restorePersonalMedia: true,
+        restoreCustomArtwork: true,
+        restoreDvr: true,
+      },
+      {
+        profileId: 'profile-fresh',
+        progressStorageKey: 'kinora.reading_progress.v1.profile-fresh',
+        aiVoiceStorageKey: 'kinora.ai_voice_config.v1',
+        storage: freshStorage,
+        getPrefs: () => freshPrefs,
+        importPrefs: (p) => { freshPrefs = p },
+        getLibrary: () => freshLibrary,
+        importLibrary: (l) => { freshLibrary = l },
+        loadSources: async () => freshSources,
+        saveSources: async (s) => { freshSources = s },
+        getLocalLibraries: async () => freshLocalLibs,
+        saveLocalLibrary: async (lib) => { freshLocalLibs.push(lib) },
+        deleteLocalLibrary: async (id) => { freshLocalLibs = freshLocalLibs.filter((l) => l.id !== id) },
+        checkLocalPathsExist: async (paths) => paths.map(() => true),
+        dvrGetConfig: async () => freshDvrConfig,
+        dvrSaveConfig: async (cfg) => { freshDvrConfig = cfg },
+        dvrGetRules: async () => freshDvrRules,
+        dvrSaveRule: async (r) => { freshDvrRules.push(r) },
+        dvrDeleteRule: async (id) => { freshDvrRules = freshDvrRules.filter((r) => r.id !== id) },
+      },
+    )
+
+    expect(freshPrefs).toEqual({ theme: 'dark', volume: 78 })
+    expect(freshLibrary.favourites).toEqual(['channel:bbc1'])
+    expect(freshSources).toEqual({ sources: [{ id: 'pl-1', name: 'Freeview' }], guides: [{ id: 'gd-1' }], mappings: [] })
+    expect(freshLocalLibs).toHaveLength(1)
+    expect(freshLocalLibs[0]?.name).toBe('Cinema')
+    expect(freshDvrConfig).toEqual({ storagePath: '/media/dvr', maxGb: 100 })
+    expect(freshDvrRules).toEqual([{ id: 'rule-1', query: 'Horizon' }])
+    expect(JSON.parse(freshKv.get('kinora.bouquet_config.v1.profile-fresh')!)).toEqual({
+      bouquets: [{ id: 'bq-uk', name: 'UK Freeview' }],
+    })
+    expect(JSON.parse(freshKv.get('kinora.reading_progress.v1.profile-fresh')!)).toEqual({
+      'pdf:handbook': { chapterIndex: 4, totalChapters: 12, percent: 42 },
+    })
+    expect(JSON.parse(freshKv.get('kinora.media_servers.v1')!)[0].authToken).toBe('[PROTECTED]')
+  })
+
+  it('flags and refuses incompatible future backup schema versions before mutating state', async () => {
+    const futurePayload = {
+      ...samplePayload,
+      version: 99,
+    } as unknown as KinoraBackupPayload
+
+    const report = inspectBackupPayload(futurePayload)
+    expect(report.compatibility.isCompatible).toBe(false)
+    expect(report.compatibility.warnings.some((w) => w.includes('Incompatible backup schema version'))).toBe(true)
+
+    let mutated = false
+    await expect(
+      executeTransactionalRestore(
+        futurePayload,
+        {
+          restorePrefs: true,
+          restoreLibrary: true,
+          restoreSources: true,
+          restoreBouquets: true,
+          restoreSmartCollections: true,
+          restorePersonalMedia: true,
+        },
+        {
+          profileId: 'default',
+          progressStorageKey: 'kinora.reading_progress.v1',
+          aiVoiceStorageKey: 'kinora.ai_voice_config.v1',
+          getPrefs: () => ({}),
+          importPrefs: () => { mutated = true },
+          getLibrary: () => ({}),
+          importLibrary: () => { mutated = true },
+          loadSources: async () => null,
+          saveSources: async () => { mutated = true },
+          getLocalLibraries: async () => [],
+          saveLocalLibrary: async () => { mutated = true },
+          deleteLocalLibrary: async () => {},
+          checkLocalPathsExist: async () => [],
+          dvrGetConfig: async () => null,
+          dvrSaveConfig: async () => { mutated = true },
+          dvrGetRules: async () => [],
+          dvrSaveRule: async () => { mutated = true },
+          dvrDeleteRule: async () => {},
+        },
+      ),
+    ).rejects.toThrow('Unsupported backup schema version')
+    expect(mutated).toBe(false)
   })
 })

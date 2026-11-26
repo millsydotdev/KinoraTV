@@ -324,8 +324,14 @@ export function inspectBackupPayload(
 ): BackupInspectionReport {
   const warnings: string[] = []
   let migrationNeeded = false
+  let isCompatible = true
 
-  if (payload.version < 3) {
+  if (!Number.isFinite(payload.version) || payload.version > 3) {
+    warnings.push(
+      `Incompatible backup schema version (v${payload.version}). Update Kinora to a newer version before restoring this archive.`,
+    )
+    isCompatible = false
+  } else if (payload.version < 3) {
     warnings.push('Legacy backup schema detected (v2). Auto-upgraded to current schema during restore.')
     migrationNeeded = true
   }
@@ -446,7 +452,7 @@ export function inspectBackupPayload(
       stalkerPortals,
     },
     compatibility: {
-      isCompatible: true,
+      isCompatible,
       migrationNeeded,
       warnings,
     },
@@ -469,4 +475,290 @@ export function triggerBackupDownload(buffer: ArrayBuffer, filenamePrefix = 'kin
   a.click()
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
+}
+
+export interface TransactionalRestoreStorage {
+  getItem: (key: string) => string | null
+  setItem: (key: string, value: string) => void
+  removeItem: (key: string) => void
+}
+
+export interface TransactionalRestoreLocalLib {
+  id: string
+  name: string
+  folders: string[]
+  mediaType: 'movies' | 'tv'
+  lastScannedAt: number | null
+  autoScan: boolean
+  scanIntervalHours: number
+}
+
+export interface TransactionalRestoreAdapters<TPrefs, TLibrary, TPersonalMedia, TSavedState, TDvrConfig, TDvrRule extends { id: string }> {
+  profileId: string
+  progressStorageKey: string
+  aiVoiceStorageKey: string
+  storage?: TransactionalRestoreStorage | null
+  getPrefs: () => TPrefs
+  importPrefs: (prefs: TPrefs) => void
+  getLibrary: () => TLibrary
+  importLibrary: (library: TLibrary) => void
+  exportPersonalMedia?: () => TPersonalMedia | undefined
+  importPersonalMedia?: (media: TPersonalMedia) => void
+  loadSources: () => Promise<TSavedState | null>
+  saveSources: (saved: TSavedState) => Promise<void>
+  getLocalLibraries: () => Promise<TransactionalRestoreLocalLib[]>
+  saveLocalLibrary: (lib: TransactionalRestoreLocalLib) => Promise<unknown>
+  deleteLocalLibrary: (libraryId: string) => Promise<unknown>
+  checkLocalPathsExist: (paths: string[]) => Promise<boolean[]>
+  dvrGetConfig: () => Promise<TDvrConfig | null>
+  dvrSaveConfig: (cfg: TDvrConfig) => Promise<unknown>
+  dvrGetRules: () => Promise<TDvrRule[]>
+  dvrSaveRule: (rule: TDvrRule) => Promise<unknown>
+  dvrDeleteRule: (ruleId: string) => Promise<unknown>
+}
+
+/**
+ * Executes a transactional restore across React store state, profile-scoped localStorage,
+ * and native Rust stores (saved sources, local media libraries, DVR config & rules).
+ * Snapshots every affected store before mutation and rolls back every store if any write fails.
+ */
+export async function executeTransactionalRestore<
+  TPrefs,
+  TLibrary,
+  TPersonalMedia,
+  TSavedState,
+  TDvrConfig,
+  TDvrRule extends { id: string },
+>(
+  payload: KinoraBackupPayload,
+  options: RestoreSelectionOptions,
+  adapters: TransactionalRestoreAdapters<TPrefs, TLibrary, TPersonalMedia, TSavedState, TDvrConfig, TDvrRule>,
+): Promise<void> {
+  const { profileId, progressStorageKey, aiVoiceStorageKey, storage } = adapters
+
+  if (!Number.isFinite(payload.version) || payload.version > 3) {
+    throw new Error(`Unsupported backup schema version (v${payload.version}). Update Kinora before restoring.`)
+  }
+
+  const managedKeys = [
+    'kinora.userPreferences.v1',
+    `kinora.userPreferences.v1.${profileId}`,
+    'kinora.bouquet_config.v1.default',
+    `kinora.bouquet_config.v1.${profileId}`,
+    'kinora.xtream_fallback.v1',
+    'kinora.smart_collections.v1.default',
+    `kinora.smart_collections.v1.${profileId}`,
+    'kinora.custom_artwork.v1',
+    'kinora.media_servers.v1',
+    'kinora.podcast.subscriptions.v1',
+    'kinora.podcast.progress.v1',
+    'kinora.opds.catalogs.v1',
+    progressStorageKey,
+    'kinora.stalker.portals.v1',
+    'kinora.platform.mode.v1',
+    'kinora.platform.serverUrl.v1',
+    aiVoiceStorageKey,
+    'kinora.whats_new_seen.v1',
+  ]
+
+  // 1. Snapshot all in-memory, localStorage, and native Rust stores before any mutation
+  const prevPrefs = structuredClone(adapters.getPrefs())
+  const prevLibrary = structuredClone(adapters.getLibrary())
+  const prevPersonalMedia = adapters.exportPersonalMedia ? structuredClone(adapters.exportPersonalMedia()) : undefined
+  const prevStorage = new Map<string, string | null>()
+  if (storage) {
+    for (const k of managedKeys) {
+      prevStorage.set(k, storage.getItem(k))
+    }
+  }
+
+  const willTouchSources = Boolean(options.restoreSources && payload.nativeSourcesState && typeof payload.nativeSourcesState === 'object')
+  const willTouchLocalLibs = Boolean(options.restoreSources && Array.isArray(payload.localLibraries) && payload.localLibraries.length > 0)
+  const willTouchDvrConfig = Boolean(options.restoreDvr !== false && payload.dvrConfig && typeof payload.dvrConfig === 'object')
+  const willTouchDvrRules = Boolean(options.restoreDvr !== false && Array.isArray(payload.dvrRules) && payload.dvrRules.length > 0)
+
+  const [prevNativeSources, prevLocalLibraries, prevDvrConfig, prevDvrRules] = await Promise.all([
+    willTouchSources ? adapters.loadSources().catch(() => null) : Promise.resolve(null),
+    willTouchLocalLibs ? adapters.getLocalLibraries().catch(() => []) : Promise.resolve([] as TransactionalRestoreLocalLib[]),
+    willTouchDvrConfig ? adapters.dvrGetConfig().catch(() => null) : Promise.resolve(null),
+    willTouchDvrRules ? adapters.dvrGetRules().catch(() => []) : Promise.resolve([] as TDvrRule[]),
+  ])
+
+  let sourcesMutated = false
+  const mutatedLocalLibIds = new Set<string>()
+  let dvrConfigMutated = false
+  const mutatedDvrRuleIds = new Set<string>()
+  let personalMediaMutated = false
+
+  try {
+    if (options.restorePrefs && payload.prefs && typeof payload.prefs === 'object') {
+      adapters.importPrefs(payload.prefs as unknown as TPrefs)
+    }
+
+    if (options.restoreLibrary && payload.library && typeof payload.library === 'object') {
+      adapters.importLibrary(payload.library as unknown as TLibrary)
+    }
+
+    if (options.restorePrefs && payload.userPreferences && storage) {
+      storage.setItem(`kinora.userPreferences.v1.${profileId}`, JSON.stringify(payload.userPreferences))
+      if (profileId === 'default') {
+        storage.setItem('kinora.userPreferences.v1', JSON.stringify(payload.userPreferences))
+      }
+    }
+
+    if (options.restorePersonalMedia && payload.personalMedia && adapters.importPersonalMedia) {
+      adapters.importPersonalMedia(payload.personalMedia as TPersonalMedia)
+      personalMediaMutated = true
+    }
+
+    if (options.restoreBouquets && payload.bouquets && storage) {
+      storage.setItem(`kinora.bouquet_config.v1.${profileId}`, JSON.stringify(payload.bouquets))
+    }
+
+    if (payload.xtreamFallback && storage) {
+      storage.setItem('kinora.xtream_fallback.v1', JSON.stringify(payload.xtreamFallback))
+    }
+
+    if (options.restoreSmartCollections && payload.smartCollections && storage) {
+      storage.setItem(`kinora.smart_collections.v1.${profileId}`, JSON.stringify(payload.smartCollections))
+    }
+
+    if (options.restoreCustomArtwork !== false && payload.customArtwork && storage) {
+      storage.setItem('kinora.custom_artwork.v1', JSON.stringify(payload.customArtwork))
+    }
+
+    if (willTouchSources) {
+      await adapters.saveSources(payload.nativeSourcesState as TSavedState)
+      sourcesMutated = true
+    }
+
+    if (willTouchLocalLibs && payload.localLibraries) {
+      const paths = payload.localLibraries.flatMap((l) => (l.folders?.length ? l.folders : l.path ? [l.path] : []))
+      const existsFlags = await adapters.checkLocalPathsExist(paths)
+      for (let i = 0; i < payload.localLibraries.length; i++) {
+        const lib = payload.localLibraries[i]
+        const libFolders = lib?.folders?.length ? lib.folders : lib?.path ? [lib.path] : []
+        if (lib && existsFlags[i] !== false) {
+          await adapters.saveLocalLibrary({
+            id: lib.id,
+            name: lib.name,
+            folders: libFolders,
+            mediaType: (lib.mediaType as 'movies' | 'tv') || (lib.kind === 'tv' ? 'tv' : 'movies'),
+            lastScannedAt: lib.lastScannedAt ?? null,
+            autoScan: lib.autoScan ?? true,
+            scanIntervalHours: lib.scanIntervalHours ?? 24,
+          })
+          mutatedLocalLibIds.add(lib.id)
+        }
+      }
+    }
+
+    if (willTouchDvrConfig) {
+      await adapters.dvrSaveConfig(payload.dvrConfig as TDvrConfig)
+      dvrConfigMutated = true
+    }
+
+    if (willTouchDvrRules && Array.isArray(payload.dvrRules)) {
+      for (const rule of payload.dvrRules) {
+        if (rule && typeof rule === 'object' && typeof (rule as { id?: unknown }).id === 'string') {
+          const typedRule = rule as TDvrRule
+          await adapters.dvrSaveRule(typedRule)
+          mutatedDvrRuleIds.add(typedRule.id)
+        }
+      }
+    }
+
+    if (options.restoreMediaServers !== false && payload.mediaServers && storage) {
+      storage.setItem('kinora.media_servers.v1', JSON.stringify(payload.mediaServers))
+    }
+
+    if (options.restorePodcasts !== false && storage) {
+      if (payload.podcastSubscriptions) {
+        storage.setItem('kinora.podcast.subscriptions.v1', JSON.stringify(payload.podcastSubscriptions))
+      }
+      if (payload.podcastProgress) {
+        storage.setItem('kinora.podcast.progress.v1', JSON.stringify(payload.podcastProgress))
+      }
+    }
+
+    if (options.restoreOpds !== false && storage) {
+      if (payload.opdsCatalogs) {
+        storage.setItem('kinora.opds.catalogs.v1', JSON.stringify(payload.opdsCatalogs))
+      }
+      if (payload.readingProgress) {
+        storage.setItem(progressStorageKey, JSON.stringify(payload.readingProgress))
+      }
+    }
+
+    if (options.restoreStalker !== false && payload.stalkerPortals && storage) {
+      storage.setItem('kinora.stalker.portals.v1', JSON.stringify(payload.stalkerPortals))
+    }
+
+    if (options.restorePrefs && storage) {
+      if (payload.platformConfig?.mode) {
+        storage.setItem('kinora.platform.mode.v1', payload.platformConfig.mode)
+      }
+      if (payload.platformConfig?.serverUrl) {
+        storage.setItem('kinora.platform.serverUrl.v1', payload.platformConfig.serverUrl)
+      }
+      if (payload.aiVoiceConfig) {
+        storage.setItem(aiVoiceStorageKey, JSON.stringify(payload.aiVoiceConfig))
+      }
+      if (Array.isArray(payload.whatsNewSeen)) {
+        storage.setItem('kinora.whats_new_seen.v1', JSON.stringify(payload.whatsNewSeen))
+      }
+    }
+  } catch (err: unknown) {
+    // Transactional rollback across React state, localStorage, AND native Rust stores
+    try {
+      if (mutatedDvrRuleIds.size > 0) {
+        const prevRuleMap = new Map(prevDvrRules.map((r) => [r.id, r]))
+        for (const id of mutatedDvrRuleIds) {
+          if (!prevRuleMap.has(id)) {
+            await adapters.dvrDeleteRule(id).catch(() => {})
+          }
+        }
+        for (const rule of prevDvrRules) {
+          await adapters.dvrSaveRule(rule).catch(() => {})
+        }
+      }
+
+      if (dvrConfigMutated && prevDvrConfig) {
+        await adapters.dvrSaveConfig(prevDvrConfig).catch(() => {})
+      }
+
+      if (mutatedLocalLibIds.size > 0) {
+        const prevLibMap = new Map(prevLocalLibraries.map((l) => [l.id, l]))
+        for (const id of mutatedLocalLibIds) {
+          if (!prevLibMap.has(id)) {
+            await adapters.deleteLocalLibrary(id).catch(() => {})
+          }
+        }
+        for (const lib of prevLocalLibraries) {
+          await adapters.saveLocalLibrary(lib).catch(() => {})
+        }
+      }
+
+      if (sourcesMutated && prevNativeSources) {
+        await adapters.saveSources(prevNativeSources).catch(() => {})
+      }
+
+      if (personalMediaMutated && prevPersonalMedia !== undefined && adapters.importPersonalMedia) {
+        adapters.importPersonalMedia(prevPersonalMedia)
+      }
+
+      adapters.importPrefs(prevPrefs)
+      adapters.importLibrary(prevLibrary)
+
+      if (storage) {
+        for (const [k, v] of prevStorage.entries()) {
+          if (v === null) storage.removeItem(k)
+          else storage.setItem(k, v)
+        }
+      }
+    } catch {
+      // Best effort rollback
+    }
+    throw err
+  }
 }

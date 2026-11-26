@@ -8,9 +8,14 @@ use crate::ingest::{ErrorCode, IngestError};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Default official update manifest endpoint for Kinora releases on GitHub.
+/// Default official update manifest endpoint for Kinora stable releases on GitHub.
 pub const DEFAULT_UPDATE_ENDPOINT: &str =
     "https://github.com/millsydotdev/KinoraTV/releases/latest/download/latest.json";
+
+/// Official GitHub Releases API endpoint used to discover opt-in prereleases (since GitHub's
+/// `/releases/latest` redirect never serves prereleases).
+pub const GITHUB_RELEASES_API: &str =
+    "https://api.github.com/repos/millsydotdev/KinoraTV/releases?per_page=15";
 
 /// Standard Tauri 2 update manifest structure published by GitHub Actions release workflows.
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -44,6 +49,90 @@ pub struct UpdateCheckResult {
     pub platform_key: String,
     pub platform_supported: bool,
     pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manifest_url: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+struct GitHubReleaseEntry {
+    tag_name: String,
+    draft: bool,
+    prerelease: bool,
+    #[serde(default)]
+    assets: Vec<GitHubReleaseAsset>,
+}
+
+#[derive(Deserialize, Debug)]
+struct GitHubReleaseAsset {
+    name: String,
+    browser_download_url: String,
+}
+
+fn is_trusted_github_manifest_url(raw: &str) -> bool {
+    let Ok(url) = reqwest::Url::parse(raw.trim()) else {
+        return false;
+    };
+    url.scheme() == "https"
+        && matches!(url.host_str(), Some("github.com"))
+        && url
+            .path()
+            .starts_with("/millsydotdev/KinoraTV/releases/download/")
+        && url.path().ends_with("/latest.json")
+}
+
+/// Selects the highest-SemVer release with a trusted `latest.json` manifest asset from a GitHub
+/// Releases API payload, enforcing channel compatibility (`stable` vs opt-in `prerelease`).
+pub fn select_best_manifest_url_from_github_releases(
+    releases_json: &str,
+    current_version: &str,
+    allow_prereleases: bool,
+) -> Result<Option<(String, String)>, IngestError> {
+    let releases: Vec<GitHubReleaseEntry> = serde_json::from_str(releases_json).map_err(|e| {
+        IngestError::new(
+            ErrorCode::Network,
+            format!("GitHub releases response could not be parsed: {e}"),
+        )
+    })?;
+
+    let mut best: Option<(String, String)> = None;
+
+    for rel in releases {
+        if rel.draft {
+            continue;
+        }
+        let Some(ver) = parse_semver_full(&rel.tag_name) else {
+            continue;
+        };
+        let is_pre = rel.prerelease || ver.is_prerelease();
+        if is_pre && !allow_prereleases {
+            // Stable installs never select prereleases unless explicitly opted in
+            if !parse_semver_full(current_version)
+                .map(|c| c.is_prerelease())
+                .unwrap_or(false)
+            {
+                continue;
+            }
+        }
+        if !is_channel_compatible(&rel.tag_name, current_version, allow_prereleases) {
+            continue;
+        }
+
+        let Some(asset) = rel.assets.iter().find(|a| {
+            a.name == "latest.json" && is_trusted_github_manifest_url(&a.browser_download_url)
+        }) else {
+            continue;
+        };
+
+        let replace = match &best {
+            None => true,
+            Some((best_ver, _)) => is_newer(&rel.tag_name, best_ver),
+        };
+        if replace {
+            best = Some((rel.tag_name.clone(), asset.browser_download_url.clone()));
+        }
+    }
+
+    Ok(best)
 }
 
 /// Parsed Semantic Version according to SemVer 2.0.0.
@@ -249,6 +338,7 @@ pub fn evaluate_manifest_with_options(
                 platform_key: platform.into(),
                 platform_supported: true,
                 error: None,
+                manifest_url: None,
             }
         } else {
             UpdateCheckResult {
@@ -265,6 +355,7 @@ pub fn evaluate_manifest_with_options(
                     "Release {} exists but has no package for platform {platform}.",
                     manifest.version
                 )),
+                manifest_url: None,
             }
         }
     } else {
@@ -279,21 +370,43 @@ pub fn evaluate_manifest_with_options(
             platform_key: platform.into(),
             platform_supported: asset.is_some(),
             error: None,
+            manifest_url: None,
         }
     }
 }
 
 /// Checks the release manifest for updates through Kinora's guarded HTTP client.
+/// When `allow_prereleases` is enabled (or the running app is itself a prerelease) and no
+/// explicit endpoint override is supplied, discovers the highest compatible GitHub release
+/// (including prereleases) via the GitHub Releases API before fetching its `latest.json`.
 pub async fn check_for_updates(
     endpoint_override: Option<String>,
     current_version: &str,
     allow_prereleases: bool,
 ) -> Result<UpdateCheckResult, IngestError> {
-    let endpoint = endpoint_override
-        .as_deref()
-        .unwrap_or(DEFAULT_UPDATE_ENDPOINT);
+    let current_is_prerelease = parse_semver_full(current_version)
+        .map(|v| v.is_prerelease())
+        .unwrap_or(false);
 
-    let json_text = fetch::fetch_updater_manifest(endpoint).await?;
+    let resolved_endpoint = if let Some(custom) = endpoint_override {
+        custom
+    } else if allow_prereleases || current_is_prerelease {
+        match fetch::fetch_updater_manifest(GITHUB_RELEASES_API).await {
+            Ok(releases_json) => match select_best_manifest_url_from_github_releases(
+                &releases_json,
+                current_version,
+                true,
+            ) {
+                Ok(Some((_, manifest_url))) => manifest_url,
+                _ => DEFAULT_UPDATE_ENDPOINT.to_string(),
+            },
+            Err(_) => DEFAULT_UPDATE_ENDPOINT.to_string(),
+        }
+    } else {
+        DEFAULT_UPDATE_ENDPOINT.to_string()
+    };
+
+    let json_text = fetch::fetch_updater_manifest(&resolved_endpoint).await?;
     let manifest: UpdateManifest = serde_json::from_str(&json_text).map_err(|e| {
         IngestError::new(
             ErrorCode::Network,
@@ -301,11 +414,9 @@ pub async fn check_for_updates(
         )
     })?;
 
-    Ok(evaluate_manifest_with_options(
-        &manifest,
-        current_version,
-        allow_prereleases,
-    ))
+    let mut result = evaluate_manifest_with_options(&manifest, current_version, allow_prereleases);
+    result.manifest_url = Some(resolved_endpoint);
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -514,5 +625,49 @@ mod tests {
             res.download_url.as_deref(),
             Some("https://github.com/millsydotdev/KinoraTV/releases/download/v0.6.0/kinora-0.6.0.AppImage.tar.gz")
         );
+    }
+
+    #[test]
+    fn github_releases_selector_distinguishes_stable_and_prerelease_channels() {
+        let releases_json = r#"[
+          {
+            "tag_name": "v0.7.0-draft.1",
+            "draft": true,
+            "prerelease": true,
+            "assets": [{ "name": "latest.json", "browser_download_url": "https://github.com/millsydotdev/KinoraTV/releases/download/v0.7.0-draft.1/latest.json" }]
+          },
+          {
+            "tag_name": "v0.7.0-rc.1",
+            "draft": false,
+            "prerelease": true,
+            "assets": [{ "name": "latest.json", "browser_download_url": "https://github.com/millsydotdev/KinoraTV/releases/download/v0.7.0-rc.1/latest.json" }]
+          },
+          {
+            "tag_name": "v0.6.1",
+            "draft": false,
+            "prerelease": false,
+            "assets": [{ "name": "latest.json", "browser_download_url": "https://github.com/millsydotdev/KinoraTV/releases/download/v0.6.1/latest.json" }]
+          },
+          {
+            "tag_name": "v9.9.9-evil.1",
+            "draft": false,
+            "prerelease": true,
+            "assets": [{ "name": "latest.json", "browser_download_url": "https://evil.example/latest.json" }]
+          }
+        ]"#;
+
+        // Stable channel ignores prereleases, drafts, and untrusted URLs
+        let stable = select_best_manifest_url_from_github_releases(releases_json, "0.6.0", false)
+            .unwrap()
+            .unwrap();
+        assert_eq!(stable.0, "v0.6.1");
+        assert!(stable.1.ends_with("/v0.6.1/latest.json"));
+
+        // Opt-in prerelease channel discovers v0.7.0-rc.1 while rejecting drafts and evil URLs
+        let pre = select_best_manifest_url_from_github_releases(releases_json, "0.6.0", true)
+            .unwrap()
+            .unwrap();
+        assert_eq!(pre.0, "v0.7.0-rc.1");
+        assert!(pre.1.ends_with("/v0.7.0-rc.1/latest.json"));
     }
 }
