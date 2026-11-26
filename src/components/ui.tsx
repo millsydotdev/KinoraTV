@@ -10,7 +10,8 @@ import { clock } from '../lib/time'
 export function Art({
   src,
   alt = '',
-  focus = 50,
+  focus,
+  fitMode = 'cover',
   className = '',
   eager = false,
   contentId,
@@ -23,6 +24,7 @@ export function Art({
   src: string
   alt?: string
   focus?: number
+  fitMode?: 'cover' | 'poster' | 'backdrop' | 'contain'
   className?: string
   eager?: boolean
   contentId?: string
@@ -37,6 +39,7 @@ export function Art({
   const effectiveSrc = custom?.dataUrl || src
   const containerRef = useRef<HTMLDivElement>(null)
   const imgRef = useRef<HTMLImageElement>(null)
+  const lastRequestedSrcRef = useRef<string>('')
 
   const isRemote = Boolean(effectiveSrc && (effectiveSrc.startsWith('http://') || effectiveSrc.startsWith('https://')))
   const native = inNativeShell()
@@ -52,50 +55,91 @@ export function Art({
     return 'loading'
   })
 
+  const [aspectClass, setAspectClass] = useState<string>('')
+
+  const evaluateNaturalAspect = (el: HTMLImageElement) => {
+    const w = el.naturalWidth
+    const h = el.naturalHeight
+    if (!w || !h) return
+    const ratio = w / h
+    if (fitMode === 'contain') {
+      setAspectClass('is-aspect-contain')
+    } else if (fitMode === 'poster') {
+      // Preserve full poster composition: use contain when an image is landscape/square or ultra-tall
+      setAspectClass(ratio > 0.85 || ratio < 0.52 ? 'is-aspect-contain' : '')
+    } else if (fitMode === 'backdrop') {
+      // Prevent portrait images from being stretched/cropped across full-width landscape backdrops
+      setAspectClass(h > w * 1.05 ? 'is-portrait-art' : '')
+    } else {
+      setAspectClass('')
+    }
+  }
+
   useEffect(() => {
     let active = true
     if (!effectiveSrc) {
+      lastRequestedSrcRef.current = ''
       setResolvedSrc('')
       setImageState('error')
+      setAspectClass('')
       return
     }
 
-    const startLoad = () => {
-      if (isRemote) {
-        if (native) {
-          setResolvedSrc('')
-          setImageState('loading')
-          const cacheKey = contentId ? `art:${contentId}:${effectiveSrc}` : `url:${effectiveSrc}`
-          loadCachedArtwork(cacheKey, effectiveSrc)
-            .then((dataUri) => {
-              if (!active) return
-              if (dataUri) {
-                setResolvedSrc(dataUri)
-              } else {
-                setImageState('error')
-              }
-            })
-            .catch(() => {
-              if (active) setImageState('error')
-            })
-        } else {
-          setImageState('loading')
-          setResolvedSrc(effectiveSrc)
-        }
-      } else {
+    // Local/data assets are already immediate: never reset to 'loading' if already displaying this exact src
+    if (!isRemote || !native) {
+      const el = imgRef.current
+      if (resolvedSrc === effectiveSrc && el && el.complete && el.naturalWidth > 0) {
+        evaluateNaturalAspect(el)
+        setImageState('loaded')
+        return
+      }
+      if (lastRequestedSrcRef.current !== effectiveSrc) {
+        lastRequestedSrcRef.current = effectiveSrc
+        setAspectClass('')
         setImageState('loading')
         setResolvedSrc(effectiveSrc)
       }
+      return
+    }
+
+    // Remote URL inside native Tauri shell: fetch safely through guarded Rust cache
+    if (lastRequestedSrcRef.current === effectiveSrc && resolvedSrc) {
+      const el = imgRef.current
+      if (el && el.complete && el.naturalWidth > 0) {
+        evaluateNaturalAspect(el)
+        setImageState('loaded')
+      }
+      return
+    }
+
+    const startRemoteLoad = () => {
+      lastRequestedSrcRef.current = effectiveSrc
+      setAspectClass('')
+      setResolvedSrc('')
+      setImageState('loading')
+      const cacheKey = contentId ? `art:${contentId}:${effectiveSrc}` : `url:${effectiveSrc}`
+      loadCachedArtwork(cacheKey, effectiveSrc)
+        .then((dataUri) => {
+          if (!active) return
+          if (dataUri) {
+            setResolvedSrc(dataUri)
+          } else {
+            setImageState('error')
+          }
+        })
+        .catch(() => {
+          if (active) setImageState('error')
+        })
     }
 
     if (eager || typeof IntersectionObserver === 'undefined' || !containerRef.current) {
-      startLoad()
+      startRemoteLoad()
     } else {
       let started = false
       const trigger = () => {
         if (!started) {
           started = true
-          startLoad()
+          startRemoteLoad()
         }
       }
       const observer = new IntersectionObserver(
@@ -120,25 +164,36 @@ export function Art({
     return () => {
       active = false
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveSrc, isRemote, native, contentId, eager])
 
   useEffect(() => {
     if (!resolvedSrc) return
-    const el = imgRef.current
-    if (el && el.complete) {
-      if (el.naturalWidth > 0) {
+    const checkComplete = () => {
+      const el = imgRef.current
+      if (el && el.complete && el.naturalWidth > 0) {
+        evaluateNaturalAspect(el)
         setImageState('loaded')
         onImageLoad?.({ currentTarget: el, target: el } as unknown as React.SyntheticEvent<HTMLImageElement>)
-      } else {
-        setImageState('error')
+        return true
       }
+      return false
     }
-  }, [resolvedSrc, onImageLoad])
+    if (checkComplete()) return
+    if (resolvedSrc.startsWith('data:')) {
+      const timer = setTimeout(() => {
+        checkComplete()
+      }, 150)
+      return () => clearTimeout(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolvedSrc, onImageLoad, fitMode])
 
   const state = !effectiveSrc ? 'error' : imageState
+  const inlinePos = focus !== undefined && focus !== 50 ? { objectPosition: `${focus}% 50%` } : undefined
 
   return (
-    <div ref={containerRef} className={`art ${state === 'loading' ? 'is-loading' : ''} ${className}`}>
+    <div ref={containerRef} className={`art ${state === 'loading' ? 'is-loading' : ''} ${aspectClass} ${className}`}>
       {state !== 'error' && resolvedSrc ? (
         <img
           ref={imgRef}
@@ -146,9 +201,10 @@ export function Art({
           alt={alt}
           loading={eager ? 'eager' : 'lazy'}
           decoding={eager ? 'sync' : 'async'}
-          style={{ objectPosition: `${focus}% 50%` }}
+          style={inlinePos}
           className={state === 'loaded' ? 'is-loaded' : ''}
           onLoad={(e) => {
+            evaluateNaturalAspect(e.currentTarget)
             setImageState('loaded')
             onImageLoad?.(e)
           }}

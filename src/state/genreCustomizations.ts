@@ -31,6 +31,48 @@ export interface GenreCustomizationState {
 
 const STORAGE_KEY = 'kinora.genreCustomizations.v1'
 
+/**
+ * Returns true if a cached/persisted genre artwork path points to a legacy demo asset
+ * under `/art/` (outside the authoritative `/art/genres/` collection).
+ * User uploads (`data:`), external URLs (`https://`), and `/art/genres/` overrides are preserved.
+ */
+export function isLegacyGenreArtworkPath(url: string | undefined | null): boolean {
+  if (!url || typeof url !== 'string') return false
+  const trimmed = url.trim()
+  if (!trimmed.startsWith('/art/')) return false
+  return !trimmed.startsWith('/art/genres/')
+}
+
+export function sanitizeCustomGenreArtwork(
+  raw: Record<string, { landscape?: string; portrait?: string; banner?: string }> | undefined,
+): {
+  sanitized: Record<string, { landscape?: string; portrait?: string; banner?: string }>
+  migrated: boolean
+} {
+  if (!raw || typeof raw !== 'object') return { sanitized: {}, migrated: false }
+  let migrated = false
+  const sanitized: Record<string, { landscape?: string; portrait?: string; banner?: string }> = {}
+  for (const [genreId, entry] of Object.entries(raw)) {
+    if (!entry || typeof entry !== 'object') continue
+    const nextEntry: { landscape?: string; portrait?: string; banner?: string } = {}
+    for (const key of ['landscape', 'portrait', 'banner'] as const) {
+      const val = entry[key]
+      if (!val) continue
+      if (isLegacyGenreArtworkPath(val)) {
+        migrated = true
+      } else {
+        nextEntry[key] = val
+      }
+    }
+    if (Object.keys(nextEntry).length > 0) {
+      sanitized[genreId] = nextEntry
+    } else if (Object.keys(entry).length > 0) {
+      migrated = true
+    }
+  }
+  return { sanitized, migrated }
+}
+
 export const initialGenreCustomizations: GenreCustomizationState = {
   version: 1,
   customArtwork: {},
@@ -48,9 +90,10 @@ export function loadSavedCustomizations(): GenreCustomizationState {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return initialGenreCustomizations
     const parsed = JSON.parse(raw) as Partial<GenreCustomizationState>
-    return {
+    const { sanitized, migrated } = sanitizeCustomGenreArtwork(parsed.customArtwork)
+    const state: GenreCustomizationState = {
       version: 1,
-      customArtwork: parsed.customArtwork && typeof parsed.customArtwork === 'object' ? parsed.customArtwork : {},
+      customArtwork: sanitized,
       customNames: parsed.customNames && typeof parsed.customNames === 'object' ? parsed.customNames : {},
       customAliases: parsed.customAliases && typeof parsed.customAliases === 'object' ? parsed.customAliases : {},
       disabledGenreIds: Array.isArray(parsed.disabledGenreIds) ? parsed.disabledGenreIds : [],
@@ -58,6 +101,14 @@ export function loadSavedCustomizations(): GenreCustomizationState {
       customProviderMappings: parsed.customProviderMappings && typeof parsed.customProviderMappings === 'object' ? parsed.customProviderMappings : {},
       lastRefreshedAt: typeof parsed.lastRefreshedAt === 'number' ? parsed.lastRefreshedAt : null,
     }
+    if (migrated) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+      } catch {
+        // Ignore storage write failure during migration
+      }
+    }
+    return state
   } catch {
     return initialGenreCustomizations
   }

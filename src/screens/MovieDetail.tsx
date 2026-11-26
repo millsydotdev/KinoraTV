@@ -204,6 +204,7 @@ function MovieDetailView({
           alt={movie.title}
           contentId={ref}
           focus={movie.focus}
+          fitMode="backdrop"
           eager
           className="detail-backdrop"
           fallbackIcon="film"
@@ -218,6 +219,7 @@ function MovieDetailView({
                   src={effectivePoster}
                   alt={`${movie.title} poster`}
                   contentId={`${ref}:poster`}
+                  fitMode="poster"
                   eager
                   fallbackIcon="film"
                   fallbackYear={movie.year}

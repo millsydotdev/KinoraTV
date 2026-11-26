@@ -435,13 +435,14 @@
   box-shadow: 0 0 12px var(--accent-glow, rgba(229, 9, 20, 0.4));
 }
 
-.streaming-genre-tile-art {
-  position: absolute;
+.streaming-genre-tile-art,
+.streaming-genre-tile > .art.streaming-genre-tile-art {
+  position: absolute !important;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  filter: brightness(0.65) saturate(1.1);
+  filter: brightness(0.68) saturate(1.1);
 }
 
 .streaming-genre-tile-scrim {
@@ -464,8 +465,8 @@
 
 .streaming-genre-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 18px;
   margin-top: 14px;
 }
 
@@ -589,44 +590,64 @@
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.8);
 }
 
-/* 2:3 Portrait Theatrical Poster Cards */
+/* 2:3 Portrait Theatrical Poster Cards (unobstructed artwork with caption underneath) */
 .streaming-card-poster {
-  width: clamp(155px, 12.5vw, 205px);
+  width: clamp(160px, 13vw, 210px);
   flex: none;
-  aspect-ratio: 2 / 3;
   border-radius: 10px;
-  overflow: hidden;
   position: relative;
-  background: #12151a;
-  border: 1px solid rgba(255, 255, 255, 0.08);
   text-decoration: none;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
-  padding: 12px 14px;
+  gap: 8px;
   box-sizing: border-box;
   will-change: transform;
-  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1), border-color 220ms ease, box-shadow 220ms ease;
+  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.streaming-card-poster:hover {
-  transform: translateY(-5px) scale(1.02);
-  border-color: var(--line-strong, rgba(255, 255, 255, 0.3));
+.streaming-card-poster:hover,
+.streaming-card-poster:focus-visible {
+  transform: translateY(-4px);
+}
+
+.streaming-card-poster-media {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #12151a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: border-color 220ms ease, box-shadow 220ms ease;
+}
+
+.streaming-card-poster:hover .streaming-card-poster-media,
+.streaming-card-poster:focus-visible .streaming-card-poster-media {
+  border-color: var(--line-strong, rgba(255, 255, 255, 0.32));
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.8);
 }
 
+.streaming-card-poster-media > .streaming-card-art,
 .streaming-card-poster .streaming-card-art {
-  position: absolute;
+  position: absolute !important;
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  aspect-ratio: 2 / 3;
 }
 
 .streaming-card-poster .streaming-card-art img {
+  width: 100%;
+  height: 100%;
   object-fit: cover;
-  object-position: center 15%;
+  object-position: center 12%;
+}
+
+.streaming-card-poster-caption {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 2px;
+  min-width: 0;
 }
 
 .streaming-card-art {

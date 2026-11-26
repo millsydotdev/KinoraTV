@@ -674,8 +674,16 @@ export function buildHomeFeed(inputs: HomeFeedInputs): HomeFeedData {
     now,
   })
 
-  // 11. Recently Added Titles
-  const recentlyAdded = [...safeMovies, ...safeSeries]
+  // 11. Recently Added Titles (strictly respect demoTitles vs real open catalogue)
+  const openMovieIdSet = new Set(OPEN_MOVIES.map((m) => m.id))
+  const openSeriesIdSet = new Set(OPEN_SERIES.map((s) => s.id))
+  const eligibleRecentlyAdded = demoTitles
+    ? [...safeMovies, ...safeSeries]
+    : [
+        ...safeMovies.filter((m) => openMovieIdSet.has(m.id)),
+        ...safeSeries.filter((s) => openSeriesIdSet.has(s.id)),
+      ]
+  const recentlyAdded = eligibleRecentlyAdded
     .filter((t) => !hiddenItems.includes(t.kind === 'movie' ? movieRef(t.id) : seriesRef(t.id)))
     .sort((a, b) => b.added.localeCompare(a.added))
     .slice(0, 12)

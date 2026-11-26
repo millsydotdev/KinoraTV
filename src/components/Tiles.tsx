@@ -227,6 +227,7 @@ export function PosterCard({ to, title, art, posterUrl, artworkKey, focus = 50, 
             alt={title}
             contentId={resolvedId || to}
             focus={focus}
+            fitMode="poster"
             className="card-media"
             fallbackIcon={isSeries ? 'series' : 'film'}
             fallbackYear={year}

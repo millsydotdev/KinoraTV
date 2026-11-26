@@ -621,9 +621,20 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   object-position: center;
 }
 .card-poster .card-media img,
-.poster-card .card-media img {
+.poster-card .card-media img,
+.detail-hero-poster-wrap img,
+.season-poster-thumb img,
+.results-series .result-thumb .art img,
+.results-films .result-thumb .art img {
   object-fit: cover;
-  object-position: center 15%;
+  object-position: center 12%;
+}
+.art.is-aspect-contain {
+  background: var(--surface-2, #12151a);
+}
+.art.is-aspect-contain img {
+  object-fit: contain !important;
+  object-position: center !important;
 }
 .channel-card-ambient {
   position: absolute;
