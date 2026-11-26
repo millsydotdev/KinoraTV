@@ -3,6 +3,8 @@
 // Adheres strictly to typography standards: zero em-dashes.
 
 import { act } from 'react'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { RemoteHintBar } from './RemoteHintBar'
@@ -84,5 +86,28 @@ describe('RemoteHintBar component', () => {
     expect(document.querySelector('[data-testid="remote-hint-playpause"]')?.textContent).toContain('Play / Pause')
     expect(document.querySelector('[data-testid="remote-hint-zap"]')?.textContent).toContain('Quick Switch')
     expect(document.querySelector('[data-testid="remote-hint-ch---"]')?.textContent).toContain('Change Channel')
+  })
+
+  it('bounds the hint bar strictly to the main content inset and below sidebar z-index', () => {
+    const css = readFileSync(resolve(process.cwd(), 'src/components/RemoteHintBar.css'), 'utf8')
+    const globalCss = readFileSync(resolve(process.cwd(), 'src/styles/global.css'), 'utf8')
+    const appTsx = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8')
+
+    // Must track the dynamic shell content inset rather than hard-coded left: 0
+    expect(css).toContain('left: var(--content-inset-left')
+    expect(css).toContain('justify-content: flex-end')
+    expect(css).toContain('width: fit-content')
+    expect(css).toContain('z-index: 30')
+    expect(css).toContain('pointer-events: none')
+
+    // Global shell defines the dynamic content inset and resets it at mobile drawer width
+    expect(globalCss).toContain('--content-inset-left: var(--side-w)')
+    expect(globalCss).toContain('--content-inset-left: 0px')
+    expect(globalCss).toContain('.shell.has-remote-hint .page')
+
+    // App mounts RemoteHintBar inside <main> and hides it when overlays are open
+    const mainBlock = appTsx.slice(appTsx.indexOf('<main id="main"'), appTsx.indexOf('</main>'))
+    expect(mainBlock).toContain('<RemoteHintBar')
+    expect(appTsx).toContain('!anyOverlayOpen')
   })
 })

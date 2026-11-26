@@ -565,11 +565,21 @@ function Shell() {
     }
   }, [updater.state.stage])
 
+  const anyOverlayOpen =
+    paletteOpen ||
+    shortcutsOpen ||
+    whatsNewOpen ||
+    remoteModalOpen ||
+    traktModalOpen ||
+    downloadsModalOpen ||
+    screensaverActive
+  const showRemoteHint = prefs.viewMode === 'tv' && !inPlayer && !anyOverlayOpen
+
   return (
     <NavMenuContext.Provider value={openNav}>
       <a href="#main" className="skip-link">Skip to content</a>
       <OfflineBanner />
-      <div className={inPlayer ? '' : `shell${mediaLibrary.currentAudio ? ' has-audio-bar' : ''}`}>
+      <div className={inPlayer ? '' : `shell${mediaLibrary.currentAudio ? ' has-audio-bar' : ''}${showRemoteHint ? ' has-remote-hint' : ''}`}>
       {!inPlayer && <Sidebar open={navOpen} onClose={closeNav} />}
       <main id="main" className="main" tabIndex={-1}>
         {!inPlayer && <UpdateNotificationBanner onViewReleaseNotes={() => setWhatsNewOpen(true)} />}
@@ -620,6 +630,17 @@ function Shell() {
             </Routes>
           </Suspense>
         </ErrorBoundary>
+        {showRemoteHint && (
+          <RemoteHintBar
+            red="Live Guide"
+            green="Channels"
+            yellow="Audio"
+            blue="Settings"
+            ok="Select"
+            back="Back"
+            className={mediaLibrary.currentAudio ? 'remote-hint-with-audio' : ''}
+          />
+        )}
       </main>
       </div>
       {!inPlayer && (
@@ -637,17 +658,6 @@ function Shell() {
           sleepTimerRemaining={mediaLibrary.sleepTimerRemaining}
           onSetSleepTimer={mediaLibrary.setSleepTimer}
           onUpdateLyrics={mediaLibrary.updateAudioLyrics}
-        />
-      )}
-      {prefs.viewMode === 'tv' && !inPlayer && (
-        <RemoteHintBar
-          red="Live Guide"
-          green="Channels"
-          yellow="Audio"
-          blue="Settings"
-          ok="Select"
-          back="Back"
-          className={!inPlayer && mediaLibrary.currentAudio ? 'remote-hint-with-audio' : ''}
         />
       )}
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
