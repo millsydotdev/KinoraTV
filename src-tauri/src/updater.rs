@@ -219,10 +219,20 @@ pub fn current_platform_key() -> &'static str {
 }
 
 /// Evaluates a parsed manifest against the local application version and platform.
+#[allow(dead_code)]
 pub fn evaluate_manifest(manifest: &UpdateManifest, current_version: &str) -> UpdateCheckResult {
+    evaluate_manifest_with_options(manifest, current_version, false)
+}
+
+/// Evaluates a parsed manifest with explicit channel opt-in (stable vs prerelease).
+pub fn evaluate_manifest_with_options(
+    manifest: &UpdateManifest,
+    current_version: &str,
+    allow_prereleases: bool,
+) -> UpdateCheckResult {
     let platform = current_platform_key();
     let asset = manifest.platforms.get(platform);
-    let channel_compatible = is_channel_compatible(&manifest.version, current_version, false);
+    let channel_compatible = is_channel_compatible(&manifest.version, current_version, allow_prereleases);
     let newer = channel_compatible && is_newer(&manifest.version, current_version);
 
     if newer {
@@ -276,6 +286,7 @@ pub fn evaluate_manifest(manifest: &UpdateManifest, current_version: &str) -> Up
 pub async fn check_for_updates(
     endpoint_override: Option<String>,
     current_version: &str,
+    allow_prereleases: bool,
 ) -> Result<UpdateCheckResult, IngestError> {
     let endpoint = endpoint_override
         .as_deref()
@@ -289,7 +300,11 @@ pub async fn check_for_updates(
         )
     })?;
 
-    Ok(evaluate_manifest(&manifest, current_version))
+    Ok(evaluate_manifest_with_options(
+        &manifest,
+        current_version,
+        allow_prereleases,
+    ))
 }
 
 #[cfg(test)]

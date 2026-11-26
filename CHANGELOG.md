@@ -1,107 +1,174 @@
 # Changelog
 
-All notable changes to Kinora will be documented in this file.
+All notable changes to Kinora are maintained in `src/data/changelog.json` and rendered into this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.6.0] - 2026-11-19 (Desktop Expansion and Layout Overhaul)
+## [0.6.0] - 2026-11-26 (Complete Media Platform, Central Server & Multi-Device Experience)
 
-### Added
-- **Staging Environment Isolation:** Created dedicated staging configuration (`src-tauri/tauri.staging.conf.json`) with bundle identifier `io.github.millsydotdev.kinora.staging` and isolated application data directory (`~/.local/share/io.github.millsydotdev.kinora.staging/`), ensuring staging builds never touch production user data.
-- **Staging Build Tooling:** Added `build:staging`, `tauri:dev:staging`, and `tauri:build:staging` npm scripts with build-time environment injection via `__APP_ENV__`.
-- **Unified 5-Stage Artwork Pipeline:** Implemented prioritized artwork resolution (custom, TMDB/TVmaze metadata, provider/local media, bundled assets, and branded SVG fallbacks) with strict aspect-ratio enforcement across movies (2:3), series (2:3), episodes (16:9), and channel logos.
-- **Development and Release Documentation:** Authored comprehensive architectural guides including `STAGING.md`, `RELEASE.md`, `DEPLOYMENT.md`, and `docs/DEVELOPMENT-AND-RELEASE-WORKFLOW.md`.
+Kinora 0.6.0 expands the standalone desktop app into a complete multi-device media platform with an optional headless Kinora Server, a touch-optimised mobile web remote, a virtualised Live TV guide, real EPUB/PDF reading, encrypted migration backups, and a structured in-app release history.
 
-### Fixed
-- **Global Layout Composition:** Eliminated permanent right-hand columns that squeezed main content across Live TV, Movies, and Settings.
-- **Full-Width Live TV Guide:** Removed redundant `tvguide-split-layout` and `tvguide-side-dock`; TV Guide now renders at 100% full width, and programme details open cleanly in the contextual slide-out sheet drawer.
-- **Movies Quick Look Drawer:** Converted `.movies-side-panel` into a contextual slide-out drawer overlay with a dimmed backdrop and close button, eliminating the permanent 360px layout reservation.
-- **Settings 2-Column Grid:** Restructured Settings into a clean 2-column layout (240px nav, 1fr content) across all sections, embedding Live Preview, Theme Presets, Typography, and Interface Density controls directly inside the Appearance section.
-- **Home Top Stage Rebalance:** Rebalanced top stage grid so companion hub stays proportionally bounded (340px to 420px) while the cinematic hero stage dominates.
-- **Search and Sources Width Expansion:** Removed restrictive max-width limits on Search (`width: 100%`) and Discovery (`width: 100%`), allowing desktop grids to expand cleanly.
-- **Gutter Padding Alignment:** Standardized horizontal padding to `var(--gutter, 24px)` across MediaStreaming, Recordings, and Browse bars.
+### New Features
+- **Structured What's New, Offline Version History & Hardened Updater:** Review categorised release notes after every update, browse full version history offline, select update channels, track verified download and installation stages, and check client/server version compatibility.
 
-### Security
-- **Strict SSRF Protections:** Verified destination IP checks in native Rust fetch engine, refusing private, loopback, link-local, and multicast destinations.
-- **Token Redaction:** Verified that all error messages scrub paths, queries, and authentication tokens before reporting to the frontend.
-- **Zero Em-Dash Standard:** Enforced strict typographic rule prohibiting em-dashes across all code, comments, documentation, and UI text.
+### UI Upgrades
+- **Cinematic Home Stage & Full-Width Layouts:** Redesigned Home with a widescreen featured spotlight, Quick Jump navigation ribbon, curated rails, and a collapsible companion hub, while expanding Live TV, Movies, Search, and Settings to use the full viewport width.
+- **10-Foot Television Mode, Gamepad & Remote Navigation:** Switch cleanly between Desktop and 10-foot TV layouts with D-pad spatial focus navigation, gamepad support, clear focus indicators, and 4K television scaling.
+
+### Playback Improvements
+- **Persistent Universal Player Dock & Sleep Timer HUD:** Keep live channels and videos playing in a compact dock while browsing other screens, with one-click expand to full screen, audio/subtitle controls, DASH format detection, and an on-screen sleep timer countdown.
+
+### Live TV and EPG
+- **High-Scale Virtualised Live TV Guide & Multi-Tier Matching:** Browse 10,000+ channels smoothly with 2D virtualised rows and time-windowing, improved multi-tier XMLTV channel matching, custom bouquets, catch-up playback, and DVR series recording rules.
+
+### Movies and Series
+- **Unified Movies, Series & Real-Time Local Media Libraries:** Browse movies and series across Xtream Codes providers, Jellyfin/Emby/Plex media servers, and local video folders with automatic folder change detection, smart collections, and cross-source deduplication.
+
+### Audio and Podcasts
+- **Guarded Podcast RSS Subscriptions & Episode Progress:** Subscribe directly to RSS and Atom podcast feeds through Kinora's guarded native fetcher, resume in-progress episodes, mark episodes played, and queue audio in the persistent audio bar.
+
+### Books and Reading
+- **Real EPUB, PDF & Text Reader with OPDS Catalogue Browser:** Open local EPUB, PDF, Markdown, HTML, and plain text books directly inside Kinora with a table of contents, multiple bookmarks, customisable reading themes, saved reading progress, and a built-in OPDS catalogue browser.
+
+### AI and Automation
+- **Unified Capability Layer, AI Controls & Opt-In Push-to-Talk Voice:** Operate playback, channel tuning, EPG queries, search, and device checks through one capability-gated service shared by the UI, remote, authorised AI agents, and strictly opt-in push-to-talk voice input.
+
+### Server and Devices
+- **Standalone, Central Server & Client Operating Modes:** Run Kinora independently on one device, host an always-on headless Kinora Server (desktop, Linux systemd service, or Docker), or connect household clients with automatic LAN discovery and guarded stream proxying.
+
+### Mobile Remote
+- **Touch Mobile Web Remote with QR Pairing, EPG & Media Control:** Control Kinora from any phone or tablet on your local network using a 6-digit PIN or QR code, featuring a D-pad, interactive seek bar, mobile keyboard, live TV Guide browser, and one-tap media playback.
+
+### Synchronisation
+- **Conflict-Safe Cross-Device Watch Progress & Library Sync:** Synchronise favourites, watchlists, and Continue Watching progress across connected Kinora clients in real time over Server-Sent Events without letting stale offline devices overwrite newer progress.
+
+### Artwork and Discovery
+- **Dedicated Genre Artwork Collection & 5-Stage Artwork Pipeline:** Replaced generic geometric genre placeholders with dedicated cinematic genre artwork across parent genres and subgenres, backed by a 5-stage artwork resolver and custom artwork library.
+
+### Security and Privacy
+- **API Rate Limiting, Guarded Feed Fetching & Profile Isolation:** Added sliding-window API rate limiting on Kinora Server, routed podcast and OPDS network requests through Rust's anti-SSRF fetcher, isolated profile libraries with cascading deletion, and hardened parental PIN hashing.
+
+### Reliability Improvements
+- **Full Encrypted Backup, Migration Wizard & Atomic Rollback:** Back up preferences, sources, guides, bouquets, DVR rules, podcasts, reading progress, and non-secret platform settings into an AES-256-GCM encrypted archive with SHA-256 verification and automatic rollback if restoration fails.
+
+### Bug Fixes
+- **Cache Clearing, QR Encoding, Sidebar Contrast & Routing Fixes:** Fixed artwork cache clearing in Settings to invoke native storage cleanup, corrected QR code Reed-Solomon format bits for reliable phone scanning, elevated sidebar contrast, and unified BrowserRouter navigation across voice and remote commands.
+
+### Developer and Infrastructure Improvements
+- **Staging Isolation, Headless Server Docker Target & Automated Changelog Pipeline:** Added isolated staging build configuration, a zero-GUI headless server Docker image, systemd service unit, automated changelog validation, and end-to-end multi-device verification scripts.
 
 ---
 
 ## [0.5.0] - 2026-11-15 (Public Desktop Release Candidate)
 
-### Added
-- **Licensing & IP Protection:** Published under the Kinora Proprietary Source-Available Licence (All Rights Reserved) with explicit AI/ML training restrictions and source-available evaluation rights.
-- **Creator Attribution:** Added visible creator credit to millsydotdev in Settings > About with clickable link to https://github.com/millsydotdev, root README, and project documentation.
-- **Tauri Updater & What's New Experience:** Implemented full in-app update lifecycle with release notes modal, real download progress, restart notifications, and persistent notification history.
-- **Canonical Repository Alignment:** Synchronised updater endpoints, release workflows, and community templates to `millsydotdev/KinoraTV`.
-- **Cross-Platform Release Automation:** Validated multi-platform packaging matrices across Linux (RPM, DEB, AppImage), Windows (x64 NSIS, MSI), and macOS (Apple Silicon / Intel DMG).
+Established Kinora's public desktop release pipeline, signed Tauri 2 updater verification, multi-platform packaging matrices, and authentic cinematic card artwork.
 
-### Fixed
-- **Recommendation Card Artworks:** Restored genuine, authentic mock artworks from the master visual reference in the Home Recommended for You rail, eliminating recursive screenshot artifacts.
-- **Artwork Aspect Ratio:** Standardised card tile dimensions to 220x185 matching cinematic mockup specifications.
+### New Features
+- **Signed Multi-Platform Updater & Release Automation:** Introduced Tauri 2 updater checks against signed GitHub release manifests across Linux (DEB, RPM, AppImage), Windows (NSIS, MSI), and macOS (Apple Silicon and Intel DMG).
 
-### Security
-- **Guarded Update Manifests:** Update downloads and metadata validation enforce HTTPS-only connections and strict SSRF loopback protections.
-- **Zero Exposed Secrets:** Completed exhaustive historical and working-tree security review prior to public release.
+### Artwork and Discovery
+- **Home Recommendation Card Visual Parity:** Restored authentic reference artwork across the Recommended for You rail with consistent 220x185 tile framing.
+
+### Security and Privacy
+- **Kinora Proprietary Source-Available Licence & Attribution:** Published Kinora under an explicit All Rights Reserved source-available licence with creator attribution to millsydotdev in Settings > About and project documentation.
+- **Guarded Update Manifests & Secret Hygiene:** Enforced HTTPS-only update manifest fetching with anti-SSRF destination checks and completed full working-tree secret verification.
 
 ---
 
 ## [0.1.0] - 2026-11-15 (Release Candidate Preparation)
 
-### Added
-- **Multi-Platform Packaging:** Added packaging configurations for Linux (RPM, DEB, AppImage), Windows (NSIS, MSI), and macOS (DMG, App Bundle) in `tauri.conf.json`.
-- **Automated GitHub Release Pipeline:** Created `.github/workflows/release.yml` with multi-platform matrix builds, SHA-256 checksum aggregation, and draft release publishing.
-- **In-App Update Detection:** Implemented `updater.rs` in native Rust evaluating signed manifests over guarded HTTPS connections (`Policy::updater()`), bound to native IPC and Settings UI.
-- **macOS Hardened Runtime:** Configured `entitlements.plist` enabling JIT, network client, and audio device permissions for Gatekeeper and Apple notarization.
-- **Unified Notification Architecture:** Connected `ToastProvider` with `NotificationProvider`, routing ephemeral alerts into a persistent history drawer with unread badges.
-- **Community & Governance Templates:** Authored `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, issue templates, and pull request template.
+Delivered multi-platform packaging, unified notifications, macOS hardened runtime support, and Windows atomic persistence fixes.
 
-### Fixed
-- **Windows File Persistence:** Resolved atomic write crash on Windows by guarding directory synchronization (`sync_all()`) to POSIX systems (`#[cfg(unix)]`).
-- **CSS Minification Syntax Error:** Corrected malformed nested transition rules in `src/screens/Home.css` that caused Vite lightningcss production build failures.
-- **Tauri Bundle Configuration:** Corrected macOS configuration key casing in `tauri.conf.json` (`macOS`).
-- **Clippy Lint Hygiene:** Replaced manual pattern closures with character slice patterns in semver string parsing.
+### UI Upgrades
+- **Unified Notification Drawer & Toast Routing:** Connected ephemeral toast alerts with a persistent notification history drawer and unread badge counter.
 
-### Security
-- **Strict SSRF Protections:** Enforced destination verification and loopback/private IP blocking across all playlist, guide, catalogue, and updater network traffic.
-- **Memory-Only Stream Tokens:** Maintained upstream stream addresses and query credentials strictly in native Rust memory behind opaque `kstream://localhost/` handles.
-- **Salted PIN Storage:** Hardened parental controls with salted PBKDF2 hashing and automatic lockout after repeated invalid entries.
+### Security and Privacy
+- **Salted Parental PIN & Memory-Only Stream Handles:** Protected parental controls with salted hashing and automatic lockout while keeping upstream stream credentials behind opaque local handles.
+
+### Bug Fixes
+- **Cross-Platform Atomic Storage & CSS Build Stability:** Fixed Windows directory sync handling during atomic saves and resolved CSS minification syntax issues in production builds.
+
+### Developer and Infrastructure Improvements
+- **Cross-Platform Installers & SHA-256 Checksum Pipeline:** Configured Linux, Windows, and macOS bundle targets with automated GitHub Actions release workflows and SHA-256 verification.
 
 ---
 
-## [0.0.9] - 2026-11-01 (M1 First-Run Milestone)
-- Made first-run experience honest with explicit sample mode separation.
-- Connected real Live TV channel playing directly from setup.
-- Added country selection and iptv-org discovery onboarding.
+## [0.0.9] - 2026-11-01 (First-Run Onboarding & Honest Sample Mode)
 
-## [0.0.8] - 2026-10-29 (Gate D8 Reliability)
-- Hardened end-to-end reliability and memory footprint.
-- Added clock-independent timezone testing for guide schedules.
-- Added comprehensive Vitest and Cargo test suites.
+Introduced a skippable first-run setup flow with country playlist selection and clear separation between real sources and optional sample data.
 
-## [0.0.7] - 2026-10-29 (Gate D7 Discovery Catalogue)
-- Added public playlist discovery using iptv-org's open directory.
-- Guaranteed explicit user confirmation before importing any discovered source.
+### New Features
+- **Guided First-Run Setup & Sample Mode Separation:** Added step-by-step country playlist onboarding via iptv-org discovery and ensured demo content is opt-in only and clearly labelled.
 
-## [0.0.6] - 2026-10-28 (Gate D6 XMLTV EPG)
-- Implemented pure XMLTV parser with DTD expansion attack rejections.
-- Added fuzzy and loose channel matching against guide listings.
+---
 
-## [0.0.5] - 2026-10-27 (Gate D5 Local Persistence)
-- Implemented atomic file saving for sources in user app data (`0700` directory, `0600` file).
-- Added corrupt file recovery handling without data deletion.
+## [0.0.8] - 2026-10-29 (Reliability, Timezone & Test Hardening)
 
-## [0.0.4] - 2026-10-27 (Gate D4 Guarded Playback)
-- Implemented native `kstream://localhost/` HLS rewriter and handle proxy.
-- Added DRM refusal and stream size/bandwidth budgets.
+Hardened guide schedule handling across daylight saving transitions and expanded automated Vitest and Rust test coverage.
 
-## [0.0.3] - 2026-10-25 (Gate D3 M3U Ingestion)
-- Connected parsed M3U channels to Live TV guide, categories, and channel filters.
+### Reliability Improvements
+- **Timezone-Safe Guide Scheduling & Expanded Test Suites:** Added clock-independent schedule calculations for 23-hour and 25-hour daylight saving days and expanded automated test coverage.
 
-## [0.0.2] - 2026-10-25 (Gate D2 Rust M3U Parser)
-- Added Rust M3U parser with guarded HTTP client (`no_proxy()`, anti-SSRF).
+---
 
-## [0.0.1] - 2026-10-22 (Pre-Tauri Baseline)
-- Initial React 19 + TypeScript desktop UI prototype.
+## [0.0.7] - 2026-10-29 (Public Playlist Discovery Catalogue)
+
+Added Discovery browsing of the public iptv-org directory with explicit user confirmation before importing any playlist.
+
+### Source Integrations
+- **iptv-org Public Playlist Discovery:** Browse curated public country and category playlists and import chosen sources through Kinora's standard guarded M3U pipeline.
+
+---
+
+## [0.0.6] - 2026-10-28 (XMLTV Electronic Programme Guide)
+
+Implemented a pure Rust XMLTV parser with entity-attack protection and channel matching for live TV schedules.
+
+### Live TV and EPG
+- **Guarded XMLTV Parser & Channel Matching:** Import XMLTV and gzipped XMLTV guides by URL or file with DTD expansion attack refusal and flexible channel matching.
+
+---
+
+## [0.0.5] - 2026-10-27 (Atomic Local Persistence)
+
+Added atomic local storage for saved sources with strict POSIX permissions and non-destructive corrupt-file recovery.
+
+### Reliability Improvements
+- **Atomic Source Persistence & Recovery:** Saved sources use atomic temp-file renames with restricted permissions (0700/0600) and move damaged files aside without deletion.
+
+---
+
+## [0.0.4] - 2026-10-27 (Guarded Native HLS Playback)
+
+Implemented the native kstream protocol and HLS playlist rewriter so upstream stream URLs never leak to the webview.
+
+### Playback Improvements
+- **Native Guarded HLS Rewriter & Playback:** Streams play through opaque local handles with bounded session budgets, cancellation on channel switch, and DRM refusal.
+
+---
+
+## [0.0.3] - 2026-10-25 (Live TV Playlist Integration)
+
+Connected imported M3U playlist channels to the Live TV guide, category filters, and channel browsing screens.
+
+### Live TV and EPG
+- **M3U Channels in Live TV & Categories:** Imported M3U playlists populate Live TV channels, group chips, and channel search cleanly.
+
+---
+
+## [0.0.2] - 2026-10-25 (Rust M3U Parser & Anti-SSRF HTTP Client)
+
+Added native Rust M3U parsing and a guarded HTTP client enforcing direct connections and private network refusal.
+
+### Security and Privacy
+- **Guarded Native M3U Ingestion:** Added bounded M3U parsing in Rust with no-proxy direct fetching, DNS/redirect SSRF checks, and credential-free errors.
+
+---
+
+## [0.0.1] - 2026-10-22 (Initial Desktop UI Baseline)
+
+Initial React 19 and TypeScript desktop media interface prototype.
+
+### New Features
+- **Initial Kinora Desktop Interface:** Established the React 19 and TypeScript interface foundation for Live TV, movies, series, and library views.

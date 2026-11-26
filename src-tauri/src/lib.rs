@@ -225,10 +225,11 @@ fn clear_metadata_credentials(vault: tauri::State<'_, metadata_vault::MetadataVa
 #[tauri::command]
 async fn check_for_updates(
     endpoint: Option<String>,
+    allow_prereleases: Option<bool>,
     app: tauri::AppHandle,
 ) -> Result<updater::UpdateCheckResult, ingest::IngestError> {
     let current_version = app.package_info().version.to_string();
-    updater::check_for_updates(endpoint, &current_version).await
+    updater::check_for_updates(endpoint, &current_version, allow_prereleases.unwrap_or(false)).await
 }
 
 #[tauri::command]

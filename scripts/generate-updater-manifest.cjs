@@ -61,10 +61,26 @@ platforms['darwin-x86_64'] = findAssetAndSig([
   /x64.*\.app\.tar\.gz$/i
 ]);
 
-const defaultNotes = `Kinora v${authVersion} Desktop Release\n\n` +
+function loadStructuredReleaseNotes(version) {
+  try {
+    const changelogPath = path.resolve(__dirname, '..', 'src', 'data', 'changelog.json');
+    const db = JSON.parse(fs.readFileSync(changelogPath, 'utf8'));
+    const rel = Array.isArray(db.releases) ? db.releases.find((r) => r.version === version) : null;
+    if (!rel) return null;
+    const userEntries = (rel.entries || []).filter((e) => e.audience !== 'developer');
+    const bullets = userEntries.slice(0, 8).map((e) => `- ${e.title}: ${e.description}`);
+    return `Kinora v${rel.version}: ${rel.title}\n\n${rel.summary}\n\n${bullets.join('\n')}`;
+  } catch {
+    return null;
+  }
+}
+
+const defaultNotes = loadStructuredReleaseNotes(authVersion) || (
+  `Kinora v${authVersion} Desktop Release\n\n` +
   '- Centralised version synchronization across React frontend, Rust backend, installers, and updater\n' +
   '- Multi-Platform matrix builds: Linux (DEB, RPM, AppImage), macOS (Apple Silicon ARM64, Intel x64 DMG), and Windows (NSIS, MSI)\n' +
-  '- Zero em-dashes and strict privacy-first local architecture';
+  '- Zero em-dashes and strict privacy-first local architecture'
+);
 
 const manifest = {
   version: authVersion,

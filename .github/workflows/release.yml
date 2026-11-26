@@ -63,6 +63,7 @@ jobs:
       - name: Run verification checks
         run: |
           node scripts/validate-version.cjs
+          node scripts/generate-changelog.cjs --check
           npm run typecheck
           npm test
 

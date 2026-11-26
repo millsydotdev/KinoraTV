@@ -2294,7 +2294,10 @@ export async function fetchFeedXml(url: string, accept?: string): Promise<string
  * Checks for application updates from the official release manifest via Rust IPC.
  * Evaluates current platform, architecture and semver numbers.
  */
-export async function checkForUpdates(endpoint?: string | null): Promise<UpdateCheckResult | null> {
+export async function checkForUpdates(
+  endpoint?: string | null,
+  allowPrereleases = false,
+): Promise<UpdateCheckResult | null> {
   if (!inNativeShell()) {
     return {
       status: 'upToDate',
@@ -2310,7 +2313,9 @@ export async function checkForUpdates(endpoint?: string | null): Promise<UpdateC
     }
   }
   try {
-    const payload: { endpoint?: string } = {}
+    const payload: { endpoint?: string; allowPrereleases?: boolean } = {
+      allowPrereleases,
+    }
     if (endpoint) payload.endpoint = endpoint
     const raw = await invoke('check_for_updates', payload)
     if (!raw || typeof raw !== 'object') return null
@@ -2344,17 +2349,19 @@ export async function checkForUpdates(endpoint?: string | null): Promise<UpdateC
 }
 
 export interface UpdateInstallProgress {
-  stage: 'downloading' | 'installing' | 'done'
+  stage: 'downloading' | 'downloaded' | 'verifying' | 'verified' | 'installing' | 'restartRequired' | 'done'
   percent?: number
+  downloadedBytes?: number
+  totalBytes?: number
 }
 
 /**
- * Downloads and applies an application update using Tauri's native updater plugin.
- * Verifies the Minisign signature against the configured release public key.
+ * Downloads, verifies the Minisign signature, and installs an application update
+ * using Tauri's native updater plugin. Separates download from verification and installation.
  */
 export async function installUpdate(
   onProgress?: (progress: UpdateInstallProgress) => void
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; restartRequired?: boolean; error?: string }> {
   if (!inNativeShell()) {
     return { success: false, error: 'Cannot install updates in web preview.' }
   }
@@ -2366,20 +2373,42 @@ export async function installUpdate(
     }
     let totalBytes = 0
     let downloadedBytes = 0
+    if (typeof update.download === 'function' && typeof update.install === 'function') {
+      await update.download((event) => {
+        if (event.event === 'Started') {
+          totalBytes = event.data.contentLength ?? 0
+          onProgress?.({ stage: 'downloading', percent: 0, downloadedBytes: 0, totalBytes })
+        } else if (event.event === 'Progress') {
+          downloadedBytes += event.data.chunkLength
+          const percent = totalBytes > 0 ? Math.min(100, Math.round((downloadedBytes / totalBytes) * 100)) : undefined
+          onProgress?.({ stage: 'downloading', percent, downloadedBytes, totalBytes })
+        } else if (event.event === 'Finished') {
+          onProgress?.({ stage: 'downloaded', percent: 100, downloadedBytes, totalBytes })
+          onProgress?.({ stage: 'verifying', percent: 100, downloadedBytes, totalBytes })
+        }
+      })
+      onProgress?.({ stage: 'verified', percent: 100, downloadedBytes, totalBytes })
+      onProgress?.({ stage: 'installing', percent: 100, downloadedBytes, totalBytes })
+      await update.install()
+      onProgress?.({ stage: 'restartRequired', percent: 100, downloadedBytes, totalBytes })
+      return { success: true, restartRequired: true }
+    }
+
     await update.downloadAndInstall((event) => {
       if (event.event === 'Started') {
         totalBytes = event.data.contentLength ?? 0
-        onProgress?.({ stage: 'downloading', percent: 0 })
+        onProgress?.({ stage: 'downloading', percent: 0, downloadedBytes: 0, totalBytes })
       } else if (event.event === 'Progress') {
         downloadedBytes += event.data.chunkLength
-        const percent = totalBytes > 0 ? Math.round((downloadedBytes / totalBytes) * 100) : undefined
-        onProgress?.({ stage: 'downloading', percent })
+        const percent = totalBytes > 0 ? Math.min(100, Math.round((downloadedBytes / totalBytes) * 100)) : undefined
+        onProgress?.({ stage: 'downloading', percent, downloadedBytes, totalBytes })
       } else if (event.event === 'Finished') {
-        onProgress?.({ stage: 'installing' })
+        onProgress?.({ stage: 'downloaded', percent: 100, downloadedBytes, totalBytes })
+        onProgress?.({ stage: 'installing', percent: 100, downloadedBytes, totalBytes })
       }
     })
-    onProgress?.({ stage: 'done' })
-    return { success: true }
+    onProgress?.({ stage: 'restartRequired', percent: 100, downloadedBytes, totalBytes })
+    return { success: true, restartRequired: true }
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : 'Update installation failed.' }
   }

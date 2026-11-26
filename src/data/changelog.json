@@ -1,0 +1,381 @@
+{
+  "schemaVersion": 1,
+  "product": "Kinora",
+  "releases": [
+    {
+      "version": "0.6.0",
+      "releaseDate": "2026-11-26",
+      "channel": "stable",
+      "title": "Complete Media Platform, Central Server & Multi-Device Experience",
+      "summary": "Kinora 0.6.0 expands the standalone desktop app into a complete multi-device media platform with an optional headless Kinora Server, a touch-optimised mobile web remote, a virtualised Live TV guide, real EPUB/PDF reading, encrypted migration backups, and a structured in-app release history.",
+      "entries": [
+        {
+          "id": "v060-home-redesign",
+          "category": "UI Upgrades",
+          "title": "Cinematic Home Stage & Full-Width Layouts",
+          "description": "Redesigned Home with a widescreen featured spotlight, Quick Jump navigation ribbon, curated rails, and a collapsible companion hub, while expanding Live TV, Movies, Search, and Settings to use the full viewport width.",
+          "details": "Eliminated permanent side-column squeezing across Live TV, Movies, and Settings; programme details and Quick Look panels open cleanly as contextual slide-out drawers.",
+          "screen": "/",
+          "audience": "user"
+        },
+        {
+          "id": "v060-tv-mode-nav",
+          "category": "UI Upgrades",
+          "title": "10-Foot Television Mode, Gamepad & Remote Navigation",
+          "description": "Switch cleanly between Desktop and 10-foot TV layouts with D-pad spatial focus navigation, gamepad support, clear focus indicators, and 4K television scaling.",
+          "details": "Press Ctrl+Shift+T (or Cmd+Shift+T) or change View Mode in Settings to toggle between Desktop and TV interfaces without losing your place.",
+          "screen": "/settings",
+          "audience": "user"
+        },
+        {
+          "id": "v060-persistent-player",
+          "category": "Playback Improvements",
+          "title": "Persistent Universal Player Dock & Sleep Timer HUD",
+          "description": "Keep live channels and videos playing in a compact dock while browsing other screens, with one-click expand to full screen, audio/subtitle controls, DASH format detection, and an on-screen sleep timer countdown.",
+          "details": "Includes extended sleep timer presets (up to 120 minutes), automatic stream failure tracking with one-click retry, and honest codec diagnostics.",
+          "screen": "/live",
+          "audience": "user"
+        },
+        {
+          "id": "v060-virtualized-epg",
+          "category": "Live TV and EPG",
+          "title": "High-Scale Virtualised Live TV Guide & Multi-Tier Matching",
+          "description": "Browse 10,000+ channels smoothly with 2D virtualised rows and time-windowing, improved multi-tier XMLTV channel matching, custom bouquets, catch-up playback, and DVR series recording rules.",
+          "details": "Combines exact ID matching, feed-stripped keys, loose regional matching, and unambiguous display-name matching while refusing ambiguous duplicates.",
+          "screen": "/live",
+          "audience": "user"
+        },
+        {
+          "id": "v060-movies-series-local",
+          "category": "Movies and Series",
+          "title": "Unified Movies, Series & Real-Time Local Media Libraries",
+          "description": "Browse movies and series across Xtream Codes providers, Jellyfin/Emby/Plex media servers, and local video folders with automatic folder change detection, smart collections, and cross-source deduplication.",
+          "details": "Preserves distinct cuts and remasters while merging duplicate entries across rails and tracking per-profile watch progress.",
+          "screen": "/movies",
+          "audience": "user"
+        },
+        {
+          "id": "v060-podcasts-audio",
+          "category": "Audio and Podcasts",
+          "title": "Guarded Podcast RSS Subscriptions & Episode Progress",
+          "description": "Subscribe directly to RSS and Atom podcast feeds through Kinora's guarded native fetcher, resume in-progress episodes, mark episodes played, and queue audio in the persistent audio bar.",
+          "details": "Honest network error reporting replaces silent placeholder feeds when a remote RSS server is unreachable.",
+          "screen": "/podcasts",
+          "audience": "user"
+        },
+        {
+          "id": "v060-books-opds",
+          "category": "Books and Reading",
+          "title": "Real EPUB, PDF & Text Reader with OPDS Catalogue Browser",
+          "description": "Open local EPUB, PDF, Markdown, HTML, and plain text books directly inside Kinora with a table of contents, multiple bookmarks, customisable reading themes, saved reading progress, and a built-in OPDS catalogue browser.",
+          "details": "Browse Project Gutenberg, Standard Ebooks, Feedbooks, or custom OPDS feeds through Kinora's guarded fetcher.",
+          "screen": "/books",
+          "audience": "user"
+        },
+        {
+          "id": "v060-genre-artwork",
+          "category": "Artwork and Discovery",
+          "title": "Dedicated Genre Artwork Collection & 5-Stage Artwork Pipeline",
+          "description": "Replaced generic geometric genre placeholders with dedicated cinematic genre artwork across parent genres and subgenres, backed by a 5-stage artwork resolver and custom artwork library.",
+          "details": "Enforces aspect-ratio integrity for posters (2:3), backdrops (16:9), episodes (16:9), and channel logos with per-item custom artwork overrides.",
+          "screen": "/discover",
+          "audience": "user"
+        },
+        {
+          "id": "v060-kinora-server",
+          "category": "Server and Devices",
+          "title": "Standalone, Central Server & Client Operating Modes",
+          "description": "Run Kinora independently on one device, host an always-on headless Kinora Server (desktop, Linux systemd service, or Docker), or connect household clients with automatic LAN discovery and guarded stream proxying.",
+          "details": "Headless server binary compiles with zero GUI dependencies, serves local media with bounded HTTP Range streaming, and reports server/client version compatibility.",
+          "screen": "/settings",
+          "audience": "user"
+        },
+        {
+          "id": "v060-mobile-remote",
+          "category": "Mobile Remote",
+          "title": "Touch Mobile Web Remote with QR Pairing, EPG & Media Control",
+          "description": "Control Kinora from any phone or tablet on your local network using a 6-digit PIN or QR code, featuring a D-pad, interactive seek bar, mobile keyboard, live TV Guide browser, and one-tap media playback.",
+          "details": "Includes inline device renaming, instant device revocation, PIN rotation, and a per-device security audit log.",
+          "screen": "/settings",
+          "audience": "user"
+        },
+        {
+          "id": "v060-sync",
+          "category": "Synchronisation",
+          "title": "Conflict-Safe Cross-Device Watch Progress & Library Sync",
+          "description": "Synchronise favourites, watchlists, and Continue Watching progress across connected Kinora clients in real time over Server-Sent Events without letting stale offline devices overwrite newer progress.",
+          "details": "Uses timestamp-checked merges on both server and clients alongside CSP-safe native SSE bridging on desktop.",
+          "screen": "/settings",
+          "audience": "user"
+        },
+        {
+          "id": "v060-ai-voice",
+          "category": "AI and Automation",
+          "title": "Unified Capability Layer, AI Controls & Opt-In Push-to-Talk Voice",
+          "description": "Operate playback, channel tuning, EPG queries, search, and device checks through one capability-gated service shared by the UI, remote, authorised AI agents, and strictly opt-in push-to-talk voice input.",
+          "details": "Microphone hardware stays off by default with zero always-on listening, optional spoken replies, and configurable local or external AI provider endpoints.",
+          "screen": "/settings",
+          "audience": "user"
+        },
+        {
+          "id": "v060-backup-restore",
+          "category": "Reliability Improvements",
+          "title": "Full Encrypted Backup, Migration Wizard & Atomic Rollback",
+          "description": "Back up preferences, sources, guides, bouquets, DVR rules, podcasts, reading progress, and non-secret platform settings into an AES-256-GCM encrypted archive with SHA-256 verification and automatic rollback if restoration fails.",
+          "details": "Never exports plaintext provider passwords or pairing tokens; pre-flight inspection flags missing local paths and accounts requiring re-authentication.",
+          "screen": "/settings",
+          "audience": "user"
+        },
+        {
+          "id": "v060-changelog-updater",
+          "category": "New Features",
+          "title": "Structured What's New, Offline Version History & Hardened Updater",
+          "description": "Review categorised release notes after every update, browse full version history offline, select update channels, track verified download and installation stages, and check client/server version compatibility.",
+          "details": "Single version-controlled release database generates the in-app What's New view, CHANGELOG.md, and updater release notes consistently.",
+          "screen": "/settings",
+          "audience": "user"
+        },
+        {
+          "id": "v060-security-hardening",
+          "category": "Security and Privacy",
+          "title": "API Rate Limiting, Guarded Feed Fetching & Profile Isolation",
+          "description": "Added sliding-window API rate limiting on Kinora Server, routed podcast and OPDS network requests through Rust's anti-SSRF fetcher, isolated profile libraries with cascading deletion, and hardened parental PIN hashing.",
+          "details": "Maintains strict Content Security Policy, direct no-proxy fetching, memory-only stream handles, and full token redaction in errors.",
+          "audience": "user"
+        },
+        {
+          "id": "v060-bugfixes",
+          "category": "Bug Fixes",
+          "title": "Cache Clearing, QR Encoding, Sidebar Contrast & Routing Fixes",
+          "description": "Fixed artwork cache clearing in Settings to invoke native storage cleanup, corrected QR code Reed-Solomon format bits for reliable phone scanning, elevated sidebar contrast, and unified BrowserRouter navigation across voice and remote commands.",
+          "audience": "user"
+        },
+        {
+          "id": "v060-dev-infra",
+          "category": "Developer and Infrastructure Improvements",
+          "title": "Staging Isolation, Headless Server Docker Target & Automated Changelog Pipeline",
+          "description": "Added isolated staging build configuration, a zero-GUI headless server Docker image, systemd service unit, automated changelog validation, and end-to-end multi-device verification scripts.",
+          "audience": "developer"
+        }
+      ]
+    },
+    {
+      "version": "0.5.0",
+      "releaseDate": "2026-11-15",
+      "channel": "stable",
+      "title": "Public Desktop Release Candidate",
+      "summary": "Established Kinora's public desktop release pipeline, signed Tauri 2 updater verification, multi-platform packaging matrices, and authentic cinematic card artwork.",
+      "entries": [
+        {
+          "id": "v050-licence",
+          "category": "Security and Privacy",
+          "title": "Kinora Proprietary Source-Available Licence & Attribution",
+          "description": "Published Kinora under an explicit All Rights Reserved source-available licence with creator attribution to millsydotdev in Settings > About and project documentation.",
+          "audience": "user"
+        },
+        {
+          "id": "v050-updater",
+          "category": "New Features",
+          "title": "Signed Multi-Platform Updater & Release Automation",
+          "description": "Introduced Tauri 2 updater checks against signed GitHub release manifests across Linux (DEB, RPM, AppImage), Windows (NSIS, MSI), and macOS (Apple Silicon and Intel DMG).",
+          "audience": "user"
+        },
+        {
+          "id": "v050-artwork-parity",
+          "category": "Artwork and Discovery",
+          "title": "Home Recommendation Card Visual Parity",
+          "description": "Restored authentic reference artwork across the Recommended for You rail with consistent 220x185 tile framing.",
+          "audience": "user"
+        },
+        {
+          "id": "v050-security-audit",
+          "category": "Security and Privacy",
+          "title": "Guarded Update Manifests & Secret Hygiene",
+          "description": "Enforced HTTPS-only update manifest fetching with anti-SSRF destination checks and completed full working-tree secret verification.",
+          "audience": "user"
+        }
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "releaseDate": "2026-11-15",
+      "channel": "stable",
+      "title": "Release Candidate Preparation",
+      "summary": "Delivered multi-platform packaging, unified notifications, macOS hardened runtime support, and Windows atomic persistence fixes.",
+      "entries": [
+        {
+          "id": "v010-packaging",
+          "category": "Developer and Infrastructure Improvements",
+          "title": "Cross-Platform Installers & SHA-256 Checksum Pipeline",
+          "description": "Configured Linux, Windows, and macOS bundle targets with automated GitHub Actions release workflows and SHA-256 verification.",
+          "audience": "developer"
+        },
+        {
+          "id": "v010-notifications",
+          "category": "UI Upgrades",
+          "title": "Unified Notification Drawer & Toast Routing",
+          "description": "Connected ephemeral toast alerts with a persistent notification history drawer and unread badge counter.",
+          "audience": "user"
+        },
+        {
+          "id": "v010-windows-persistence",
+          "category": "Bug Fixes",
+          "title": "Cross-Platform Atomic Storage & CSS Build Stability",
+          "description": "Fixed Windows directory sync handling during atomic saves and resolved CSS minification syntax issues in production builds.",
+          "audience": "user"
+        },
+        {
+          "id": "v010-security",
+          "category": "Security and Privacy",
+          "title": "Salted Parental PIN & Memory-Only Stream Handles",
+          "description": "Protected parental controls with salted hashing and automatic lockout while keeping upstream stream credentials behind opaque local handles.",
+          "audience": "user"
+        }
+      ]
+    },
+    {
+      "version": "0.0.9",
+      "releaseDate": "2026-11-01",
+      "channel": "stable",
+      "title": "First-Run Onboarding & Honest Sample Mode",
+      "summary": "Introduced a skippable first-run setup flow with country playlist selection and clear separation between real sources and optional sample data.",
+      "entries": [
+        {
+          "id": "v009-onboarding",
+          "category": "New Features",
+          "title": "Guided First-Run Setup & Sample Mode Separation",
+          "description": "Added step-by-step country playlist onboarding via iptv-org discovery and ensured demo content is opt-in only and clearly labelled.",
+          "audience": "user"
+        }
+      ]
+    },
+    {
+      "version": "0.0.8",
+      "releaseDate": "2026-10-29",
+      "channel": "stable",
+      "title": "Reliability, Timezone & Test Hardening",
+      "summary": "Hardened guide schedule handling across daylight saving transitions and expanded automated Vitest and Rust test coverage.",
+      "entries": [
+        {
+          "id": "v008-reliability",
+          "category": "Reliability Improvements",
+          "title": "Timezone-Safe Guide Scheduling & Expanded Test Suites",
+          "description": "Added clock-independent schedule calculations for 23-hour and 25-hour daylight saving days and expanded automated test coverage.",
+          "audience": "user"
+        }
+      ]
+    },
+    {
+      "version": "0.0.7",
+      "releaseDate": "2026-10-29",
+      "channel": "stable",
+      "title": "Public Playlist Discovery Catalogue",
+      "summary": "Added Discovery browsing of the public iptv-org directory with explicit user confirmation before importing any playlist.",
+      "entries": [
+        {
+          "id": "v007-discovery",
+          "category": "Source Integrations",
+          "title": "iptv-org Public Playlist Discovery",
+          "description": "Browse curated public country and category playlists and import chosen sources through Kinora's standard guarded M3U pipeline.",
+          "audience": "user"
+        }
+      ]
+    },
+    {
+      "version": "0.0.6",
+      "releaseDate": "2026-10-28",
+      "channel": "stable",
+      "title": "XMLTV Electronic Programme Guide",
+      "summary": "Implemented a pure Rust XMLTV parser with entity-attack protection and channel matching for live TV schedules.",
+      "entries": [
+        {
+          "id": "v006-xmltv",
+          "category": "Live TV and EPG",
+          "title": "Guarded XMLTV Parser & Channel Matching",
+          "description": "Import XMLTV and gzipped XMLTV guides by URL or file with DTD expansion attack refusal and flexible channel matching.",
+          "audience": "user"
+        }
+      ]
+    },
+    {
+      "version": "0.0.5",
+      "releaseDate": "2026-10-27",
+      "channel": "stable",
+      "title": "Atomic Local Persistence",
+      "summary": "Added atomic local storage for saved sources with strict POSIX permissions and non-destructive corrupt-file recovery.",
+      "entries": [
+        {
+          "id": "v005-persistence",
+          "category": "Reliability Improvements",
+          "title": "Atomic Source Persistence & Recovery",
+          "description": "Saved sources use atomic temp-file renames with restricted permissions (0700/0600) and move damaged files aside without deletion.",
+          "audience": "user"
+        }
+      ]
+    },
+    {
+      "version": "0.0.4",
+      "releaseDate": "2026-10-27",
+      "channel": "stable",
+      "title": "Guarded Native HLS Playback",
+      "summary": "Implemented the native kstream protocol and HLS playlist rewriter so upstream stream URLs never leak to the webview.",
+      "entries": [
+        {
+          "id": "v004-hls",
+          "category": "Playback Improvements",
+          "title": "Native Guarded HLS Rewriter & Playback",
+          "description": "Streams play through opaque local handles with bounded session budgets, cancellation on channel switch, and DRM refusal.",
+          "audience": "user"
+        }
+      ]
+    },
+    {
+      "version": "0.0.3",
+      "releaseDate": "2026-10-25",
+      "channel": "stable",
+      "title": "Live TV Playlist Integration",
+      "summary": "Connected imported M3U playlist channels to the Live TV guide, category filters, and channel browsing screens.",
+      "entries": [
+        {
+          "id": "v003-livetv",
+          "category": "Live TV and EPG",
+          "title": "M3U Channels in Live TV & Categories",
+          "description": "Imported M3U playlists populate Live TV channels, group chips, and channel search cleanly.",
+          "audience": "user"
+        }
+      ]
+    },
+    {
+      "version": "0.0.2",
+      "releaseDate": "2026-10-25",
+      "channel": "stable",
+      "title": "Rust M3U Parser & Anti-SSRF HTTP Client",
+      "summary": "Added native Rust M3U parsing and a guarded HTTP client enforcing direct connections and private network refusal.",
+      "entries": [
+        {
+          "id": "v002-m3u",
+          "category": "Security and Privacy",
+          "title": "Guarded Native M3U Ingestion",
+          "description": "Added bounded M3U parsing in Rust with no-proxy direct fetching, DNS/redirect SSRF checks, and credential-free errors.",
+          "audience": "user"
+        }
+      ]
+    },
+    {
+      "version": "0.0.1",
+      "releaseDate": "2026-10-22",
+      "channel": "stable",
+      "title": "Initial Desktop UI Baseline",
+      "summary": "Initial React 19 and TypeScript desktop media interface prototype.",
+      "entries": [
+        {
+          "id": "v001-baseline",
+          "category": "New Features",
+          "title": "Initial Kinora Desktop Interface",
+          "description": "Established the React 19 and TypeScript interface foundation for Live TV, movies, series, and library views.",
+          "audience": "user"
+        }
+      ]
+    }
+  ]
+}

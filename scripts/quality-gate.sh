@@ -16,11 +16,12 @@ echo "HEAD Hash:  $(git rev-parse HEAD)"
 echo "Timestamp:  $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 echo "=========================================================="
 
-# Gate 0: Version Consistency and SemVer Integrity
+# Gate 0: Version Consistency, Changelog Integrity and SemVer Check
 echo ""
-echo "=== GATE 0: VERSION CONSISTENCY & SEMVER INTEGRITY ==="
+echo "=== GATE 0: VERSION CONSISTENCY, CHANGELOG & SEMVER INTEGRITY ==="
 npm run version:check
-echo "PASS: Authoritative version is synchronized across all components."
+npm run changelog:validate
+echo "PASS: Authoritative version and changelog are synchronized across all components."
 
 # Gate 1: TypeScript Static Typecheck
 echo ""

@@ -80,6 +80,13 @@ When development resumes for the 0.7.0 milestone, priorities should be addressed
 4. **Priority 4: Unified Subtitle and Audio Track Selector:**
    - Consolidate multi-language subtitle tracks (embedded CEA-608/708, WebVTT, external SRT) and audio streams into an enhanced in-player overlay HUD.
 
+5. **Priority 5 (Post-0.6.0 Programme): Kinora AI Agent Skills, Integrations and External Agent Control:**
+   - Official downloadable Kinora Agent Skill compatible with Claude, OpenClaw, Codex, ChatGPT integrations, and custom agent frameworks (investigating each ecosystem's real skill/tool format).
+   - Versioned Kinora Agent API, MCP server/tool integration, machine-readable tool definitions, and developer SDK exposing Kinora's real underlying capabilities (media discovery, playback, media management, device/app management) without duplicating application logic.
+   - Dedicated **AI Agents and Integrations** management screen in Settings (per-agent identity, credential generation/rotation/revocation, least-privilege read vs control scopes, confirmation gates for sensitive actions, rate limiting, and full action audit history).
+   - Skills and Extensions architecture with explicit trust, permissions, and isolation controls, plus deeper voice and external assistant workflows (strictly opt-in microphone controls).
+   - Note: Formally deferred to the post-0.6.0 development stage and deliberately not implemented during the 0.6.0 release cycle.
+
 ---
 
 ## 4. Dependencies, Constraints, and Architectural Risks

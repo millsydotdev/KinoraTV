@@ -6,8 +6,17 @@ import { Icon, type IconName } from '../components/Icon'
 import { useToast } from '../components/Toast'
 import { PageHeader } from '../components/PageHeader'
 import { Segmented, Switch } from '../components/ui'
-import { getAppInfo, checkForUpdates, installUpdate, inNativeShell, getArtworkCacheStats, clearArtworkCache, retryFailedArtwork, type ArtworkCacheStats, type AppInfo, type UpdateCheckResult, APP_VERSION, APP_ENV, isStaging, isProduction, getVersionChannel, formatChannelName, getPlatformMode, setPlatformMode, startRemoteServer, discoverKinoraServers, type PlatformMode, saveSources } from '../lib/native'
-import { useClientSync } from '../lib/clientSync'
+import { getAppInfo, checkForUpdates, installUpdate, inNativeShell, getArtworkCacheStats, clearArtworkCache, retryFailedArtwork, type ArtworkCacheStats, type AppInfo, APP_VERSION, APP_ENV, isStaging, isProduction, getVersionChannel, formatChannelName, getPlatformMode, setPlatformMode, startRemoteServer, discoverKinoraServers, type PlatformMode, saveSources } from '../lib/native'
+import { useClientSync, evaluateServerCompatibility } from '../lib/clientSync'
+import {
+  createInitialUpdaterState,
+  describeUpdaterStage,
+  recordUpdateHistory,
+  reduceUpdateCheckResult,
+  saveUpdateChannel,
+  type UpdateChannel,
+  type UpdaterState,
+} from '../lib/updaterState'
 import { useVoiceAndAgentControl } from '../lib/voiceAndAgent'
 import { CODEC_HELP, codecSupport } from '../lib/playback'
 import { ACCENTS, THEME_PRESETS, safeHex, type AccentName } from '../lib/theme'
@@ -3140,17 +3149,30 @@ function BuildRow() {
 }
 
 function UpdatesRow({ onOpenWhatsNew }: { onOpenWhatsNew?: () => void }) {
-  const [checking, setChecking] = useState(false)
-  const [installing, setInstalling] = useState(false)
-  const [installProgress, setInstallProgress] = useState<string | null>(null)
-  const [result, setResult] = useState<UpdateCheckResult | null>(null)
+  const [upd, setUpd] = useState<UpdaterState>(() => createInitialUpdaterState(APP_VERSION))
+  const clientSync = useClientSync()
   const toast = useToast()
 
+  const serverCompat = clientSync.serverInfo
+    ? evaluateServerCompatibility(APP_VERSION, clientSync.serverInfo)
+    : null
+
+  const onChannelChange = (channel: UpdateChannel) => {
+    saveUpdateChannel(channel)
+    setUpd((prev) => ({ ...prev, channel }))
+    toast(`Release channel set to ${channel === 'prerelease' ? 'Pre-release (opt-in)' : 'Stable'}`)
+  }
+
   const onCheck = async () => {
-    setChecking(true)
+    setUpd((prev) => ({
+      ...prev,
+      stage: 'checking',
+      error: null,
+      message: 'Checking official Kinora release channel...',
+    }))
     try {
-      const res = await checkForUpdates()
-      setResult(res)
+      const res = await checkForUpdates(null, upd.channel === 'prerelease')
+      setUpd((prev) => reduceUpdateCheckResult(prev, res))
       if (res?.status === 'available') {
         toast(`Update available: Kinora v${res.latestVersion}`, {
           label: 'View release',
@@ -3166,90 +3188,165 @@ function UpdatesRow({ onOpenWhatsNew }: { onOpenWhatsNew?: () => void }) {
         toast(`Update check failed: ${res.error}`)
       }
     } catch {
+      setUpd((prev) => ({
+        ...prev,
+        stage: 'failed',
+        error: 'Could not reach update service.',
+        message: 'Update check failed: could not reach release server.',
+      }))
       toast('Could not check for updates')
-    } finally {
-      setChecking(false)
     }
   }
 
   const onInstall = async () => {
-    setInstalling(true)
-    setInstallProgress('Downloading update...')
+    setUpd((prev) => ({
+      ...prev,
+      stage: 'downloading',
+      percent: 0,
+      error: null,
+      message: 'Downloading update package...',
+    }))
     try {
       const res = await installUpdate((progress) => {
-        if (progress.stage === 'downloading') {
-          setInstallProgress(progress.percent !== undefined ? `Downloading (${progress.percent}%)` : 'Downloading...')
-        } else if (progress.stage === 'installing') {
-          setInstallProgress('Installing...')
-        } else if (progress.stage === 'done') {
-          setInstallProgress('Complete')
-        }
+        setUpd((prev) => {
+          if (progress.stage === 'downloading') {
+            return {
+              ...prev,
+              stage: 'downloading',
+              percent: progress.percent ?? prev.percent,
+              downloadedBytes: progress.downloadedBytes ?? prev.downloadedBytes,
+              totalBytes: progress.totalBytes ?? prev.totalBytes,
+              message: progress.percent !== undefined ? `Downloading update (${progress.percent}%)...` : 'Downloading update...',
+            }
+          }
+          if (progress.stage === 'downloaded') {
+            return { ...prev, stage: 'downloaded', percent: 100, message: 'Download completed. Preparing verification...' }
+          }
+          if (progress.stage === 'verifying') {
+            return { ...prev, stage: 'verifying', message: 'Verifying Minisign signature...' }
+          }
+          if (progress.stage === 'verified') {
+            return { ...prev, stage: 'verified', signatureVerified: true, message: 'Signature verified. Ready to install.' }
+          }
+          if (progress.stage === 'installing') {
+            return { ...prev, stage: 'installing', message: 'Installing verified update package...' }
+          }
+          if (progress.stage === 'restartRequired' || progress.stage === 'done') {
+            return { ...prev, stage: 'restartRequired', message: 'Update installed. Restart Kinora to complete the upgrade.' }
+          }
+          return prev
+        })
       })
       if (res.success) {
-        toast('Update installed successfully! Restart Kinora to apply.')
-        setInstallProgress('Installed - Restart required')
+        recordUpdateHistory({
+          fromVersion: upd.currentVersion,
+          toVersion: upd.targetVersion ?? 'latest',
+          stage: 'restartRequired',
+          note: 'Verified and installed via Tauri updater; restart required.',
+        })
+        toast('Update verified and installed. Restart Kinora to apply.')
+        setUpd((prev) => ({
+          ...prev,
+          stage: 'restartRequired',
+          message: 'Update installed. Restart Kinora to apply the new version.',
+        }))
       } else {
-        toast(`Update installation failed: ${res.error ?? 'Unknown error'}`)
-        setInstallProgress(null)
+        const err = res.error ?? 'Unknown error'
+        recordUpdateHistory({
+          fromVersion: upd.currentVersion,
+          toVersion: upd.targetVersion ?? 'unknown',
+          stage: 'failed',
+          note: err,
+        })
+        toast(`Update installation failed: ${err}`)
+        setUpd((prev) => ({ ...prev, stage: 'failed', error: err, message: `Update failed: ${err}` }))
       }
     } catch (e) {
-      toast(`Update installation failed: ${e instanceof Error ? e.message : 'Unknown error'}`)
-      setInstallProgress(null)
-    } finally {
-      setInstalling(false)
+      const err = e instanceof Error ? e.message : 'Unknown error'
+      toast(`Update installation failed: ${err}`)
+      setUpd((prev) => ({ ...prev, stage: 'failed', error: err, message: `Update failed: ${err}` }))
     }
   }
 
-  let statusText = 'Check for newer releases from official GitHub releases'
-  if (installProgress) {
-    statusText = installProgress
-  } else if (result?.status === 'available') {
-    statusText = `Version ${result.latestVersion} available (${result.releaseNotes ?? 'Release update'})`
-  } else if (result?.status === 'upToDate') {
-    statusText = `Kinora is up to date (current: v${result.currentVersion})`
-  } else if (result?.status === 'unsupportedPlatform') {
-    statusText = result.error ?? 'Platform not yet available in release assets'
-  } else if (result?.error) {
-    statusText = `Check failed: ${result.error}`
-  }
+  const isBusy =
+    upd.stage === 'checking' ||
+    upd.stage === 'downloading' ||
+    upd.stage === 'verifying' ||
+    upd.stage === 'installing'
 
   return (
-    <Row title="Software updates" hint={statusText}>
-      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-        {result?.status === 'available' && inNativeShell() && (
-          <button
-            type="button"
-            className="btn btn-primary btn-small"
-            disabled={installing}
-            onClick={() => void onInstall()}
-          >
-            {installing ? (installProgress ?? 'Installing...') : 'Install now'}
-          </button>
-        )}
-        {result?.status === 'available' && result.downloadUrl && !inNativeShell() && (
-          <a href={result.downloadUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-small">
-            Download update
-          </a>
-        )}
-        <button
-          type="button"
-          className="btn btn-ghost btn-small"
-          disabled={checking || installing}
-          onClick={() => void onCheck()}
-        >
-          {checking ? 'Checking...' : 'Check for updates'}
-        </button>
-        {onOpenWhatsNew && (
-          <button
-            type="button"
-            className="btn btn-secondary btn-small"
-            onClick={onOpenWhatsNew}
-          >
-            What's New
-          </button>
-        )}
-      </div>
-    </Row>
+    <>
+      <Row
+        title="Software updates"
+        hint={`${describeUpdaterStage(upd.stage)}: ${upd.message}${upd.stage === 'available' && upd.hasSignature ? ' (Minisign signature present)' : ''}`}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <select
+              aria-label="Update release channel"
+              className="select"
+              value={upd.channel}
+              disabled={isBusy}
+              onChange={(e) => onChannelChange(e.target.value as UpdateChannel)}
+              style={{ fontSize: '0.8125rem' }}
+            >
+              <option value="stable">Stable Channel</option>
+              <option value="prerelease">Pre-release Channel</option>
+            </select>
+            {upd.stage === 'available' && inNativeShell() && (
+              <button
+                type="button"
+                className="btn btn-primary btn-small"
+                disabled={isBusy}
+                onClick={() => void onInstall()}
+              >
+                Download &amp; Install
+              </button>
+            )}
+            {upd.stage === 'available' && upd.downloadUrl && !inNativeShell() && (
+              <a href={upd.downloadUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-small">
+                Download update
+              </a>
+            )}
+            <button
+              type="button"
+              className="btn btn-ghost btn-small"
+              disabled={isBusy}
+              onClick={() => void onCheck()}
+            >
+              {upd.stage === 'checking' ? 'Checking...' : 'Check for updates'}
+            </button>
+            {onOpenWhatsNew && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={onOpenWhatsNew}
+              >
+                What's New &amp; History
+              </button>
+            )}
+          </div>
+          {upd.stage === 'downloading' && upd.percent !== null && (
+            <div style={{ width: '220px', height: '6px', borderRadius: '4px', background: 'var(--surface-3, rgba(255,255,255,0.1))', overflow: 'hidden' }} role="progressbar" aria-valuenow={upd.percent} aria-valuemin={0} aria-valuemax={100}>
+              <div style={{ width: `${upd.percent}%`, height: '100%', background: 'var(--accent)' }} />
+            </div>
+          )}
+        </div>
+      </Row>
+      {serverCompat && (
+        <Row title="Kinora Server compatibility" hint={serverCompat.message}>
+          <span className="muted tnum">
+            {serverCompat.status === 'compatible'
+              ? `Compatible (Server v${serverCompat.serverVersion})`
+              : serverCompat.status === 'clientOutdated'
+              ? 'Client update required'
+              : serverCompat.status === 'serverOutdated'
+              ? 'Server update recommended'
+              : 'Unknown'}
+          </span>
+        </Row>
+      )}
+    </>
   )
 }
 

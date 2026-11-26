@@ -19,6 +19,8 @@
     "test:gate": "bash scripts/quality-gate.sh",
     "version:check": "node scripts/validate-version.cjs",
     "version:sync": "node scripts/sync-version.cjs",
+    "changelog:generate": "node scripts/generate-changelog.cjs",
+    "changelog:validate": "node scripts/generate-changelog.cjs --check",
     "setup": "bash scripts/onboarding.sh",
     "sbom": "node scripts/generate-sbom.cjs",
     "docker:up": "docker compose up -d fixtures",

@@ -69,3 +69,36 @@ CLI flags override environment variables:
 - Open **UDP `5197`** on your local LAN if you want zero-configuration server discovery.
 - Pairing a desktop Kinora Client: open **Settings -> Platform & Devices**, select **Client Mode**, scan for your server (or enter `http://<server-ip>:5198`), and enter the pairing PIN shown in the server log.
 - Opening the Mobile Web Remote: open `http://<server-ip>:5198` on any phone or tablet on the same Wi-Fi and enter the pairing PIN.
+
+## Upgrading, Health Verification & Rollback
+
+### Safe Upgrade Procedure (Docker)
+
+Persistent volumes (`kinora-server-data` mounted at `/data`) store `sources.json`, `devices.json`, `library_sync.json`, `platform_config.json`, and cached EPG/artwork files. Never run `docker compose down -v` during an upgrade, as `-v` deletes named volumes.
+
+1. **Back up the persistent data volume before upgrading:**
+   ```bash
+   docker run --rm -v kinora-server-data:/data -v "$PWD":/backup debian:bookworm-slim \
+     tar czf "/backup/kinora-server-data-$(date +%Y%m%d).tar.gz" -C /data .
+   ```
+2. **Pull or rebuild the target versioned image and recreate only the container:**
+   ```bash
+   docker compose build server
+   docker compose up -d --no-deps server
+   ```
+3. **Verify health, version, and client compatibility:**
+   ```bash
+   curl -fsS http://127.0.0.1:5198/api/info
+   ```
+   Confirm `"health": "ok"`, `"version": "0.6.0"`, `"apiVersion": "1.0"`, and `"minCompatibleClientVersion"`. Desktop clients display compatibility status automatically in **Settings > About > Kinora Server compatibility**.
+
+### Rollback Procedure
+
+If an upgrade introduces a regression on your host:
+
+1. Stop the upgraded container without deleting volumes:
+   ```bash
+   docker compose stop server
+   ```
+2. Restore the previous image tag or binary (`git checkout v0.5.0` or prior tagged image) and, if schema migration occurred, restore the tarball backup created in step 1 into `/data`.
+3. Restart the service and re-verify `GET /api/info`.
