@@ -52,6 +52,7 @@ import { DownloadsModal } from './components/DownloadsModal'
 import { channelRef, downloadRef } from './data/refs'
 import { loadTraktConfig, performTraktSync } from './lib/trakt'
 import { registerCommandHandler } from './lib/commands'
+import { kinoraCapabilities, type LiveProgrammeHit, type MediaSearchHit } from './lib/capabilities'
 import { initGlobalRemoteNav, restoreRouteFocus, saveRouteFocus } from './lib/remoteNav'
 import { initializeRemoteControlBridge } from './lib/remoteServerSync'
 import { GamepadController } from './lib/gamepadNav'
@@ -71,6 +72,124 @@ function Shell() {
       delete (window as unknown as { __kinora_navigate?: (to: string) => void }).__kinora_navigate
     }
   }, [navigate])
+
+  useEffect(() => {
+    const unregister = kinoraCapabilities.registerDelegates({
+      navigate: (path) => navigate(path),
+      searchMedia: (query, kind) => {
+        const q = query.trim().toLowerCase()
+        const hits: MediaSearchHit[] = []
+        if (!kind || kind === 'channel') {
+          for (const ch of store.channels) {
+            if (ch.name.toLowerCase().includes(q) || (ch.group && ch.group.toLowerCase().includes(q))) {
+              hits.push({
+                id: ch.id,
+                title: ch.name,
+                kind: 'channel',
+                subtitle: ch.group ?? undefined,
+                route: `/watch/${encodeURIComponent(channelRef(ch.id))}`,
+              })
+            }
+            if (hits.length >= 25) break
+          }
+        }
+        for (const res of store.mediaLibrary.allResources) {
+          if (kind && res.category !== kind && !(kind === 'podcast' && res.category === 'podcasts') && !(kind === 'book' && res.category === 'books')) {
+            continue
+          }
+          if (res.name.toLowerCase().includes(q) || res.description.toLowerCase().includes(q) || res.provider.toLowerCase().includes(q)) {
+            hits.push({
+              id: res.id,
+              title: res.name,
+              kind: res.category === 'podcasts' ? 'podcast' : res.category === 'books' ? 'book' : res.category === 'radio' ? 'radio' : res.category === 'music' ? 'music' : 'other',
+              subtitle: res.provider,
+              route: `/${res.category}`,
+            })
+          }
+          if (hits.length >= 40) break
+        }
+        return hits
+      },
+      queryEpg: (channelName, query) => {
+        const now = Date.now()
+        const chFilter = channelName?.trim().toLowerCase()
+        const qFilter = query?.trim().toLowerCase()
+        const results: LiveProgrammeHit[] = []
+        for (const ch of store.channels) {
+          if (chFilter && !ch.name.toLowerCase().includes(chFilter)) continue
+          const cur = store.programmeAt(ch, now)
+          const nxt = store.nextProgramme(ch, now)
+          if (qFilter) {
+            const hay = `${ch.name} ${cur?.title ?? ''} ${nxt?.title ?? ''}`.toLowerCase()
+            if (!hay.includes(qFilter)) continue
+          }
+          if (cur || chFilter) {
+            results.push({
+              channelId: ch.id,
+              channelName: ch.name,
+              channelNumber: ch.number,
+              currentTitle: cur?.title ?? null,
+              nextTitle: nxt?.title ?? null,
+              startIso: cur ? new Date(cur.start).toISOString() : undefined,
+              stopIso: cur ? new Date(cur.stop).toISOString() : undefined,
+            })
+          }
+          if (results.length >= 12) break
+        }
+        return results
+      },
+      getNowPlaying: () => {
+        if (mediaLibrary.currentAudio) {
+          return {
+            active: true,
+            isPlaying: mediaLibrary.isAudioPlaying,
+            title: mediaLibrary.currentAudio.name,
+            subtitle: mediaLibrary.currentAudio.provider,
+            isLive: mediaLibrary.currentAudio.mediaType === 'radio',
+          }
+        }
+        const video = typeof document !== 'undefined' ? (document.querySelector('video') as HTMLVideoElement | null) : null
+        if (video && (video.currentSrc || video.src)) {
+          return {
+            active: true,
+            isPlaying: !video.paused && !video.ended,
+            title: document.title || 'Active Video Stream',
+            positionSec: Number.isFinite(video.currentTime) ? video.currentTime : 0,
+            durationSec: Number.isFinite(video.duration) ? video.duration : 0,
+            isLive: !Number.isFinite(video.duration) || video.duration === Infinity,
+          }
+        }
+        return { active: false, isPlaying: false, title: null }
+      },
+      getContinueWatchingRef: () => {
+        const recent = store.library.history[0]
+        if (!recent) return null
+        return { ref: recent.ref, title: recent.ref }
+      },
+      toggleFavourite: (itemRef) => {
+        store.toggleFavourite(itemRef)
+        return true
+      },
+      toggleWatchlist: (itemRef) => {
+        store.toggleWatchlist(itemRef)
+        return true
+      },
+      getSourcesSummary: () =>
+        store.playlists.map((p) => ({
+          id: p.id,
+          name: p.name,
+          kind: p.origin,
+          count: p.channels.length,
+        })),
+      getLibraryStats: () => ({
+        favourites: store.library.favourites.length,
+        watchlist: store.library.watchlist.length,
+        history: store.library.history.length,
+        collections: store.library.collections.length,
+      }),
+    })
+    return unregister
+  }, [navigate, store, mediaLibrary])
   const { pathname } = useLocation()
   // Full-window screens: no sidebar.
   const inPlayer = pathname.startsWith('/watch/') || pathname === '/setup'

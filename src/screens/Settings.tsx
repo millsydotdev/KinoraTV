@@ -2713,13 +2713,13 @@ function DataSection() {
         )}
         <Row
           title="AI & Voice Services"
-          hint="Capability-scoped service interfaces for AI agents and local voice models. Microphone hardware remains inactive until an approved voice engine is configured."
+          hint="Capability-scoped natural command engine and opt-in push-to-talk voice controls. Microphone hardware remains inactive unless you explicitly turn it on and press Push-to-Talk."
         >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '440px', width: '100%' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '480px', width: '100%' }}>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               <input
                 type="text"
-                placeholder="Try command: 'open guide' or 'tune to 101'"
+                placeholder="Try: 'what is on TV', 'open guide', or 'tune to 101'"
                 value={testAgentCommand}
                 onChange={(e) => setTestAgentCommand(e.target.value)}
                 onKeyDown={(e) => {
@@ -2745,9 +2745,80 @@ function DataSection() {
               >
                 Execute
               </button>
+              {voiceControl.config.microphoneEnabled && (
+                <button
+                  type="button"
+                  className={`btn btn-small ${voiceControl.isListening ? 'btn-primary' : 'btn-ghost'}`}
+                  onClick={() => {
+                    if (voiceControl.isListening) {
+                      voiceControl.stopPushToTalk()
+                    } else {
+                      void voiceControl.startPushToTalk()
+                    }
+                  }}
+                  aria-pressed={voiceControl.isListening}
+                >
+                  {voiceControl.isListening ? 'Listening...' : 'Push-to-Talk'}
+                </button>
+              )}
             </div>
+            <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center', fontSize: '0.8125rem' }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={voiceControl.config.microphoneEnabled}
+                  onChange={(e) => {
+                    voiceControl.updateConfig({ microphoneEnabled: e.target.checked })
+                    toast(e.target.checked ? 'Push-to-talk microphone enabled (manual trigger only)' : 'Microphone access disabled')
+                  }}
+                />
+                <span>Opt-in Push-to-Talk Mic</span>
+              </label>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={voiceControl.config.spokenResponsesEnabled}
+                  onChange={(e) => voiceControl.updateConfig({ spokenResponsesEnabled: e.target.checked })}
+                />
+                <span>Spoken Replies</span>
+              </label>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <select
+                aria-label="External AI provider"
+                className="select"
+                value={voiceControl.config.providerKind}
+                onChange={(e) => voiceControl.updateConfig({ providerKind: e.target.value as 'none' | 'local-ollama' | 'openai-compatible' | 'custom-agent' })}
+                style={{ fontSize: '0.8125rem' }}
+              >
+                <option value="none">Built-in Local Intent Engine Only</option>
+                <option value="local-ollama">Local Ollama Endpoint</option>
+                <option value="openai-compatible">OpenAI-Compatible API</option>
+                <option value="custom-agent">External Agent Bridge</option>
+              </select>
+              {voiceControl.config.providerKind !== 'none' && (
+                <input
+                  type="url"
+                  placeholder="Endpoint URL (e.g. http://127.0.0.1:11434)"
+                  value={voiceControl.config.providerEndpoint}
+                  onChange={(e) => voiceControl.updateConfig({ providerEndpoint: e.target.value })}
+                  className="input-text"
+                  style={{ flex: 1, minWidth: '180px', padding: '5px 8px', fontSize: '0.8125rem' }}
+                />
+              )}
+            </div>
+            {voiceControl.lastResult && (
+              <div style={{ fontSize: '0.75rem', color: voiceControl.lastResult.success ? 'var(--text-2)' : 'var(--red, #e55)' }}>
+                Last result: {voiceControl.lastResult.message}
+              </div>
+            )}
+            {voiceControl.lastError && (
+              <div style={{ fontSize: '0.75rem', color: 'var(--red, #e55)' }}>
+                {voiceControl.lastError}
+              </div>
+            )}
             <div style={{ fontSize: '0.75rem', color: 'var(--text-3)' }}>
-              Provider: {voiceControl.providerName} (Hardware idle)
+              Provider: {voiceControl.providerName} ({voiceControl.isListening ? 'Microphone active' : 'Hardware idle'})
             </div>
           </div>
         </Row>
@@ -2766,9 +2837,12 @@ function DataSection() {
           <button
             type="button"
             className="btn btn-ghost btn-small"
-            onClick={() => {
-              setCacheStatus('0 KB (cleared)')
-              toast('Artwork and session caches cleared')
+            onClick={async () => {
+              const freedBytes = await clearArtworkCache()
+              const stats = await getArtworkCacheStats().catch(() => null)
+              const remaining = stats ? `${Math.round(stats.totalBytes / 1024)} KB` : '0 KB'
+              setCacheStatus(`${remaining} (cleared ${Math.round(freedBytes / 1024)} KB)`)
+              toast(freedBytes > 0 ? `Cleared ${Math.round(freedBytes / 1024)} KB of cached artwork` : 'Artwork and session caches cleared')
             }}
           >
             Clear Cache
