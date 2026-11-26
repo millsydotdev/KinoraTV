@@ -286,11 +286,15 @@ function main() {
   const releaseNotesPath = path.join(releaseDocsDir, `release-notes-v${authVersion}.md`);
 
   if (checkOnly) {
-    const existingMd = fs.existsSync(changelogMdPath) ? fs.readFileSync(changelogMdPath, 'utf8') : '';
+    const existingMd = fs.existsSync(changelogMdPath)
+      ? fs.readFileSync(changelogMdPath, 'utf8').replace(/\r\n/g, '\n')
+      : '';
     if (existingMd !== generatedMd) {
       fail('CHANGELOG.md is out of sync with src/data/changelog.json. Run "npm run changelog:generate".');
     }
-    const existingNotes = fs.existsSync(releaseNotesPath) ? fs.readFileSync(releaseNotesPath, 'utf8') : '';
+    const existingNotes = fs.existsSync(releaseNotesPath)
+      ? fs.readFileSync(releaseNotesPath, 'utf8').replace(/\r\n/g, '\n')
+      : '';
     if (existingNotes !== generatedNotes) {
       fail(`docs/release/release-notes-v${authVersion}.md is out of sync with src/data/changelog.json. Run "npm run changelog:generate".`);
     }

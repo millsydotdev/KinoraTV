@@ -161,7 +161,7 @@ jobs:
   publish:
     name: Verify & Publish Production Release
     needs: build
-    if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && !cancelled()
+    if: success() && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     environment: production
     steps:

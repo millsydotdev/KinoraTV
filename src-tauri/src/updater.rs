@@ -370,11 +370,7 @@ pub fn is_channel_compatible(remote: &str, current: &str, allow_prereleases: boo
         _ => return false,
     };
 
-    if !c.is_prerelease() && r.is_prerelease() && !allow_prereleases {
-        return false;
-    }
-
-    true
+    c.is_prerelease() || !r.is_prerelease() || allow_prereleases
 }
 
 /// Identifies the build channel from version and profile.
