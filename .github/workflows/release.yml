@@ -129,7 +129,7 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           cd src-tauri/target/${{ matrix.target }}/release/bundle
-          find . -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" -o -name "*.dmg" -o -name "*.tar.gz" -o -name "*.zip" \) -print0 | while IFS= read -r -d '' f; do
+          find . -type f \( -name "Kinora*" -a \( -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" -o -name "*.dmg" -o -name "*.tar.gz" -o -name "*.zip" \) \) -print0 | while IFS= read -r -d '' f; do
             hash=$(sha256sum "$f" | awk '{print $1}')
             printf "%s  %s\n" "$hash" "$(basename "$f")"
           done > SHA256SUMS-${{ matrix.platform }}.txt
