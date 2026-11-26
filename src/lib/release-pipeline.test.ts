@@ -174,3 +174,5 @@ describe('Release manifest generation and asset verification scripts', () => {
     expect(stderr).toContain('Minisign')
   })
 })
+
+it("intentional temporary CI gate failure test", () => { expect(true).toBe(false) })
