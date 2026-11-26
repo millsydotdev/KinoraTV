@@ -2280,6 +2280,17 @@ export interface UpdateCheckResult {
 }
 
 /**
+ * Fetches a public RSS/Atom podcast feed or OPDS book catalogue document through
+ * Rust's guarded HTTP client (anti-SSRF, no proxies, CSP-safe in Tauri production).
+ * Returns null when running outside Tauri so browser dev and Vitest can fall back cleanly.
+ */
+export async function fetchFeedXml(url: string, accept?: string): Promise<string | null> {
+  if (!inNativeShell()) return null
+  const raw = await invoke('fetch_feed_xml', { url, accept: accept ?? null })
+  return typeof raw === 'string' ? raw : null
+}
+
+/**
  * Checks for application updates from the official release manifest via Rust IPC.
  * Evaluates current platform, architecture and semver numbers.
  */

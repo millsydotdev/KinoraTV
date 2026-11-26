@@ -163,6 +163,15 @@ async fn fetch_subtitle(
     fetch::fetch_subtitle(&url, api_key.as_deref()).await
 }
 
+/// Fetches a public podcast RSS/Atom feed or OPDS catalogue XML/JSON through the guarded client.
+#[tauri::command]
+async fn fetch_feed_xml(
+    url: String,
+    accept: Option<String>,
+) -> Result<String, ingest::IngestError> {
+    fetch::fetch_feed_xml(&url, accept.as_deref()).await
+}
+
 /// Sends an authenticated or public request to Trakt.tv REST API.
 #[tauri::command]
 async fn fetch_trakt(
@@ -1567,6 +1576,7 @@ pub fn run() {
             verify_parental_pin,
             fetch_metadata,
             fetch_subtitle,
+            fetch_feed_xml,
             fetch_trakt,
             check_for_updates,
             get_local_libraries,

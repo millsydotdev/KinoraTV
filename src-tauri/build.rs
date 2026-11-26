@@ -82,6 +82,7 @@ fn main() {
             "verify_parental_pin",
             "fetch_metadata",
             "fetch_subtitle",
+            "fetch_feed_xml",
             "fetch_trakt",
             "check_for_updates",
             "get_local_libraries",

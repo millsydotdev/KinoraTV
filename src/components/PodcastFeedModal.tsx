@@ -7,7 +7,9 @@ import { useToast } from './Toast'
 import { useStore } from '../state/store'
 import { fetchPodcastFeed, type PodcastEpisode as RealPodcastEpisode } from '../lib/podcast'
 import {
+  getEpisodePlaybackProgress,
   getPodcastEpisodes,
+  saveEpisodePlaybackProgress,
   savePodcastSubscription,
   isPodcastSubscribed,
   removePodcastSubscription,
@@ -59,10 +61,13 @@ export function PodcastFeedModal({ isOpen, onClose, podcast }: PodcastFeedModalP
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest')
   const [realEpisodes, setRealEpisodes] = useState<DisplayEpisode[]>([])
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [feedError, setFeedError] = useState<string | null>(null)
+  const [progressRev, setProgressRev] = useState(0)
   const [isSubscribed, setIsSubscribed] = useState(() => isPodcastSubscribed(podcast.id) || isPodcastSubscribed(podcast.url))
 
   useEffect(() => {
     if (!isOpen) return
+    setFeedError(null)
 
     // 1. Check local cache
     const cached = getPodcastEpisodes(podcast.id)
@@ -80,7 +85,7 @@ export function PodcastFeedModal({ isOpen, onClose, podcast }: PodcastFeedModalP
       )
     }
 
-    // 2. If it is an active HTTP(S) URL, fetch latest
+    // 2. If it is an active HTTP(S) URL, fetch latest through guarded client
     if (podcast.url.startsWith('http://') || podcast.url.startsWith('https://')) {
       setIsRefreshing(true)
       fetchPodcastFeed(podcast.url)
@@ -96,13 +101,14 @@ export function PodcastFeedModal({ isOpen, onClose, podcast }: PodcastFeedModalP
               audioUrl: ep.audioUrl,
             }))
             setRealEpisodes(mapped)
+            setFeedError(null)
             if (isSubscribed) {
               savePodcastSubscription(result.podcast, result.episodes)
             }
           }
         })
-        .catch(() => {
-          // Graceful fallback to cached or generated demonstration episodes
+        .catch((err) => {
+          setFeedError(err instanceof Error ? err.message : 'Could not load live RSS feed episodes.')
         })
         .finally(() => {
           setIsRefreshing(false)
@@ -110,10 +116,12 @@ export function PodcastFeedModal({ isOpen, onClose, podcast }: PodcastFeedModalP
     }
   }, [isOpen, podcast, isSubscribed])
 
+  const isDemoMode = store.prefs.demoMode || store.channelMode === 'demo'
   const episodes = useMemo(() => {
     if (realEpisodes.length > 0) return realEpisodes
-    return generateEpisodesForPodcast(podcast)
-  }, [realEpisodes, podcast])
+    if (isDemoMode) return generateEpisodesForPodcast(podcast)
+    return []
+  }, [realEpisodes, podcast, isDemoMode])
 
   const filteredEpisodes = useMemo(() => {
     let list = [...episodes]
@@ -190,6 +198,9 @@ export function PodcastFeedModal({ isOpen, onClose, podcast }: PodcastFeedModalP
   }
 
   const handlePlayEpisode = (ep: DisplayEpisode) => {
+    const prev = getEpisodePlaybackProgress(ep.id)
+    saveEpisodePlaybackProgress(ep.id, prev?.positionMs ?? 1000, false)
+    setProgressRev((n) => n + 1)
     store.mediaLibrary.playAudio({
       id: ep.id,
       name: ep.title,
@@ -200,6 +211,14 @@ export function PodcastFeedModal({ isOpen, onClose, podcast }: PodcastFeedModalP
       mediaType: 'podcast',
     })
     toast(`Playing: ${ep.title}`)
+  }
+
+  const handleToggleEpisodeFinished = (ep: DisplayEpisode) => {
+    const prev = getEpisodePlaybackProgress(ep.id)
+    const nextFinished = !prev?.isFinished
+    saveEpisodePlaybackProgress(ep.id, nextFinished ? 0 : (prev?.positionMs ?? 0), nextFinished)
+    setProgressRev((n) => n + 1)
+    toast(nextFinished ? `Marked "${ep.title}" as played` : `Marked "${ep.title}" as unplayed`)
   }
 
   const handleQueueEpisode = (ep: DisplayEpisode) => {
@@ -308,13 +327,26 @@ export function PodcastFeedModal({ isOpen, onClose, podcast }: PodcastFeedModalP
         </div>
 
         {/* Episodes List */}
-        <div className="podcast-episodes-list" role="feed" aria-label="Podcast Episodes">
+        {feedError && (
+          <div style={{ padding: '10px 12px', marginBottom: '10px', borderRadius: '8px', border: '1px solid var(--red, #d44)', color: 'var(--red, #f66)', fontSize: '0.8125rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+            <span>{feedError}</span>
+            <button type="button" className="btn btn-secondary btn-small" onClick={handleManualRefresh} disabled={isRefreshing}>
+              Retry
+            </button>
+          </div>
+        )}
+        <div className="podcast-episodes-list" role="feed" aria-label="Podcast Episodes" data-progress-rev={progressRev}>
           {filteredEpisodes.length > 0 ? (
-            filteredEpisodes.map((ep) => (
+            filteredEpisodes.map((ep) => {
+              const epProgress = getEpisodePlaybackProgress(ep.id)
+              return (
               <article key={ep.id} className="podcast-episode-card" tabIndex={0}>
                 <div className="podcast-episode-top">
                   <div className="podcast-episode-title-group">
-                    <span className="podcast-episode-num">Episode {ep.number}</span>
+                    <span className="podcast-episode-num">
+                      Episode {ep.number}
+                      {epProgress?.isFinished ? ' (Played)' : epProgress && epProgress.positionMs > 0 ? ' (In Progress)' : ''}
+                    </span>
                     <strong className="podcast-episode-title">{ep.title}</strong>
                   </div>
 
@@ -326,7 +358,16 @@ export function PodcastFeedModal({ isOpen, onClose, podcast }: PodcastFeedModalP
                       aria-label={`Play ${ep.title}`}
                     >
                       <Icon name="play" size={14} />
-                      <span>Play</span>
+                      <span>{epProgress && !epProgress.isFinished && epProgress.positionMs > 0 ? 'Resume' : 'Play'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-small"
+                      onClick={() => handleToggleEpisodeFinished(ep)}
+                      aria-label={epProgress?.isFinished ? `Mark ${ep.title} unplayed` : `Mark ${ep.title} played`}
+                      title={epProgress?.isFinished ? 'Mark unplayed' : 'Mark played'}
+                    >
+                      <Icon name="check" size={14} />
                     </button>
                     <button
                       type="button"
@@ -347,13 +388,18 @@ export function PodcastFeedModal({ isOpen, onClose, podcast }: PodcastFeedModalP
                   <span>·</span>
                   <span>{ep.duration}</span>
                   <span>·</span>
-                  <span>Audio MP3 (Stereo)</span>
+                  <span>{realEpisodes.length === 0 && isDemoMode ? 'Sample Preview' : 'Audio Enclosure'}</span>
                 </div>
               </article>
-            ))
+              )
+            })
           ) : (
             <p className="faint" style={{ textAlign: 'center', padding: '32px 0' }}>
-              No episodes found matching "{searchQuery}".
+              {isRefreshing
+                ? 'Loading podcast feed episodes...'
+                : searchQuery.trim()
+                ? `No episodes found matching "${searchQuery}".`
+                : 'No RSS episodes loaded yet. Click Refresh Feed to fetch the latest episodes from this feed address.'}
             </p>
           )}
         </div>

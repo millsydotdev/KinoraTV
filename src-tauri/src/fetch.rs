@@ -208,6 +208,19 @@ impl Policy {
         }
     }
 
+    /// Public RSS/Atom podcast feeds and OPDS book catalogues: bounded to 8 MiB,
+    /// guarded against loopback, private, and reserved network destinations.
+    pub fn feed() -> Self {
+        Self {
+            max_bytes: 8 * 1024 * 1024,
+            max_redirects: 4,
+            connect_timeout: Duration::from_secs(8),
+            total_timeout: Duration::from_secs(20),
+            noun: "feed",
+            ..Self::default()
+        }
+    }
+
     fn permits(&self, ip: IpAddr) -> bool {
         #[cfg(test)]
         if self.allow_loopback && ip.to_canonical().is_loopback() {
@@ -859,6 +872,57 @@ pub async fn fetch_updater_manifest(raw_url: &str) -> Result<String, IngestError
             format!("Update manifest from {host} is not valid UTF-8."),
         )
     })
+}
+
+/// Fetches a public podcast RSS/Atom feed or OPDS book catalogue document through
+/// Kinora's guarded HTTP client (anti-SSRF, no proxies, bounded size and timeout).
+pub async fn fetch_feed_xml(raw_url: &str, accept: Option<&str>) -> Result<String, IngestError> {
+    let policy = Policy::feed();
+    let url = check_url(raw_url, &policy)?;
+    let host = url.host_str().unwrap_or_default().to_owned();
+    let client = guarded_client(&policy)?;
+    let noun = policy.noun;
+
+    let accept_header = accept
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && s.len() <= 256 && !s.contains(['\r', '\n']))
+        .unwrap_or("application/atom+xml, application/rss+xml, application/opds+json, application/xml, text/xml, */*");
+
+    let mut response = client
+        .get(url)
+        .header(ACCEPT, accept_header)
+        .send()
+        .await
+        .map_err(|e| from_reqwest(&e, &host, noun))?;
+
+    if let Some(peer) = response.remote_addr() {
+        if !policy.permits(peer.ip()) {
+            return Err(blocked(&host, noun));
+        }
+    }
+    let status = response.status();
+    if !status.is_success() {
+        let code = status.as_u16();
+        let message = format!("{host} answered with HTTP {code} instead of a feed document.");
+        return Err(IngestError::new(ErrorCode::HttpStatus, message));
+    }
+
+    let mut body = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|e| from_reqwest(&e, &host, noun))?
+    {
+        if body.len() + chunk.len() > policy.max_bytes {
+            return Err(IngestError::new(
+                ErrorCode::TooLarge,
+                format!("Feed document from {host} exceeded the 8 MB limit."),
+            ));
+        }
+        body.extend_from_slice(&chunk);
+    }
+
+    Ok(String::from_utf8_lossy(&body).into_owned())
 }
 
 /// A media resource fetched for the stream protocol.
@@ -1986,5 +2050,16 @@ mod tests {
         // Loopback / private rejected
         assert!(check_url("https://127.0.0.1:8080/scrobble", &policy).is_err());
         assert!(check_url("https://192.168.1.50/scrobble", &policy).is_err());
+    }
+
+    #[test]
+    fn feed_policy_refuses_private_and_loopback_hosts() {
+        let policy = Policy::feed();
+        assert!(check_url("https://m.gutenberg.org/ebooks.opds/", &policy).is_ok());
+        assert!(check_url("https://feeds.example.org/podcast.xml", &policy).is_ok());
+        assert!(check_url("http://127.0.0.1:5198/feed.xml", &policy).is_err());
+        assert!(check_url("http://192.168.1.10/opds", &policy).is_err());
+        assert!(check_url("http://169.254.169.254/latest/meta-data", &policy).is_err());
+        assert!(check_url("file:///etc/passwd", &policy).is_err());
     }
 }
