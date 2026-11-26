@@ -80,7 +80,10 @@ Kinora 0.6.0 expands the standalone desktop app into a complete multi-device med
 ## Bug Fixes
 
 - **Cache Clearing, QR Encoding, Sidebar Contrast & Routing Fixes:** Fixed artwork cache clearing in Settings to invoke native storage cleanup, corrected QR code Reed-Solomon format bits for reliable phone scanning, elevated sidebar contrast, and unified BrowserRouter navigation across voice and remote commands.
+- **Bottom Navigation Hint Bar Containment & Sidebar Clearance:** Anchored the TV mode bottom navigation hint bar strictly to the bottom-right of the main content viewport using the dynamic shell inset so it never overlaps the expanded, collapsed, or drawer sidebar, clears the persistent audio bar, and hides automatically when overlays or playback views are open.
+  Mounted RemoteHintBar inside the main content region with z-index below navigation drawers and dialogs, while keeping desktop mode free of unnecessary remote hint clutter.
+- **TV Series Poster Framing, Image Loading & Genre Artwork Consistency:** Fixed poster image loading stalls, moved TV show poster captions cleanly below 2:3 artwork, enforced top-weighted poster framing and aspect-aware fitting across series and detail screens, fixed Home Explore Genres card sizing, unified genre tabs across Movies and TV Shows, and added automatic legacy genre cache migration.
 
 ## Engineering and Infrastructure Notes
 
-- **Release Asset Verification, Staging Isolation & Headless Server Image:** Added automated release verification (latest.json schema, Minisign signatures, SHA256SUMS, SBOM, macOS arch asset collision prevention, and dry-run release workflow validation), isolated staging builds, a zero-GUI headless server Docker image, systemd unit, and changelog checks.
+- **Release Asset Verification, CI/Docker Repairs & Headless Server Image:** Added automated release verification (latest.json schema, Minisign signatures, SHA256SUMS, SBOM, macOS arch asset collision prevention, and dry-run release workflow validation), repaired timezone-dependent tests and Ubuntu 24.04 Docker UID collisions, hardened cross-platform Windows/macOS/Linux release verification, and added a zero-GUI headless server Docker image, systemd unit, and changelog checks.

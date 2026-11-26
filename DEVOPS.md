@@ -41,7 +41,7 @@ Kinora employs four dedicated GitHub Actions workflows to govern the code lifecy
                                           |
 +-----------------------------------------+-----------------------------------------+
 | 4. Docker Infrastructure: .github/workflows/docker.yml                            |
-|    - Builds ghcr.io/millsydotdev/kinora-fixtures and kinora-builder               |
+|    - Builds ghcr.io/millsydotdev/kinoratv/kinora-{fixtures,builder,server}        |
 |    - Multi-arch support via QEMU / Buildx                                         |
 |    - Attestation: SLSA provenance and SBOM generation                             |
 +-----------------------------------------------------------------------------------+
@@ -75,9 +75,9 @@ Every code change must satisfy all 5 automated quality gates before merging:
 
 - **Gate 0: Version Consistency:** Validates that `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/Cargo.lock` agree on SemVer 2.0.0 (`npm run version:check`).
 - **Gate 1: TypeScript Static Typecheck:** Validates strict typing across all screens and components without compiler errors (`npm run typecheck`).
-- **Gate 2: Vitest Frontend Test Suite:** 49 test suites (476 unit and integration tests) verifying screen layouts, store state machines, drawer overlays, theme contrast, and IPC boundary serialization (`npm test`).
+- **Gate 2: Vitest Frontend Test Suite:** 162 test suites (1,240+ unit and integration tests) verifying screen layouts, store state machines, drawer overlays, remote navigation, artwork framing, theme contrast, and IPC boundary serialization (`npm test`).
 - **Gate 3: Multi-Timezone Schedule Invariance:** Executes EPG calculations across `Europe/London`, `America/New_York`, and `Pacific/Auckland` to guarantee daylight-saving transitions never disrupt air times.
-- **Gate 4: Rust Engine & Security Suite:** Rust code formatting (`cargo fmt --check`), strict clippy lints (`cargo clippy --all-targets -- -D warnings`), and 176 unit and integration tests (`npm run test:rust`).
+- **Gate 4: Rust Engine & Security Suite:** Rust code formatting (`cargo fmt --check`), strict clippy lints (`cargo clippy --all-targets -- -D warnings`), and the native Rust test suite (`npm run test:rust`).
 - **Gate 5: Security & Supply Chain Audits:** NPM vulnerability audit, Cargo vulnerability audit (`cargo audit`), Cargo licensing policies (`cargo deny`), and third-party notices verification (`make audit`).
 
 ---
@@ -85,16 +85,18 @@ Every code change must satisfy all 5 automated quality gates before merging:
 ## 4. GitHub Container Registry (GHCR) Presence
 
 ### Evaluation and Strategy
-Kinora is a native desktop application distributed as platform binaries (`.rpm`, `.deb`, `.AppImage`, `.dmg`, `.exe`). However, Kinora maintains container images in GitHub Container Registry (GHCR) for two operational needs:
-1. **`kinora-builder` (`ghcr.io/millsydotdev/kinora-builder`):**
+Kinora is a native desktop application distributed as platform binaries (`.rpm`, `.deb`, `.AppImage`, `.dmg`, `.exe`, `.msi`). In addition, Kinora maintains container images in GitHub Container Registry (GHCR) for three operational needs:
+1. **`kinora-builder` (`ghcr.io/millsydotdev/kinoratv/kinora-builder`):**
    Standardized Linux compilation environment with all WebKitGTK 4.1 development libraries, Rust stable, Node 22, and packaging utilities. Allows developers on any operating system to build native Linux packages reproducibly.
-2. **`kinora-fixtures` (`ghcr.io/millsydotdev/kinora-fixtures`):**
+2. **`kinora-fixtures` (`ghcr.io/millsydotdev/kinoratv/kinora-fixtures`):**
    Zero-dependency mock streaming, XMLTV guide, and Xtream Codes API service for automated testing.
+3. **`kinora-server` (`ghcr.io/millsydotdev/kinoratv/kinora-server`):**
+   Zero-GUI headless Kinora Media Server compiled from `src-tauri/src/bin/kinora_server.rs` for always-on Linux hosts, NAS devices, and Docker deployments.
 
 ### Tagging & Provenance Convention
-- **Versioned Immutable Tags:** `ghcr.io/millsydotdev/kinora-builder:0.6.0`
-- **Commit Short SHAs:** `ghcr.io/millsydotdev/kinora-builder:<short-sha>`
-- **Tracking Tags:** `ghcr.io/millsydotdev/kinora-builder:latest`
+- **Versioned Immutable Tags:** `ghcr.io/millsydotdev/kinoratv/kinora-server:0.6.0` (and matching tags for `kinora-builder` and `kinora-fixtures`)
+- **Commit Short SHAs:** `ghcr.io/millsydotdev/kinoratv/kinora-server:<short-sha>`
+- **Tracking Tags:** `ghcr.io/millsydotdev/kinoratv/kinora-server:latest` (published from `main` only)
 - **Supply Chain Attestation:** Generated with SLSA provenance and CycloneDX container SBOMs.
 
 ---

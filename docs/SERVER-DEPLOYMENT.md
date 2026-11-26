@@ -15,8 +15,8 @@ Kinora Media Server runs as a standalone, zero-GUI Rust binary (`kinora-server`)
 Build and run the dedicated `server` target from the repository root:
 
 ```bash
-docker compose up -d --build kinora-server
-docker compose logs -f kinora-server
+docker compose up -d --build server
+docker compose logs -f server
 ```
 
 The container stores persistent data in `/data` (`KINORA_DATA_DIR=/data`), exposes `5198/tcp` and `5197/udp`, runs as non-root user `kinora` (UID 1000), and shuts down cleanly on `SIGTERM`.

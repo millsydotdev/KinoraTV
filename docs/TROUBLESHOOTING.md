@@ -53,7 +53,7 @@ Common issues, diagnostic procedures, and recovery instructions.
 
 ### "Your saved sources file was damaged" Startup Notice:
 - **Explanation:** Kinora detected that `sources.json` could not be parsed as valid JSON.
-- **Automatic Recovery:** Kinora moves the damaged file to `sources.corrupt.<timestamp>.json` and starts with a clean slate. Your original data is never destroyed.
+- **Automatic Recovery:** Kinora moves the damaged file to `sources.json.corrupt-<timestamp>` and starts with a clean slate. Your original data is never destroyed.
 - **Restoration:** You can inspect the backup file or restore from a previously created encrypted backup file in **Settings -> Advanced -> Backup & Migration**.
 
 ### Factory Reset:

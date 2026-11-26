@@ -59,7 +59,7 @@ Staging configuration is defined in `src-tauri/tauri.staging.conf.json`. It inhe
 - `identifier`: "io.github.millsydotdev.kinora.staging"
 - `build.beforeBuildCommand`: "npm run build:staging"
 - `app.windows[0].title`: "Kinora [Staging]"
-- `plugins.updater.endpoints`: `["https://github.com/millsydotdev/kinora/releases/download/staging-latest/latest.json"]`
+- `plugins.updater.endpoints`: `["https://github.com/millsydotdev/KinoraTV/releases/download/staging-latest/latest.json"]`
 
 ---
 
