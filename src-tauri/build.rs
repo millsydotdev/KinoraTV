@@ -86,6 +86,8 @@ fn main() {
             "media_server_request",
             "fetch_trakt",
             "check_for_updates",
+            "install_discovered_update",
+            "restart_app",
             "get_local_libraries",
             "save_local_library",
             "delete_local_library",

@@ -826,21 +826,49 @@ pub async fn fetch_trakt_api(
     Ok(String::from_utf8_lossy(&body).into_owned())
 }
 
-/// Fetches an official update manifest JSON through the guarded network client.
-pub async fn fetch_updater_manifest(raw_url: &str) -> Result<String, IngestError> {
+/// HTTP response for updater manifest or GitHub Releases API checks, supporting ETag revalidation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UpdaterHttpReply {
+    NotModified,
+    Ok { body: String, etag: Option<String> },
+}
+
+/// Fetches an official update manifest or GitHub Releases JSON through the guarded network client,
+/// supporting `If-None-Match` ETag revalidation and explicit HTTP 403/429 rate-limit reporting.
+#[allow(dead_code)]
+pub async fn fetch_updater_json(
+    raw_url: &str,
+    etag: Option<&str>,
+) -> Result<UpdaterHttpReply, IngestError> {
     let policy = Policy::updater();
-    let url = check_url(raw_url, &policy)?;
+    fetch_updater_json_with_policy(raw_url, etag, &policy).await
+}
+
+/// Policy-parameterized updater JSON fetcher (used by tests to target local loopback release fixtures).
+pub async fn fetch_updater_json_with_policy(
+    raw_url: &str,
+    etag: Option<&str>,
+    policy: &Policy,
+) -> Result<UpdaterHttpReply, IngestError> {
+    let url = check_url(raw_url, policy)?;
     let host = url.host_str().unwrap_or_default().to_owned();
-    let client = guarded_client(&policy)?;
+    let client = guarded_client(policy)?;
     let noun = policy.noun;
 
-    let req = client
+    let mut req = client
         .get(url)
         .header(ACCEPT, "application/vnd.github+json, application/json")
         .header(
             reqwest::header::USER_AGENT,
             concat!("Kinora/", env!("CARGO_PKG_VERSION")),
         );
+
+    if let Some(tag) = etag
+        .map(str::trim)
+        .filter(|t| !t.is_empty() && !t.contains(['\r', '\n']))
+    {
+        req = req.header(reqwest::header::IF_NONE_MATCH, tag);
+    }
 
     let mut response = req
         .send()
@@ -852,12 +880,45 @@ pub async fn fetch_updater_manifest(raw_url: &str) -> Result<String, IngestError
             return Err(blocked(&host, noun));
         }
     }
+
     let status = response.status();
+    if status == reqwest::StatusCode::NOT_MODIFIED {
+        return Ok(UpdaterHttpReply::NotModified);
+    }
+
+    if status == reqwest::StatusCode::TOO_MANY_REQUESTS
+        || (status == reqwest::StatusCode::FORBIDDEN
+            && response
+                .headers()
+                .get("x-ratelimit-remaining")
+                .and_then(|v| v.to_str().ok())
+                == Some("0"))
+    {
+        let retry_hint = response
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.trim().parse::<u64>().ok())
+            .map(|secs| format!(" Retry after {secs}s."))
+            .unwrap_or_default();
+        return Err(IngestError::new(
+            ErrorCode::Busy,
+            format!("Release server rate limit reached on {host}.{retry_hint} Try again shortly."),
+        ));
+    }
+
     if !status.is_success() {
         let code = status.as_u16();
         let message = format!("{host} answered with HTTP {code} instead of update manifest.");
         return Err(IngestError::new(ErrorCode::HttpStatus, message));
     }
+
+    let resp_etag = response
+        .headers()
+        .get(reqwest::header::ETAG)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty() && s.len() <= 256);
 
     let mut body = Vec::new();
     while let Some(chunk) = response
@@ -874,12 +935,29 @@ pub async fn fetch_updater_manifest(raw_url: &str) -> Result<String, IngestError
         body.extend_from_slice(&chunk);
     }
 
-    String::from_utf8(body).map_err(|_| {
+    let text = String::from_utf8(body).map_err(|_| {
         IngestError::new(
             ErrorCode::Network,
             format!("Update manifest from {host} is not valid UTF-8."),
         )
+    })?;
+
+    Ok(UpdaterHttpReply::Ok {
+        body: text,
+        etag: resp_etag,
     })
+}
+
+/// Fetches an official update manifest JSON through the guarded network client.
+#[allow(dead_code)]
+pub async fn fetch_updater_manifest(raw_url: &str) -> Result<String, IngestError> {
+    match fetch_updater_json(raw_url, None).await? {
+        UpdaterHttpReply::Ok { body, .. } => Ok(body),
+        UpdaterHttpReply::NotModified => Err(IngestError::new(
+            ErrorCode::Network,
+            "Unexpected 304 Not Modified without a cached ETag.",
+        )),
+    }
 }
 
 /// Fetches a public podcast RSS/Atom feed or OPDS book catalogue document through

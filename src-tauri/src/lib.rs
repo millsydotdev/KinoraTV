@@ -232,20 +232,216 @@ mod desktop {
         vault.clear();
     }
 
-    /// Checks for application updates from the official release manifest.
+    /// Checks for application updates from the official release manifest with TTL + ETag caching.
     #[tauri::command]
     async fn check_for_updates(
         endpoint: Option<String>,
         allow_prereleases: Option<bool>,
+        force: Option<bool>,
+        cache: tauri::State<'_, updater::UpdaterCache>,
         app: tauri::AppHandle,
     ) -> Result<updater::UpdateCheckResult, ingest::IngestError> {
         let current_version = app.package_info().version.to_string();
-        updater::check_for_updates(
+        updater::check_for_updates_cached(
+            &cache,
             endpoint,
             &current_version,
             allow_prereleases.unwrap_or(false),
+            force.unwrap_or(false),
         )
         .await
+    }
+
+    #[derive(serde::Serialize, Clone)]
+    #[serde(rename_all = "camelCase")]
+    struct UpdateProgressPayload {
+        stage: &'static str,
+        percent: Option<u8>,
+        downloaded_bytes: u64,
+        total_bytes: u64,
+    }
+
+    #[derive(serde::Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct UpdateInstallOutcome {
+        success: bool,
+        restart_required: bool,
+        installed_version: Option<String>,
+        error: Option<String>,
+    }
+
+    /// Downloads, cryptographically verifies the Minisign signature against the bundled public key,
+    /// and installs a discovered update through `tauri-plugin-updater` for either Stable or Pre-release channels.
+    #[tauri::command]
+    async fn install_discovered_update(
+        manifest_url: Option<String>,
+        app: tauri::AppHandle,
+    ) -> Result<UpdateInstallOutcome, ingest::IngestError> {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::sync::Arc;
+        use tauri::Emitter;
+        use tauri_plugin_updater::UpdaterExt;
+
+        let allow_loopback = cfg!(dev) && cfg!(feature = "loopback-fixtures");
+        let target_endpoint = manifest_url
+            .as_deref()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or(updater::DEFAULT_UPDATE_ENDPOINT);
+        let validated_url = updater::is_trusted_manifest_endpoint(target_endpoint, allow_loopback)?;
+
+        let updater_client = app
+            .updater_builder()
+            .endpoints(vec![validated_url])
+            .map_err(|e| {
+                ingest::IngestError::new(
+                    ingest::ErrorCode::InvalidUrl,
+                    format!("Could not configure updater endpoint: {e}"),
+                )
+            })?
+            .build()
+            .map_err(|e| {
+                ingest::IngestError::new(
+                    ingest::ErrorCode::Network,
+                    format!("Could not initialize updater: {e}"),
+                )
+            })?;
+
+        let Some(update) = updater_client.check().await.map_err(|e| {
+            ingest::IngestError::new(
+                ingest::ErrorCode::Network,
+                format!("Update manifest verification failed: {e}"),
+            )
+        })?
+        else {
+            return Ok(UpdateInstallOutcome {
+                success: false,
+                restart_required: false,
+                installed_version: None,
+                error: Some(
+                    "No newer signed update package is available for this platform.".into(),
+                ),
+            });
+        };
+
+        let target_version = update.version.clone();
+        let downloaded = Arc::new(AtomicU64::new(0));
+        let total = Arc::new(AtomicU64::new(0));
+        let dl_handle = app.clone();
+        let dl_counter = Arc::clone(&downloaded);
+        let total_counter = Arc::clone(&total);
+        let fin_handle = app.clone();
+        let fin_dl = Arc::clone(&downloaded);
+        let fin_total = Arc::clone(&total);
+
+        let _ = app.emit(
+            "kinora:update_progress",
+            UpdateProgressPayload {
+                stage: "downloading",
+                percent: Some(0),
+                downloaded_bytes: 0,
+                total_bytes: 0,
+            },
+        );
+
+        // `update.download` downloads the package AND cryptographically verifies its Minisign signature
+        // against the public key compiled into tauri.conf.json before returning bytes.
+        let bytes = update
+            .download(
+                move |chunk_len, content_len| {
+                    let dl_now = dl_counter.fetch_add(chunk_len as u64, Ordering::Relaxed)
+                        + chunk_len as u64;
+                    let tot = if let Some(cl) = content_len {
+                        total_counter.store(cl, Ordering::Relaxed);
+                        cl
+                    } else {
+                        total_counter.load(Ordering::Relaxed)
+                    };
+                    let pct = dl_now
+                        .saturating_mul(100)
+                        .checked_div(tot)
+                        .map(|p| p.min(100) as u8);
+                    let _ = dl_handle.emit(
+                        "kinora:update_progress",
+                        UpdateProgressPayload {
+                            stage: "downloading",
+                            percent: pct,
+                            downloaded_bytes: dl_now,
+                            total_bytes: tot,
+                        },
+                    );
+                },
+                move || {
+                    let dl_now = fin_dl.load(Ordering::Relaxed);
+                    let tot = fin_total.load(Ordering::Relaxed).max(dl_now);
+                    let _ = fin_handle.emit(
+                        "kinora:update_progress",
+                        UpdateProgressPayload {
+                            stage: "verifying",
+                            percent: Some(100),
+                            downloaded_bytes: dl_now,
+                            total_bytes: tot,
+                        },
+                    );
+                },
+            )
+            .await
+            .map_err(|e| {
+                ingest::IngestError::new(
+                    ingest::ErrorCode::Network,
+                    format!("Update download or signature verification failed: {e}"),
+                )
+            })?;
+
+        let final_len = bytes.len() as u64;
+        let _ = app.emit(
+            "kinora:update_progress",
+            UpdateProgressPayload {
+                stage: "verified",
+                percent: Some(100),
+                downloaded_bytes: final_len,
+                total_bytes: final_len,
+            },
+        );
+
+        let _ = app.emit(
+            "kinora:update_progress",
+            UpdateProgressPayload {
+                stage: "installing",
+                percent: Some(100),
+                downloaded_bytes: final_len,
+                total_bytes: final_len,
+            },
+        );
+
+        update.install(bytes).map_err(|e| {
+            ingest::IngestError::new(
+                ingest::ErrorCode::Storage,
+                format!("Update installation failed (previous version remains intact): {e}"),
+            )
+        })?;
+
+        let _ = app.emit(
+            "kinora:update_progress",
+            UpdateProgressPayload {
+                stage: "restartRequired",
+                percent: Some(100),
+                downloaded_bytes: final_len,
+                total_bytes: final_len,
+            },
+        );
+
+        Ok(UpdateInstallOutcome {
+            success: true,
+            restart_required: true,
+            installed_version: Some(target_version),
+            error: None,
+        })
+    }
+
+    /// Cleanly restarts Kinora after an update has been verified and installed.
+    #[tauri::command]
+    fn restart_app(app: tauri::AppHandle) {
+        app.restart();
     }
 
     #[tauri::command]
@@ -1371,6 +1567,7 @@ mod desktop {
                 app.manage(xtream::Providers::new(dir));
                 app.manage(stalker::StalkerEngine::new(app_data.clone()));
                 app.manage(downloader::DownloadEngine::new(app_data.clone()));
+                app.manage(updater::UpdaterCache::default());
                 let remote_mgr = remote_server::RemoteServerManager::new(app_data);
                 let remote_mgr_boot = remote_mgr.clone();
                 app.manage(remote_mgr);
@@ -1605,6 +1802,8 @@ mod desktop {
                 media_server_request,
                 fetch_trakt,
                 check_for_updates,
+                install_discovered_update,
+                restart_app,
                 get_local_libraries,
                 save_local_library,
                 delete_local_library,
