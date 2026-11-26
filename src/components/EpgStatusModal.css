@@ -1,0 +1,391 @@
+/* EPG Guide Health & Diagnostics Modal CSS */
+.epg-status-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: epgModalFadeIn 160ms var(--ease, ease-out);
+}
+
+@keyframes epgModalFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.epg-status-card {
+  width: 100%;
+  max-width: 860px;
+  max-height: 85vh;
+  background: var(--surface-modal, #171a21);
+  border: 1px solid var(--border-standard, rgba(255, 255, 255, 0.12));
+  border-radius: var(--r-l, 16px);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.75), 0 0 32px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.epg-status-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.epg-status-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text, #ffffff);
+}
+
+.epg-status-title-icon {
+  color: var(--accent, #e50914);
+}
+
+.epg-status-close-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-s, 6px);
+  display: grid;
+  place-items: center;
+  color: var(--text-3, rgba(255, 255, 255, 0.5));
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.epg-status-close-btn:hover {
+  color: var(--text, #ffffff);
+  background: var(--surface-2, rgba(255, 255, 255, 0.08));
+  border-color: var(--border-subtle, rgba(255, 255, 255, 0.15));
+}
+
+/* Metrics Grid */
+.epg-status-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  padding: 18px 24px 10px;
+}
+
+@media (max-width: 640px) {
+  .epg-status-metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.epg-metric-card {
+  background: var(--surface-elevated, #20242e);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: var(--r-m, 10px);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.epg-metric-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3, rgba(255, 255, 255, 0.5));
+}
+
+.epg-metric-value {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--text, #ffffff);
+}
+
+.text-amber {
+  color: #f59e0b;
+}
+
+.text-blue {
+  color: #60a5fa;
+}
+
+.epg-metric-sub {
+  font-size: 0.725rem;
+  color: var(--text-2, rgba(255, 255, 255, 0.7));
+}
+
+/* Guides Overview Section */
+.epg-status-guides-section {
+  padding: 6px 24px 12px;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+}
+
+.epg-section-heading {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-3, rgba(255, 255, 255, 0.45));
+  margin: 0 0 8px 0;
+}
+
+.epg-guides-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.epg-guide-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: var(--r-s, 6px);
+  padding: 4px 10px;
+  font-size: 0.8rem;
+}
+
+.epg-guide-pill-name {
+  color: var(--text, #ffffff);
+  font-weight: 500;
+}
+
+.epg-guide-pill-badge {
+  font-size: 0.7rem;
+  color: var(--text-3, rgba(255, 255, 255, 0.5));
+  background: rgba(255, 255, 255, 0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* Filter Controls */
+.epg-status-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.epg-status-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.epg-tab-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-3, rgba(255, 255, 255, 0.6));
+  font-size: 0.825rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: var(--r-s, 6px);
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.epg-tab-btn:hover {
+  color: var(--text, #ffffff);
+  background: var(--surface-2, rgba(255, 255, 255, 0.05));
+}
+
+.epg-tab-btn.is-active {
+  color: #ffffff;
+  background: var(--surface-elevated, #20242e);
+  border-color: var(--border-subtle, rgba(255, 255, 255, 0.15));
+}
+
+.epg-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-input, #0e1117);
+  border: 1px solid var(--border-standard, rgba(255, 255, 255, 0.12));
+  border-radius: var(--r-s, 6px);
+  padding: 6px 12px;
+  min-width: 240px;
+}
+
+.epg-search-box:focus-within {
+  border-color: var(--focus, #ff6b73);
+  box-shadow: 0 0 0 2px var(--accent-soft, rgba(229, 9, 20, 0.25));
+}
+
+.epg-search-icon {
+  color: var(--text-3, #858a93);
+}
+
+.epg-search-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text, #ffffff);
+  font-size: 0.825rem;
+  width: 100%;
+}
+
+/* Channels Table */
+.epg-channels-table-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 24px 20px;
+  min-height: 240px;
+}
+
+.epg-channels-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.epg-channel-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface-card, #12151c);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  border-radius: var(--r-s, 8px);
+  padding: 10px 14px;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.epg-channel-row:hover {
+  background: var(--surface-elevated, #1b202a);
+  border-color: var(--border-subtle, rgba(255, 255, 255, 0.12));
+}
+
+.epg-channel-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.epg-channel-num {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+  color: var(--text-3, rgba(255, 255, 255, 0.5));
+  min-width: 38px;
+}
+
+.epg-channel-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text, #ffffff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.epg-channel-tvgid {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.725rem;
+  color: var(--text-3, rgba(255, 255, 255, 0.4));
+  background: rgba(255, 255, 255, 0.05);
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+.epg-channel-status-col {
+  margin: 0 16px;
+}
+
+.epg-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.badge-matched {
+  background: rgba(34, 197, 94, 0.12);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.25);
+}
+
+.badge-no-id {
+  background: rgba(245, 158, 11, 0.12);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.badge-unmatched {
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.epg-channel-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.epg-row-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.775rem;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: var(--r-s, 6px);
+  background: var(--surface-2, rgba(255, 255, 255, 0.06));
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+  color: var(--text-2, rgba(255, 255, 255, 0.85));
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.epg-row-action-btn:hover {
+  background: var(--surface-3, rgba(255, 255, 255, 0.15));
+  border-color: var(--accent, #e50914);
+  color: #ffffff;
+}
+
+.epg-row-action-btn.btn-danger {
+  color: #ff6666;
+}
+
+.epg-row-action-btn.btn-danger:hover {
+  background: rgba(255, 85, 85, 0.15);
+  border-color: #ff5555;
+}
+
+.epg-empty-state {
+  text-align: center;
+  padding: 40px 16px;
+  color: var(--text-3, rgba(255, 255, 255, 0.45));
+  font-size: 0.9rem;
+}
+
+.epg-list-truncated-note {
+  text-align: center;
+  padding: 12px;
+  font-size: 0.75rem;
+  color: var(--text-3, rgba(255, 255, 255, 0.4));
+}

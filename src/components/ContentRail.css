@@ -45,18 +45,16 @@
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: #e50914;
-  color: #ffffff;
+  background: var(--accent, #e50914);
+  color: var(--accent-ink, #ffffff);
   display: inline-grid;
   place-items: center;
-  box-shadow: 0 0 10px rgba(229, 9, 20, 0.55);
   margin-right: 2px;
   flex: none;
 }
 
 .content-rail-icon.is-clapperboard {
-  color: #e50914;
-  filter: drop-shadow(0 0 6px rgba(229, 9, 20, 0.6));
+  color: var(--accent, #e50914);
   flex: none;
 }
 
@@ -115,17 +113,20 @@
   scroll-snap-align: start;
 }
 
-/* Card sizing inside tile / square track (master mockup parity: 220px by 185px) */
+.content-rail-track.is-poster .card-poster .card-media,
+.content-rail-track.is-poster .card-media {
+  aspect-ratio: 2 / 3;
+}
+
+/* Card sizing inside tile / square track */
 .content-rail-track.is-tile > .card,
-.content-rail-track.is-tile .card-poster,
 .content-rail-track.is-tile .card-tile {
   flex: 0 0 clamp(180px, calc((100% - 5 * var(--gap, 16px)) / 6), 240px);
   width: clamp(180px, calc((100% - 5 * var(--gap, 16px)) / 6), 240px);
   scroll-snap-align: start;
 }
 
-.content-rail-track.is-tile .card-poster .card-media,
-.content-rail-track.is-tile .card-media {
+.content-rail-track.is-tile .card-tile .card-media {
   aspect-ratio: 220 / 185;
 }
 
@@ -149,8 +150,7 @@
   height: 44px;
   border-radius: 50%;
   border: 2px solid rgba(255, 255, 255, 0.95);
-  background: rgba(0, 0, 0, 0.42);
-  backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.62);
   display: grid;
   place-items: center;
   color: #ffffff;
@@ -190,6 +190,17 @@
   background: rgb(var(--scrim) / 0.85);
   color: #ffffff;
   border-color: rgba(255, 255, 255, 0.35);
+}
+
+@media (pointer: coarse) {
+  .card-more-btn,
+  .card-dismiss-btn {
+    width: 44px;
+    height: 44px;
+  }
+  .card-dismiss-btn {
+    right: 56px;
+  }
 }
 
 /* Card dismiss button on continue watching cards */

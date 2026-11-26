@@ -4,6 +4,8 @@ import {
   DEFAULT_METADATA_CONFIG,
   METADATA_ATTRIBUTIONS,
   clearMetadataCredentials,
+  getEnvironmentTmdbKey,
+  hydrateMetadataCredentialsFromVault,
   loadMetadataConfig,
   saveMetadataConfig,
   searchEpisodeStill,
@@ -217,5 +219,26 @@ describe('Metadata Providers & Privacy Guards', () => {
     expect(episodes[0]?.stillUrl).toBe('https://static.tvmaze.com/uploads/images/original_untouched/1/499.jpg')
 
     spy.mockRestore()
+  })
+
+  it('reads environment TMDB key when configured', () => {
+    process.env.TEST_WITH_LIVE_TMDB = '1'
+    process.env.VITE_TMDB_API_KEY = 'mock-env-tmdb-key-999'
+    const key = getEnvironmentTmdbKey()
+    expect(key).toBe('mock-env-tmdb-key-999')
+    delete process.env.TEST_WITH_LIVE_TMDB
+    delete process.env.VITE_TMDB_API_KEY
+  })
+
+  it('automatically hydrates TMDB configuration from environment when unconfigured', async () => {
+    process.env.TEST_WITH_LIVE_TMDB = '1'
+    process.env.VITE_TMDB_API_KEY = 'seeded-env-key-456'
+    await hydrateMetadataCredentialsFromVault()
+    const config = loadMetadataConfig()
+    expect(config.tmdbApiKey).toBe('seeded-env-key-456')
+    expect(config.tmdbEnabled).toBe(true)
+    expect(config.tvmazeEnabled).toBe(true)
+    delete process.env.TEST_WITH_LIVE_TMDB
+    delete process.env.VITE_TMDB_API_KEY
   })
 })

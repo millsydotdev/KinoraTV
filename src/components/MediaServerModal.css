@@ -1,0 +1,174 @@
+/* MediaServerModal.css - Styling for Media Server Modal.
+   Zero em-dash typography standard. */
+
+.ms-modal-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 680px;
+}
+
+.ms-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ms-subheading {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-heading, #fff);
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ms-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ms-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--bg-card, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: var(--radius-md, 8px);
+  padding: 12px 16px;
+}
+
+.ms-card-icon {
+  color: var(--accent, #e50914);
+  display: flex;
+  align-items: center;
+}
+
+.ms-card-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ms-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ms-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(229, 9, 20, 0.15);
+  color: var(--accent, #e50914);
+}
+
+.ms-card-url {
+  font-size: 0.82rem;
+  color: var(--text-muted, #999);
+}
+
+.ms-card-meta {
+  font-size: 0.75rem;
+}
+
+.ms-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ms-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--bg-card, rgba(255, 255, 255, 0.02));
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  border-radius: var(--radius-md, 8px);
+  padding: 16px;
+}
+
+.ms-type-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.ms-type-tab {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+  background: transparent;
+  color: var(--text-muted, #aaa);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ms-type-tab:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+
+.ms-type-tab.active {
+  background: var(--accent, #e50914);
+  color: #fff;
+  border-color: var(--accent, #e50914);
+}
+
+.ms-field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.ms-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ms-label {
+  font-size: 0.82rem;
+  color: var(--text-muted, #aaa);
+  font-weight: 500;
+}
+
+.ms-auth-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ms-test-result {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.ms-test-result.success {
+  background: rgba(46, 204, 113, 0.12);
+  border: 1px solid rgba(46, 204, 113, 0.3);
+  color: #2ecc71;
+}
+
+.ms-test-result.error {
+  background: rgba(231, 76, 60, 0.12);
+  border: 1px solid rgba(231, 76, 60, 0.3);
+  color: #e74c3c;
+}
+
+.ms-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 6px;
+}

@@ -1,8 +1,36 @@
 import { useEffect, useRef, useState } from 'react'
+import { isTauri, openStream, closeStream } from '../lib/native'
 import { Icon } from './Icon'
-import { AudioNowPlayingModal, type EqualizerPreset } from './AudioNowPlayingModal'
+import { Art } from './ui'
+import { AudioNowPlayingModal, type EqualizerPreset, EQ_PRESETS } from './AudioNowPlayingModal'
 import type { AudioTrackState } from '../state/mediaLibrary'
 import './AudioPlayerBar.css'
+
+export interface EqGains {
+  bass: number
+  mid: number
+  treble: number
+}
+
+export function getEqPresetGains(preset: EqualizerPreset): EqGains {
+  switch (preset) {
+    case 'Bass Boost':
+      return { bass: 6, mid: 0, treble: -1 }
+    case 'Treble Boost':
+      return { bass: -2, mid: 0, treble: 6 }
+    case 'Vocal':
+      return { bass: -3, mid: 4, treble: 2 }
+    case 'Spoken Word':
+      return { bass: -5, mid: 5, treble: 1 }
+    case 'Acoustic':
+      return { bass: 2, mid: 1, treble: 3 }
+    case 'Club':
+      return { bass: 5, mid: 2, treble: 4 }
+    case 'Flat':
+    default:
+      return { bass: 0, mid: 0, treble: 0 }
+  }
+}
 
 interface AudioPlayerBarProps {
   track: AudioTrackState | null
@@ -17,6 +45,7 @@ interface AudioPlayerBarProps {
   onClearQueue?: () => void
   sleepTimerRemaining?: number | null
   onSetSleepTimer?: (mins: number | null) => void
+  onUpdateLyrics?: (lyrics: string) => void
 }
 
 export function AudioPlayerBar({
@@ -32,19 +61,30 @@ export function AudioPlayerBar({
   onClearQueue,
   sleepTimerRemaining = null,
   onSetSleepTimer,
+  onUpdateLyrics,
 }: AudioPlayerBarProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const sessionRef = useRef<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [queueOpen, setQueueOpen] = useState(false)
   const [timerOpen, setTimerOpen] = useState(false)
   const [nowPlayingExpanded, setNowPlayingExpanded] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(0)
+
+  const handleSeek = (targetSec: number) => {
+    if (audioRef.current && Number.isFinite(targetSec)) {
+      audioRef.current.currentTime = targetSec
+      setCurrentTime(targetSec)
+    }
+  }
 
   // Web Audio Equalizer & Analyser DSP Nodes (Audit #84 & #85)
   const [eqPreset, setEqPreset] = useState<EqualizerPreset>(() => {
     try {
       const saved = localStorage.getItem('kinora.audio_eq_preset.v1')
-      if (saved && ['Flat', 'Bass Boost', 'Vocal', 'Acoustic', 'Club'].includes(saved)) {
+      if (saved && EQ_PRESETS.includes(saved as EqualizerPreset)) {
         return saved as EqualizerPreset
       }
     } catch {}
@@ -121,56 +161,118 @@ export function AudioPlayerBar({
       ctx.resume().catch(() => {})
     }
 
-    switch (eqPreset) {
-      case 'Bass Boost':
-        bass.gain.value = 6
-        mid.gain.value = 0
-        treble.gain.value = -1
-        break
-      case 'Vocal':
-        bass.gain.value = -3
-        mid.gain.value = 4
-        treble.gain.value = 2
-        break
-      case 'Acoustic':
-        bass.gain.value = 2
-        mid.gain.value = 1
-        treble.gain.value = 3
-        break
-      case 'Club':
-        bass.gain.value = 5
-        mid.gain.value = 2
-        treble.gain.value = 4
-        break
-      case 'Flat':
-      default:
-        bass.gain.value = 0
-        mid.gain.value = 0
-        treble.gain.value = 0
-        break
-    }
+    const gains = getEqPresetGains(eqPreset)
+    bass.gain.value = gains.bass
+    mid.gain.value = gains.mid
+    treble.gain.value = gains.treble
   }, [eqPreset, isPlaying])
 
   useEffect(() => {
-    if (!audioRef.current || !track) return
+    return () => {
+      if (sessionRef.current !== null) {
+        closeStream(sessionRef.current).catch(() => {})
+        sessionRef.current = null
+      }
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current.removeAttribute('src')
+        audioRef.current.load()
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!audioRef.current) return
+    if (!track) {
+      if (sessionRef.current !== null) {
+        closeStream(sessionRef.current).catch(() => {})
+        sessionRef.current = null
+      }
+      setError(null)
+      setLoading(false)
+      audioRef.current.pause()
+      audioRef.current.removeAttribute('src')
+      audioRef.current.load()
+      return
+    }
+
+    let active = true
+    const currentTrack = track
     setError(null)
     setLoading(true)
 
-    audioRef.current.src = track.streamUrl
-    audioRef.current.volume = volume
+    async function loadAudio() {
+      try {
+        let src = currentTrack.streamUrl
+        if (isTauri() && !src.startsWith('kstream://') && !src.startsWith('blob:')) {
+          const opened = await openStream(src)
+          if (!active) {
+            if (opened) closeStream(opened.session).catch(() => {})
+            return
+          }
+          if (opened) {
+            if (sessionRef.current !== null) {
+              closeStream(sessionRef.current).catch(() => {})
+            }
+            sessionRef.current = opened.session
+            src = opened.url
+          }
+        }
 
-    if (isPlaying) {
-      audioRef.current.play().then(() => {
-        setLoading(false)
-      }).catch(() => {
-        setLoading(false)
-        setError('Stream playback unavailable or blocked by network.')
-      })
-    } else {
-      audioRef.current.pause()
-      setLoading(false)
+        if (!active || !audioRef.current) return
+        audioRef.current.src = src
+        audioRef.current.volume = volume
+
+        if (isPlaying) {
+          try {
+            await audioRef.current.play()
+            if (active) setLoading(false)
+          } catch {
+            if (active) {
+              setLoading(false)
+              setError('Stream playback unavailable or blocked by network.')
+            }
+          }
+        } else {
+          audioRef.current.pause()
+          if (active) setLoading(false)
+        }
+      } catch {
+        if (active) {
+          setLoading(false)
+          setError('Stream playback unavailable or blocked by network.')
+        }
+      }
     }
-  }, [track, isPlaying])
+
+    loadAudio()
+
+    return () => {
+      active = false
+    }
+  }, [track?.id, track?.streamUrl])
+
+  // Synchronise play and pause without reloading stream session
+  useEffect(() => {
+    const el = audioRef.current
+    if (!el || !track || loading) return
+    if (isPlaying) {
+      if (el.paused) {
+        el.play().catch(() => {})
+      }
+    } else {
+      if (!el.paused) {
+        el.pause()
+      }
+    }
+  }, [isPlaying, track, loading])
+
+  // Synchronise volume level without reloading stream session
+  useEffect(() => {
+    const el = audioRef.current
+    if (!el) return
+    el.volume = volume
+  }, [volume])
 
   useEffect(() => {
     if (audioRef.current) {
@@ -204,21 +306,35 @@ export function AudioPlayerBar({
         onWaiting={() => setLoading(true)}
         onPlaying={() => { setLoading(false); setError(null) }}
         onError={() => { setLoading(false); setError('Unable to connect to audio stream.') }}
+        onTimeUpdate={() => {
+          if (audioRef.current) {
+            setCurrentTime(audioRef.current.currentTime)
+          }
+        }}
+        onDurationChange={() => {
+          if (audioRef.current) {
+            setDuration(audioRef.current.duration || 0)
+          }
+        }}
+        onLoadedMetadata={() => {
+          if (audioRef.current) {
+            setDuration(audioRef.current.duration || 0)
+          }
+        }}
       />
       <div className="audio-player-container">
         {/* Track identity */}
-        <div
+        <button
+          type="button"
           className="audio-player-info"
           onClick={() => setNowPlayingExpanded(true)}
           style={{ cursor: 'pointer' }}
           title="Click to expand Now Playing Visualizer"
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => { if (e.key === 'Enter') setNowPlayingExpanded(true) }}
+          aria-label="Expand Now Playing Visualizer"
         >
           <div className="audio-player-avatar" style={{ '--track-hue': track.accentHue ?? 210 } as React.CSSProperties}>
             {track.artworkUrl ? (
-              <img src={track.artworkUrl} alt="" className="audio-player-avatar-img" />
+              <Art src={track.artworkUrl} alt={track.name} contentId={`audio:${track.id}`} className="audio-player-avatar-img" fallbackIcon={track.mediaType === 'podcast' ? 'podcast' : track.mediaType === 'audiobook' ? 'book' : track.mediaType === 'music' ? 'music' : 'radio'} />
             ) : (
               <Icon name={track.mediaType === 'podcast' ? 'podcast' : track.mediaType === 'audiobook' ? 'book' : track.mediaType === 'music' ? 'music' : 'radio'} size={18} />
             )}
@@ -232,7 +348,7 @@ export function AudioPlayerBar({
             </div>
             <span className="audio-player-provider">{track.provider}</span>
           </div>
-        </div>
+        </button>
 
         {/* Playback Controls */}
         <div className="audio-player-controls">
@@ -420,6 +536,10 @@ export function AudioPlayerBar({
           eqPreset={eqPreset}
           onSelectEqPreset={setEqPreset}
           analyserNode={analyserRef.current}
+          currentTime={currentTime}
+          duration={duration}
+          onSeek={handleSeek}
+          onUpdateLyrics={onUpdateLyrics}
         />
       )}
     </aside>

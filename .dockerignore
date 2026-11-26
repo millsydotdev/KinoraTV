@@ -1,0 +1,66 @@
+# Git and VCS
+.git/
+.git/**
+.gitignore
+.github/
+.github/**
+
+# IDE and Editor
+.vscode/
+.vscode/**
+.idea/
+.idea/**
+.gemini/
+.gemini/**
+.melvu/
+.melvu/**
+
+# Dependency and Build Artifacts
+node_modules/
+node_modules/**
+**/node_modules/
+**/node_modules/**
+dist/
+dist/**
+target/
+target/**
+**/target/
+**/target/**
+src-tauri/target/
+src-tauri/target/**
+
+# Archives and Packages
+*.zip
+**/*.zip
+*.tar.gz
+**/*.tar.gz
+*.deb
+**/*.deb
+*.rpm
+**/*.rpm
+*.AppImage
+**/*.AppImage
+*.dmg
+**/*.dmg
+*.exe
+**/*.exe
+*.msi
+**/*.msi
+Kinora_COMPLETE_UI_Evidence.zip
+
+# Credentials and Environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.sig
+
+# Logs and Caches
+*.log
+**/*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.eslintcache
+tsconfig.tsbuildinfo

@@ -112,6 +112,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         // Trigger transient toast
         setToasts((prev) => [...prev.slice(-2), notif])
         window.setTimeout(() => dismissToast(notif.id), options?.duration ?? 4500)
+
+        // Trigger native desktop notification if supported and granted
+        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+          try {
+            new Notification(title, { body: message })
+          } catch {}
+        }
       }
     },
     [dismissToast],

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Channel, Programme } from '../data/types'
 import { Icon, type IconName } from './Icon'
-import { loadChannelLogo, loadProgrammeArtwork } from '../lib/native'
-import { artworkEngine } from '../data/artworkEngine'
+import { inNativeShell, loadCachedArtwork, loadChannelLogo, loadProgrammeArtwork } from '../lib/native'
+import { getCustomArtwork } from '../state/customArtwork'
+import { artworkEngine, isGenericOrPromoGraphic } from '../data/artworkEngine'
 import { clock } from '../lib/time'
 
 /** Artwork with explicit loading and failed states, so a missing image never leaves a blank hole. */
@@ -12,6 +13,9 @@ export function Art({
   focus = 50,
   className = '',
   eager = false,
+  contentId,
+  fallbackIcon = 'film',
+  fallbackYear,
   onLoad: onImageLoad,
   onError: onImageError,
   children,
@@ -21,55 +25,151 @@ export function Art({
   focus?: number
   className?: string
   eager?: boolean
+  contentId?: string
+  fallbackIcon?: IconName
+  fallbackYear?: number | null
   onLoad?: (e: React.SyntheticEvent<HTMLImageElement>) => void
   onError?: (e: React.SyntheticEvent<HTMLImageElement>) => void
   children?: ReactNode
 }) {
   type ImageState = 'loading' | 'loaded' | 'error'
+  const custom = (contentId || alt) ? getCustomArtwork(contentId || alt) : undefined
+  const effectiveSrc = custom?.dataUrl || src
+  const containerRef = useRef<HTMLDivElement>(null)
   const imgRef = useRef<HTMLImageElement>(null)
-  const [image, setImage] = useState<{ src: string; state: ImageState }>({ src, state: src ? 'loading' : 'error' })
-  const state = image.src === src ? image.state : src ? 'loading' : 'error'
+
+  const isRemote = Boolean(effectiveSrc && (effectiveSrc.startsWith('http://') || effectiveSrc.startsWith('https://')))
+  const native = inNativeShell()
+
+  const [resolvedSrc, setResolvedSrc] = useState<string>(() => {
+    if (!effectiveSrc) return ''
+    if (isRemote && native) return ''
+    return effectiveSrc
+  })
+
+  const [imageState, setImageState] = useState<ImageState>(() => {
+    if (!effectiveSrc) return 'error'
+    return 'loading'
+  })
 
   useEffect(() => {
-    if (!src) {
-      setImage({ src: '', state: 'error' })
+    let active = true
+    if (!effectiveSrc) {
+      setResolvedSrc('')
+      setImageState('error')
       return
     }
+
+    const startLoad = () => {
+      if (isRemote) {
+        if (native) {
+          setResolvedSrc('')
+          setImageState('loading')
+          const cacheKey = contentId ? `art:${contentId}:${effectiveSrc}` : `url:${effectiveSrc}`
+          loadCachedArtwork(cacheKey, effectiveSrc)
+            .then((dataUri) => {
+              if (!active) return
+              if (dataUri) {
+                setResolvedSrc(dataUri)
+              } else {
+                setImageState('error')
+              }
+            })
+            .catch(() => {
+              if (active) setImageState('error')
+            })
+        } else {
+          setImageState('loading')
+          setResolvedSrc(effectiveSrc)
+        }
+      } else {
+        setImageState('loading')
+        setResolvedSrc(effectiveSrc)
+      }
+    }
+
+    if (eager || typeof IntersectionObserver === 'undefined' || !containerRef.current) {
+      startLoad()
+    } else {
+      let started = false
+      const trigger = () => {
+        if (!started) {
+          started = true
+          startLoad()
+        }
+      }
+      const observer = new IntersectionObserver(
+        ([entry]) => {
+          if (entry?.isIntersecting) {
+            observer.disconnect()
+            trigger()
+          }
+        },
+        { rootMargin: '400px' },
+      )
+      observer.observe(containerRef.current)
+      // Safety fallback: if IntersectionObserver does not fire within 600ms (e.g. inside horizontal rails or programmatic scroll), trigger load
+      const timer = setTimeout(trigger, 600)
+      return () => {
+        active = false
+        clearTimeout(timer)
+        observer.disconnect()
+      }
+    }
+
+    return () => {
+      active = false
+    }
+  }, [effectiveSrc, isRemote, native, contentId, eager])
+
+  useEffect(() => {
+    if (!resolvedSrc) return
     const el = imgRef.current
     if (el && el.complete) {
       if (el.naturalWidth > 0) {
-        setImage({ src, state: 'loaded' })
+        setImageState('loaded')
         onImageLoad?.({ currentTarget: el, target: el } as unknown as React.SyntheticEvent<HTMLImageElement>)
       } else {
-        setImage({ src, state: 'error' })
+        setImageState('error')
       }
-      return
     }
-    setImage((cur) => (cur.src === src ? cur : { src, state: 'loading' }))
-  }, [src, onImageLoad])
+  }, [resolvedSrc, onImageLoad])
+
+  const state = !effectiveSrc ? 'error' : imageState
 
   return (
-    <div className={`art ${state === 'loading' ? 'is-loading' : ''} ${className}`}>
-      {state !== 'error' && (
+    <div ref={containerRef} className={`art ${state === 'loading' ? 'is-loading' : ''} ${className}`}>
+      {state !== 'error' && resolvedSrc ? (
         <img
           ref={imgRef}
-          src={src}
+          src={resolvedSrc}
           alt={alt}
           loading={eager ? 'eager' : 'lazy'}
           decoding={eager ? 'sync' : 'async'}
           style={{ objectPosition: `${focus}% 50%` }}
           className={state === 'loaded' ? 'is-loaded' : ''}
           onLoad={(e) => {
-            setImage((current) => current.src === src ? { src, state: 'loaded' } : current)
+            setImageState('loaded')
             onImageLoad?.(e)
           }}
           onError={(e) => {
-            setImage((current) => current.src === src ? { src, state: 'error' } : current)
+            setImageState('error')
             onImageError?.(e)
           }}
         />
+      ) : null}
+      {state === 'error' && (
+        <div
+          className="art-fallback art-fallback-branded"
+          role="img"
+          aria-label={alt ? `Artwork for ${alt}` : 'Artwork unavailable'}
+        >
+          <div className="art-fallback-glow" aria-hidden="true" />
+          <Icon name={fallbackIcon} size={28} className="fallback-icon" />
+          {alt && <span className="fallback-title">{alt}</span>}
+          {fallbackYear != null && <span className="fallback-year">{fallbackYear}</span>}
+        </div>
       )}
-      {state === 'error' && src && <div className="art-fallback">{alt ? `Artwork unavailable: ${alt}` : 'Artwork unavailable'}</div>}
       {children}
     </div>
   )
@@ -160,18 +260,48 @@ export function ProgrammeArt({
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const rawIconUrl = directIcon !== undefined ? directIcon : programme?.icon ?? null
+  // Normalize Sky metadata pd-image URLs so 16:9 photographic stills are requested instead of portrait covers
+  const normalizedRawIcon =
+    rawIconUrl?.includes('images.metadata.sky.com/pd-image/') && rawIconUrl.endsWith('/cover')
+      ? rawIconUrl.replace(/\/cover$/, '/16-9')
+      : rawIconUrl
+
   // Refuse channel logo URLs masquerading as programme artwork
   const isChannelLogo = Boolean(
-    (channel?.logoUrl && rawIconUrl && channel.logoUrl === rawIconUrl) ||
-    (rawIconUrl && (/\/tv-logo\/|\/channel-logo\/|channel_icon/i.test(rawIconUrl)))
+    (channel?.logoUrl && normalizedRawIcon && channel.logoUrl === normalizedRawIcon) ||
+    (normalizedRawIcon && (/\/tv-logo\/|\/channel-logo\/|channel_icon/i.test(normalizedRawIcon)))
   )
-  const iconUrl = isChannelLogo ? null : rawIconUrl
+
+  // When rendering card backdrops, refuse isolated title logos and wordmarks
+  const isTitleLogo = Boolean(
+    backdropOnly && normalizedRawIcon && (/\/logos?\/|title[-_]logo|wordmark|clearart/i.test(normalizedRawIcon))
+  )
+
+  // Refuse generic category graphics, stock news graphics, or broadcaster promotional cards
+  const isPromoOrGeneric = Boolean(
+    normalizedRawIcon && isGenericOrPromoGraphic(normalizedRawIcon, programme?.title)
+  )
+
+  const iconUrl = isChannelLogo || isTitleLogo || isPromoOrGeneric ? null : normalizedRawIcon
+
+  // Check user-selected custom artwork first (Priority 1)
+  const customRecord = programme?.id
+    ? getCustomArtwork(programme.id, 'epg-programme-artwork')
+    : (programme?.title ? getCustomArtwork(programme.title, 'epg-programme-artwork') : undefined)
 
   // Check if central artwork engine has resolved genuine artwork for this programme
-  const enrichedRecord = programme?.title
-    ? artworkEngine.findArtwork(programme.title, 'epg-programme-artwork')
-    : null
-  const effectiveIconUrl = iconUrl || (enrichedRecord?.sourceUrl ? enrichedRecord.sourceUrl : null)
+  // Never match generic category titles cross-channel
+  const isGenericTitle = Boolean(
+    programme?.title &&
+      /^(news|न्यूज़|breaking news|daily news|weather|मौसम|special|स्पेशल|आस्था स्पेशल|आस्था भजन स्पेशल|teleshopping|shopping|live|off air|no information)$/i.test(
+        programme.title.trim(),
+      ),
+  )
+  const enrichedRecord =
+    programme?.title && !isGenericTitle
+      ? artworkEngine.findArtwork(programme.title, 'epg-programme-artwork', undefined, channel?.id)
+      : null
+  const effectiveIconUrl = customRecord?.dataUrl || iconUrl || (enrichedRecord?.sourceUrl ? enrichedRecord.sourceUrl : null)
 
   // Only use explicit art prop or demo programme art (never silent scenic fallback)
   const explicitArt = directArt !== undefined ? directArt : programme?.art ?? null
@@ -220,18 +350,27 @@ export function ProgrammeArt({
     if (eager || typeof IntersectionObserver === 'undefined' || !containerRef.current) {
       load()
     } else {
+      let started = false
+      const trigger = () => {
+        if (!started) {
+          started = true
+          load()
+        }
+      }
       const observer = new IntersectionObserver(
         ([entry]) => {
           if (entry?.isIntersecting) {
             observer.disconnect()
-            load()
+            trigger()
           }
         },
-        { rootMargin: '160px' },
+        { rootMargin: '300px' },
       )
       observer.observe(containerRef.current)
+      const timer = setTimeout(trigger, 600)
       return () => {
         active = false
+        clearTimeout(timer)
         observer.disconnect()
       }
     }
@@ -297,9 +436,21 @@ export function ChannelMark({ channel, size = 40 }: { channel: Channel; size?: n
   useEffect(() => {
     let active = true
     setFailed(false)
+    const custom = getCustomArtwork(channel.id, 'channel-logo') || (channel.tvgId ? getCustomArtwork(channel.tvgId, 'channel-logo') : undefined)
+    if (custom?.dataUrl) {
+      setLogo(custom.dataUrl)
+      return () => { active = false }
+    }
+    if (channel.logoUrl && channel.logoUrl.startsWith('data:')) {
+      setLogo(channel.logoUrl)
+      return () => { active = false }
+    }
     const load = () => {
       void loadChannelLogo(channel.logoUrl, channel.id, channel.tvgId).then((data) => {
-        if (active && data) setLogo(data)
+        if (active) {
+          if (data) setLogo(data)
+          else if (!inNativeShell() && channel.logoUrl) setLogo(channel.logoUrl)
+        }
       })
     }
     if (typeof IntersectionObserver === 'undefined' || !mark.current) load()

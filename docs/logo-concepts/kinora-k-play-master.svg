@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <!-- Background Dark Radial/Linear Gradient -->
+    <linearGradient id="bgDark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#141822"/>
+      <stop offset="100%" stop-color="#080a0f"/>
+    </linearGradient>
+
+    <!-- Subtle Red Perimeter Glow -->
+    <linearGradient id="haloRed" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ff2b38" stop-opacity="0.8"/>
+      <stop offset="50%" stop-color="#c40712" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#ff2b38" stop-opacity="0.6"/>
+    </linearGradient>
+
+    <!-- K Left Stem Gradient -->
+    <linearGradient id="stemGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#b80610"/>
+      <stop offset="40%" stop-color="#e50914"/>
+      <stop offset="100%" stop-color="#ff3d4a"/>
+    </linearGradient>
+
+    <!-- Upper Right Arm: Highlight Ridge Facet -->
+    <linearGradient id="armUpperTop" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0%" stop-color="#e50914"/>
+      <stop offset="55%" stop-color="#ff3d4a"/>
+      <stop offset="100%" stop-color="#ff6b75"/>
+    </linearGradient>
+
+    <!-- Upper Right Arm: Under Shadow Facet -->
+    <linearGradient id="armUpperUnder" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#d60813"/>
+      <stop offset="100%" stop-color="#9e040c"/>
+    </linearGradient>
+
+    <!-- Lower Right Arm: Upper Facing Facet -->
+    <linearGradient id="armLowerUpper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#e50914"/>
+      <stop offset="100%" stop-color="#ad060f"/>
+    </linearGradient>
+
+    <!-- Lower Right Arm: Base Grounding Shadow Facet -->
+    <linearGradient id="armLowerBase" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#9e040c"/>
+      <stop offset="100%" stop-color="#5e0105"/>
+    </linearGradient>
+
+    <!-- Play Inset Well (Deep obsidian inset) -->
+    <linearGradient id="wellDark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#080a0e"/>
+      <stop offset="100%" stop-color="#161a24"/>
+    </linearGradient>
+
+    <!-- Play Button Core Glow -->
+    <linearGradient id="playCore" x1="0" y1="0" x2="1" y2="0.5">
+      <stop offset="0%" stop-color="#ff4f5c"/>
+      <stop offset="50%" stop-color="#e50914"/>
+      <stop offset="100%" stop-color="#b80610"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Container Squircle -->
+  <rect width="1024" height="1024" rx="224" fill="url(#bgDark)"/>
+  <rect x="10" y="10" width="1004" height="1004" rx="218" fill="none" stroke="url(#haloRed)" stroke-width="6"/>
+  <rect x="18" y="18" width="988" height="988" rx="210" fill="none" stroke="#232936" stroke-width="2" stroke-opacity="0.4"/>
+
+  <!-- ==================== K-PLAY INTEGRATED GLYPH ==================== -->
+  <g id="k-glyph">
+    <!-- 1. Left Vertical Stem -->
+    <path d="M224 220 C224 198 242 180 264 180 L344 180 C364 180 380 196 380 216 L380 808 C380 828 364 844 344 844 L264 844 C242 844 224 826 224 804 Z" fill="url(#stemGrad)"/>
+
+    <!-- 2. Upper Right Diagonal Arm -->
+    <!-- Top Highlight Bevel -->
+    <path d="M360 464 L628 204 C642 190 662 182 682 182 L748 182 C772 182 788 202 780 226 L736 348 L484 468 Z" fill="url(#armUpperTop)"/>
+    <!-- Under Shadow Bevel -->
+    <path d="M484 468 L736 348 L710 432 C704 450 688 464 668 464 L456 484 Z" fill="url(#armUpperUnder)"/>
+
+    <!-- 3. Lower Right Diagonal Arm -->
+    <!-- Upper Bevel -->
+    <path d="M444 540 L668 560 C688 560 704 574 710 592 L736 676 L484 556 Z" fill="url(#armLowerUpper)"/>
+    <!-- Base Shadow Bevel -->
+    <path d="M484 556 L736 676 L780 798 C788 822 772 842 748 842 L682 842 C662 842 642 834 628 820 L360 560 Z" fill="url(#armLowerBase)"/>
+
+    <!-- 4. Play Button Inset Frame (Dark High-Contrast Well) -->
+    <path d="M264 348 C264 330 284 318 300 328 L568 492 C584 502 584 522 568 532 L300 696 C284 706 264 694 264 676 Z" fill="url(#wellDark)" stroke="#191e28" stroke-width="12" stroke-linejoin="round"/>
+
+    <!-- 5. Inner Solid Play Triangle (Vivid Luminous Core) -->
+    <path d="M308 396 C308 382 324 373 336 381 L516 492 C528 500 528 524 516 532 L336 643 C324 651 308 642 308 628 Z" fill="url(#playCore)"/>
+    <!-- Specular Bevel on Play Core -->
+    <path d="M318 408 L496 512 L318 424 Z" fill="#ffffff" opacity="0.22"/>
+  </g>
+</svg>

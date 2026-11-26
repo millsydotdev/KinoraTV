@@ -23,7 +23,14 @@ export function HomeCustomizeModal({ open, onClose }: HomeCustomizeModalProps) {
   const currentSections = (() => {
     try {
       const raw = localStorage.getItem(profileKey)
-      if (raw) return JSON.parse(raw) as HomeSectionSetting[]
+      if (raw) {
+        const parsed = JSON.parse(raw) as HomeSectionSetting[]
+        const missing = DEFAULT_HOME_SECTIONS.filter((def) => !parsed.some((p) => p.id === def.id))
+        if (missing.length > 0) {
+          return [...parsed, ...missing]
+        }
+        return parsed
+      }
     } catch {}
     return userPrefs?.preferences.homeSectionsConfig ?? DEFAULT_HOME_SECTIONS
   })()

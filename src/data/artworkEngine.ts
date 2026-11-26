@@ -16,22 +16,44 @@ import {
   loadMetadataConfig,
   searchMovieMetadata,
   searchSeriesMetadata,
+  type MovieMetadataDetails,
+  type SeriesMetadataDetails,
 } from './metadataProviders'
 
 export type ArtworkType =
   | 'movie-poster'
   | 'movie-backdrop'
+  | 'movie-logo'
   | 'series-poster'
   | 'series-backdrop'
+  | 'series-logo'
   | 'season-artwork'
   | 'episode-still'
+  | 'programme-still'
+  | 'programme-logo'
   | 'epg-programme-artwork'
-  | 'radio-station-artwork'
-  | 'album-artwork'
-  | 'podcast-artwork'
-  | 'audiobook-cover'
-  | 'documentary-artwork'
+  | 'cinematic-backdrop'
+  | 'fanart'
+  | 'title-logo'
+  | 'clearart'
+  | 'banner'
+  | 'collection-poster'
+  | 'collection-backdrop'
   | 'channel-logo'
+  | 'channel-icon'
+  | 'radio-station-artwork'
+  | 'radio-programme-artwork'
+  | 'album-artwork'
+  | 'artist-image'
+  | 'podcast-artwork'
+  | 'podcast-episode-artwork'
+  | 'audiobook-cover'
+  | 'book-cover'
+  | 'documentary-artwork'
+  | 'genre-artwork'
+  | 'custom-artwork'
+  | 'embedded-artwork'
+  | 'sidecar-artwork'
 
 export type ArtworkOrientation = 'portrait' | 'landscape' | 'square'
 export type ArtworkAspectRatio = '16:9' | '2:3' | '1:1' | 'custom'
@@ -44,7 +66,12 @@ export type ArtworkProvider =
   | 'tv-logo'
   | 'tmdb'
   | 'tvmaze'
+  | 'tvdb'
+  | 'local'
   | 'fallback'
+  | 'user-custom'
+  | 'media-server'
+  | 'stalker'
 
 export type ArtworkVerificationStatus =
   | 'verified'
@@ -169,6 +196,23 @@ export interface EpgInventoryMetrics {
   reconciliationExplanation: string
 }
 
+export type TrackedAuditArtworkType =
+  | 'movie-poster'
+  | 'movie-backdrop'
+  | 'movie-logo'
+  | 'series-poster'
+  | 'series-backdrop'
+  | 'series-logo'
+  | 'season-artwork'
+  | 'episode-still'
+  | 'epg-programme-artwork'
+  | 'radio-station-artwork'
+  | 'album-artwork'
+  | 'podcast-artwork'
+  | 'audiobook-cover'
+  | 'documentary-artwork'
+  | 'channel-logo'
+
 export interface ArtworkCompletenessAudit {
   epgInventory: EpgInventoryMetrics
   overallCoverage: {
@@ -183,7 +227,7 @@ export interface ArtworkCompletenessAudit {
     genuinePercent: number
     averageConfidence: number
   }
-  categories: Record<ArtworkType, ArtworkCategoryMetrics>
+  categories: Record<TrackedAuditArtworkType, ArtworkCategoryMetrics>
   providerMetrics: ProviderMetrics[]
   sourceBreakdowns: SourceArtworkBreakdown[]
   missingItems: MissingArtworkDetail[]
@@ -262,6 +306,58 @@ export function canonicalizeTitle(raw: string): {
   return { cleanTitle, extractedYear, tags }
 }
 
+function isTitlePrefixMatch(full: string, prefix: string): boolean {
+  if (!full.startsWith(prefix)) return false
+  if (full.length === prefix.length) return true
+  const nextChar = full.charAt(prefix.length)
+  return /[\s:\-,._()\[\]]/.test(nextChar)
+}
+
+/**
+ * Detects generic category stock graphics, broadcaster promotional cards, or franchise title graphics.
+ * These must never be used as programme stills, episode artwork, or hero backdrops.
+ */
+export function isGenericOrPromoGraphic(url: string | null | undefined, title?: string | null): boolean {
+  if (!url || !url.trim()) return false
+  const trimmed = url.trim()
+
+  // Known broadcaster/CDN stock graphics used for generic categories (e.g. JioTV 3D silver "NEWS" ring graphic)
+  if (/fef7d9e050359f02bbc034eb3ecef417/i.test(trimmed)) {
+    return true
+  }
+
+  // Known broadcaster promotional channel cards with embedded logos and "Special" text
+  if (
+    /a1fdd5b63f0433c2b9f0ec27a8e14698|f68b7a646049941d1dbaeb2d8e4be5e4|3db83422f7fd65db69b5421517771705|2e9594243b355788c38d7457de7cdbc0|00fe8c03fa792d1c1704ddeba9847635|1c919287aaf7fa651bb584b5447bcfea/i.test(
+      trimmed,
+    )
+  ) {
+    return true
+  }
+
+  // Promotional franchise specials (e.g. NCISverse 1000 promotional graphic)
+  if (/49KZ0pe0n6E3AapZmOx94oAmWMl|ncisverse/i.test(trimmed)) {
+    return true
+  }
+
+  // Generic category keywords in URLs
+  if (/\/placeholder|generic[-_]news|default[-_]show|no[-_]image|stock[-_]art/i.test(trimmed)) {
+    return true
+  }
+
+  // If a title is provided, check if it is a generic category that should not use non-photographic art
+  if (title) {
+    const norm = title.trim().toLowerCase()
+    const isGenericCategory = /^(news|न्यूज़|breaking news|daily news|weather|मौसम|special|स्पेशल|आस्था स्पेशल|आस्था भजन स्पेशल|teleshopping|shopping|live|off air|no information)$/i.test(norm)
+    if (isGenericCategory && /dare_images\/shows\/epgdata/i.test(trimmed)) {
+      // Broadcaster epgdata images for generic category names are stock graphics, not episode stills
+      return true
+    }
+  }
+
+  return false
+}
+
 /**
  * Scores an artwork match against candidate metadata, handling remakes and ambiguous releases.
  */
@@ -323,11 +419,16 @@ export function scoreArtworkMatch(
   }
 
   // Subtitle / prefix match (e.g. "Dune" matching "Dune: Part One")
-  if (normCandidate.startsWith(normQuery) || normQuery.startsWith(normCandidate)) {
+  if (isTitlePrefixMatch(normCandidate, normQuery) || isTitlePrefixMatch(normQuery, normCandidate)) {
     if (queryYear && candidateYear && Math.abs(queryYear - candidateYear) <= 1) {
       return { confidence: 0.75, status: 'verified' }
     }
-    return { confidence: 0.65, status: 'verified' }
+    // Subtitle or spin-off title without verified matching year is ambiguous
+    return {
+      confidence: 0.45,
+      status: 'ambiguous',
+      reason: `Subtitle or spin-off title match requires verified production year (${candidateTitle}).`,
+    }
   }
 
   return { confidence: 0.0, status: 'unresolved', reason: 'No significant title correlation' }
@@ -344,22 +445,32 @@ export function isGenuineArtwork(record: ArtworkRecord | null | undefined): bool
   return Boolean(record.sourceUrl && record.sourceUrl.trim())
 }
 
+export interface EnrichmentCandidate {
+  id: string
+  title: string
+  year?: number
+  imdbId?: string
+  type: 'movie' | 'series' | 'episode' | 'programme'
+}
+
 /**
- * In-memory artwork registry and disk persistence bridge.
+ * In-memory artwork registry, rich metadata cache, and disk persistence bridge.
  */
 class ContentArtworkEngine {
   private registry = new Map<string, ArtworkRecord>()
+  private metadataDetails = new Map<string, MovieMetadataDetails | SeriesMetadataDetails>()
   private failedUrls = new Map<string, { reason: string; count: number; lastTried: number }>()
   private listeners = new Set<(progress: EnrichmentProgress) => void>()
+  private artworkSubscribers = new Set<() => void>()
   private cancelRequested = false
+  private playbackActive = false
   private currentBatchIndex = 0
   private userResolutions = new Map<string, CandidateMatch>()
-  private queuedCandidates: Array<{
-    id: string
-    title: string
-    year?: number
-    type: 'movie' | 'series' | 'episode' | 'programme'
-  }> = []
+  private onDemandQueue: EnrichmentCandidate[] = []
+  private onDemandPendingIds = new Set<string>()
+  private onDemandAttempted = new Map<string, number>()
+  private onDemandRunning = 0
+  private queuedCandidates: EnrichmentCandidate[] = []
   private enrichmentState: EnrichmentProgress = {
     isRunning: false,
     isPaused: false,
@@ -370,14 +481,270 @@ class ContentArtworkEngine {
     ambiguous: 0,
     currentStage: 'Idle',
   }
+
   public subscribe(listener: (progress: EnrichmentProgress) => void): () => void {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
   }
 
+  public subscribeArtwork(listener: () => void): () => void {
+    this.artworkSubscribers.add(listener)
+    return () => this.artworkSubscribers.delete(listener)
+  }
+
   private notifyListeners() {
     for (const listener of this.listeners) {
       listener(this.enrichmentState)
+    }
+  }
+
+  private notifyArtworkSubscribers() {
+    for (const listener of this.artworkSubscribers) {
+      listener()
+    }
+  }
+
+  public setPlaybackActive(active: boolean): void {
+    const wasActive = this.playbackActive
+    this.playbackActive = active
+    if (wasActive && !active) {
+      this.drainOnDemandQueue()
+    }
+  }
+
+  public isPlaybackActive(): boolean {
+    return this.playbackActive
+  }
+
+  public getMetadataDetails(contentId: string): MovieMetadataDetails | SeriesMetadataDetails | null {
+    if (!contentId) return null
+    const direct = this.metadataDetails.get(contentId)
+    if (direct) return direct
+    const norm = contentId.replace(/^(movie|series):/, '')
+    return this.metadataDetails.get(norm) ?? this.metadataDetails.get(`movie:${norm}`) ?? this.metadataDetails.get(`series:${norm}`) ?? null
+  }
+
+  public setMetadataDetails(contentId: string, details: MovieMetadataDetails | SeriesMetadataDetails): void {
+    this.metadataDetails.set(contentId, details)
+    // Also register discovered artwork variants from rich metadata
+    const isSeries = 'seasons' in details
+    const posterType: ArtworkType = isSeries ? 'series-poster' : 'movie-poster'
+    const backdropType: ArtworkType = isSeries ? 'series-backdrop' : 'movie-backdrop'
+    const logoType: ArtworkType = isSeries ? 'series-logo' : 'movie-logo'
+    const prov: ArtworkProvider = details.provider ?? 'tmdb'
+    const attribution = METADATA_ATTRIBUTIONS[prov]?.attributionText
+
+    if (details.posterUrl) {
+      this.upsertEnrichedRecord({
+        id: `${posterType}:${contentId}`,
+        contentId,
+        artworkType: posterType,
+        title: details.title,
+        year: details.year,
+        sourceUrl: details.posterUrl,
+        sourceProvider: prov,
+        sourceIdentifier: details.imdbId || details.id,
+        aspectRatio: '2:3',
+        orientation: 'portrait',
+        retrievalTime: Date.now(),
+        verificationStatus: 'verified',
+        confidence: 0.95,
+        cacheKey: `${posterType}:${contentId}`,
+        attribution,
+      })
+    }
+    if (details.backdropUrl) {
+      this.upsertEnrichedRecord({
+        id: `${backdropType}:${contentId}`,
+        contentId,
+        artworkType: backdropType,
+        title: details.title,
+        year: details.year,
+        sourceUrl: details.backdropUrl,
+        sourceProvider: prov,
+        sourceIdentifier: details.imdbId || details.id,
+        aspectRatio: '16:9',
+        orientation: 'landscape',
+        retrievalTime: Date.now(),
+        verificationStatus: 'verified',
+        confidence: 0.95,
+        cacheKey: `${backdropType}:${contentId}`,
+        attribution,
+      })
+    }
+    if (details.logoUrl) {
+      this.upsertEnrichedRecord({
+        id: `${logoType}:${contentId}`,
+        contentId,
+        artworkType: logoType,
+        title: details.title,
+        year: details.year,
+        sourceUrl: details.logoUrl,
+        sourceProvider: prov,
+        sourceIdentifier: details.imdbId || details.id,
+        aspectRatio: '16:9',
+        orientation: 'landscape',
+        retrievalTime: Date.now(),
+        verificationStatus: 'verified',
+        confidence: 0.95,
+        cacheKey: `${logoType}:${contentId}`,
+        attribution,
+      })
+    }
+    if (isSeries) {
+      for (const season of details.seasons) {
+        if (season.posterUrl) {
+          const sKey = `season-artwork:${contentId}:s${season.seasonNumber}`
+          this.upsertEnrichedRecord({
+            id: sKey,
+            contentId,
+            artworkType: 'season-artwork',
+            title: `${details.title} - Season ${season.seasonNumber}`,
+            seasonNumber: season.seasonNumber,
+            sourceUrl: season.posterUrl,
+            sourceProvider: prov,
+            aspectRatio: '2:3',
+            orientation: 'portrait',
+            retrievalTime: Date.now(),
+            verificationStatus: 'verified',
+            confidence: 0.95,
+            cacheKey: sKey,
+            attribution,
+          })
+        }
+        for (const ep of season.episodes) {
+          if (ep.stillUrl) {
+            const cleanId = contentId.replace(/^series:/, '')
+            const epKey = `episode:still:${cleanId}:${ep.seasonNumber}:${ep.episodeNumber}`
+            this.upsertEnrichedRecord({
+              id: epKey,
+              contentId: epKey,
+              artworkType: 'episode-still',
+              title: `${details.title} S${ep.seasonNumber}E${ep.episodeNumber}`,
+              seasonNumber: ep.seasonNumber,
+              episodeNumber: ep.episodeNumber,
+              sourceUrl: ep.stillUrl,
+              sourceProvider: prov,
+              aspectRatio: '16:9',
+              orientation: 'landscape',
+              retrievalTime: Date.now(),
+              verificationStatus: 'verified',
+              confidence: 0.95,
+              cacheKey: epKey,
+              attribution,
+            })
+          }
+        }
+      }
+    }
+
+    this.persistMetadataCache()
+    this.persistToStorage()
+    this.notifyArtworkSubscribers()
+  }
+
+  private upsertEnrichedRecord(record: ArtworkRecord): void {
+    const existing = this.registry.get(record.id)
+    // Never overwrite manual user resolutions or higher-confidence verified records with lower confidence
+    if (this.userResolutions.has(record.contentId)) return
+    if (
+      existing &&
+      existing.sourceProvider !== 'embedded' &&
+      existing.sourceProvider !== 'fallback' &&
+      existing.sourceUrl &&
+      existing.confidence > record.confidence
+    ) {
+      return
+    }
+    this.registry.set(record.id, record)
+  }
+
+  /**
+   * Queues an item for low-priority on-demand metadata enrichment when external providers are enabled.
+   * Deduplicates requests, enforces max concurrency of 2, and yields automatically during playback.
+   */
+  public requestEnrichment(candidate: EnrichmentCandidate): void {
+    const config = loadMetadataConfig()
+    const hasProvider =
+      (candidate.type === 'movie' && ((config.tmdbEnabled && Boolean(config.tmdbApiKey.trim())) || (config.tvdbEnabled && Boolean(config.tvdbApiKey?.trim())))) ||
+      (candidate.type !== 'movie' && ((config.tmdbEnabled && Boolean(config.tmdbApiKey.trim())) || config.tvmazeEnabled || (config.tvdbEnabled && Boolean(config.tvdbApiKey?.trim()))))
+
+    if (!hasProvider) return
+    if (!candidate.id || !candidate.title.trim()) return
+
+    const attemptKey = `${candidate.type}:${candidate.id}`
+    const lastAttempt = this.onDemandAttempted.get(attemptKey)
+    // Backoff: don't re-query the same item within 10 minutes
+    if (lastAttempt && Date.now() - lastAttempt < 10 * 60 * 1000) return
+    if (this.onDemandPendingIds.has(attemptKey)) return
+
+    this.onDemandPendingIds.add(attemptKey)
+    this.onDemandQueue.push(candidate)
+    this.drainOnDemandQueue()
+  }
+
+  private drainOnDemandQueue(): void {
+    if (this.playbackActive) return
+    const MAX_CONCURRENT = 2
+    while (this.onDemandRunning < MAX_CONCURRENT && this.onDemandQueue.length > 0) {
+      const next = this.onDemandQueue.shift()
+      if (!next) break
+      const attemptKey = `${next.type}:${next.id}`
+      this.onDemandRunning++
+      this.onDemandAttempted.set(attemptKey, Date.now())
+      void this.enrichSingleCandidate(next)
+        .finally(() => {
+          this.onDemandRunning--
+          this.onDemandPendingIds.delete(attemptKey)
+          this.drainOnDemandQueue()
+        })
+    }
+  }
+
+  private async enrichSingleCandidate(item: EnrichmentCandidate): Promise<boolean> {
+    if (this.playbackActive) return false
+    try {
+      const results =
+        item.type === 'movie'
+          ? await searchMovieMetadata(item.title, item.year, { imdbId: item.imdbId })
+          : await searchSeriesMetadata(item.title, item.year, { imdbId: item.imdbId })
+
+      if (results.length === 0) return false
+
+      let storedAny = false
+      for (const res of results) {
+        const url = res.artworkType.includes('backdrop')
+          ? res.backdropUrl
+          : res.posterUrl || res.backdropUrl
+        if (!url) continue
+        const key = `${res.artworkType}:${item.id}`
+        this.upsertEnrichedRecord({
+          id: key,
+          contentId: item.id,
+          artworkType: res.artworkType,
+          title: item.title,
+          year: res.year ?? item.year,
+          sourceUrl: url,
+          sourceProvider: res.provider,
+          sourceIdentifier: res.imdbId || res.providerId,
+          aspectRatio: res.aspectRatio,
+          orientation: res.artworkType.includes('backdrop') ? 'landscape' : 'portrait',
+          retrievalTime: Date.now(),
+          verificationStatus: 'verified',
+          confidence: res.confidence,
+          cacheKey: key,
+          attribution: METADATA_ATTRIBUTIONS[res.provider]?.attributionText,
+        })
+        storedAny = true
+      }
+
+      if (storedAny) {
+        this.persistToStorage()
+        this.notifyArtworkSubscribers()
+      }
+      return storedAny
+    } catch {
+      return false
     }
   }
 
@@ -569,11 +936,30 @@ class ContentArtworkEngine {
       if (stored) {
         const parsed = JSON.parse(stored) as Record<string, ArtworkRecord>
         for (const [k, v] of Object.entries(parsed)) {
-          if (!this.registry.has(k)) {
+          if (!this.registry.has(k) || (v.sourceProvider !== 'embedded' && v.sourceUrl)) {
             this.registry.set(k, v)
           }
         }
       }
+      const metaRaw = localStorage.getItem('kinora.metadata_cache.v1')
+      if (metaRaw) {
+        const parsedMeta = JSON.parse(metaRaw) as Record<string, MovieMetadataDetails | SeriesMetadataDetails>
+        for (const [k, v] of Object.entries(parsedMeta)) {
+          this.metadataDetails.set(k, v)
+        }
+      }
+    } catch {}
+  }
+
+  private persistMetadataCache() {
+    if (typeof localStorage === 'undefined') return
+    try {
+      const obj: Record<string, MovieMetadataDetails | SeriesMetadataDetails> = {}
+      const entries = Array.from(this.metadataDetails.entries()).slice(-300)
+      for (const [k, v] of entries) {
+        obj[k] = v
+      }
+      localStorage.setItem('kinora.metadata_cache.v1', JSON.stringify(obj))
     } catch {}
   }
 
@@ -595,6 +981,10 @@ class ContentArtworkEngine {
       const directKey = `${preferredType}:${contentId}`
       const direct = this.registry.get(directKey)
       if (direct) return direct
+    }
+    const exactId = this.registry.get(contentId)
+    if (exactId && (!preferredType || exactId.artworkType === preferredType)) {
+      return exactId
     }
     // Search by contentId
     for (const record of this.registry.values()) {
@@ -645,12 +1035,86 @@ class ContentArtworkEngine {
       return null
     }
 
+    // Sky metadata pd-image hosts the official 16:9 landscape still at /16-9
+    const landscapeUrl =
+      iconUrl.includes('images.metadata.sky.com/pd-image/') && iconUrl.endsWith('/cover')
+        ? iconUrl.replace(/\/cover$/, '/16-9')
+        : iconUrl
+
+    // Classify title logos and wordmarks separately from backdrops and stills
+    const isTitleLogo = Boolean(
+      /\/logos?\/|title[-_]logo|wordmark|clearart/i.test(landscapeUrl)
+    )
+    if (isTitleLogo) {
+      const titleLogoRecord: ArtworkRecord = {
+        id: `logo:${progId}`,
+        contentId: progId,
+        artworkType: 'series-logo',
+        title: programme.title,
+        sourceUrl: landscapeUrl,
+        sourceProvider: 'xmltv',
+        aspectRatio: '16:9',
+        orientation: 'landscape',
+        retrievalTime: Date.now(),
+        verificationStatus: 'verified',
+        confidence: 0.9,
+        cacheKey: `logo:${landscapeUrl}`,
+      }
+      this.registry.set(titleLogoRecord.id, titleLogoRecord)
+      return null
+    }
+
+    // Refuse generic category graphics or broadcaster promotional cards
+    if (isGenericOrPromoGraphic(landscapeUrl, programme.title)) {
+      const promoRecord: ArtworkRecord = {
+        id: `promo:${progId}`,
+        contentId: progId,
+        artworkType: 'channel-logo',
+        title: programme.title,
+        sourceUrl: landscapeUrl,
+        sourceProvider: 'xmltv',
+        sourceIdentifier: channel?.id || programme.channelId,
+        aspectRatio: '16:9',
+        orientation: 'landscape',
+        retrievalTime: Date.now(),
+        verificationStatus: 'unresolved',
+        confidence: 0.2,
+        cacheKey: `promo:${landscapeUrl}`,
+        failureReason: 'Generic category graphic or promotional channel card detected; not genuine programme artwork.',
+      }
+      this.registry.set(promoRecord.id, promoRecord)
+      return null
+    }
+
+    // Classify portrait posters and covers (when no 16:9 landscape still is available)
+    const isPortraitCover = Boolean(
+      /\/cover$|poster|folder\.jpg/i.test(landscapeUrl) && !landscapeUrl.includes('/16-9')
+    )
+    if (isPortraitCover) {
+      const posterRecord: ArtworkRecord = {
+        id: `poster:${progId}`,
+        contentId: progId,
+        artworkType: 'season-artwork',
+        title: programme.title,
+        sourceUrl: landscapeUrl,
+        sourceProvider: 'xmltv',
+        aspectRatio: '2:3',
+        orientation: 'portrait',
+        retrievalTime: Date.now(),
+        verificationStatus: 'verified',
+        confidence: 0.9,
+        cacheKey: `poster:${landscapeUrl}`,
+      }
+      this.registry.set(posterRecord.id, posterRecord)
+      return posterRecord
+    }
+
     const record: ArtworkRecord = {
       id: progId,
       contentId: progId,
       artworkType: 'epg-programme-artwork',
       title: programme.title,
-      sourceUrl: iconUrl,
+      sourceUrl: landscapeUrl,
       sourceProvider: 'xmltv',
       sourceIdentifier: programme.channelId,
       aspectRatio: '16:9',
@@ -682,7 +1146,7 @@ class ContentArtworkEngine {
     xtreamSeries: XtreamTitle[] = [],
     totalCachedGuideRecords = 0,
   ): ArtworkCompletenessAudit {
-    const categories: Record<ArtworkType, ArtworkCategoryMetrics> = {
+    const categories: Record<TrackedAuditArtworkType, ArtworkCategoryMetrics> = {
       'movie-poster': {
         artworkType: 'movie-poster',
         label: 'Movie Posters',
@@ -715,6 +1179,22 @@ class ContentArtworkEngine {
         averageConfidence: 1.0,
         genuinePercent: 0,
       },
+      'movie-logo': {
+        artworkType: 'movie-logo',
+        label: 'Movie Title Logos',
+        aspectRatio: '16:9',
+        orientation: 'landscape',
+        totalEligible: 0,
+        alreadyPresent: 0,
+        newlyRetrieved: 0,
+        genuineFound: 0,
+        missing: 0,
+        failed: 0,
+        ambiguous: 0,
+        excluded: 0,
+        averageConfidence: 1.0,
+        genuinePercent: 0,
+      },
       'series-poster': {
         artworkType: 'series-poster',
         label: 'Series Posters',
@@ -734,6 +1214,22 @@ class ContentArtworkEngine {
       'series-backdrop': {
         artworkType: 'series-backdrop',
         label: 'Series Backdrops',
+        aspectRatio: '16:9',
+        orientation: 'landscape',
+        totalEligible: 0,
+        alreadyPresent: 0,
+        newlyRetrieved: 0,
+        genuineFound: 0,
+        missing: 0,
+        failed: 0,
+        ambiguous: 0,
+        excluded: 0,
+        averageConfidence: 1.0,
+        genuinePercent: 0,
+      },
+      'series-logo': {
+        artworkType: 'series-logo',
+        label: 'Series Title Logos',
         aspectRatio: '16:9',
         orientation: 'landscape',
         totalEligible: 0,
@@ -1330,7 +1826,10 @@ class ContentArtworkEngine {
     await this.runEnrichment()
   }
 
-  public async runEnrichment(onProgress?: (progress: EnrichmentProgress) => void): Promise<void> {
+  public async runEnrichment(
+    onProgress?: (progress: EnrichmentProgress) => void,
+    extraCandidates?: EnrichmentCandidate[],
+  ): Promise<void> {
     if (this.enrichmentState.isRunning) return
 
     const config = loadMetadataConfig()
@@ -1350,16 +1849,36 @@ class ContentArtworkEngine {
     this.notifyListeners()
 
     this.queuedCandidates = []
+    const queuedIds = new Set<string>()
+    const enqueue = (c: EnrichmentCandidate) => {
+      if (queuedIds.has(c.id)) return
+      queuedIds.add(c.id)
+      this.queuedCandidates.push(c)
+    }
+
+    if (Array.isArray(extraCandidates)) {
+      for (const c of extraCandidates) {
+        enqueue(c)
+      }
+    }
 
     for (const m of demoMovies) {
-      if (!this.registry.has(`art:movie:${m.id}`)) {
-        this.queuedCandidates.push({ id: `movie:${m.id}`, title: m.title, year: m.year, type: 'movie' })
+      const id = `movie:${m.id}`
+      const existing = this.registry.get(`movie-poster:${id}`)
+      const hasVerifiedExternal =
+        existing && (existing.sourceProvider === 'tmdb' || existing.sourceProvider === 'tvmaze' || existing.sourceProvider === 'tvdb')
+      if (!hasVerifiedExternal) {
+        enqueue({ id, title: m.title, year: m.year, imdbId: m.imdbId, type: 'movie' })
       }
     }
     for (const s of demoSeries) {
-      if (!this.registry.has(`art:series:${s.id}`)) {
+      const id = `series:${s.id}`
+      const existing = this.registry.get(`series-poster:${id}`)
+      const hasVerifiedExternal =
+        existing && (existing.sourceProvider === 'tmdb' || existing.sourceProvider === 'tvmaze' || existing.sourceProvider === 'tvdb')
+      if (!hasVerifiedExternal) {
         const sYear = s.years ? Number.parseInt(s.years.slice(0, 4), 10) || undefined : undefined
-        this.queuedCandidates.push({ id: `series:${s.id}`, title: s.title, year: sYear, type: 'series' })
+        enqueue({ id, title: s.title, year: sYear, imdbId: s.imdbId, type: 'series' })
       }
     }
 
@@ -1367,8 +1886,12 @@ class ContentArtworkEngine {
     if (onProgress) onProgress(this.enrichmentState)
     this.notifyListeners()
 
-    if (!config.tmdbEnabled && !config.tvmazeEnabled) {
-      // Local cache processing
+    const hasExternal =
+      (config.tmdbEnabled && Boolean(config.tmdbApiKey.trim())) ||
+      config.tvmazeEnabled ||
+      (config.tvdbEnabled && Boolean(config.tvdbApiKey?.trim()))
+
+    if (!hasExternal) {
       this.enrichmentState.currentStage = 'Verifying local artwork assets in Rust cache...'
       this.enrichmentState.processed = this.enrichmentState.totalEligible
       this.enrichmentState.succeeded = this.enrichmentState.totalEligible
@@ -1385,7 +1908,7 @@ class ContentArtworkEngine {
   }
 
   private async executeEnrichmentBatches(onProgress?: (progress: EnrichmentProgress) => void): Promise<void> {
-    const BATCH_SIZE = 4
+    const BATCH_SIZE = 3
     for (let i = this.currentBatchIndex; i < this.queuedCandidates.length; i += BATCH_SIZE) {
       if (this.cancelRequested) {
         this.enrichmentState.isRunning = false
@@ -1401,46 +1924,60 @@ class ContentArtworkEngine {
         this.notifyListeners()
         return
       }
+      // Yield politely while playback or live television is active
+      if (this.playbackActive) {
+        this.enrichmentState.currentStage = 'Yielding to active playback...'
+        if (onProgress) onProgress(this.enrichmentState)
+        this.notifyListeners()
+        await new Promise((resolve) => setTimeout(resolve, 1500))
+        i -= BATCH_SIZE
+        continue
+      }
       this.currentBatchIndex = i
       const batch = this.queuedCandidates.slice(i, i + BATCH_SIZE)
       await Promise.all(
         batch.map(async (item) => {
           this.enrichmentState.currentStage = `Enriching: ${item.title}`
           try {
-            let results: Array<{
-              posterUrl?: string
-              backdropUrl?: string
-              artworkType: ArtworkType
-              confidence: number
-              provider: 'tmdb' | 'tvmaze'
-            }> = []
+            const results =
+              item.type === 'movie'
+                ? await searchMovieMetadata(item.title, item.year, { imdbId: item.imdbId })
+                : await searchSeriesMetadata(item.title, item.year, { imdbId: item.imdbId })
 
-            if (item.type === 'movie') {
-              results = await searchMovieMetadata(item.title, item.year)
-            } else if (item.type === 'series' || item.type === 'programme') {
-              results = await searchSeriesMetadata(item.title, item.year)
-            }
-
-            if (results.length > 0 && results[0]) {
-              const best = results[0]
-              const record: ArtworkRecord = {
-                id: `art:${item.id}`,
-                contentId: item.id,
-                artworkType: best.artworkType,
-                title: item.title,
-                year: item.year,
-                sourceUrl: best.posterUrl || best.backdropUrl || '',
-                sourceProvider: best.provider,
-                aspectRatio: best.artworkType.includes('backdrop') ? '16:9' : '2:3',
-                orientation: best.artworkType.includes('backdrop') ? 'landscape' : 'portrait',
-                retrievalTime: Date.now(),
-                verificationStatus: 'verified',
-                confidence: best.confidence,
-                cacheKey: `cache:${item.id}`,
-                attribution: METADATA_ATTRIBUTIONS[best.provider].attributionText,
+            if (results.length > 0) {
+              let stored = false
+              for (const res of results) {
+                const url = res.artworkType.includes('backdrop')
+                  ? res.backdropUrl
+                  : res.posterUrl || res.backdropUrl
+                if (!url) continue
+                const key = `${res.artworkType}:${item.id}`
+                const record: ArtworkRecord = {
+                  id: key,
+                  contentId: item.id,
+                  artworkType: res.artworkType,
+                  title: item.title,
+                  year: res.year ?? item.year,
+                  sourceUrl: url,
+                  sourceProvider: res.provider,
+                  sourceIdentifier: res.imdbId || res.providerId,
+                  aspectRatio: res.aspectRatio,
+                  orientation: res.artworkType.includes('backdrop') ? 'landscape' : 'portrait',
+                  retrievalTime: Date.now(),
+                  verificationStatus: 'verified',
+                  confidence: res.confidence,
+                  cacheKey: key,
+                  attribution: METADATA_ATTRIBUTIONS[res.provider]?.attributionText,
+                }
+                this.upsertEnrichedRecord(record)
+                if (!stored) {
+                  // Maintain legacy lookup key compatibility
+                  this.registry.set(item.id, record)
+                }
+                stored = true
               }
-              this.registry.set(item.id, record)
-              this.enrichmentState.succeeded++
+              if (stored) this.enrichmentState.succeeded++
+              else this.enrichmentState.ambiguous++
             } else {
               this.enrichmentState.ambiguous++
             }
@@ -1452,6 +1989,8 @@ class ContentArtworkEngine {
         }),
       )
 
+      this.persistToStorage()
+      this.notifyArtworkSubscribers()
       if (onProgress) onProgress(this.enrichmentState)
       this.notifyListeners()
       await new Promise((resolve) => setTimeout(resolve, 30))
@@ -1461,6 +2000,8 @@ class ContentArtworkEngine {
     this.enrichmentState.isPaused = false
     this.enrichmentState.lastEnrichedTime = Date.now()
     this.enrichmentState.currentStage = `Complete. Processed ${this.enrichmentState.processed} titles (${this.enrichmentState.succeeded} enriched).`
+    this.persistToStorage()
+    this.notifyArtworkSubscribers()
     if (onProgress) onProgress(this.enrichmentState)
     this.notifyListeners()
   }
@@ -1472,20 +2013,47 @@ class ContentArtworkEngine {
   public registerArtwork(record: ArtworkRecord): void {
     this.registry.set(record.id || record.contentId, record)
     this.persistToStorage()
+    this.notifyArtworkSubscribers()
   }
 
-  public findArtwork(title: string, type?: ArtworkType): ArtworkRecord | null {
+  public findArtwork(title: string, type?: ArtworkType, year?: number | null, channelId?: string): ArtworkRecord | null {
     const { cleanTitle } = canonicalizeTitle(title)
     const norm = cleanTitle.toLowerCase()
+
+    // Prevent generic titles from matching cross-channel EPG artwork
+    const isGenericCategory = /^(news|न्यूज़|breaking news|daily news|weather|मौसम|special|स्पेशल|आस्था स्पेशल|आस्था भजन स्पेशल|teleshopping|shopping|live|off air|no information)$/i.test(norm)
+    if (isGenericCategory && type === 'epg-programme-artwork') {
+      return null
+    }
+
+    let fallbackMatch: ArtworkRecord | null = null
     for (const record of this.registry.values()) {
       if (type && record.artworkType !== type) continue
-      if (record.title.toLowerCase() === norm) return record
+      if (!record.sourceUrl || !record.sourceUrl.trim()) continue
+
+      // For EPG programme artwork, channelId must match if provided, and never share across different channels
+      if (type === 'epg-programme-artwork' && channelId && record.sourceIdentifier && record.sourceIdentifier !== channelId) {
+        continue
+      }
+
+      const recNorm = canonicalizeTitle(record.title).cleanTitle.toLowerCase()
+      if (recNorm === norm) {
+        // Prefer external enriched provider over embedded/bundled when both exist, and matching year
+        if (year != null && record.year != null && Math.abs(record.year - year) <= 1) {
+          if (record.sourceProvider !== 'embedded') return record
+          fallbackMatch = record
+        } else if (year == null || record.year == null) {
+          if (record.sourceProvider !== 'embedded') return record
+          if (!fallbackMatch) fallbackMatch = record
+        }
+      }
     }
-    return null
+    return fallbackMatch
   }
 
   public retryFailed(): void {
     this.failedUrls.clear()
+    this.onDemandAttempted.clear()
     this.enrichmentState.failed = 0
   }
 }

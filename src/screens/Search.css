@@ -1,4 +1,4 @@
-.search { max-width: 1320px; }
+.search { width: 100%; max-width: 1440px; margin: 0 auto; }
 .search-field-wrapper { position: relative; width: 100%; }
 .search-field { display: flex; align-items: center; gap: 14px; height: 60px; padding: 0 8px 0 22px; border-radius: 30px; background: var(--surface); border: 1px solid var(--line-strong); transition: border-color 150ms var(--ease); }
 .search-field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
@@ -72,6 +72,28 @@
 }
 
 .search-filters { margin-bottom: 24px; display: flex; flex-wrap: wrap; gap: 8px; }
+.search-filters .chip[aria-pressed='true'] {
+  background: var(--accent, #e50914) !important;
+  color: var(--accent-ink, #ffffff) !important;
+  border-color: var(--accent, #e50914) !important;
+  box-shadow: 0 0 12px var(--accent-glow, rgba(229, 9, 20, 0.5)) !important;
+}
+.search-filters .chip[aria-pressed='true'] .count {
+  background: rgba(0, 0, 0, 0.3) !important;
+  color: #ffffff !important;
+}
+.card.result {
+  border-radius: var(--r-m);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  transition: transform 140ms var(--ease), border-color 140ms var(--ease), box-shadow 140ms var(--ease);
+}
+.card.result:hover,
+.card.result:focus-visible {
+  transform: scale(1.02);
+  border-color: var(--accent, #e50914);
+  box-shadow: 0 0 14px var(--accent-glow, rgba(229, 9, 20, 0.45));
+}
 .recent-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 
 .search-idle { display: grid; grid-template-columns: 1fr 1.4fr; gap: clamp(24px, 4vw, 56px); }

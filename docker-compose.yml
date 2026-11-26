@@ -1,0 +1,144 @@
+# Kinora Docker Compose Configuration (v0.6.0)
+#
+# Usage:
+#   1. Start local mock fixtures server:
+#      docker compose up -d fixtures
+#   2. Start full web development environment (web + fixtures):
+#      docker compose up web
+#   3. Run quality gates in clean container:
+#      docker compose run --rm test
+#   4. Build native Linux packages in container:
+#      docker compose run --rm builder npm run tauri:build -- --no-sign
+
+services:
+  # ============================================================================
+  # 1. Local Mock Streaming, EPG and Xtream Fixture Service
+  # ============================================================================
+  fixtures:
+    build:
+      context: ./docker/fixtures
+      dockerfile: Dockerfile
+    container_name: kinora-fixtures
+    ports:
+      - "${FIXTURE_PORT:-18765}:18765"
+    environment:
+      - FIXTURE_HOST=0.0.0.0
+      - FIXTURE_PORT=18765
+      - PUBLIC_URL=http://127.0.0.1:18765
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:18765/health')"]
+      interval: 10s
+      timeout: 3s
+      start_period: 2s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+    restart: unless-stopped
+
+  # ============================================================================
+  # 2. Frontend Web Development Server (React 19 + Vite HMR)
+  # ============================================================================
+  web:
+    build:
+      context: .
+      target: web-dev
+    container_name: kinora-web
+    ports:
+      - "${WEB_PORT:-5199}:5199"
+    environment:
+      - NODE_ENV=development
+      - VITE_DEV_HOST=0.0.0.0
+      - VITE_TMDB_API_KEY=${VITE_TMDB_API_KEY:-}
+    volumes:
+      - ./src:/app/src:ro
+      - ./public:/app/public:ro
+      - ./index.html:/app/index.html:ro
+      - ./vite.config.ts:/app/vite.config.ts:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+      - /app/node_modules
+    depends_on:
+      fixtures:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5199/"]
+      interval: 15s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "2.00"
+          memory: 2G
+    restart: unless-stopped
+
+  # ============================================================================
+  # 3. Quality Gate & Automated Testing Runner
+  # ============================================================================
+  test:
+    build:
+      context: .
+      target: builder
+    container_name: kinora-test-runner
+    profiles:
+      - test
+    environment:
+      - CI=true
+    volumes:
+      - cargo-cache:/usr/local/cargo/registry
+      - npm-cache:/home/developer/.npm
+    depends_on:
+      fixtures:
+        condition: service_healthy
+    command: ["bash", "scripts/quality-gate.sh"]
+
+  # ============================================================================
+  # 4. Linux Desktop Package Builder
+  # ============================================================================
+  builder:
+    build:
+      context: .
+      target: builder
+    container_name: kinora-package-builder
+    profiles:
+      - build
+    environment:
+      - CI=true
+      - TAURI_SIGNING_PRIVATE_KEY=${TAURI_SIGNING_PRIVATE_KEY:-}
+      - TAURI_SIGNING_KEY_PASSWORD=${TAURI_SIGNING_KEY_PASSWORD:-}
+    volumes:
+      - ./src-tauri/target:/app/src-tauri/target
+      - cargo-cache:/usr/local/cargo/registry
+      - npm-cache:/home/developer/.npm
+    command: ["npm", "run", "tauri:build", "--", "--no-sign"]
+
+  # ============================================================================
+  # 5. Kinora Headless Media Server
+  # ============================================================================
+  server:
+    build:
+      context: .
+      target: server
+    container_name: kinora-server
+    ports:
+      - "${SERVER_PORT:-5198}:5198"
+      - "${DISCOVERY_PORT:-5197}:5197/udp"
+    environment:
+      - KINORA_MODE=server
+      - KINORA_DATA_DIR=/data
+      - KINORA_PORT=5198
+      - KINORA_PIN=${KINORA_PIN:-}
+    volumes:
+      - server-data:/data
+    restart: unless-stopped
+
+volumes:
+  cargo-cache:
+    name: kinora-cargo-cache
+  npm-cache:
+    name: kinora-npm-cache
+  server-data:
+    name: kinora-server-data

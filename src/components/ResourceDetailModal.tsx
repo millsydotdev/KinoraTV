@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { MediaResource } from '../data/personalLibrary'
 import { VERIFICATION_STATUS_META } from '../data/personalLibrary'
+import { classifyMediaResource } from '../data/provenance'
 import { Dialog } from './Dialog'
 import { Icon } from './Icon'
 import { BookReaderModal } from './BookReaderModal'
@@ -74,6 +75,7 @@ export function ResourceDetailModal({
 
   const statusMeta = VERIFICATION_STATUS_META[resource.verificationStatus] ?? VERIFICATION_STATUS_META.discovered
   const isPlayable = Boolean(resource.playbackUrl) && (resource.playbackType === 'audio' || resource.playbackType === 'hls')
+  const { provenance, capability } = classifyMediaResource(resource, inLibrary)
 
   const handleVerify = () => {
     if (!onVerifyNow) return
@@ -105,6 +107,13 @@ export function ResourceDetailModal({
         {/* Top Badges & Status */}
         <div className="res-detail-header-meta">
           <div className="res-detail-status-block">
+            <span className={`res-provenance-pill ${provenance.id === 'personal-source' ? 'res-prov-personal' : provenance.id === 'dev-fixture' ? 'res-prov-dev' : 'res-prov-public'}`} title={provenance.description}>
+              {provenance.label}
+            </span>
+            <span className="res-cap-pill" title={capability.description}>
+              <Icon name={capability.icon} size={13} />
+              <span>{capability.label}</span>
+            </span>
             <span className="res-status-pill" style={{ '--pill-color': statusMeta.tone } as React.CSSProperties}>
               <span className="res-status-dot" aria-hidden="true" />
               {statusMeta.label}

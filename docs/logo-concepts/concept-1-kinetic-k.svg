@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg1" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#161b24"/>
+      <stop offset="100%" stop-color="#0c0f15"/>
+    </linearGradient>
+    <linearGradient id="redPrimary" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ff2d3d"/>
+      <stop offset="100%" stop-color="#cc0a18"/>
+    </linearGradient>
+  </defs>
+  <!-- Background squircle -->
+  <rect width="512" height="512" rx="116" fill="url(#bg1)"/>
+  <rect x="2" y="2" width="508" height="508" rx="114" fill="none" stroke="#252c3b" stroke-width="2.5"/>
+
+  <!-- Left Stem of 'K' (Cinema Projector Pillar) -->
+  <rect x="110" y="116" width="52" height="280" rx="26" fill="url(#redPrimary)"/>
+
+  <!-- Forward Play Chevron of 'K' (Kinetic Play Triangle) -->
+  <path d="M196 138 C196 122 216 114 227 124 L396 242 C409 251 409 261 396 270 L227 388 C216 398 196 390 196 374 L196 324 C196 317 200 310 206 306 L288 256 L206 206 C200 202 196 195 196 188 Z" fill="url(#redPrimary)"/>
+
+  <!-- Inner Solid Play Triangle Core -->
+  <path d="M228 198 C228 188 239 182 248 188 L334 246 C342 251 342 261 334 266 L248 324 C239 330 228 324 228 314 Z" fill="#ffffff"/>
+</svg>

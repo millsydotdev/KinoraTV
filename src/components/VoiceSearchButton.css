@@ -1,0 +1,83 @@
+/* Voice Search Button styling. Follows Antislop and Kinora tokens. Zero em-dashes. */
+
+.voice-btn-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.voice-search-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.voice-search-btn:hover {
+  background: var(--state-hover);
+  color: var(--text);
+}
+
+.voice-search-btn:focus-visible {
+  outline: 2px solid var(--focus, #ff6b73);
+  outline-offset: 2px;
+}
+
+.voice-search-btn.listening {
+  color: var(--accent-ink, #ffffff);
+  background: var(--accent, #e50914);
+  box-shadow: 0 0 0 3px var(--accent-soft, rgba(229, 9, 20, 0.28));
+}
+
+.voice-hud {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 999;
+  min-width: 200px;
+  max-width: 320px;
+  padding: 8px 12px;
+  background: var(--surface-popover, #14141a);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: var(--shadow, 0 8px 24px rgba(0, 0, 0, 0.45));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  animation: fadeIn 0.15s ease;
+}
+
+.voice-hud-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--accent-text, #ff6b73);
+}
+
+.voice-indicator-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent, #e50914);
+}
+
+.voice-transcript {
+  color: var(--text);
+  font-style: italic;
+  word-break: break-word;
+}
+
+.voice-error {
+  color: var(--bad, #ff7070);
+}

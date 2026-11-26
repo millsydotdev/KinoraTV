@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { movies, series } from '../data/catalog'
 import { startOfDay } from '../data/channels'
 import type { Channel, Programme } from '../data/types'
 import { clock, useNow } from '../lib/time'
@@ -10,6 +11,8 @@ import { useNotifications } from './Notifications'
 import { BackgroundTaskTrigger } from './BackgroundTaskCenter'
 import { CastModal } from './CastModal'
 import { useCasting } from '../lib/casting/manager'
+import { VirtualKeyboard } from './VirtualKeyboard'
+import { QuickSearchModal } from './QuickSearchModal'
 import './PageHeader.css'
 
 export const NavMenuContext = createContext<() => void>(() => undefined)
@@ -34,6 +37,8 @@ function NotificationsAndReminders() {
     .filter((r): r is NonNullable<typeof r> => !!r && r.start > now - 10 * 60 * 1000)
 
   useEffect(() => {
+    if (store.prefs.reminderAlerts === false) return
+
     for (const r of reminders) {
       const diff = r.start - now
       // If reminder is within 5 minutes or starting now and hasn't been notified yet
@@ -54,7 +59,7 @@ function NotificationsAndReminders() {
         )
       }
     }
-  }, [reminders, now, push, navigate])
+  }, [reminders, now, push, navigate, store.prefs.reminderAlerts])
 
   const futureReminders = reminders.filter((r) => r.start > now)
   const totalBadges = unreadCount + futureReminders.length
@@ -83,6 +88,7 @@ function HeaderProfileMenu() {
   const [pinTargetId, setPinTargetId] = useState<string | null>(null)
   const [enteredPin, setEnteredPin] = useState('')
   const [pinError, setPinError] = useState<string | null>(null)
+  const [pinVkOpen, setPinVkOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
 
@@ -148,29 +154,30 @@ function HeaderProfileMenu() {
       <button
         ref={triggerRef}
         type="button"
-        className="avatar"
-        style={{
-          background: activeProfile.avatarColor,
-          color: '#ffffff',
-          position: 'relative',
-          cursor: 'pointer',
-        }}
+        className="header-profile-pill"
         onClick={() => setOpen(!open)}
         aria-label={`Profile: ${activeProfile.name}${isKidsMode ? ' (Kids Mode)' : ''}`}
         title={`Profile: ${activeProfile.name}`}
       >
-        <Icon name={activeProfile.avatarIcon} size={18} />
+        <span
+          className="header-profile-avatar"
+          style={{
+            background: activeProfile.avatarColor,
+            color: '#ffffff',
+          }}
+        >
+          <Icon name={activeProfile.avatarIcon} size={14} />
+        </span>
+        <span className="header-profile-name">{activeProfile.name || 'My Profile'}</span>
+        <Icon name="down" size={12} className="header-profile-chevron" />
         {isKidsMode && (
           <span
             style={{
-              position: 'absolute',
-              bottom: -4,
-              right: -4,
               fontSize: '8px',
               fontWeight: 800,
-              background: '#e50914',
-              color: '#ffffff',
-              padding: '1px 3px',
+              background: 'var(--accent, #e50914)',
+              color: 'var(--accent-ink, #ffffff)',
+              padding: '1px 4px',
               borderRadius: '3px',
               letterSpacing: '0.5px',
             }}
@@ -317,7 +324,16 @@ function HeaderProfileMenu() {
                   {pinError}
                 </div>
               )}
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-small"
+                  onClick={() => setPinVkOpen(true)}
+                  title="Open On-Screen Number Keypad"
+                >
+                  <Icon name="keyboard" size={14} />
+                  Keypad
+                </button>
                 <button
                   type="button"
                   className="btn btn-secondary btn-small"
@@ -336,6 +352,285 @@ function HeaderProfileMenu() {
           </div>
         </div>
       )}
+
+      {pinVkOpen && (
+        <VirtualKeyboard
+          open={pinVkOpen}
+          value={enteredPin}
+          onChange={(val) => {
+            setEnteredPin(val)
+            setPinError(null)
+          }}
+          onSubmit={() => {
+            setPinVkOpen(false)
+            if (pinTargetId && enteredPin.trim()) {
+              const res = switchProfileWithPin(pinTargetId, enteredPin)
+              if (res.success) {
+                setPinTargetId(null)
+                setEnteredPin('')
+                setPinError(null)
+              } else {
+                setPinError(res.error ?? 'Invalid PIN')
+              }
+            }
+          }}
+          onClose={() => setPinVkOpen(false)}
+          title="Enter Parental PIN"
+          placeholder="Enter 4-digit PIN..."
+          urlMode={false}
+        />
+      )}
+    </div>
+  )
+}
+
+interface SearchSuggestion {
+  id: string
+  title: string
+  subtitle: string
+  type: 'channel' | 'movie' | 'series' | 'live'
+  to: string
+  badge: string
+}
+
+function HeaderSearch({ placeholder, onOpenQuickSearch }: { placeholder: string; onOpenQuickSearch?: () => void }) {
+  const navigate = useNavigate()
+  const store = useStore()
+  const now = useNow()
+  const [query, setQuery] = useState('')
+  const [isOpen, setIsOpen] = useState(false)
+  const [activeIndex, setActiveIndex] = useState(-1)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const suggestions = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return []
+    const results: SearchSuggestion[] = []
+
+    // 1. Live TV Channels (up to 3)
+    for (const c of store.channels) {
+      if (results.filter((r) => r.type === 'channel').length >= 3) break
+      const name = (c.name || '').toLowerCase()
+      const num = String(c.number || '')
+      if (name.includes(q) || num === q) {
+        results.push({
+          id: `ch-${c.id}`,
+          title: c.name,
+          subtitle: `Channel ${c.number || ''} ${c.categories?.length ? `- ${c.categories[0]}` : ''}`,
+          type: 'channel',
+          to: `/live?channel=${encodeURIComponent(c.id)}`,
+          badge: 'Live TV',
+        })
+      }
+    }
+
+    // 2. Movies (up to 3)
+    for (const m of movies) {
+      if (results.filter((r) => r.type === 'movie').length >= 3) break
+      if (m.title.toLowerCase().includes(q) || m.genres?.some((g) => g.toLowerCase().includes(q))) {
+        results.push({
+          id: `movie-${m.id}`,
+          title: m.title,
+          subtitle: `${m.year} - ${m.genres?.slice(0, 2).join(', ') || 'Movie'}`,
+          type: 'movie',
+          to: `/movies?movie=${encodeURIComponent(m.id)}`,
+          badge: 'Movie',
+        })
+      }
+    }
+
+    // 3. Series (up to 3)
+    for (const s of series) {
+      if (results.filter((r) => r.type === 'series').length >= 3) break
+      if (s.title.toLowerCase().includes(q) || s.genres?.some((g) => g.toLowerCase().includes(q))) {
+        results.push({
+          id: `series-${s.id}`,
+          title: s.title,
+          subtitle: `${s.seasons?.length || 1} Seasons - ${s.genres?.slice(0, 2).join(', ') || 'Series'}`,
+          type: 'series',
+          to: `/series?series=${encodeURIComponent(s.id)}`,
+          badge: 'Series',
+        })
+      }
+    }
+
+    // 4. Live Programmes (up to 2)
+    for (const c of store.channels) {
+      if (results.filter((r) => r.type === 'live').length >= 2) break
+      const prog = store.programmeAt(c, now)
+      if (prog && prog.title.toLowerCase().includes(q)) {
+        results.push({
+          id: `prog-${prog.id || c.id}`,
+          title: prog.title,
+          subtitle: `On now on ${c.name} (${c.number || ''})`,
+          type: 'live',
+          to: `/live?channel=${encodeURIComponent(c.id)}`,
+          badge: 'On Now',
+        })
+      }
+    }
+
+    return results
+  }, [query, store, now])
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const handleSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    if (activeIndex >= 0 && activeIndex < suggestions.length) {
+      const selected = suggestions[activeIndex]
+      if (selected) {
+        setIsOpen(false)
+        setQuery('')
+        navigate(selected.to)
+        return
+      }
+    }
+    if (query.trim()) {
+      setIsOpen(false)
+      navigate(`/search?q=${encodeURIComponent(query.trim())}`)
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      if (!isOpen && query.trim()) {
+        setIsOpen(true)
+      } else {
+        setActiveIndex((prev) => (prev < suggestions.length - 1 ? prev + 1 : 0))
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActiveIndex((prev) => (prev > 0 ? prev - 1 : suggestions.length - 1))
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      setIsOpen(false)
+      setActiveIndex(-1)
+      inputRef.current?.blur()
+    } else if (e.key === 'Enter') {
+      handleSubmit()
+    }
+  }
+
+  return (
+    <div className="header-search-container" ref={containerRef}>
+      <form className="search-pill-form" onSubmit={handleSubmit} role="search">
+        <label htmlFor="header-search-input" className="sr-only">Search</label>
+        <Icon name="search" size={16} />
+        <input
+          ref={inputRef}
+          id="header-search-input"
+          type="search"
+          className="search-pill-input"
+          placeholder={placeholder}
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value)
+            setIsOpen(true)
+            setActiveIndex(-1)
+          }}
+          onFocus={() => {
+            if (query.trim()) setIsOpen(true)
+          }}
+          onKeyDown={handleKeyDown}
+          autoComplete="off"
+          spellCheck={false}
+          aria-autocomplete="list"
+          aria-controls="header-search-dropdown"
+          aria-expanded={isOpen && Boolean(query.trim())}
+        />
+        {query ? (
+          <button
+            type="button"
+            className="search-pill-clear"
+            onClick={() => {
+              setQuery('')
+              setIsOpen(false)
+              inputRef.current?.focus()
+            }}
+            aria-label="Clear search"
+          >
+            <Icon name="close" size={14} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="search-pill-kbd"
+            onClick={onOpenQuickSearch}
+            title="Open Quick Search Modal"
+            aria-label="Open Quick Search Modal"
+          >
+            /
+          </button>
+        )}
+      </form>
+
+      {isOpen && query.trim() && (
+        <div id="header-search-dropdown" className="header-search-popover" role="listbox">
+          {suggestions.length > 0 ? (
+            <div className="header-search-suggestions">
+              {suggestions.map((item, idx) => {
+                const isSelected = idx === activeIndex
+                return (
+                  <div
+                    key={item.id}
+                    role="option"
+                    aria-selected={isSelected}
+                    className={`header-search-item ${isSelected ? 'is-selected' : ''}`}
+                    onClick={() => {
+                      setIsOpen(false)
+                      setQuery('')
+                      navigate(item.to)
+                    }}
+                    onMouseEnter={() => setActiveIndex(idx)}
+                  >
+                    <div className="header-search-item-info">
+                      <span className="header-search-item-title">{item.title}</span>
+                      <span className="header-search-item-sub">{item.subtitle}</span>
+                    </div>
+                    <span className={`header-search-badge badge-${item.type}`}>{item.badge}</span>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="header-search-empty">
+              <span>No quick results found</span>
+            </div>
+          )}
+
+          <div
+            className="header-search-footer"
+            role="button"
+            tabIndex={0}
+            onClick={() => {
+              setIsOpen(false)
+              navigate(`/search?q=${encodeURIComponent(query.trim())}`)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                setIsOpen(false)
+                navigate(`/search?q=${encodeURIComponent(query.trim())}`)
+              }
+            }}
+          >
+            <span>Press Enter to search catalog for &ldquo;{query.trim()}&rdquo;</span>
+            <Icon name="right" size={14} />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -345,19 +640,23 @@ export function PageHeader({
   title,
   tabs,
   search = true,
+  searchPlaceholder = 'Search movies, series, channels, programmes and more...',
   overlay = false,
   actions,
 }: {
   title?: ReactNode
   tabs?: ReactNode
   search?: boolean
+  searchPlaceholder?: string
   overlay?: boolean
   actions?: ReactNode
 }) {
+  const navigate = useNavigate()
   const now = useNow()
-  const { prefs } = useStore()
+  const { prefs, setPref } = useStore()
   const openNav = useContext(NavMenuContext)
   const [castOpen, setCastOpen] = useState(false)
+  const [quickSearchOpen, setQuickSearchOpen] = useState(false)
   const { isConnected, session } = useCasting()
 
   const openPalette = () => {
@@ -368,29 +667,81 @@ export function PageHeader({
     window.dispatchEvent(new CustomEvent('kinora:shortcuts'))
   }
 
+  useEffect(() => {
+    const handleGlobalKey = (e: globalThis.KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      const isInput = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      if (!isInput && e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault()
+        setQuickSearchOpen(true)
+      }
+    }
+    const handleOpenQuickSearch = () => setQuickSearchOpen(true)
+    window.addEventListener('keydown', handleGlobalKey)
+    window.addEventListener('kinora:quick-search', handleOpenQuickSearch)
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKey)
+      window.removeEventListener('kinora:quick-search', handleOpenQuickSearch)
+    }
+  }, [])
+
   return (
     <header className={`page-header${overlay ? ' is-overlay' : ''}`}>
       <button type="button" className="icon-btn menu-btn" aria-label="Open menu" onClick={openNav}><Icon name="menu" /></button>
+      
+      <div className="header-history-nav">
+        <button
+          type="button"
+          className="header-history-btn"
+          onClick={() => navigate(-1)}
+          aria-label="Go back"
+          title="Back"
+        >
+          <Icon name="left" size={16} />
+        </button>
+        <button
+          type="button"
+          className="header-history-btn"
+          onClick={() => navigate(1)}
+          aria-label="Go forward"
+          title="Forward"
+        >
+          <Icon name="right" size={16} />
+        </button>
+      </div>
+
       <div className="page-header-left">
         {title && <h1 className="page-title">{title}</h1>}
         {tabs}
       </div>
+
       <div className="page-header-right">
-        {search && (
-          <button
-            type="button"
-            className="search-pill"
-            aria-label="Search and command palette, shortcut Ctrl+K"
-            onClick={openPalette}
-          >
-            <Icon name="search" size={18} />
-            <span>Search movies, series, channels, podcasts...</span>
-            <kbd className="search-pill-kbd">Ctrl + K</kbd>
-          </button>
-        )}
+        {search && <HeaderSearch placeholder={searchPlaceholder} onOpenQuickSearch={() => setQuickSearchOpen(true)} />}
         {actions}
         <BackgroundTaskTrigger />
         <NotificationsAndReminders />
+        <button
+          type="button"
+          className={`icon-btn header-view-mode-btn ${prefs.viewMode === 'tv' ? 'is-tv-mode' : ''}`}
+          aria-label={prefs.viewMode === 'tv' ? 'Switch to Desktop Mode (Ctrl+Shift+T)' : 'Switch to TV Box Mode (Ctrl+Shift+T)'}
+          title={prefs.viewMode === 'tv' ? 'Switch to Desktop Mode (Ctrl+Shift+T)' : 'Switch to TV Box Mode (Ctrl+Shift+T)'}
+          onClick={() => {
+            const nextMode = prefs.viewMode === 'tv' ? 'desktop' : 'tv'
+            setPref('viewMode', nextMode)
+            setPref('layoutMode', nextMode === 'tv' ? 'tv' : 'standard')
+          }}
+        >
+          <Icon name="desktop" size={18} />
+        </button>
+        <button
+          type="button"
+          className="icon-btn header-grid-btn"
+          aria-label="Command Palette (Ctrl+K)"
+          title="Command Palette (Ctrl+K)"
+          onClick={openPalette}
+        >
+          <Icon name="grid" size={18} />
+        </button>
         <button
           type="button"
           className={`icon-btn header-cast-btn ${isConnected ? 'is-connected' : ''}`}
@@ -403,7 +754,7 @@ export function PageHeader({
         <button
           type="button"
           className="icon-btn header-help-btn"
-          aria-label="Keyboard shortcuts (press ?)"
+          aria-label="Keyboard shortcuts (?)"
           title="Keyboard shortcuts (?)"
           onClick={openShortcuts}
         >
@@ -414,6 +765,7 @@ export function PageHeader({
         <time className="header-clock tnum" dateTime={new Date(now).toISOString()}>{clock(now, prefs.timeFormat)}</time>
       </div>
       <CastModal open={castOpen} onClose={() => setCastOpen(false)} />
+      <QuickSearchModal open={quickSearchOpen} onClose={() => setQuickSearchOpen(false)} />
     </header>
   )
 }

@@ -224,6 +224,19 @@ describe('Live TV with a guide', () => {
     const film = [...row('Channel One').querySelectorAll('.prog')].find((p) => p.textContent?.includes('Late Film')) as HTMLElement
     expect(film.style.left).toBe('0px')
   })
+
+  it('opens EPG Health modal and shows diagnostic status', async () => {
+    await mount('/live')
+    const epgBtn = document.querySelector('[aria-label="View EPG guide diagnostics and channel mapping"]') as HTMLButtonElement
+    expect(epgBtn).toBeTruthy()
+    await click(epgBtn)
+    expect(document.querySelector('.epg-status-card')).toBeTruthy()
+    expect(text()).toContain('EPG Guide Health & Diagnostics')
+    const closeBtn = document.querySelector('[aria-label="Close EPG diagnostics"]') as HTMLButtonElement
+    expect(closeBtn).toBeTruthy()
+    await click(closeBtn)
+    expect(document.querySelector('.epg-status-card')).toBeNull()
+  })
 })
 
 describe('startup', () => {

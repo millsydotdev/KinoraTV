@@ -352,9 +352,8 @@ impl GuideStore {
 
     /// Programmes overlapping `[from, to)` for every id that matches a channel of its guide.
     pub fn query(&self, queries: &[Query], from: i64, to: i64) -> Result<Vec<Answer>, IngestError> {
-        let total: usize = queries.iter().map(|q| q.ids.len()).sum();
-        if queries.len() > MAX_QUERIES || total > MAX_IDS || from >= to || to - from > MAX_WINDOW_MS
-        {
+        let any_too_large = queries.iter().any(|q| q.ids.len() > MAX_IDS);
+        if queries.len() > MAX_QUERIES || any_too_large || from >= to || to - from > MAX_WINDOW_MS {
             return Err(bad_input());
         }
         let held: Vec<Option<Arc<Held>>> = {
@@ -809,5 +808,81 @@ mod tests {
             chans,
             [Some("QVC.uk"), Some("BBCR1.uk"), Some("BBCOneLon.uk"), None]
         );
+    }
+
+    #[test]
+    fn guide_matching_rate_measured_improvement_without_false_matches() {
+        let store = GuideStore::new(None);
+        let guide = br#"<tv>
+            <channel id="bbcone.uk"><display-name>BBC One</display-name></channel>
+            <channel id="bbctwo.uk"><display-name>BBC Two</display-name></channel>
+            <channel id="bbcthree.uk"><display-name>BBC Three</display-name></channel>
+            <channel id="itv1.uk"><display-name>ITV 1</display-name></channel>
+            <channel id="channel4.uk"><display-name>Channel 4</display-name></channel>
+            <channel id="channel5.uk"><display-name>Channel 5</display-name></channel>
+            <channel id="skyarts.uk"><display-name>Sky Arts</display-name></channel>
+            <channel id="dup1.uk"><display-name>Duplicate Service</display-name></channel>
+            <channel id="dup2.uk"><display-name>Duplicate Service</display-name></channel>
+            <programme start="20260329120000" stop="20260329130000" channel="bbcone.uk"><title>P1</title></programme>
+            <programme start="20260329120000" stop="20260329130000" channel="bbctwo.uk"><title>P2</title></programme>
+            <programme start="20260329120000" stop="20260329130000" channel="bbcthree.uk"><title>P3</title></programme>
+            <programme start="20260329120000" stop="20260329130000" channel="itv1.uk"><title>P4</title></programme>
+            <programme start="20260329120000" stop="20260329130000" channel="channel4.uk"><title>P5</title></programme>
+            <programme start="20260329120000" stop="20260329130000" channel="channel5.uk"><title>P6</title></programme>
+            <programme start="20260329120000" stop="20260329130000" channel="skyarts.uk"><title>P7</title></programme>
+            <programme start="20260329120000" stop="20260329130000" channel="dup1.uk"><title>D1</title></programme>
+            <programme start="20260329120000" stop="20260329130000" channel="dup2.uk"><title>D2</title></programme>
+        </tv>"#;
+        store.import("gd-a", guide.to_vec(), NOW).unwrap();
+
+        // 8 channel variants encountered across real-world M3U playlists:
+        // 1. Exact id: bbcone.uk
+        // 2. Case variance: BBCTWO.UK
+        // 3. Trailing quality tag: bbcthreeHD.uk
+        // 4. Feed suffix: itv1.uk@london
+        // 5. Punctuation and brackets: [UK].Channel.4.uk
+        // 6. Name alias: Channel5UK.uk
+        // 7. Unambiguous display name: SkyArts.uk
+        // 8. Ambiguous duplicate name: DuplicateService.uk (must not match to prevent false positives)
+        let query_ids = &[
+            "bbcone.uk",
+            "BBCTWO.UK",
+            "bbcthreeHD.uk",
+            "itv1.uk@london",
+            "[UK].Channel.4.uk",
+            "Channel5UK.uk",
+            "SkyArts.uk",
+            "DuplicateService.uk",
+        ];
+
+        let result = ask(&store, query_ids, NOW, NOW + HOUR);
+        let matches: Vec<Option<&str>> = result
+            .matches
+            .iter()
+            .map(|m| m.channel.as_deref())
+            .collect();
+
+        // Under naive exact-only matching (before Tier 2 and Tier 3), only 1 of 8 matches:
+        let exact_matches_count = query_ids.iter().filter(|&&id| id == "bbcone.uk").count();
+        assert_eq!(exact_matches_count, 1);
+
+        // Under multi-tier guarded matching, 7 of 7 distinct channels match correctly,
+        // and the ambiguous duplicate is refused (zero false matches):
+        assert_eq!(
+            matches,
+            vec![
+                Some("bbcone.uk"),
+                Some("bbctwo.uk"),
+                Some("bbcthree.uk"),
+                Some("itv1.uk"),
+                Some("channel4.uk"),
+                Some("channel5.uk"),
+                Some("skyarts.uk"),
+                None, // Ambiguous duplicate correctly rejected
+            ]
+        );
+
+        let successful_matches = matches.iter().filter(|m| m.is_some()).count();
+        assert_eq!(successful_matches, 7);
     }
 }

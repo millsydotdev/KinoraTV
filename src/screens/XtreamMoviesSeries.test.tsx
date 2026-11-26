@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../components/Toast'
 import { resolve } from '../data/refs'
-import type { XtreamMovieDetails, XtreamSeriesDetails } from '../lib/native'
+import { IngestError, type XtreamMovieDetails, type XtreamSeriesDetails } from '../lib/native'
 import { StoreProvider } from '../state/store'
 import { MovieDetail } from './MovieDetail'
 import { Movies } from './Movies'
@@ -248,7 +248,7 @@ describe('Phase 3: Movies and Series Experience', () => {
     expect(host.textContent).not.toContain('Bravo Midnight')
 
     // Search query filtering
-    const searchInput = host.querySelector('input[type="search"]') as HTMLInputElement
+    const searchInput = (host.querySelector('.provider-search input') ?? host.querySelector('input[type="search"]')) as HTMLInputElement
     expect(searchInput).not.toBeNull()
 
     await act(async () => {
@@ -463,7 +463,7 @@ describe('Phase 3: Movies and Series Experience', () => {
 
   it('enforces HLS boundary and displays honest error message for direct video formats', async () => {
     mockNative.openStream.mockRejectedValue(
-      new Error('This is a direct video file. Kinora plays HLS and DASH streams, not video files.'),
+      new IngestError('unsupported-stream', 'This is a direct video file. Kinora plays HLS and DASH streams, not video files.'),
     )
 
     await act(async () => {
@@ -506,5 +506,139 @@ describe('Phase 3: Movies and Series Experience', () => {
     // Does not crash, honest feedback displayed, zero credentials exposed
     expect(host.innerHTML).not.toContain('password')
     expect(host.innerHTML).not.toContain('token')
+  })
+
+  it('renders multi-source stream variants in MovieDetail when title exists across providers', async () => {
+    const multiCat: any = {
+      ...sampleCatalogue,
+      movies: [
+        ...sampleCatalogue.movies,
+        {
+          id: '999',
+          sourceId: 'src-2',
+          name: 'Alpha Horizon [4K UHD]',
+          categoryId: '1',
+          categoryName: 'Sci-Fi',
+          rating: 8.5,
+          plot: 'Astronauts venture past the known galaxy.',
+          extension: 'mkv',
+          artworkKey: 'xtream:vod:999',
+          year: 2024,
+        },
+      ],
+    }
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/movies/xt:src-1:101']}>
+          <ToastProvider>
+            <StoreProvider
+              initialXtreamSources={[
+                {
+                  id: 'src-1',
+                  name: 'Primary Source',
+                  addedAt: Date.now(),
+                  lastSuccess: Date.now(),
+                  movies: 3,
+                  series: 2,
+                  liveChannels: 0,
+                  connected: true,
+                  server: null,
+                  enabled: true,
+                },
+                {
+                  id: 'src-2',
+                  name: 'Mirror Source',
+                  addedAt: Date.now(),
+                  lastSuccess: Date.now(),
+                  movies: 1,
+                  series: 0,
+                  liveChannels: 0,
+                  connected: true,
+                  server: null,
+                  enabled: true,
+                },
+              ]}
+              initialXtreamCatalogue={multiCat}
+            >
+              <Routes>
+                <Route path="/movies/:id" element={<MovieDetail />} />
+              </Routes>
+            </StoreProvider>
+          </ToastProvider>
+        </MemoryRouter>,
+      )
+    })
+
+    expect(host.textContent).toContain('Alpha Horizon')
+    expect(host.textContent).toContain('Available across 2 server sources')
+    expect(host.textContent).toContain('Primary Source - HD')
+    expect(host.textContent).toContain('Switch to Mirror Source - 4K')
+  })
+
+  it('aggregates multi-source VOD titles in Movies catalogue and shows multi-source badge', async () => {
+    const multiCat: any = {
+      ...sampleCatalogue,
+      movies: [
+        ...sampleCatalogue.movies,
+        {
+          id: '999',
+          sourceId: 'src-2',
+          name: 'Alpha Horizon [4K UHD]',
+          categoryId: '1',
+          categoryName: 'Sci-Fi',
+          rating: 8.5,
+          plot: 'Astronauts venture past the known galaxy.',
+          extension: 'mkv',
+          artworkKey: 'xtream:vod:999',
+          year: 2024,
+        },
+      ],
+    }
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/movies?category=Sci-Fi']}>
+          <ToastProvider>
+            <StoreProvider
+              initialXtreamSources={[
+                {
+                  id: 'src-1',
+                  name: 'Primary Source',
+                  addedAt: Date.now(),
+                  lastSuccess: Date.now(),
+                  movies: 3,
+                  series: 2,
+                  liveChannels: 0,
+                  connected: true,
+                  server: null,
+                  enabled: true,
+                },
+                {
+                  id: 'src-2',
+                  name: 'Mirror Source',
+                  addedAt: Date.now(),
+                  lastSuccess: Date.now(),
+                  movies: 1,
+                  series: 0,
+                  liveChannels: 0,
+                  connected: true,
+                  server: null,
+                  enabled: true,
+                },
+              ]}
+              initialXtreamCatalogue={multiCat}
+            >
+              <Routes>
+                <Route path="/movies" element={<Movies />} />
+              </Routes>
+            </StoreProvider>
+          </ToastProvider>
+        </MemoryRouter>,
+      )
+    })
+
+    expect(host.textContent).toContain('aggregated across 2 sources')
+    expect(host.textContent).toContain('2 Sources')
   })
 })

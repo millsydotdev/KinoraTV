@@ -184,6 +184,8 @@ pub struct Entry {
     pub plot: Option<String>,
     pub extension: String,
     pub artwork_key: String,
+    #[serde(default)]
+    pub icon_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -457,10 +459,66 @@ impl Providers {
         } else {
             HashMap::new()
         };
+        let mut initial_artwork = HashMap::new();
+        if let Some(ref d) = dir {
+            if let Ok(entries) = fs::read_dir(d) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if let Some(fname) = path.file_name().and_then(|n| n.to_str()) {
+                        if fname.starts_with("xtream-") && fname.ends_with(".json") {
+                            if let Ok(bytes) = fs::read(&path) {
+                                if let Ok(cat) = serde_json::from_slice::<Catalogue>(&bytes) {
+                                    for stream in &cat.live_streams {
+                                        if let Some(ref icon) = stream.stream_icon {
+                                            if let Ok(checked) =
+                                                fetch::check_url(icon, &Policy::artwork())
+                                            {
+                                                if initial_artwork.len() < MAX_ARTWORK_URLS {
+                                                    initial_artwork.insert(
+                                                        stream.artwork_key.clone(),
+                                                        checked,
+                                                    );
+                                                }
+                                            }
+                                        }
+                                    }
+                                    for movie in &cat.movies {
+                                        if let Some(ref icon) = movie.icon_url {
+                                            if let Ok(checked) =
+                                                fetch::check_url(icon, &Policy::artwork())
+                                            {
+                                                if initial_artwork.len() < MAX_ARTWORK_URLS {
+                                                    initial_artwork
+                                                        .insert(movie.artwork_key.clone(), checked);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    for series in &cat.series {
+                                        if let Some(ref icon) = series.icon_url {
+                                            if let Ok(checked) =
+                                                fetch::check_url(icon, &Policy::artwork())
+                                            {
+                                                if initial_artwork.len() < MAX_ARTWORK_URLS {
+                                                    initial_artwork.insert(
+                                                        series.artwork_key.clone(),
+                                                        checked,
+                                                    );
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
         Self {
             dir,
             connected: Mutex::new(connected),
-            artwork: Mutex::new(HashMap::new()),
+            artwork: Mutex::new(initial_artwork),
         }
     }
 
@@ -493,7 +551,44 @@ impl Providers {
         let dir = self.dir.as_ref()?;
         let path = dir.join(format!("xtream-{source_id}.json"));
         let bytes = fs::read(path).ok()?;
-        serde_json::from_slice(&bytes).ok()
+        let cat: Catalogue = serde_json::from_slice(&bytes).ok()?;
+        {
+            let mut artwork = self.artwork.lock().unwrap_or_else(|p| p.into_inner());
+            for stream in &cat.live_streams {
+                if let Some(ref icon) = stream.stream_icon {
+                    if let Ok(checked) = fetch::check_url(icon, &Policy::artwork()) {
+                        if artwork.contains_key(&stream.artwork_key)
+                            || artwork.len() < MAX_ARTWORK_URLS
+                        {
+                            artwork.insert(stream.artwork_key.clone(), checked);
+                        }
+                    }
+                }
+            }
+            for movie in &cat.movies {
+                if let Some(ref icon) = movie.icon_url {
+                    if let Ok(checked) = fetch::check_url(icon, &Policy::artwork()) {
+                        if artwork.contains_key(&movie.artwork_key)
+                            || artwork.len() < MAX_ARTWORK_URLS
+                        {
+                            artwork.insert(movie.artwork_key.clone(), checked);
+                        }
+                    }
+                }
+            }
+            for series in &cat.series {
+                if let Some(ref icon) = series.icon_url {
+                    if let Ok(checked) = fetch::check_url(icon, &Policy::artwork()) {
+                        if artwork.contains_key(&series.artwork_key)
+                            || artwork.len() < MAX_ARTWORK_URLS
+                        {
+                            artwork.insert(series.artwork_key.clone(), checked);
+                        }
+                    }
+                }
+            }
+        }
+        Some(cat)
     }
 }
 
@@ -1018,6 +1113,7 @@ impl Providers {
                 }
                 let cat_id = row.get("category_id").and_then(id);
                 let cat_name = cat_id.as_ref().and_then(|c| cat_names.get(c)).cloned();
+                let icon_url = text(row.get(image), 2_048);
                 output.push(Entry {
                     id: raw_id,
                     name,
@@ -1028,6 +1124,7 @@ impl Providers {
                     plot: text(row.get("plot"), 8_192),
                     extension: extension(row.get("container_extension")),
                     artwork_key,
+                    icon_url,
                 });
             }
         }
@@ -1664,6 +1761,7 @@ mod tests {
                 plot: Some("A gripping story.".to_string()),
                 extension: "mp4".to_string(),
                 artwork_key: "xt-p1:movie:201".to_string(),
+                icon_url: Some("https://images.example.com/movie.jpg".to_string()),
             }],
             series: vec![],
             live_streams: vec![LiveStream {

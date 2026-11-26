@@ -1,0 +1,121 @@
+.inactivity-overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(8px);
+  animation: inactivityFadeIn 0.25s ease-out;
+}
+
+@keyframes inactivityFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.inactivity-prompt-card {
+  width: 90%;
+  max-width: 440px;
+  background-color: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 12px);
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+}
+
+.inactivity-prompt-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background-color: rgb(var(--accent-rgb) / 0.15);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.inactivity-prompt-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.inactivity-prompt-desc {
+  margin: 0 0 1.25rem;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.inactivity-countdown-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  padding: 0.25rem 0.65rem;
+  border-radius: 9999px;
+  background-color: rgb(var(--accent-rgb) / 0.2);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 1.1rem;
+  margin-bottom: 1.5rem;
+}
+
+.inactivity-prompt-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  width: 100%;
+}
+
+.inactivity-btn-primary {
+  width: 100%;
+  padding: 0.85rem 1.25rem;
+  border-radius: var(--radius-md, 8px);
+  background-color: var(--accent);
+  color: var(--accent-contrast, #ffffff);
+  border: none;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.inactivity-btn-primary:hover,
+.inactivity-btn-primary:focus-visible {
+  opacity: 0.92;
+  transform: scale(1.02);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.inactivity-btn-secondary {
+  width: 100%;
+  padding: 0.75rem 1.25rem;
+  border-radius: var(--radius-md, 8px);
+  background-color: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.inactivity-btn-secondary:hover,
+.inactivity-btn-secondary:focus-visible {
+  color: var(--text);
+  border-color: var(--text);
+}

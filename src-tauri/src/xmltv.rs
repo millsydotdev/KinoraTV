@@ -178,7 +178,7 @@ pub fn alias_keys(id: &str) -> Vec<String> {
                 push(format!("{stripped}.{country}"));
             }
         }
-        for suffix in ["international", "english", "world", "news", "tv", "channel"] {
+        for suffix in ["english", "news", "tv", "channel"] {
             if let Some(stripped) = stem.strip_suffix(suffix) {
                 if stripped.len() >= 2 {
                     push(format!("{stripped}.{country}"));

@@ -62,6 +62,8 @@ jobs:
 
       - name: Run verification checks
         run: |
+          node scripts/validate-version.cjs
+          node scripts/generate-changelog.cjs --check
           npm run typecheck
           npm test
 
@@ -98,20 +100,23 @@ jobs:
           SEC_TAURI_KEY_PASS: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || secrets.TAURI_SIGNING_KEY_PASSWORD }}
 
       - name: Build Tauri application
+        env:
+          VITE_TMDB_API_KEY: ${{ secrets.VITE_TMDB_API_KEY }}
         run: npm run tauri:build -- --target ${{ matrix.target }}
 
       - name: Normalise updater artifacts
         shell: bash
         run: |
+          VERSION=$(node -p "require('./package.json').version")
           BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle"
-          echo "Scanning bundle directory: $BUNDLE_DIR"
+          echo "Scanning bundle directory: $BUNDLE_DIR for version $VERSION"
           find "$BUNDLE_DIR" -maxdepth 3 -ls
           if [ "${{ matrix.platform }}" = "macos-arm64" ]; then
-            find "$BUNDLE_DIR" -type f -name "Kinora.app.tar.gz" -exec cp {} "$BUNDLE_DIR/Kinora_0.5.0_aarch64.app.tar.gz" \;
-            find "$BUNDLE_DIR" -type f -name "Kinora.app.tar.gz.sig" -exec cp {} "$BUNDLE_DIR/Kinora_0.5.0_aarch64.app.tar.gz.sig" \;
+            find "$BUNDLE_DIR" -type f -name "Kinora.app.tar.gz" -exec cp {} "$BUNDLE_DIR/Kinora_${VERSION}_aarch64.app.tar.gz" \;
+            find "$BUNDLE_DIR" -type f -name "Kinora.app.tar.gz.sig" -exec cp {} "$BUNDLE_DIR/Kinora_${VERSION}_aarch64.app.tar.gz.sig" \;
           elif [ "${{ matrix.platform }}" = "macos-x64" ]; then
-            find "$BUNDLE_DIR" -type f -name "Kinora.app.tar.gz" -exec cp {} "$BUNDLE_DIR/Kinora_0.5.0_x64.app.tar.gz" \;
-            find "$BUNDLE_DIR" -type f -name "Kinora.app.tar.gz.sig" -exec cp {} "$BUNDLE_DIR/Kinora_0.5.0_x64.app.tar.gz.sig" \;
+            find "$BUNDLE_DIR" -type f -name "Kinora.app.tar.gz" -exec cp {} "$BUNDLE_DIR/Kinora_${VERSION}_x64.app.tar.gz" \;
+            find "$BUNDLE_DIR" -type f -name "Kinora.app.tar.gz.sig" -exec cp {} "$BUNDLE_DIR/Kinora_${VERSION}_x64.app.tar.gz.sig" \;
           fi
 
       - name: Generate SHA-256 checksums (Linux / macOS)
@@ -142,14 +147,29 @@ jobs:
             src-tauri/target/${{ matrix.target }}/release/bundle/**
             !src-tauri/target/${{ matrix.target }}/release/bundle/**/build
           if-no-files-found: error
+          retention-days: 90
 
   publish:
+    name: Publish Production Release
     needs: build
     if: (startsWith(github.ref, 'refs/tags/v') || github.event.inputs.dry_run == false) && !cancelled()
     runs-on: ubuntu-24.04
+    environment: production
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Validate version and determine release channel
+        id: ver
+        run: |
+          node scripts/validate-version.cjs
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          if [[ "$VERSION" =~ - ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Download all built artifacts
         uses: actions/download-artifact@v4
@@ -165,6 +185,11 @@ jobs:
           ls -la release-dist
           cat release-dist/SHA256SUMS.txt
 
+      - name: Generate CycloneDX Software Bill of Materials (SBOM)
+        run: |
+          node scripts/generate-sbom.cjs release-dist/kinora-sbom.json
+          sha256sum release-dist/kinora-sbom.json >> release-dist/SHA256SUMS.txt
+
       - name: Generate latest.json updater manifest
         run: |
           node scripts/generate-updater-manifest.cjs
@@ -174,7 +199,7 @@ jobs:
         with:
           files: |
             release-dist/*
-          name: Kinora v0.5.0
+          name: Kinora v${{ steps.ver.outputs.version }}
           generate_release_notes: true
           draft: false
-          prerelease: false
+          prerelease: ${{ steps.ver.outputs.is_prerelease == 'true' }}

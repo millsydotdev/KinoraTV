@@ -1,11 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { hydrateMetadataCredentialsFromVault, loadMetadataConfig } from '../data/metadataProviders'
+import { artworkEngine } from '../data/artworkEngine'
 import { addDays, channels as demoChannels, nextProgramme as demoNext, programmeAt as demoAt, scheduleFor as demoSchedule, startOfDay } from '../data/channels'
 import { realLibrary } from '../lib/migrate'
 import { demoSources } from '../data/sources'
 import type { Channel, Collection, Library, Programme, Progress, Ref, Source, StreamVariant, XtreamTitle } from '../data/types'
 import {
-  disconnectXtream, fetchGuide, fetchPlaylist, guideProgrammes, inNativeShell, isXtreamConnected, loadCatalogue, loadGuide, loadSources, loadXtreamCatalogue, loadXtreamSeries, readGuideFile, readPlaylistFile, refreshCatalogue, refreshXtream,
-  removeGuide as forgetGuide, saveSources, loadXtreamVodDetails, loadXtreamEpg,
+  disconnectXtream, fetchGuide, fetchPlaylist, getPlatformMode, guideProgrammes, inNativeShell, isXtreamConnected, loadCatalogue, loadGuide, loadSources, loadXtreamCatalogue, loadXtreamSeries, readGuideFile, readPlaylistFile, refreshCatalogue, refreshXtream,
+  removeGuide as forgetGuide, saveSources, loadXtreamVodDetails, loadXtreamEpg, updateRemoteChannels, updateRemoteSources, updateRemoteLibrary, updateRemoteEpg, updateRemoteMedia,
   dvrGetRecordings, dvrStartRecording, dvrStopRecording, dvrScheduleRecording, dvrCancelRecording, dvrDeleteRecording, dvrProtectRecording,
   dvrGetRules, dvrSaveRule, dvrDeleteRule, dvrGetConfig, dvrSaveConfig, dvrGetStorageInfo,
   type GuideSummary, type PlaylistReport, type SavedState, type SavedXtreamSource, type StorageNotice, type XtreamCatalogue, type XtreamEntry, type XtreamSeriesDetails,
@@ -17,12 +19,22 @@ import { createGuide, guideQueries, includePlaylistsInGuides, programmesFor, res
 import { ACCENTS, THEME_BG, safeHex, type AccentName, type ThemeName } from '../lib/theme'
 import { activeChannels, createSource, fileLabel, removeSource, restoreSource, runImport, toSaved, type PlaylistSource } from './playlists'
 import { combineChannels } from './channel-matching'
+import { registerRecordingLookup, registerResourceLookup } from '../data/refs'
 import { usePersonalMediaLibrary } from './mediaLibrary'
 import { useUserPreferencesStore } from './userPreferences'
 import { useProfiles } from './profiles'
 import { filterKidSafeChannels, filterKidSafeProgrammes, filterKidSafeXtreamTitles, isProgrammeKidSafe } from '../lib/kidsMode'
+import { PlaybackProvider } from './playbackContext'
+import { clientSyncManager, mergeRemoteLibraryIntoLocal, useClientSync } from '../lib/clientSync'
 
 export type { Collection, Library, Progress, Ref, XtreamTitle }
+
+export interface StreamFailure {
+  channelId: string
+  at: number
+  message: string
+  canRetry: boolean
+}
 
 export interface XtreamSource extends SavedXtreamSource {
   connected: boolean
@@ -87,6 +99,34 @@ export interface Prefs {
   /** Fictional sample content, only when the user asks for it and has no real source. */
   demoMode: boolean
   sidebarCollapsed: boolean
+  homeHubCollapsed: boolean
+  layoutMode: 'standard' | 'compact' | 'wide' | 'tv'
+  viewMode: 'desktop' | 'tv'
+  showArtworkBackgrounds: boolean
+  animatedTransitions: boolean
+  showMediaRatings: boolean
+  /** 'system' follows the OS colour scheme; the resolved theme is stored in `theme`. */
+  themeMode: 'dark' | 'midnight' | 'dim' | 'slate' | 'oled' | 'light' | 'system'
+  /** Optional custom User-Agent override for stream playback. Empty string means default Kinora agent. */
+  customUserAgent: string
+  /** Optional custom HTTP Referrer override for stream playback. Empty string means none. */
+  customReferrer: string
+  /** Background scheduled refresh interval for remote playlists and guides (Finding 18). */
+  refreshSchedule: '4h' | '8h' | '12h' | '24h' | 'manual'
+  /** Whether upcoming programme reminders trigger notifications (Finding 19). */
+  reminderAlerts: boolean
+  /** Whether scheduled DVR recording events trigger notifications. */
+  recordingAlerts: boolean
+  /** Whether background source refresh completions trigger notifications. */
+  refreshAlerts: boolean
+}
+
+export const SCHEDULE_MS: Record<'4h' | '8h' | '12h' | '24h' | 'manual', number | null> = {
+  '4h': 4 * 3600 * 1000,
+  '8h': 8 * 3600 * 1000,
+  '12h': 12 * 3600 * 1000,
+  '24h': 24 * 3600 * 1000,
+  manual: null,
 }
 
 /** Source-checking settings removed in D3.1: nothing used them. Stripped from saved prefs so they stop being stored. */
@@ -103,7 +143,10 @@ export const defaultPrefs: Prefs = {
   autoplayNext: true, resume: 'resume', quality: 'auto',
   audioLanguage: 'English',
   subtitles: false, subtitleLanguage: 'English', subtitleSize: 'medium', subtitleStyle: 'shadow',
-  timeFormat: '24h', guideZoom: 3, guideArt: true, guideStart: 'now', demoMode: false, sidebarCollapsed: false,
+  timeFormat: '24h', guideZoom: 3, guideArt: true, guideStart: 'now', demoMode: false, sidebarCollapsed: false, homeHubCollapsed: false,
+  layoutMode: 'standard', viewMode: 'desktop', showArtworkBackgrounds: true, animatedTransitions: true, showMediaRatings: true, themeMode: 'dark',
+  customUserAgent: '', customReferrer: '', refreshSchedule: '12h',
+  reminderAlerts: true, recordingAlerts: true, refreshAlerts: false,
 }
 
 export const emptyLibrary: Library = {
@@ -187,6 +230,17 @@ export function sanitizePrefs(stored: Prefs & RemovedPrefs): Prefs {
     customAccent: safeHex(p.customAccent) ?? defaultPrefs.customAccent,
     density: pick('density', ['compact', 'comfortable', 'spacious']),
     sidebarCollapsed: Boolean(p.sidebarCollapsed),
+    homeHubCollapsed: Boolean(p.homeHubCollapsed),
+    layoutMode: pick('layoutMode', ['standard', 'compact', 'wide', 'tv']),
+    viewMode: (p.viewMode === 'tv' || p.layoutMode === 'tv') ? 'tv' : pick('viewMode', ['desktop', 'tv']),
+    showArtworkBackgrounds: p.showArtworkBackgrounds !== false,
+    animatedTransitions: p.animatedTransitions !== false,
+    showMediaRatings: p.showMediaRatings !== false,
+    themeMode: pick('themeMode', ['dark', 'midnight', 'dim', 'slate', 'oled', 'light', 'system']),
+    refreshSchedule: pick('refreshSchedule', ['4h', '8h', '12h', '24h', 'manual']),
+    reminderAlerts: p.reminderAlerts !== false,
+    recordingAlerts: p.recordingAlerts !== false,
+    refreshAlerts: p.refreshAlerts === true,
   }
 }
 
@@ -265,9 +319,65 @@ function useStoreValue(
   initialDemo: boolean,
   initialXtreamSources: XtreamSource[] = [],
   initialXtreamCatalogue: Partial<XtreamCatalogueState> = { movies: [], series: [] },
+  initialStreamFailures?: Map<string, StreamFailure> | Record<string, StreamFailure>,
 ) {
   const { activeProfile, isKidsMode } = useProfiles()
   const profileId = activeProfile?.id ?? 'default'
+  const clientSync = useClientSync()
+
+  // Track real-play stream failures in session state (in-memory only, no background probing).
+  const [streamFailures, setStreamFailures] = useState<Map<string, StreamFailure>>(() => {
+    if (!initialStreamFailures) return new Map()
+    if (initialStreamFailures instanceof Map) return new Map(initialStreamFailures)
+    return new Map(Object.entries(initialStreamFailures))
+  })
+
+  const recordStreamFailure = useCallback((channelId: string, error: { message: string; canRetry?: boolean }) => {
+    setStreamFailures((prev) => {
+      const existing = prev.get(channelId)
+      if (existing && existing.message === error.message && existing.canRetry === (error.canRetry ?? true)) {
+        return prev
+      }
+      const next = new Map(prev)
+      next.set(channelId, {
+        channelId,
+        at: Date.now(),
+        message: error.message,
+        canRetry: error.canRetry ?? true,
+      })
+      return next
+    })
+  }, [])
+
+  const clearStreamFailure = useCallback((channelId: string) => {
+    setStreamFailures((prev) => {
+      if (!prev.has(channelId)) return prev
+      const next = new Map(prev)
+      next.delete(channelId)
+      return next
+    })
+  }, [])
+
+  const getStreamFailure = useCallback((channelId: string): StreamFailure | undefined => {
+    return streamFailures.get(channelId)
+  }, [streamFailures])
+
+  // Auto-reconnect to the paired Kinora Server on startup when running in Client mode.
+  useEffect(() => {
+    let active = true
+    const current = clientSyncManager.getState()
+    if (!current.serverUrl || !current.authToken || current.status !== 'disconnected') return
+    void getPlatformMode().then((info) => {
+      if (!active) return
+      const savedMode = info?.mode ?? (typeof localStorage !== 'undefined' ? localStorage.getItem('kinora.platform.mode.v1') : null)
+      if (savedMode === 'client') {
+        void clientSyncManager.connect()
+      }
+    })
+    return () => {
+      active = false
+    }
+  }, [])
 
   const [realLib, setRealLibState] = useState<Library>(() => loadProfileLibrary(profileId))
 
@@ -316,8 +426,25 @@ function useStoreValue(
   const [src, setSrc] = usePersisted<SourcesState>('kinora.sources.v1', () => ({ sources: demoSources(Date.now()) }), ({ sources }) => ({ sources }))
 
   // Imported playlists: saved by Rust (sources.rs), never in localStorage. Restored once at start.
-  const [playlists, setPlaylists] = useState<PlaylistSource[]>(initialPlaylists)
+  const [playlists, setPlaylists] = useState<PlaylistSource[]>(() => {
+    if (initialPlaylists && initialPlaylists.length > 0) return initialPlaylists
+    if (!inNativeShell()) {
+      try {
+        const raw = localStorage.getItem('kinora.browser_playlists.v1')
+        if (raw) return JSON.parse(raw)
+      } catch {}
+    }
+    return initialPlaylists
+  })
   const lastOp = useRef(0)
+  useEffect(() => {
+    void hydrateMetadataCredentialsFromVault().then(() => {
+      const cfg = loadMetadataConfig()
+      if (cfg.tmdbEnabled || cfg.tvmazeEnabled) {
+        void artworkEngine.runEnrichment()
+      }
+    })
+  }, [])
   const [restored, setRestored] = useState(() => !inNativeShell())
   const [storageNotice, setStorageNotice] = useState<StorageNotice | 'save-failed' | null>(null)
   const canSave = useRef(false)
@@ -516,7 +643,14 @@ function useStoreValue(
     if (queries.length === 0 || requested.current.has(tag)) return
     requested.current.add(tag)
     guideProgrammes(queries, day, addDays(day, 1)).then((answers) => {
-      if (!answers || currentKey.current !== epgKey) return
+      if (!answers || currentKey.current !== epgKey) {
+        requested.current.delete(tag)
+        return
+      }
+      const allLoaded = answers.length > 0 && answers.every((a) => a.loaded)
+      if (!allLoaded) {
+        requested.current.delete(tag)
+      }
       const matches = resolveMatches(allChannels, guides, mappings, answers)
       setEpg((e) => {
         const days = new Map(e.key === epgKey ? e.days : NO_DAYS)
@@ -572,16 +706,253 @@ function useStoreValue(
     ...xtreamSources.map((x) => ({ id: x.id, name: x.name, origin: 'xtream' })),
   ], [playlists, xtreamSources])
 
-  const rawChannels = useMemo(
-    () => demoActive ? playlistChannels : combineChannels(allChannels, allSources, matches),
-    [demoActive, playlistChannels, allChannels, allSources, matches],
-  )
+  const clientChannels = useMemo<Channel[]>(() => {
+    if (clientSync.status !== 'connected' || clientSync.channels.length === 0) return []
+    return clientSync.channels.map((c, idx) => ({
+      id: c.id,
+      name: c.name,
+      number: c.number ?? idx + 1,
+      group: c.group ?? 'Server Channels',
+      categories: c.group ? [c.group] : ['General'],
+      logoUrl: c.logo || null,
+      mark: { text: c.name.slice(0, 3).toUpperCase(), tone: 'accent' },
+      streamUrl: `client-sync://${c.id}`,
+      streamDisplay: 'Kinora Server Stream',
+      hd: true,
+      sourceId: 'kinora-server',
+      tvgId: null,
+      isRadio: false,
+      resolution: 'HD',
+    }))
+  }, [clientSync.status, clientSync.channels])
+
+  const rawChannels = useMemo(() => {
+    if (clientSync.status === 'connected' && clientChannels.length > 0) {
+      return clientChannels
+    }
+    return demoActive ? playlistChannels : combineChannels(allChannels, allSources, matches)
+  }, [clientSync.status, clientChannels, demoActive, playlistChannels, allChannels, allSources, matches])
   const channels = useMemo(
     () => isKidsMode ? filterKidSafeChannels(rawChannels, true) : rawChannels,
     [rawChannels, isKidsMode],
   )
   const channelIndex = useMemo(() => new Map(channels.flatMap((c) => [c.id, ...(c.memberIds ?? [])].map((id) => [id, c] as const))), [channels])
   const findChannel = useCallback((id: string): Channel | undefined => channelIndex.get(id), [channelIndex])
+
+  useEffect(() => {
+    if (channels.length > 0 && clientSync.status !== 'connected') {
+      const summaries = channels.slice(0, 300).map((c) => ({
+        id: c.id,
+        name: c.name,
+        number: c.number,
+        group: c.group,
+        logo: c.logoUrl,
+        streamUrl: c.streamUrl ?? undefined,
+      }))
+      void updateRemoteChannels(summaries)
+    }
+  }, [channels, clientSync.status])
+
+  useEffect(() => {
+    if (playlists.length > 0 && clientSync.status !== 'connected') {
+      const srcSummaries = playlists.map((p) => ({
+        id: p.id,
+        label: p.label,
+        origin: p.origin === 'url' ? 'url' : 'file',
+        channelCount: p.channels.length,
+        kind: 'playlist',
+      }))
+      void updateRemoteSources(srcSummaries)
+    }
+  }, [playlists, clientSync.status])
+
+  useEffect(() => {
+    if (clientSync.status === 'connected') return
+    const watchProgress = Object.entries(library.progress || {}).map(([ref, p]) => ({
+      itemRef: ref,
+      title: ref,
+      position: p.pos,
+      duration: p.dur,
+      updatedAt: p.at,
+    }))
+    void updateRemoteLibrary({
+      favourites: library.favourites || [],
+      watchlist: library.watchlist || [],
+      watchProgress,
+    })
+  }, [library, clientSync.status])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || clientSync.status === 'connected') return
+    const onRemoteProgress = (e: Event) => {
+      const detail = (e as CustomEvent<{ itemRef?: string; position?: number; duration?: number; updatedAt?: number; remove?: boolean }>).detail
+      if (!detail?.itemRef) return
+      const ref = detail.itemRef as Ref
+      setLibrary((l) => {
+        const progress = { ...l.progress }
+        if (detail.remove) {
+          delete progress[ref]
+        } else {
+          const rawAt = Number(detail.updatedAt) || 0
+          const atMs = rawAt >= 1e9 && rawAt < 1e12 ? rawAt * 1000 : (rawAt || Date.now())
+          const existing = progress[ref]
+          if (!existing || atMs >= existing.at) {
+            progress[ref] = {
+              pos: Math.max(0, Number(detail.position) || 0),
+              dur: Math.max(0, Number(detail.duration) || 0),
+              at: atMs,
+            }
+          }
+        }
+        return { ...l, progress }
+      })
+    }
+    const onRemoteLibrary = (e: Event) => {
+      const detail = (e as CustomEvent<{ action?: string; id?: string; favourites?: string[]; watchlist?: string[] }>).detail
+      if (!detail) return
+      setLibrary((l) => {
+        const nextProgress = { ...l.progress }
+        const nextWatched = [...l.watched]
+        if (detail.action === 'mark_watched' && detail.id) {
+          const ref = detail.id as Ref
+          delete nextProgress[ref]
+          if (!nextWatched.includes(ref)) nextWatched.unshift(ref)
+        }
+        return {
+          ...l,
+          favourites: Array.isArray(detail.favourites) ? (detail.favourites as Ref[]) : l.favourites,
+          watchlist: Array.isArray(detail.watchlist) ? (detail.watchlist as Ref[]) : l.watchlist,
+          watched: nextWatched,
+          progress: nextProgress,
+        }
+      })
+    }
+    window.addEventListener('kinora:remote_sync_progress', onRemoteProgress)
+    window.addEventListener('kinora:remote_sync_library', onRemoteLibrary)
+    return () => {
+      window.removeEventListener('kinora:remote_sync_progress', onRemoteProgress)
+      window.removeEventListener('kinora:remote_sync_library', onRemoteLibrary)
+    }
+  }, [clientSync.status, setLibrary])
+
+  useEffect(() => {
+    if (clientSync.status === 'connected') return
+    const todayMap = days.get(today)
+    if (!todayMap || todayMap.size === 0) return
+    const epgList: {
+      channelId: string
+      title: string
+      subtitle?: string | null
+      description?: string | null
+      start: number
+      stop: number
+      category?: string | null
+      episode?: string | null
+    }[] = []
+    for (const [channelId, progs] of todayMap.entries()) {
+      for (const p of progs) {
+        epgList.push({
+          channelId,
+          title: p.title,
+          subtitle: p.subtitle ?? null,
+          description: p.desc || null,
+          start: p.start,
+          stop: p.stop,
+          category: p.category || null,
+          episode: p.episode ?? null,
+        })
+        if (epgList.length >= 5000) break
+      }
+      if (epgList.length >= 5000) break
+    }
+    if (epgList.length > 0) {
+      void updateRemoteEpg(epgList)
+    }
+  }, [days, today, clientSync.status])
+
+  useEffect(() => {
+    if (clientSync.status === 'connected') return
+    if (xtreamCatalogue.movies.length === 0 && xtreamCatalogue.series.length === 0) return
+    const items = [
+      ...xtreamCatalogue.movies.slice(0, 1500).map((m) => ({
+        id: `${m.sourceId}:${m.id}`,
+        kind: 'movie',
+        title: m.name,
+        year: m.year ?? null,
+        overview: m.plot ?? null,
+        genres: m.categoryName ? [m.categoryName] : [],
+        rating: m.rating ?? null,
+        artworkKey: m.artworkKey || null,
+        sourceId: m.sourceId,
+      })),
+      ...xtreamCatalogue.series.slice(0, 1500).map((s) => ({
+        id: `${s.sourceId}:${s.id}`,
+        kind: 'series',
+        title: s.name,
+        year: s.year ?? null,
+        overview: s.plot ?? null,
+        genres: s.categoryName ? [s.categoryName] : [],
+        rating: s.rating ?? null,
+        artworkKey: s.artworkKey || null,
+        sourceId: s.sourceId,
+      })),
+    ]
+    void updateRemoteMedia(items)
+  }, [xtreamCatalogue.movies, xtreamCatalogue.series, clientSync.status])
+
+  const clientEpgByChannel = useMemo(() => {
+    const map = new Map<string, Programme[]>()
+    if (clientSync.status !== 'connected' || clientSync.epg.length === 0) return map
+    for (const p of clientSync.epg) {
+      const list = map.get(p.channelId) ?? []
+      list.push({
+        id: `${p.channelId}@${p.start}`,
+        channelId: p.channelId,
+        start: p.start,
+        stop: p.stop,
+        title: p.title,
+        subtitle: p.subtitle ?? null,
+        desc: p.description ?? '',
+        category: p.category ?? 'General',
+        episode: p.episode ?? null,
+      })
+      map.set(p.channelId, list)
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => a.start - b.start)
+    }
+    return map
+  }, [clientSync.status, clientSync.epg])
+
+  const effectiveXtreamCatalogue = useMemo<XtreamCatalogueState>(() => {
+    if (clientSync.status === 'connected' && clientSync.media.length > 0) {
+      const movies: XtreamTitle[] = []
+      const series: XtreamTitle[] = []
+      for (const m of clientSync.media) {
+        const entry: XtreamTitle = {
+          id: m.id,
+          name: m.title,
+          categoryId: null,
+          categoryName: m.genres[0] ?? 'Server Library',
+          year: m.year ?? null,
+          rating: m.rating ?? null,
+          plot: m.overview ?? null,
+          extension: 'mp4',
+          artworkKey: m.artworkKey ?? '',
+          sourceId: 'kinora-server',
+          kind: m.kind === 'series' ? 'series' : 'movie',
+        }
+        if (m.kind === 'series') series.push(entry)
+        else movies.push(entry)
+      }
+      return {
+        ...xtreamCatalogue,
+        movies,
+        series,
+      }
+    }
+    return xtreamCatalogue
+  }, [clientSync.status, clientSync.media, xtreamCatalogue])
 
   const getPreferredServer = useCallback(
     (channel: Channel): StreamVariant | undefined => {
@@ -598,6 +969,12 @@ function useStoreValue(
   )
   const guide = useMemo(() => {
     const listed = (c: Channel, day: number) => {
+      if (c.sourceId === 'kinora-server') {
+        const synced = clientEpgByChannel.get(c.id)
+        if (!synced?.length) return []
+        const nextDay = addDays(day, 1)
+        return synced.filter((p) => p.stop > day && p.start < nextDay)
+      }
       const programmes = days.get(day)
       if (!programmes) return []
       for (const id of c.memberIds ?? [c.id]) {
@@ -634,10 +1011,10 @@ function useStoreValue(
       /** Why a playlist channel has guide data or not; `undefined` for demo channels. */
       guideMatch: (c: Channel): GuideMatch | undefined => channelMatch(c),
       /** False while a day's programmes are still being fetched. */
-      guideDayLoaded: (day: number) => queries.length === 0 || days.has(day),
+      guideDayLoaded: (day: number) => queries.length === 0 || days.has(day) || clientSync.status === 'connected',
       requestGuideDay,
     }
-  }, [days, isKidsMode, matches, queries, requestGuideDay])
+  }, [clientEpgByChannel, clientSync.status, days, isKidsMode, matches, queries, requestGuideDay])
   const playlistActions = useMemo(() => {
     const run = (id: string, load: () => Promise<PlaylistReport | null>) => runImport(setPlaylists, id, ++lastOp.current, load)
     return {
@@ -836,27 +1213,176 @@ function useStoreValue(
     }
   }, [findChannel])
 
+  // Scheduled source & guide refresh with backoff (Finding 18).
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<number | null>(() => {
+    try {
+      const saved = localStorage.getItem('kinora.refresh.last_at.v1')
+      return saved ? Number(saved) : null
+    } catch {
+      return null
+    }
+  })
+  const [nextRefreshScheduledAt, setNextRefreshScheduledAt] = useState<number | null>(null)
+  const [isRefreshingAll, setIsRefreshingAll] = useState(false)
+  const [backoffAttempt, setBackoffAttempt] = useState(0)
+  const refreshTimerRef = useRef<number>(0)
+  const isRefreshingRef = useRef(false)
+  const cancelRefreshRef = useRef(false)
+
+  const cancelRefreshAll = useCallback(() => {
+    if (refreshTimerRef.current) {
+      window.clearTimeout(refreshTimerRef.current)
+      refreshTimerRef.current = 0
+    }
+    cancelRefreshRef.current = true
+    lastOp.current++
+    setPlaylists((l) => l.map((s) => s.status === 'importing' ? { ...s, status: s.lastSuccess ? 'parsed' : 'failed', op: lastOp.current, error: 'Refresh cancelled' } : s))
+    setGuides((l) => l.map((g) => g.status === 'importing' ? { ...g, status: g.lastSuccess ? 'ready' : 'failed', op: lastOp.current, error: 'Refresh cancelled' } : g))
+    setIsRefreshingAll(false)
+    isRefreshingRef.current = false
+  }, [])
+
+  const refreshAllSources = useCallback(async () => {
+    if (isRefreshingRef.current) return
+    isRefreshingRef.current = true
+    cancelRefreshRef.current = false
+    setIsRefreshingAll(true)
+
+    let anyErrors = false
+    try {
+      for (const p of playlists) {
+        if (cancelRefreshRef.current) break
+        if (p.origin === 'url' && p.url) {
+          try {
+            await playlistActions.refreshPlaylist(p)
+          } catch {
+            anyErrors = true
+          }
+        }
+      }
+
+      for (const g of guides) {
+        if (cancelRefreshRef.current) break
+        if (g.origin === 'url' && g.url) {
+          try {
+            await guideActions.refreshGuide(g)
+          } catch {
+            anyErrors = true
+          }
+        }
+      }
+
+      for (const x of xtreamSources) {
+        if (cancelRefreshRef.current) break
+        if (x.connected) {
+          try {
+            await xtreamActions.refreshXtreamSource(x.id)
+          } catch {
+            anyErrors = true
+          }
+        }
+      }
+
+      if (!cancelRefreshRef.current) {
+        const now = Date.now()
+        setLastRefreshedAt(now)
+        try {
+          localStorage.setItem('kinora.refresh.last_at.v1', String(now))
+        } catch {}
+
+        if (anyErrors) {
+          setBackoffAttempt((prev) => prev + 1)
+        } else {
+          setBackoffAttempt(0)
+        }
+      }
+    } finally {
+      isRefreshingRef.current = false
+      setIsRefreshingAll(false)
+    }
+  }, [playlists, guides, xtreamSources, playlistActions, guideActions, xtreamActions])
+
+  useEffect(() => {
+    if (refreshTimerRef.current) {
+      window.clearTimeout(refreshTimerRef.current)
+      refreshTimerRef.current = 0
+    }
+
+    const intervalMs = SCHEDULE_MS[prefs.refreshSchedule]
+    if (intervalMs === null) {
+      setNextRefreshScheduledAt(null)
+      return
+    }
+
+    const now = Date.now()
+    let delayMs: number
+
+    if (backoffAttempt > 0) {
+      delayMs = Math.min(3600 * 1000, 5 * 60 * 1000 * Math.pow(2, backoffAttempt - 1))
+    } else {
+      const targetTime = (lastRefreshedAt ?? 0) + intervalMs
+      delayMs = Math.max(5000, targetTime - now)
+    }
+
+    setNextRefreshScheduledAt(now + delayMs)
+
+    refreshTimerRef.current = window.setTimeout(() => {
+      void refreshAllSources()
+    }, delayMs)
+
+    return () => {
+      if (refreshTimerRef.current) {
+        window.clearTimeout(refreshTimerRef.current)
+        refreshTimerRef.current = 0
+      }
+    }
+  }, [prefs.refreshSchedule, lastRefreshedAt, backoffAttempt, refreshAllSources])
+
   const keepHistory = prefs.keepHistory
   const setPref = useCallback(<K extends keyof Prefs>(key: K, value: Prefs[K]) => setPrefs((p) => ({ ...p, [key]: value })), [setPrefs])
 
   const actions = useMemo(() => ({
-    toggleFavourite: (ref: Ref) => setLibrary((l) => ({ ...l, favourites: toggleIn(l.favourites, ref) })),
-    toggleWatchlist: (ref: Ref) => setLibrary((l) => ({ ...l, watchlist: toggleIn(l.watchlist, ref) })),
-    setWatched: (refs: Ref[], watched: boolean) =>
+    toggleFavourite: (ref: Ref) => {
+      setLibrary((l) => ({ ...l, favourites: toggleIn(l.favourites, ref) }))
+      if (clientSync.status === 'connected') {
+        void clientSync.toggleLibraryItem('toggle_favourite', String(ref))
+      }
+    },
+    toggleWatchlist: (ref: Ref) => {
+      setLibrary((l) => ({ ...l, watchlist: toggleIn(l.watchlist, ref) }))
+      if (clientSync.status === 'connected') {
+        void clientSync.toggleLibraryItem('toggle_watchlist', String(ref))
+      }
+    },
+    setWatched: (refs: Ref[], watched: boolean) => {
       setLibrary((l) => {
         const rest = l.watched.filter((r) => !refs.includes(r))
         const progress = { ...l.progress }
         if (watched) for (const r of refs) delete progress[r]
         return { ...l, watched: watched ? [...refs, ...rest] : rest, progress }
-      }),
-    setProgress: (ref: Ref, pos: number, dur: number) =>
-      setLibrary((l) => ({ ...l, progress: { ...l.progress, [ref]: { pos, dur, at: Date.now() } } })),
-    removeProgress: (ref: Ref) =>
+      })
+      if (watched && clientSync.status === 'connected') {
+        for (const r of refs) {
+          void clientSync.toggleLibraryItem('mark_watched', String(r))
+        }
+      }
+    },
+    setProgress: (ref: Ref, pos: number, dur: number) => {
+      setLibrary((l) => ({ ...l, progress: { ...l.progress, [ref]: { pos, dur, at: Date.now() } } }))
+      if (clientSync.status === 'connected') {
+        void clientSync.syncWatchProgress(String(ref), String(ref), pos, dur)
+      }
+    },
+    removeProgress: (ref: Ref) => {
       setLibrary((l) => {
         const progress = { ...l.progress }
         delete progress[ref]
         return { ...l, progress }
-      }),
+      })
+      if (clientSync.status === 'connected') {
+        void clientSync.removeWatchProgress(String(ref))
+      }
+    },
     restoreProgress: (ref: Ref, p: Progress) =>
       setLibrary((l) => ({ ...l, progress: { ...l.progress, [ref]: p } })),
     recordView: (ref: Ref) => {
@@ -886,6 +1412,8 @@ function useStoreValue(
       setLibrary((l) => ({ ...l, recentSearches: [q, ...l.recentSearches.filter((s) => s.toLowerCase() !== q.toLowerCase())].slice(0, 8) })),
     removeRecentSearch: (q: string) => setLibrary((l) => ({ ...l, recentSearches: l.recentSearches.filter((s) => s !== q) })),
     clearRecentSearches: () => setLibrary((l) => ({ ...l, recentSearches: [] })),
+    importLibrary: (lib: Library) => setLibrary(lib),
+    importPrefs: (p: Partial<Prefs>) => setPrefs((prev) => ({ ...prev, ...p })),
     /** Empties the library in use; in sample mode, puts the sample activity back instead when asked. */
     resetLibrary: (to: 'empty' | 'demo') => setLibrary(to === 'empty' ? emptyLibrary : demoLibrary(Date.now())),
     resetPrefs: () => setPrefs(defaultPrefs),
@@ -900,6 +1428,17 @@ function useStoreValue(
   const [seriesRules, setSeriesRules] = useState<SeriesRule[]>([])
   const [dvrConfig, setDvrConfig] = useState<DvrConfig | null>(null)
   const [dvrStorageInfo, setDvrStorageInfo] = useState<StorageInfo | null>(null)
+
+  useEffect(() => {
+    registerRecordingLookup((id) => recordings.find((r) => r.id === id))
+  }, [recordings])
+
+  useEffect(() => {
+    registerResourceLookup((id) => {
+      const clean = id.replace(/^res:/, '')
+      return mediaLibrary.allResources.find((r) => r.id === clean || r.id === id)
+    })
+  }, [mediaLibrary.allResources])
 
   const refreshDvrState = useCallback(async () => {
     try {
@@ -988,11 +1527,21 @@ function useStoreValue(
         return false
       })
     },
-  }), [refreshDvrState, recordings])
+  }), [refreshDvrState, recordings, clientSync])
+
+  const effectiveLibrary = useMemo(
+    () =>
+      mergeRemoteLibraryIntoLocal(
+        library,
+        clientSync.library,
+        clientSync.status === 'connected'
+      ),
+    [library, clientSync.library, clientSync.status]
+  )
 
   return {
-    library, prefs, setPref, sources: demoActive ? src.sources : [], ...actions, catalogue, ...catalogueActions,
-    setupDone: setup.done || playlists.length > 0 || guides.length > 0 || xtreamSources.length > 0,
+    library: effectiveLibrary, prefs, setPref, sources: demoActive ? src.sources : [], ...actions, catalogue, ...catalogueActions,
+    setupDone: setup.done || playlists.length > 0 || guides.length > 0 || xtreamSources.length > 0 || clientSync.status === 'connected',
     finishSetup: () => setSetup({ done: true }),
     restartSetup: () => setSetup({ done: false }),
     playlists, ...playlistActions, restored, storageNotice, guides, mappings, ...guideActions, ...guide,
@@ -1001,21 +1550,21 @@ function useStoreValue(
     xtreamSources,
     xtreamCatalogue: isKidsMode
       ? {
-          ...xtreamCatalogue,
-          movies: filterKidSafeXtreamTitles(xtreamCatalogue.movies, true),
-          series: filterKidSafeXtreamTitles(xtreamCatalogue.series, true),
+          ...effectiveXtreamCatalogue,
+          movies: filterKidSafeXtreamTitles(effectiveXtreamCatalogue.movies, true),
+          series: filterKidSafeXtreamTitles(effectiveXtreamCatalogue.series, true),
         }
-      : xtreamCatalogue,
+      : effectiveXtreamCatalogue,
     xtreamSeriesDetails, ...xtreamActions,
     recordings,
     seriesRules,
     dvrConfig,
     dvrStorageInfo,
     ...dvrActions,
-    /** The channel catalogue every screen shows: playlist channels, the sample set in sample mode, or nothing. */
+    /** The channel catalogue every screen shows: playlist channels, synced server channels, the sample set, or nothing. */
     channels,
     /** Total raw channel entries across all imported playlists before cross-playlist deduplication. */
-    totalPlaylistEntries: (playlists.length > 0 ? playlistChannels.length : 0) + xtreamChannels.length,
+    totalPlaylistEntries: (playlists.length > 0 ? playlistChannels.length : 0) + xtreamChannels.length + clientChannels.length,
     findChannel,
     getPreferredServer,
     setPreferredServer: userPreferences.setPreferredServer,
@@ -1025,16 +1574,25 @@ function useStoreValue(
     findXtreamMovie,
     findXtreamSeries,
     findXtreamEpisode,
-    channelMode: (playlists.length > 0 || xtreamChannels.length > 0) ? 'playlists' as const : demoActive ? 'demo' as const : 'none' as const,
+    channelMode: (playlists.length > 0 || xtreamChannels.length > 0 || (clientSync.status === 'connected' && clientChannels.length > 0)) ? 'playlists' as const : demoActive ? 'demo' as const : 'none' as const,
     /** The fictional films and series exist only in sample mode. */
     demoTitles: demoActive,
     mediaLibrary,
     userPreferences,
+    streamFailures,
+    recordStreamFailure,
+    clearStreamFailure,
+    getStreamFailure,
+    lastRefreshedAt,
+    nextRefreshScheduledAt,
+    isRefreshingAll,
+    refreshAllSources,
+    cancelRefreshAll,
   }
 }
 
 type Store = ReturnType<typeof useStoreValue>
-const StoreContext = createContext<Store | null>(null)
+export const StoreContext = createContext<Store | null>(null)
 
 /** The `initial…` props seed imported playlists, guides, matches and sample mode for tests; the app always starts with none. */
 export function StoreProvider({
@@ -1045,6 +1603,7 @@ export function StoreProvider({
   initialDemo = false,
   initialXtreamSources = [],
   initialXtreamCatalogue = { movies: [], series: [] },
+  initialStreamFailures,
 }: {
   children: ReactNode
   initialPlaylists?: PlaylistSource[]
@@ -1053,8 +1612,9 @@ export function StoreProvider({
   initialDemo?: boolean
   initialXtreamSources?: XtreamSource[]
   initialXtreamCatalogue?: Partial<XtreamCatalogueState>
+  initialStreamFailures?: Map<string, StreamFailure> | Record<string, StreamFailure>
 }) {
-  const store = useStoreValue(initialPlaylists, initialGuides, initialMappings, initialDemo, initialXtreamSources, initialXtreamCatalogue)
+  const store = useStoreValue(initialPlaylists, initialGuides, initialMappings, initialDemo, initialXtreamSources, initialXtreamCatalogue, initialStreamFailures)
   useEffect(() => {
     ;(window as unknown as { __kinora_store?: Store }).__kinora_store = store
     return () => {
@@ -1062,7 +1622,11 @@ export function StoreProvider({
     }
   }, [store])
   // Wait for the saved sources (a local file) so an empty Home never flashes before real channels.
-  return <StoreContext.Provider value={store}>{store.restored ? children : null}</StoreContext.Provider>
+  return (
+    <StoreContext.Provider value={store}>
+      {store.restored ? <PlaybackProvider>{children}</PlaybackProvider> : null}
+    </StoreContext.Provider>
+  )
 }
 
 export function useStore(): Store {

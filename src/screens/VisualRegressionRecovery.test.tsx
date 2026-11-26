@@ -119,17 +119,20 @@ describe('Phase 1 Visual Regression Recovery Suite', () => {
     expect(tabList).not.toBeNull()
 
     const tabs = tabList?.querySelectorAll('button[role="tab"]')
-    expect(tabs?.length).toBe(8)
+    expect(tabs?.length).toBe(11)
 
     // Verify specific sections exist
     const tabLabels = Array.from(tabs || []).map((t) => t.textContent?.trim())
     expect(tabLabels).toContain('Overview')
+    expect(tabLabels).toContain('Local Media')
+    expect(tabLabels).toContain('Artwork')
     expect(tabLabels).toContain('Watchlist')
     expect(tabLabels).toContain('Favourites')
     expect(tabLabels).toContain('Ratings & Preferences')
     expect(tabLabels).toContain('Saved Sources')
     expect(tabLabels).toContain('Collections')
     expect(tabLabels).toContain('Recently watched')
+    expect(tabLabels).toContain('Viewing Habits')
     expect(tabLabels).toContain('Hidden Items')
   })
 
@@ -143,9 +146,9 @@ describe('Phase 1 Visual Regression Recovery Suite', () => {
     const countBadge = sidebar?.querySelector('.sidebar-explore-count')
     expect(countBadge).toBeNull()
 
-    // Verify all 11 explore links are rendered when expanded
+    // Verify deduplicated explore links (Recordings and Books deduplicated)
     const exploreLinks = sidebar?.querySelectorAll('.sidebar-nav-explore .side-link')
-    expect(exploreLinks?.length).toBe(11)
+    expect(exploreLinks?.length).toBe(9)
   })
 
   it('REG-12: Controlled Search input triggers synthetic change events in React 19', async () => {

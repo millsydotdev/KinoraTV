@@ -1,16 +1,22 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { genresOf, movies, series, titles } from '../data/catalog'
+import { movies, series } from '../data/catalog'
+import { OPEN_MOVIES, OPEN_SERIES } from '../data/openCatalogue'
 import { startOfDay } from '../data/channels'
 import { episodeCode, episodeRef } from '../data/refs'
 import { Icon, type IconName } from '../components/Icon'
 import { PageHeader } from '../components/PageHeader'
-import { XtreamArt } from '../components/Tiles'
+import { LocalMediaArt, XtreamArt } from '../components/Tiles'
 import { Art, ChannelMark, ProgrammeArt, StateBlock } from '../components/ui'
 import { clock, useNow } from '../lib/time'
 import { categoryLabel, cleanChannelTitle } from '../state/playlists'
 import { isLogoArtwork, getRoleLabel } from '../components/ResourceCard'
+import { classifyMediaResource } from '../data/provenance'
+import { DISCOVERED_RESOURCES } from '../data/discoveredResources'
+import { CANONICAL_GENRES, getGenreById } from '../data/genreTaxonomy'
+import '../components/ResourceCard.css'
 import { useStore } from '../state/store'
+import { useLocalMedia } from '../state/localMedia'
 import { useToast } from '../components/Toast'
 import {
   filterKidSafeChannels,
@@ -20,6 +26,16 @@ import {
   filterKidSafeXtreamTitles,
   isSearchQueryKidSafe,
 } from '../lib/kidsMode'
+import { SmartCollectionModal } from '../components/SmartCollectionModal'
+import { buildUnifiedMediaCatalog } from '../lib/smartCollections'
+import { artworkEngine } from '../data/artworkEngine'
+import { VoiceSearchButton } from '../components/VoiceSearchButton'
+import { VirtualKeyboard } from '../components/VirtualKeyboard'
+import {
+  scoreMatrixItem,
+  normalizeSearchString,
+  type MatrixItem,
+} from '../lib/globalSearchMatrix'
 import './Search.css'
 
 interface SavedSearch {
@@ -31,11 +47,11 @@ interface SavedSearch {
 }
 
 type Group = 'channels' | 'tv' | 'films' | 'series' | 'episodes' | 'resources'
-const groupLabels: Record<Group, string> = { channels: 'Channels', tv: 'On TV Today', films: 'Movies', series: 'Series', episodes: 'Episodes', resources: 'Media Resources' }
-const groupIcons: Record<Group, IconName> = { channels: 'tv', tv: 'guide', films: 'film', series: 'series', episodes: 'play', resources: 'sources' }
+const groupLabels: Record<Group, string> = { channels: 'Live TV', tv: 'On TV Today', films: 'Movies', series: 'TV Shows', episodes: 'Episodes', resources: 'Media Resources' }
+const groupIcons: Record<Group, IconName> = { channels: 'live', tv: 'guide', films: 'film', series: 'series', episodes: 'play', resources: 'sources' }
 const PER_GROUP = 8
 
-type Hit = { key: string; to: string; thumb: ReactNode; title: string; sub: string }
+type Hit = { key: string; to: string; thumb: ReactNode; title: string; sub: string; badge?: ReactNode }
 
 function Highlight({ text, q }: { text: string; q: string }) {
   const i = q ? text.toLowerCase().indexOf(q) : -1
@@ -46,19 +62,66 @@ function Highlight({ text, q }: { text: string; q: string }) {
 export function Search() {
   const now = useNow()
   const store = useStore()
+  const { catalogue: localCatalogue } = useLocalMedia()
   const { channels } = store
   const { prefs, library } = store
   const [params, setParams] = useSearchParams()
   // The input owns its text; the URL follows it, so fast typing never waits on navigation.
   const [q, setQ] = useState(() => params.get('q') ?? '')
+
+  useEffect(() => {
+    const urlQ = params.get('q')
+    if (urlQ !== null && urlQ !== q) {
+      setQ(urlQ)
+      setShowSuggestions(false)
+    }
+  }, [params])
   const filter = (params.get('type') ?? 'all') as Group | 'all'
   const [hdOnly, setHdOnly] = useState(false)
   const [scope, setScope] = useState<'all' | 'library' | 'guide'>('all')
   const [sortBy, setSortBy] = useState<'relevance' | 'newest' | 'title'>('relevance')
   const [showSuggestions, setShowSuggestions] = useState(false)
+  const [smartModalOpen, setSmartModalOpen] = useState(false)
+  const [vkOpen, setVkOpen] = useState(false)
   const input = useRef<HTMLInputElement>(null)
   const results = useRef<HTMLDivElement>(null)
   const needle = q.trim().toLowerCase()
+
+  const matchingGenres = useMemo(() => {
+    if (!needle || needle.length < 2) return []
+    const matches: Array<{ id: string; name: string; to: string; subgenreOf?: string }> = []
+    for (const g of CANONICAL_GENRES) {
+      if (
+        g.name.toLowerCase().includes(needle) ||
+        g.aliases.some((a: string) => a.toLowerCase().includes(needle)) ||
+        g.description.toLowerCase().includes(needle)
+      ) {
+        if (g.parentId) {
+          const parent = getGenreById(g.parentId)
+          matches.push({
+            id: `${g.parentId}/${g.id}`,
+            name: g.name,
+            to: `/genres/${g.parentId}/${g.id}`,
+            subgenreOf: parent?.name,
+          })
+        } else {
+          matches.push({ id: g.id, name: g.name, to: `/genres/${g.id}` })
+        }
+      }
+    }
+    return matches.slice(0, 8)
+  }, [needle])
+
+  const unifiedCatalog = useMemo(() => {
+    return buildUnifiedMediaCatalog(
+      movies,
+      series,
+      store.xtreamCatalogue,
+      [...(localCatalogue?.movies || []), ...(localCatalogue?.series || [])],
+      channels,
+      library.watched,
+    )
+  }, [movies, series, store.xtreamCatalogue, localCatalogue, channels, library.watched])
 
   const toast = useToast()
   const profileId = store.activeProfile?.id ?? 'default'
@@ -135,7 +198,7 @@ export function Search() {
     setParams(next, { replace: true })
   }
 
-  const has = (...fields: string[]) => fields.some((f) => f.toLowerCase().includes(needle))
+  const has = (...fields: (string | undefined | null)[]) => fields.some((f) => Boolean(f && f.toLowerCase().includes(needle)))
   const isSafeSearchBlocked = store.isKidsMode && needle ? !isSearchQueryKidSafe(needle) : false
   const groups: Record<Group, Hit[]> = { channels: [], tv: [], films: [], series: [], episodes: [], resources: [] }
   if (needle && !isSafeSearchBlocked) {
@@ -158,12 +221,14 @@ export function Search() {
         else if (r.category === 'archives') to = '/archives'
         else if (r.category === 'culture') to = '/culture'
         const isLogo = isLogoArtwork(r)
+        const isPersonal = store.mediaLibrary.isInPersonalLibrary(r.id)
+        const { provenance } = classifyMediaResource(r, isPersonal, store.demoTitles)
         return {
           key: `res:${r.id}`,
           to,
           thumb: r.artworkUrl ? (
             <div style={{ width: 44, height: 44, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-3)', overflow: 'hidden', border: '1px solid var(--line)' }}>
-              <img src={r.artworkUrl} alt="" style={{ width: '100%', height: '100%', objectFit: isLogo ? 'contain' : 'cover', padding: isLogo ? 3 : 0 }} />
+              <Art src={r.artworkUrl} alt={r.name} contentId={`res:${r.id}`} className={isLogo ? 'res-logo-art' : ''} fallbackIcon={r.category === 'radio' ? 'radio' : r.category === 'podcasts' ? 'podcast' : r.category === 'music' ? 'music' : 'sources'} />
             </div>
           ) : (
             <div style={{ width: 44, height: 44, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-3)', color: 'var(--accent-text)', border: '1px solid var(--line)' }}>
@@ -172,6 +237,14 @@ export function Search() {
           ),
           title: r.name,
           sub: `${getRoleLabel(r)} · ${r.provider}${r.country ? ` · ${r.country}` : ''}`,
+          badge: (
+            <span
+              className={`res-provenance-pill ${provenance.badgeClass}`}
+              style={{ fontSize: '0.6875rem', padding: '1px 6px', borderRadius: 4 }}
+            >
+              {provenance.shortLabel}
+            </span>
+          ),
         }
       })
 
@@ -183,6 +256,14 @@ export function Search() {
       return {
         key: c.id, to: `/live?channel=${c.id}`, thumb: <ChannelMark channel={c} size={44} />, title: displayName,
         sub: `${c.number} · ${categoryLabel(c)}${c.hd ? ' · HD' : ''}${store.programmeAt(c, now) ? ` · Now: ${store.programmeAt(c, now)?.title}` : ''}`,
+        badge: (
+          <span
+            className={`res-provenance-pill ${store.demoTitles ? 'provenance-dev-fixture' : 'provenance-live-broadcast'}`}
+            style={{ fontSize: '0.6875rem', padding: '1px 6px', borderRadius: 4 }}
+          >
+            {store.demoTitles ? 'Dev Channel' : 'Live TV'}
+          </span>
+        ),
       }
     })
     const seen = new Set<string>()
@@ -197,6 +278,14 @@ export function Search() {
       .map(({ c, p }) => ({
         key: p.id, to: `/live?channel=${c.id}`, thumb: (p.art || p.icon) ? <ProgrammeArt programme={p} channel={c} /> : <ChannelMark channel={c} size={44} />, title: p.title,
         sub: `${p.start <= now ? 'On now' : clock(p.start, prefs.timeFormat)} · ${c.name} · ${p.category}`,
+        badge: (
+          <span
+            className={`res-provenance-pill ${store.demoTitles ? 'provenance-dev-fixture' : 'provenance-live-broadcast'}`}
+            style={{ fontSize: '0.6875rem', padding: '1px 6px', borderRadius: 4 }}
+          >
+            Guide
+          </span>
+        ),
       }))
 
     const safeXtreamMovies = filterKidSafeXtreamTitles(store.xtreamCatalogue.movies, store.isKidsMode)
@@ -208,6 +297,14 @@ export function Search() {
         thumb: <XtreamArt artworkKey={m.artworkKey} fallbackTitle={m.name} fallbackYear={m.year} className="result-poster" />,
         title: m.name,
         sub: `Movie · ${m.year ?? 'Provider catalogue'}`,
+        badge: (
+          <span
+            className="res-provenance-pill provenance-provider-catalogue"
+            style={{ fontSize: '0.6875rem', padding: '1px 6px', borderRadius: 4 }}
+          >
+            Provider
+          </span>
+        ),
       }
     })
     const safeXtreamSeries = filterKidSafeXtreamTitles(store.xtreamCatalogue.series, store.isKidsMode)
@@ -219,27 +316,241 @@ export function Search() {
         thumb: <XtreamArt artworkKey={s.artworkKey} fallbackTitle={s.name} fallbackYear={s.year} className="result-poster" />,
         title: s.name,
         sub: `Series · ${s.year ?? 'Provider catalogue'}`,
+        badge: (
+          <span
+            className="res-provenance-pill provenance-provider-catalogue"
+            style={{ fontSize: '0.6875rem', padding: '1px 6px', borderRadius: 4 }}
+          >
+            Provider
+          </span>
+        ),
       }
     })
 
+    const discFilms = DISCOVERED_RESOURCES
+      .filter((r) => r.category === 'films' || r.category === 'movies' || r.subcategory.includes('film') || r.subcategory.includes('cinema'))
+      .filter((r) => has(r.name, r.provider, r.description, ...(r.tags ?? [])))
+      .map((r) => ({
+        key: `res:${r.id}`,
+        to: `/movies/${encodeURIComponent(r.id)}`,
+        thumb: r.artworkUrl ? (
+          <div style={{ width: 44, height: 44, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-3)', overflow: 'hidden', border: '1px solid var(--line)' }}>
+            <Art src={r.artworkUrl} alt={r.name} contentId={`res:${r.id}`} fallbackIcon="film" />
+          </div>
+        ) : (
+          <div style={{ width: 44, height: 44, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-3)', color: 'var(--accent-text)', border: '1px solid var(--line)' }}>
+            <Icon name="film" size={20} />
+          </div>
+        ),
+        title: r.name,
+        sub: `Public Archive · ${r.provider}${r.country ? ` · ${r.country}` : ''}`,
+        badge: (
+          <span
+            className="res-provenance-pill provenance-public-discovery"
+            style={{ fontSize: '0.6875rem', padding: '1px 6px', borderRadius: 4 }}
+          >
+            Discovery
+          </span>
+        ),
+      }))
+
+    const discSeries = DISCOVERED_RESOURCES
+      .filter((r) => r.category === 'tv' || r.category === 'series' || r.subcategory.includes('series') || r.subcategory.includes('television'))
+      .filter((r) => has(r.name, r.provider, r.description, ...(r.tags ?? [])))
+      .map((r) => ({
+        key: `res:${r.id}`,
+        to: `/series/${encodeURIComponent(r.id)}`,
+        thumb: r.artworkUrl ? (
+          <div style={{ width: 44, height: 44, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-3)', overflow: 'hidden', border: '1px solid var(--line)' }}>
+            <Art src={r.artworkUrl} alt={r.name} contentId={`res:${r.id}`} fallbackIcon="film" />
+          </div>
+        ) : (
+          <div style={{ width: 44, height: 44, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-3)', color: 'var(--accent-text)', border: '1px solid var(--line)' }}>
+            <Icon name="series" size={20} />
+          </div>
+        ),
+        title: r.name,
+        sub: `Broadcast Archive · ${r.provider}${r.country ? ` · ${r.country}` : ''}`,
+        badge: (
+          <span
+            className="res-provenance-pill provenance-public-discovery"
+            style={{ fontSize: '0.6875rem', padding: '1px 6px', borderRadius: 4 }}
+          >
+            Discovery
+          </span>
+        ),
+      }))
+
     const safeMovies = filterKidSafeTitles(movies, store.isKidsMode)
     const safeSeries = filterKidSafeTitles(series, store.isKidsMode)
-    groups.films = store.demoTitles
-      ? safeMovies.filter((m) => has(m.title, m.synopsis, ...m.genres)).map((m) => ({
-          key: m.id, to: `/movies/${m.id}`, thumb: <Art src={m.art} focus={m.focus} />, title: m.title, sub: `Movie · ${m.year} · ${m.genres.join(' / ')}`,
-        }))
-      : xtMovies
-    groups.series = store.demoTitles
-      ? safeSeries.filter((s) => has(s.title, s.synopsis, ...s.genres)).map((s) => ({
-          key: s.id, to: `/series/${s.id}`, thumb: <Art src={s.art} focus={s.focus} />, title: s.title, sub: `Series · ${s.seasons.length} season${s.seasons.length > 1 ? 's' : ''} · ${s.genres.join(' / ')}`,
-        }))
-      : xtSeries
-    groups.episodes = !store.demoTitles ? [] : safeSeries.flatMap((s) =>
-      s.seasons.flat().filter((e) => has(e.title, e.synopsis)).map((e) => ({
-        key: `${s.id}/${e.id}`, to: `/watch/${encodeURIComponent(episodeRef(s.id, e.id))}`, thumb: <Art src={e.still} focus={e.stillFocus} />,
-        title: e.title, sub: `${s.title} · ${episodeCode(e)} · ${e.runtime} min`,
-      })),
+
+    const localMovieHits: Hit[] = localCatalogue.movies
+      .filter((m) => has(m.title, m.edition ?? ''))
+      .map((m) => ({
+        key: `local-movie:${m.id}`,
+        to: `/watch/${encodeURIComponent('local-movie:' + m.id)}`,
+        thumb: (
+          <LocalMediaArt
+            mediaId={m.id}
+            title={m.title}
+            year={m.year}
+            kind="movie"
+            localArtPath={m.artPath}
+            className="result-poster"
+          />
+        ),
+        title: m.title,
+        sub: `Local Film · ${m.year ?? ''} ${m.resolution ? `· ${m.resolution}` : ''}`,
+        badge: (
+          <span
+            className="res-provenance-pill"
+            style={{ fontSize: '0.6875rem', padding: '1px 6px', borderRadius: 4, background: 'rgba(229, 9, 20, 0.2)', color: '#ff3847', border: '1px solid rgba(229, 9, 20, 0.4)' }}
+          >
+            Local Library
+          </span>
+        ),
+      }))
+
+    const localSeriesHits: Hit[] = localCatalogue.series
+      .filter((s) => has(s.title))
+      .map((s) => ({
+        key: `local-series:${s.id}`,
+        to: '/library?tab=local',
+        thumb: (
+          <LocalMediaArt
+            mediaId={s.id}
+            title={s.title}
+            year={s.year}
+            kind="series"
+            localArtPath={s.artPath}
+            className="result-poster"
+          />
+        ),
+        title: s.title,
+        sub: `Local Series · ${s.year ?? ''} · ${s.seasons.length} Season(s)`,
+        badge: (
+          <span
+            className="res-provenance-pill"
+            style={{ fontSize: '0.6875rem', padding: '1px 6px', borderRadius: 4, background: 'rgba(229, 9, 20, 0.2)', color: '#ff3847', border: '1px solid rgba(229, 9, 20, 0.4)' }}
+          >
+            Local Library
+          </span>
+        ),
+      }))
+
+    const openMovieHits: Hit[] = filterKidSafeTitles(OPEN_MOVIES, store.isKidsMode)
+      .filter((m) => has(m.title, m.synopsis, ...m.genres))
+      .map((m) => {
+        const enriched = artworkEngine.findArtwork(m.title, 'movie-poster', m.year)?.sourceUrl
+        const poster = enriched || m.posterUrl || m.art
+        return {
+          key: m.id,
+          to: `/movies/${m.id}`,
+          thumb: <Art src={poster} alt={m.title} contentId={`movie:${m.id}`} eager focus={m.focus} fallbackIcon="film" fallbackYear={m.year} />,
+          title: m.title,
+          sub: `Movie · ${m.year} · ${m.genres.join(' / ')}`,
+          badge: (
+            <span
+              className="res-provenance-pill provenance-public-discovery"
+              style={{ fontSize: '0.6875rem', padding: '1px 6px', borderRadius: 4 }}
+            >
+              Open Media
+            </span>
+          ),
+        }
+      })
+
+    const openSeriesHits: Hit[] = filterKidSafeTitles(OPEN_SERIES, store.isKidsMode)
+      .filter((s) => has(s.title, s.synopsis, ...s.genres))
+      .map((s) => {
+        const year = parseInt(s.years, 10) || null
+        const enriched = artworkEngine.findArtwork(s.title, 'series-poster', year)?.sourceUrl
+        const poster = enriched || s.posterUrl || s.art
+        return {
+          key: s.id,
+          to: `/series/${s.id}`,
+          thumb: <Art src={poster} alt={s.title} contentId={`series:${s.id}`} eager focus={s.focus} fallbackIcon="series" />,
+          title: s.title,
+          sub: `Series · ${s.seasons.length} season${s.seasons.length > 1 ? 's' : ''} · ${s.genres.join(' / ')}`,
+          badge: (
+            <span
+              className="res-provenance-pill provenance-public-discovery"
+              style={{ fontSize: '0.6875rem', padding: '1px 6px', borderRadius: 4 }}
+            >
+              Open Media
+            </span>
+          ),
+        }
+      })
+
+    const openEpisodeHits: Hit[] = filterKidSafeTitles(OPEN_SERIES, store.isKidsMode).flatMap((s) =>
+      s.seasons.flat().filter((e) => has(e.title, e.synopsis)).map((e) => {
+        const epKey = `episode:still:${s.id}:${e.season || 1}:${e.number || 1}`
+        const enrichedStill = artworkEngine.getArtwork(epKey, 'episode-still')?.sourceUrl
+        const still = enrichedStill || e.still || s.backdropUrl || s.art
+        return {
+          key: `${s.id}/${e.id}`,
+          to: `/watch/${encodeURIComponent(episodeRef(s.id, e.id))}`,
+          thumb: <Art src={still} focus={e.stillFocus} eager fallbackIcon="series" />,
+          title: e.title,
+          sub: `${s.title} · ${episodeCode(e)} · ${e.runtime} min`,
+          badge: (
+            <span
+              className="res-provenance-pill provenance-public-discovery"
+              style={{ fontSize: '0.6875rem', padding: '1px 6px', borderRadius: 4 }}
+            >
+              Open Media
+            </span>
+          ),
+        }
+      }),
     )
+
+    groups.films = store.demoTitles
+      ? [...safeMovies.filter((m) => has(m.title, m.synopsis, ...m.genres)).map((m) => ({
+          key: m.id, to: `/movies/${m.id}`, thumb: <Art src={m.posterUrl || m.art} alt={m.title} contentId={`movie:${m.id}`} focus={m.focus} fallbackIcon="film" fallbackYear={m.year} />, title: m.title, sub: `Movie · ${m.year} · ${m.genres.join(' / ')}`,
+          badge: (
+            <span
+              className="res-provenance-pill provenance-dev-fixture"
+              style={{ fontSize: '0.6875rem', padding: '1px 6px', borderRadius: 4 }}
+            >
+              Dev Fixture
+            </span>
+          ),
+        })), ...localMovieHits]
+      : [...openMovieHits, ...xtMovies, ...discFilms, ...localMovieHits]
+    groups.series = store.demoTitles
+      ? [...safeSeries.filter((s) => has(s.title, s.synopsis, ...s.genres)).map((s) => ({
+          key: s.id, to: `/series/${s.id}`, thumb: <Art src={s.posterUrl || s.art} alt={s.title} contentId={`series:${s.id}`} focus={s.focus} fallbackIcon="series" />, title: s.title, sub: `Series · ${s.seasons.length} season${s.seasons.length > 1 ? 's' : ''} · ${s.genres.join(' / ')}`,
+          badge: (
+            <span
+              className="res-provenance-pill provenance-dev-fixture"
+              style={{ fontSize: '0.6875rem', padding: '1px 6px', borderRadius: 4 }}
+            >
+              Dev Fixture
+            </span>
+          ),
+        })), ...localSeriesHits]
+      : [...openSeriesHits, ...xtSeries, ...discSeries, ...localSeriesHits]
+    groups.episodes = store.demoTitles
+      ? safeSeries.flatMap((s) =>
+          s.seasons.flat().filter((e) => has(e.title, e.synopsis)).map((e) => ({
+            key: `${s.id}/${e.id}`,
+            to: `/watch/${encodeURIComponent(episodeRef(s.id, e.id))}`,
+            thumb: <Art src={e.still} focus={e.stillFocus} />,
+            title: e.title,
+            sub: `${s.title} · ${episodeCode(e)} · ${e.runtime} min`,
+            badge: (
+              <span
+                className="res-provenance-pill provenance-dev-fixture"
+                style={{ fontSize: '0.6875rem', padding: '1px 6px', borderRadius: 4 }}
+              >
+                Dev Fixture
+              </span>
+            ),
+          })),
+        )
+      : openEpisodeHits
     if (scope === 'library') {
       groups.channels = []
       groups.tv = []
@@ -265,11 +576,32 @@ export function Search() {
       groups[g].reverse()
     }
   } else if (sortBy === 'relevance' && needle) {
+    const qNorm = normalizeSearchString(needle)
     for (const g of order) {
       groups[g].sort((a, b) => {
-        const aExact = a.title.toLowerCase() === needle ? -2 : a.title.toLowerCase().startsWith(needle) ? -1 : 0
-        const bExact = b.title.toLowerCase() === needle ? -2 : b.title.toLowerCase().startsWith(needle) ? -1 : 0
-        return aExact - bExact
+        const itemA: MatrixItem = {
+          id: a.key,
+          ref: a.key,
+          title: a.title,
+          cleanTitle: a.title,
+          mediaType: g === 'films' ? 'film' : g === 'series' ? 'series' : g === 'channels' ? 'channel' : g === 'episodes' ? 'episode' : 'resource',
+          genres: [],
+          to: a.to,
+          subText: a.sub,
+          isFavourite: library.favourites.includes(a.key),
+        }
+        const itemB: MatrixItem = {
+          id: b.key,
+          ref: b.key,
+          title: b.title,
+          cleanTitle: b.title,
+          mediaType: g === 'films' ? 'film' : g === 'series' ? 'series' : g === 'channels' ? 'channel' : g === 'episodes' ? 'episode' : 'resource',
+          genres: [],
+          to: b.to,
+          subText: b.sub,
+          isFavourite: library.favourites.includes(b.key),
+        }
+        return scoreMatrixItem(itemB, qNorm) - scoreMatrixItem(itemA, qNorm)
       })
     }
   }
@@ -294,6 +626,14 @@ export function Search() {
   // Quick suggestions
   const suggestions: Array<{ title: string; type: string; to: string }> = []
   if (needle.length >= 2 && !isSafeSearchBlocked) {
+    for (const mg of matchingGenres) {
+      suggestions.push({
+        title: mg.name,
+        type: mg.subgenreOf ? `Subgenre (${mg.subgenreOf})` : 'Genre',
+        to: mg.to,
+      })
+      if (suggestions.length >= 2) break
+    }
     for (const c of channels) {
       if (c.name.toLowerCase().includes(needle)) {
         suggestions.push({ title: c.name, type: 'Channel', to: `/live?channel=${c.id}` })
@@ -365,6 +705,21 @@ export function Search() {
             autoComplete="off"
             spellCheck={false}
           />
+          <VoiceSearchButton
+            onSearchQuery={(query) => {
+              setQ(query)
+              setParams({ q: query })
+            }}
+          />
+          <button
+            type="button"
+            className="icon-btn vk-toggle-btn"
+            onClick={() => setVkOpen(true)}
+            aria-label="Open on-screen keyboard"
+            title="Open on-screen remote keyboard"
+          >
+            <Icon name="keyboard" />
+          </button>
           {q && (
             <button type="button" className="icon-btn" onClick={() => { setQ(''); input.current?.focus() }} aria-label="Clear search">
               <Icon name="close" />
@@ -423,6 +778,15 @@ export function Search() {
           Live Guide Only
         </button>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            type="button"
+            className="btn btn-secondary btn-small"
+            onClick={() => setSmartModalOpen(true)}
+            title="Dynamic Smart Collections"
+          >
+            <Icon name="sparkles" size={14} />
+            <span>Smart Collections</span>
+          </button>
           <label htmlFor="search-sort" className="faint" style={{ fontSize: '0.8125rem' }}>Sort:</label>
           <select
             id="search-sort"
@@ -463,6 +827,24 @@ export function Search() {
             <Icon name={isCurrentSaved ? 'bookmark' : 'plus'} size={14} />
             {isCurrentSaved ? 'Saved search' : 'Save search'}
           </button>
+        </div>
+      )}
+
+      {needle && matchingGenres.length > 0 && (
+        <div className="search-genre-matches" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '8px 0 16px', alignItems: 'center' }}>
+          <span className="faint" style={{ fontSize: '0.8125rem', fontWeight: 600 }}>Matching Genres:</span>
+          {matchingGenres.map((mg) => (
+            <Link
+              key={mg.id}
+              to={mg.to}
+              className="chip is-active"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <Icon name="tag" size={12} />
+              <span>{mg.name}</span>
+              {mg.subgenreOf && <span className="faint" style={{ fontSize: '0.75rem' }}>({mg.subgenreOf})</span>}
+            </Link>
+          ))}
         </div>
       )}
 
@@ -538,11 +920,17 @@ export function Search() {
                 </ul>
               )}
             </section>
-            <section aria-labelledby="browse-h">
-              <h2 id="browse-h" className="section-title"><Icon name="film" size={18} />Browse by Genre</h2>
-              <div className="genre-links">
-                {genresOf(titles).map((g) => (
-                  <Link key={g} to={`/movies?genre=${encodeURIComponent(g)}`} className="chip" data-result>{g}</Link>
+            <section aria-labelledby="browse-h" style={{ marginTop: 24 }}>
+              <div className="recent-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <h2 id="browse-h" className="section-title"><Icon name="tag" size={18} />Browse by Genre</h2>
+                <Link to="/discover" className="faint" style={{ fontSize: '0.8125rem' }}>View All in Discovery</Link>
+              </div>
+              <div className="genre-links" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {CANONICAL_GENRES.slice(0, 16).map((g) => (
+                  <Link key={g.id} to={`/genres/${g.id}`} className="chip" data-result style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <Icon name="tag" size={12} />
+                    <span>{g.name}</span>
+                  </Link>
                 ))}
               </div>
             </section>
@@ -561,6 +949,12 @@ export function Search() {
           </StateBlock>
         )}
 
+        {needle && !isSafeSearchBlocked && total > 0 && (
+          <div className="search-results-banner" style={{ marginBottom: 16 }}>
+            <h2 className="section-title" style={{ fontSize: '1.25rem', fontWeight: 700 }}>Results for &ldquo;{q.trim()}&rdquo;</h2>
+          </div>
+        )}
+
         {shown.map((g) => {
           const hits = filter === 'all' ? groups[g].slice(0, PER_GROUP) : groups[g]
           return (
@@ -577,7 +971,13 @@ export function Search() {
                     <Link to={h.to} data-result className="card result" onClick={() => store.addRecentSearch(q.trim())}>
                       <span className="result-thumb">{h.thumb}</span>
                       <span className="result-text">
-                        <strong><Highlight text={h.title} q={needle} /></strong>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                          <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><Highlight text={h.title} q={needle} /></strong>
+                          {h.badge}
+                          {(g === 'films' || g === 'series') && (
+                            <span className="badge-tech" style={{ marginLeft: 'auto', fontSize: '0.625rem' }}>4K HDR</span>
+                          )}
+                        </span>
                         <span>{h.sub}</span>
                       </span>
                     </Link>
@@ -588,6 +988,34 @@ export function Search() {
           )
         })}
       </div>
+      <SmartCollectionModal
+        open={smartModalOpen}
+        onClose={() => setSmartModalOpen(false)}
+        allMediaItems={unifiedCatalog}
+        onSelectCollection={(col) => {
+          const firstGenreRule = col.rules.find((r) => r.field === 'genre')
+          const firstKeywordRule = col.rules.find((r) => r.field === 'keyword')
+          const searchTerm = firstKeywordRule ? String(firstKeywordRule.value) : firstGenreRule ? String(firstGenreRule.value) : col.name
+          setQ(searchTerm)
+        }}
+      />
+      <VirtualKeyboard
+        open={vkOpen}
+        value={q}
+        onChange={(val) => {
+          setQ(val)
+          setParams(val ? { q: val } : {})
+          setShowSuggestions(true)
+        }}
+        onSubmit={() => {
+          setVkOpen(false)
+          input.current?.focus()
+        }}
+        onClose={() => setVkOpen(false)}
+        title="Search Catalogue & Guide"
+        placeholder="Enter title, channel or genre..."
+        urlMode={false}
+      />
     </div>
     </>
   )

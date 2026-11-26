@@ -1,8 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Icon } from './Icon'
 import { useToast } from './Toast'
 import { useStore } from '../state/store'
+import { ArtworkDiagnosticsModal } from './ArtworkDiagnosticsModal'
 import './MediaContextMenu.css'
 
 export interface MediaContextMenuProps {
@@ -34,6 +35,7 @@ export function MediaContextMenu({
   const toast = useToast()
   const navigate = useNavigate()
   const menuRef = useRef<HTMLDivElement>(null)
+  const [diagOpen, setDiagOpen] = useState(false)
 
   const inWatchlist = store.library.watchlist.includes(itemRef)
   const isFavourite = store.library.favourites.includes(itemRef)
@@ -41,7 +43,7 @@ export function MediaContextMenu({
 
   // Close on outside click or Escape
   useEffect(() => {
-    if (!isOpen) return
+    if (!isOpen || diagOpen) return
 
     const handleDown = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -62,9 +64,9 @@ export function MediaContextMenu({
       document.removeEventListener('mousedown', handleDown)
       document.removeEventListener('keydown', handleKey, true)
     }
-  }, [isOpen, onClose])
+  }, [isOpen, diagOpen, onClose])
 
-  if (!isOpen) return null
+  if (!isOpen && !diagOpen) return null
 
   // Ensure menu stays within viewport
   const menuWidth = 220
@@ -73,13 +75,15 @@ export function MediaContextMenu({
   const adjustedY = Math.max(10, Math.min(position.y, window.innerHeight - menuHeight - 10))
 
   return (
-    <div
-      ref={menuRef}
-      className="media-context-menu"
-      style={{ left: adjustedX, top: adjustedY }}
-      role="menu"
-      aria-label={`Actions for ${title}`}
-    >
+    <>
+      {isOpen && !diagOpen && (
+        <div
+          ref={menuRef}
+          className="media-context-menu"
+          style={{ left: adjustedX, top: adjustedY }}
+          role="menu"
+          aria-label={`Actions for ${title}`}
+        >
       <div className="context-menu-header">
         <span className="context-menu-title" title={title}>{title}</span>
         {kind && <span className="context-menu-kind">{kind.toUpperCase()}</span>}
@@ -206,6 +210,18 @@ export function MediaContextMenu({
         <span>Copy Link</span>
       </button>
 
+      <button
+        type="button"
+        className="context-menu-item"
+        role="menuitem"
+        onClick={() => {
+          setDiagOpen(true)
+        }}
+      >
+        <Icon name="film" size={16} />
+        <span>Artwork Details and Diagnostics...</span>
+      </button>
+
       <div className="context-menu-divider" />
 
       <button
@@ -225,5 +241,19 @@ export function MediaContextMenu({
         <span>Hide Item</span>
       </button>
     </div>
+  )}
+
+  {diagOpen && (
+    <ArtworkDiagnosticsModal
+      open={diagOpen}
+      onClose={() => {
+        setDiagOpen(false)
+        onClose()
+      }}
+      itemRef={itemRef}
+      title={title}
+    />
+  )}
+  </>
   )
 }

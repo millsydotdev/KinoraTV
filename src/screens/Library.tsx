@@ -22,16 +22,24 @@ import type { RatingValue, DislikeReason } from '../state/userPreferences'
 import { Badge } from '../components/design-system/Badge'
 import { SaveIndicator } from '../components/design-system/Feedback'
 import { movies, series } from '../data/catalog'
+import { LocalMediaTab } from './LocalMediaTab'
+import { ArtworkLibraryScreen } from './ArtworkLibraryScreen'
+import { ViewingHabitsTab } from './ViewingHabitsTab'
+import { CollectionCoverMontage } from '../components/CollectionCoverMontage'
+import './LocalMediaTab.css'
 import './Library.css'
 
 const tabs = [
   { id: 'overview', label: 'Overview' },
+  { id: 'local', label: 'Local Media' },
+  { id: 'artwork', label: 'Artwork' },
   { id: 'watchlist', label: 'Watchlist' },
   { id: 'favourites', label: 'Favourites' },
   { id: 'ratings', label: 'Ratings & Preferences' },
   { id: 'sources', label: 'Saved Sources' },
   { id: 'collections', label: 'Collections' },
   { id: 'history', label: 'Recently watched' },
+  { id: 'insights', label: 'Viewing Habits' },
   { id: 'hidden', label: 'Hidden Items' },
 ] as const
 type TabId = (typeof tabs)[number]['id']
@@ -124,12 +132,15 @@ export function Library() {
       <p className="page-intro">Everything you have saved, started and sorted, kept on this device.</p>
       <div id="lib-panel" role="tabpanel" aria-labelledby={`lib-tab-${tab}`} className="lib-panel">
         {tab === 'overview' && <Overview go={go} onSelectResource={setSelectedResource} />}
+        {tab === 'local' && <LocalMediaTab />}
+        {tab === 'artwork' && <ArtworkLibraryScreen />}
         {tab === 'watchlist' && <SavedList list="watchlist" />}
         {tab === 'favourites' && <SavedList list="favourites" />}
         {tab === 'ratings' && <RatingsTab />}
         {tab === 'sources' && <SourcesPersonalTab />}
         {tab === 'collections' && <Collections />}
         {tab === 'history' && <History />}
+        {tab === 'insights' && <ViewingHabitsTab />}
         {tab === 'hidden' && <HiddenTab />}
       </div>
     </div>
@@ -185,14 +196,6 @@ function Overview({ go, onSelectResource }: { go: (t: TabId) => void; onSelectRe
     return true
   })
 
-  if (!resume.length && !favs.length && !recent.length && !library.watchlist.length && !library.collections.length && !mediaLibrary.mySources.length) {
-    return (
-      <StateBlock icon="library" title="Your library is empty" action={<Link to="/" className="btn btn-primary">Find something to watch</Link>}>
-        Add films and series to your watchlist, heart the channels you return to, and start watching. It all collects here.
-      </StateBlock>
-    )
-  }
-
   return (
     <div className="stack">
       {/* Viewing Analytics HUD */}
@@ -213,20 +216,32 @@ function Overview({ go, onSelectResource }: { go: (t: TabId) => void; onSelectRe
         </div>
         <div className="library-analytics-grid">
           <div className="lib-metric-box">
-            <span className="lib-metric-num">{filteredHistory.length}</span>
-            <span className="lib-metric-label">Titles Watched</span>
+            <div className="lib-metric-head">
+              <span className="lib-metric-icon"><Icon name="tv" size={18} /></span>
+              <span className="lib-metric-num">{store.demoTitles ? 127 : (filteredHistory.length || movies.length + series.length)}</span>
+            </div>
+            <span className="lib-metric-label">Titles</span>
           </div>
           <div className="lib-metric-box">
-            <span className="lib-metric-num">{library.watched.length}</span>
-            <span className="lib-metric-label">Marked Completed</span>
-          </div>
-          <div className="lib-metric-box">
-            <span className="lib-metric-num">{resume.length}</span>
+            <div className="lib-metric-head">
+              <span className="lib-metric-icon"><Icon name="history" size={18} /></span>
+              <span className="lib-metric-num">{resume.length || (store.demoTitles ? 24 : 0)}</span>
+            </div>
             <span className="lib-metric-label">In Progress</span>
           </div>
           <div className="lib-metric-box">
-            <span className="lib-metric-num">{favs.length}</span>
-            <span className="lib-metric-label">Saved Favourites</span>
+            <div className="lib-metric-head">
+              <span className="lib-metric-icon"><Icon name="heart" size={18} /></span>
+              <span className="lib-metric-num">{library.watchlist.length || (store.demoTitles ? 19 : 0)}</span>
+            </div>
+            <span className="lib-metric-label">Watchlist</span>
+          </div>
+          <div className="lib-metric-box">
+            <div className="lib-metric-head">
+              <span className="lib-metric-icon"><Icon name="checkCircle" size={18} /></span>
+              <span className="lib-metric-num">{library.watched.length || (store.demoTitles ? 86 : 0)}</span>
+            </div>
+            <span className="lib-metric-label">Completed</span>
           </div>
         </div>
         <div className="lib-analytics-distribution">
@@ -238,7 +253,7 @@ function Overview({ go, onSelectResource }: { go: (t: TabId) => void; onSelectRe
           </div>
           <div className="lib-dist-bar" aria-hidden="true">
             <div style={{ width: `${Math.max(8, (films.length / Math.max(1, favs.length + 1)) * 100)}%`, background: '#f59e0b' }} title="Films" />
-            <div style={{ width: `${Math.max(8, (shows.length / Math.max(1, favs.length + 1)) * 100)}%`, background: '#8b5cf6' }} title="Series" />
+            <div style={{ width: `${Math.max(8, (shows.length / Math.max(1, favs.length + 1)) * 100)}%`, background: 'var(--accent, #e50914)' }} title="Series" />
             <div style={{ width: `${Math.max(8, (channels.length / Math.max(1, favs.length + 1)) * 100)}%`, background: '#3b82f6' }} title="Channels" />
           </div>
         </div>
@@ -315,6 +330,60 @@ function Overview({ go, onSelectResource }: { go: (t: TabId) => void; onSelectRe
           <CollectionCards collections={library.collections} onOpen={(id) => setParams({ tab: 'collections', c: id })} />
         </section>
       )}
+
+      {!resume.length && !favs.length && !recent.length && (
+        <section className="library-empty-starter" aria-label="Library Starter Guide">
+          <div className="home-setup-banner-card">
+            <div className="home-setup-banner-content">
+              <span className="badge badge-accent">
+                <Icon name="library" size={12} />
+                Personal Media Library
+              </span>
+              <h2 className="home-setup-banner-title">Build Your Personal Entertainment Hub</h2>
+              <p className="home-setup-banner-desc">
+                Everything you bookmark to your watchlist, heart as favourite, or stream gathers here automatically. Connect your local media drives, explore public domain cinema, or tune into live channels.
+              </p>
+              <div className="home-setup-banner-actions">
+                <Link to="/movies" className="btn btn-primary">
+                  <Icon name="film" size={16} />
+                  Explore Movies
+                </Link>
+                <button type="button" className="btn btn-secondary" onClick={() => go('local')}>
+                  <Icon name="folder" size={16} />
+                  Manage Local Folders
+                </button>
+                <Link to="/sources" className="btn btn-ghost">
+                  <Icon name="sources" size={16} />
+                  View Saved Sources
+                </Link>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      <Section icon="folder" title="Library Categories" grid="shortcut-grid">
+        <button type="button" className="card shortcut" onClick={() => go('watchlist')}>
+          <span className="shortcut-icon"><Icon name="bookmark" /></span>
+          <span><strong>Watchlist</strong><span className="faint tnum">{library.watchlist.length} items</span></span>
+          <Icon name="right" size={18} />
+        </button>
+        <button type="button" className="card shortcut" onClick={() => go('favourites')}>
+          <span className="shortcut-icon"><Icon name="heart" /></span>
+          <span><strong>Favourites</strong><span className="faint tnum">{favRefs.length} items</span></span>
+          <Icon name="right" size={18} />
+        </button>
+        <button type="button" className="card shortcut" onClick={() => go('local')}>
+          <span className="shortcut-icon"><Icon name="folder" /></span>
+          <span><strong>Local Media</strong><span className="faint">Drives & NAS storage</span></span>
+          <Icon name="right" size={18} />
+        </button>
+        <button type="button" className="card shortcut" onClick={() => go('sources')}>
+          <span className="shortcut-icon"><Icon name="sources" /></span>
+          <span><strong>Saved Sources</strong><span className="faint tnum">{mediaLibrary.mySources.length} sources</span></span>
+          <Icon name="right" size={18} />
+        </button>
+      </Section>
     </div>
   )
 }
@@ -425,7 +494,7 @@ function SavedList({ list }: { list: 'watchlist' | 'favourites' }) {
   const all = resolveAll(targetRefs, now, store.findChannel, store.programmeAt, store.demoTitles, findMovie, findSeries)
   const items = all.filter((r) => kind === 'all' || r.kind === kind).sort((a, b) => (sort === 'title' ? a.title.localeCompare(b.title) : 0))
   const kinds: Kind[] = list === 'favourites' ? ['all', 'channel', 'movie', 'series'] : ['all', 'movie', 'series']
-  const kindLabel: Record<Kind, string> = { all: 'All', channel: 'Channels', movie: 'Films', series: 'Series' }
+  const kindLabel: Record<Kind, string> = { all: 'All', channel: 'Channels', movie: 'Movies', series: 'TV Shows' }
   const remove = (r: Resolved) => {
     const toggle = list === 'watchlist' ? store.toggleWatchlist : store.toggleFavourite
     toggle(r.ref)
@@ -447,6 +516,10 @@ function SavedList({ list }: { list: 'watchlist' | 'favourites' }) {
               {kindLabel[k]} <span className="count tnum">{k === 'all' ? all.length : all.filter((r) => r.kind === k).length}</span>
             </button>
           ))}
+          <Link to="/discover" className="chip" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} title="Explore by Genre in Discovery">
+            <Icon name="tag" size={14} />
+            <span>Explore Genres</span>
+          </Link>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button
@@ -543,25 +616,17 @@ function SavedList({ list }: { list: 'watchlist' | 'favourites' }) {
 }
 
 function CollectionCards({ collections, onOpen }: { collections: Collection[]; onOpen: (id: string) => void }) {
-  const { findChannel, programmeAt, demoTitles, xtreamCatalogue } = useStore()
-  const findMovie = (sId: string, id: string) => xtreamCatalogue.movies.find((m) => m.sourceId === sId && m.id === id)
-  const findSeries = (sId: string, id: string) => xtreamCatalogue.series.find((s) => s.sourceId === sId && s.id === id)
   return (
     <ul className="collection-cards">
-      {collections.map((c) => {
-        const art = resolveAll(c.items, Date.now(), findChannel, programmeAt, demoTitles, findMovie, findSeries).slice(0, 3)
-        return (
-          <li key={c.id}>
-            <button type="button" className="card collection-card" onClick={() => onOpen(c.id)}>
-              <span className={`collection-stack n${art.length}`} aria-hidden="true">
-                {art.length === 0 ? <span className="collection-empty"><Icon name="folder" /></span> : art.map((r) => <Art key={r.ref} src={r.art} focus={r.focus} />)}
-              </span>
-              <strong>{c.name}</strong>
-              <span className="faint">{c.items.length} {c.items.length === 1 ? 'title' : 'titles'}</span>
-            </button>
-          </li>
-        )
-      })}
+      {collections.map((c) => (
+        <li key={c.id}>
+          <button type="button" className="card collection-card" onClick={() => onOpen(c.id)}>
+            <CollectionCoverMontage items={c.items} />
+            <strong>{c.name}</strong>
+            <span className="faint">{c.items.length} {c.items.length === 1 ? 'title' : 'titles'}</span>
+          </button>
+        </li>
+      ))}
     </ul>
   )
 }

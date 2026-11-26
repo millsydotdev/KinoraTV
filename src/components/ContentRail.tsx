@@ -215,8 +215,8 @@ export function ContentRail({
           }
         }
       } else if (currentRailIndex === 0) {
-        // At the top rail: move focus to hero action buttons if present
-        const heroAction = document.querySelector<HTMLElement>('.hero-actions .btn, .hero-actions a')
+        // At the top rail: move focus to quick jump or hero action buttons if present
+        const heroAction = document.querySelector<HTMLElement>('.home-quick-jump-pill, .home-btn-watch, .hero-actions .btn, .hero-actions a')
         if (heroAction) {
           e.preventDefault()
           e.stopPropagation()

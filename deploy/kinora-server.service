@@ -1,0 +1,36 @@
+[Unit]
+Description=Kinora Media Server (Headless v0.6.0)
+Documentation=https://github.com/millsydotdev/TVMovie
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kinora
+Group=kinora
+StateDirectory=kinora
+StateDirectoryMode=0700
+Environment=KINORA_MODE=server
+Environment=KINORA_PORT=5198
+Environment=KINORA_DATA_DIR=/var/lib/kinora
+# Optional: set a fixed 6-digit pairing PIN via /etc/kinora/server.env
+EnvironmentFile=-/etc/kinora/server.env
+ExecStart=/usr/local/bin/kinora-server
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+KillSignal=SIGTERM
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/kinora
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=multi-user.target

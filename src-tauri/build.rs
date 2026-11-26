@@ -1,11 +1,38 @@
 fn main() {
+    if let Ok(output) = std::process::Command::new("git")
+        .args(["rev-parse", "--short=8", "HEAD"])
+        .output()
+    {
+        if output.status.success() {
+            if let Ok(hash) = String::from_utf8(output.stdout) {
+                let trimmed = hash.trim();
+                if !trimmed.is_empty() {
+                    println!("cargo:rustc-env=GIT_COMMIT_HASH={}", trimmed);
+                }
+            }
+        }
+    }
+
+    #[cfg(not(feature = "desktop"))]
+    println!("cargo::rustc-check-cfg=cfg(dev)");
+
     // Declaring the app's commands makes each one deny-by-default: the webview can only call
     // commands granted in capabilities/*.json (see allow-app-info).
+    #[cfg(feature = "desktop")]
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
             "app_info",
             "fetch_channel_logo",
             "fetch_programme_artwork",
+            "fetch_artwork",
+            "artwork_cache_stats",
+            "clear_artwork_cache",
+            "retry_failed_artwork",
+            "load_local_media_artwork",
+            "post_metadata",
+            "save_metadata_credentials",
+            "load_metadata_credentials",
+            "clear_metadata_credentials",
             "connect_xtream",
             "refresh_xtream",
             "load_xtream_catalogue",
@@ -15,6 +42,7 @@ fn main() {
             "is_xtream_connected",
             "open_xtream_stream",
             "open_xtream_catchup",
+            "open_m3u_catchup",
             "dvr_get_recordings",
             "dvr_start_recording",
             "dvr_stop_recording",
@@ -29,6 +57,7 @@ fn main() {
             "dvr_get_config",
             "dvr_save_config",
             "dvr_get_storage_info",
+            "dvr_evaluate_series_rules",
             "test_xtream_connection",
             "xtream_vod_details",
             "xtream_epg",
@@ -36,6 +65,8 @@ fn main() {
             "parse_playlist_text",
             "open_stream",
             "close_stream",
+            "open_client_server_stream",
+            "close_client_server_stream",
             "load_sources",
             "save_sources",
             "fetch_guide",
@@ -50,7 +81,54 @@ fn main() {
             "hash_parental_pin",
             "verify_parental_pin",
             "fetch_metadata",
+            "fetch_subtitle",
+            "fetch_feed_xml",
+            "fetch_trakt",
             "check_for_updates",
+            "get_local_libraries",
+            "save_local_library",
+            "delete_local_library",
+            "scan_local_library",
+            "check_local_media_changes",
+            "get_local_media_catalogue",
+            "get_storage_volumes_info",
+            "select_local_media_folder",
+            "open_local_media_stream",
+            "start_remote_server",
+            "stop_remote_server",
+            "get_remote_server_status",
+            "update_remote_playback_state",
+            "connect_stalker",
+            "load_stalker_catalogue",
+            "open_stalker_stream",
+            "disconnect_stalker",
+            "is_stalker_connected",
+            "start_download",
+            "pause_download",
+            "resume_download",
+            "cancel_download",
+            "delete_download",
+            "get_downloads",
+            "discover_dlna_renderers",
+            "cast_dlna_media",
+            "control_dlna_playback",
+            "get_trusted_devices",
+            "revoke_trusted_device",
+            "rename_trusted_device",
+            "get_platform_mode",
+            "set_platform_mode",
+            "get_audit_log",
+            "update_remote_channels",
+            "update_remote_sources",
+            "update_remote_library",
+            "update_remote_epg",
+            "update_remote_media",
+            "fetch_client_server_artwork",
+            "client_server_request",
+            "client_server_sse_connect",
+            "client_server_sse_disconnect",
+            "check_local_paths_exist",
+            "discover_kinora_servers",
         ]),
     ))
     .expect("failed to run the Tauri build script");

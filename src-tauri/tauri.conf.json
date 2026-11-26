@@ -26,10 +26,10 @@
         "default-src": "'self'",
         "script-src": "'self'",
         "style-src": "'self'",
-        "img-src": "'self' data:",
+        "img-src": "'self' data: blob:",
         "font-src": "'self'",
         "connect-src": "ipc: http://ipc.localhost kstream://localhost",
-        "media-src": "blob:",
+        "media-src": "blob: kstream://localhost",
         "object-src": "'none'",
         "base-uri": "'self'",
         "form-action": "'none'"
@@ -57,7 +57,10 @@
           "libwebkit2gtk-4.1-0",
           "libayatana-appindicator3-1",
           "librsvg2-2",
-          "libssl3"
+          "libssl3",
+          "gstreamer1.0-plugins-good",
+          "gstreamer1.0-plugins-bad",
+          "gstreamer1.0-libav"
         ],
         "section": "video"
       },
@@ -66,7 +69,10 @@
           "webkit2gtk4.1",
           "libayatana-appindicator3",
           "librsvg2",
-          "openssl-libs"
+          "openssl-libs",
+          "gstreamer1-plugin-openh264",
+          "gstreamer1-plugins-good",
+          "gstreamer1-plugins-bad-free"
         ]
       },
       "appimage": {

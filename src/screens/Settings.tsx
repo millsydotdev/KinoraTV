@@ -5,43 +5,70 @@ import { Dialog } from '../components/Dialog'
 import { Icon, type IconName } from '../components/Icon'
 import { useToast } from '../components/Toast'
 import { PageHeader } from '../components/PageHeader'
-import { Segmented, StateBlock, Switch } from '../components/ui'
-import { getAppInfo, checkForUpdates, type AppInfo, type UpdateCheckResult } from '../lib/native'
+import { Segmented, Switch } from '../components/ui'
+import { getAppInfo, checkForUpdates, installUpdate, inNativeShell, getArtworkCacheStats, clearArtworkCache, retryFailedArtwork, type ArtworkCacheStats, type AppInfo, APP_VERSION, APP_ENV, isStaging, isProduction, getVersionChannel, formatChannelName, getPlatformMode, setPlatformMode, startRemoteServer, discoverKinoraServers, type PlatformMode, saveSources } from '../lib/native'
+import { useClientSync, evaluateServerCompatibility } from '../lib/clientSync'
+import {
+  createInitialUpdaterState,
+  describeUpdaterStage,
+  recordUpdateHistory,
+  reduceUpdateCheckResult,
+  saveUpdateChannel,
+  type UpdateChannel,
+  type UpdaterState,
+} from '../lib/updaterState'
+import { useVoiceAndAgentControl } from '../lib/voiceAndAgent'
 import { CODEC_HELP, codecSupport } from '../lib/playback'
-import { ACCENTS, THEME_BG, THEME_PRESETS, contrast, safeHex, type AccentName } from '../lib/theme'
+import { ACCENTS, THEME_PRESETS, safeHex, type AccentName } from '../lib/theme'
 import { defaultPrefs, useStore, type Prefs } from '../state/store'
+import { useLocalMedia } from '../state/localMedia'
 import { useProfiles } from '../state/profiles'
 import { Input } from '../components/design-system/Input'
 import {
   METADATA_ATTRIBUTIONS,
+  METADATA_PROVIDERS_REGISTRY,
   clearMetadataCredentials,
+  getEnvironmentTmdbKey,
+  getProviderHealth,
   loadMetadataConfig,
   saveMetadataConfig,
   testProviderConnection,
+  type ArtworkSourcePreference,
   type MetadataConfig,
 } from '../data/metadataProviders'
-import { artworkEngine } from '../data/artworkEngine'
+import { artworkEngine, type EnrichmentCandidate, type EnrichmentProgress } from '../data/artworkEngine'
+import { OPEN_MOVIES, OPEN_SERIES } from '../data/openCatalogue'
 import { CollapsibleSection } from '../components/CollapsibleSection'
+import { EncryptedBackupModal } from '../components/EncryptedBackupModal'
+import { RemoteControlModal } from '../components/RemoteControlModal'
+import { TraktSettingsModal } from '../components/TraktSettingsModal'
 import { useCasting } from '../lib/casting/manager'
+import { loadBingeSettings, saveBingeSettings } from '../lib/bingeMode'
 import { WhatsNewModal } from '../components/WhatsNewModal'
+import { KPlayMark } from '../components/KPlayMark'
+import { GenreArtworkSettings } from '../components/GenreArtworkSettings'
 import './Settings.css'
 
 // Categories follow the mockup's Settings list (Playback, Interface, EPG, Sources, Library, Advanced),
 // split further where the brief asks for Audio, Subtitles, Data and About.
 const sections: { id: string; label: string; icon: IconName; blurb: string }[] = [
-  { id: 'playback', label: 'Playback', icon: 'play', blurb: 'Video quality, resuming, next episode' },
-  { id: 'casting', label: 'Casting & Network', icon: 'cast', blurb: 'Device discovery, Chromecast, AirPlay, DLNA receivers' },
-  { id: 'audio', label: 'Audio', icon: 'audio', blurb: 'Preferred language' },
-  { id: 'subtitles', label: 'Subtitles', icon: 'subtitles', blurb: 'Language, size, style' },
-  { id: 'appearance', label: 'Appearance', icon: 'palette', blurb: 'Theme, accent colour, density, text size, motion' },
-  { id: 'epg', label: 'EPG', icon: 'guide', blurb: 'Guide settings, time format, timezone' },
-  { id: 'dvr', label: 'DVR & Recording', icon: 'record', blurb: 'Recording storage, padding, retention, timeshift buffer' },
-  { id: 'sources', label: 'Sources', icon: 'link', blurb: 'How playlists are imported and refreshed' },
-  { id: 'metadata', label: 'Metadata & Artwork', icon: 'film', blurb: 'External providers (TMDB, TVmaze), enrichment, artwork licensing' },
-  { id: 'library', label: 'Library', icon: 'library', blurb: 'Layout, watched titles, watch history' },
-  { id: 'profiles', label: 'Profiles', icon: 'user', blurb: 'Household profiles, Kids mode, avatar' },
-  { id: 'data', label: 'Data', icon: 'database', blurb: 'Export, reset, clear saved data' },
-  { id: 'about', label: 'About', icon: 'info', blurb: 'Version, licences, keyboard shortcuts' },
+  { id: 'appearance', label: 'Appearance', icon: 'desktop', blurb: 'Personalise the look and feel of Kinora across all devices' },
+  { id: 'playback', label: 'Playback & Video', icon: 'play', blurb: 'Video quality, resuming, next episode' },
+  { id: 'audio', label: 'Audio & Sound', icon: 'volume', blurb: 'Preferred audio language and stream decoding' },
+  { id: 'subtitles', label: 'Subtitles & Captions', icon: 'subtitles', blurb: 'Language, font, audio streams, and style' },
+  { id: 'casting', label: 'Casting & Displays', icon: 'cast', blurb: 'Cast to Smart TVs, Chromecast, AirPlay and DLNA devices' },
+  { id: 'epg', label: 'TV Guide & EPG', icon: 'calendar', blurb: 'Guide settings, time format, timezone' },
+  { id: 'dvr', label: 'DVR & Recording', icon: 'record', blurb: 'Recording storage, retention, padding and live timeshift' },
+  { id: 'sources', label: 'Sources & Providers', icon: 'sources', blurb: 'How playlists are imported and refreshed' },
+  { id: 'storage', label: 'Local Media Library', icon: 'library', blurb: 'Physical storage volumes, connected local folders, media indexing' },
+  { id: 'metadata', label: 'Metadata & Art', icon: 'sparkles', blurb: 'TMDb and TVMaze enrichment providers, artwork and posters' },
+  { id: 'genres', label: 'Genres & Discovery Art', icon: 'tag', blurb: 'Canonical genre taxonomy, artwork library, provenance, and provider category mappings' },
+  { id: 'notifications', label: 'Notifications', icon: 'bell', blurb: 'System notifications, episode reminders, recordings' },
+  { id: 'shortcuts', label: 'Shortcuts & Remote', icon: 'keyboard', blurb: 'Keyboard shortcuts and remote control mapping' },
+  { id: 'profiles', label: 'User Profile', icon: 'user', blurb: 'Household profiles, Kids mode, avatar, parental lock' },
+  { id: 'privacy', label: 'Privacy & Security', icon: 'shield', blurb: 'Telemetry, permissions, security policies' },
+  { id: 'data', label: 'Advanced', icon: 'adjustments', blurb: 'Data backup, export, reset, performance' },
+  { id: 'about', label: 'About Kinora', icon: 'info', blurb: 'Version, licences, documentation' },
 ]
 
 type BoolPref = { [K in keyof Prefs]: Prefs[K] extends boolean ? K : never }[keyof Prefs]
@@ -209,99 +236,236 @@ const SETTING_DIRECT_LINKS = [
 ]
 
 export function Settings() {
-  const { section } = useParams()
+  const { section: routeSection } = useParams()
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const highlight = params.get('highlight')
-  const current = sections.find((x) => x.id === section)
-  const [searchQuery, setSearchQuery] = useState('')
+  const querySection = params.get('section')
+  const activeSectionId = routeSection || querySection || 'appearance'
 
   useEffect(() => {
-    if (!section && highlight) {
+    if (!routeSection && querySection) {
+      navigate(`/settings/${querySection}${highlight ? `?highlight=${encodeURIComponent(highlight)}` : ''}`, { replace: true })
+      return
+    }
+    if (!routeSection && highlight) {
       const match = SETTING_DIRECT_LINKS.find((l) => l.rowId === highlight)
       if (match) {
         navigate(`/settings/${match.section}?highlight=${encodeURIComponent(highlight)}`, { replace: true })
       }
     }
-  }, [section, highlight, navigate])
-
-  if (!section) {
-    const q = searchQuery.trim().toLowerCase()
-    const matchingSections = q
-      ? sections.filter((s) => s.label.toLowerCase().includes(q) || s.blurb.toLowerCase().includes(q))
-      : sections
-    const matchingLinks = q
-      ? SETTING_DIRECT_LINKS.filter((l) => l.label.toLowerCase().includes(q) || l.keywords.toLowerCase().includes(q))
-      : []
-
-    return (
-      <>
-        <PageHeader title={<><Icon name="cog" size={20} />Settings</>} />
-        <div className="page settings">
-          <div style={{ marginBottom: 18 }}>
-            <input
-              type="search"
-              className="input input-lg"
-              placeholder="Search settings, controls, preferences..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              aria-label="Search settings"
-              style={{ width: '100%', maxWidth: 540 }}
-            />
-          </div>
-
-          {q && matchingLinks.length > 0 && (
-            <div style={{ marginBottom: 24 }}>
-              <h3 className="section-title" style={{ fontSize: '0.9375rem', marginBottom: 10 }}>Direct Setting Links</h3>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {matchingLinks.map((item) => (
-                  <Link
-                    key={item.label}
-                    to={`/settings/${item.section}?highlight=${item.rowId}`}
-                    className="chip"
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                  >
-                    <Icon name="cog" size={14} />
-                    <span>{item.label}</span>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <p className="page-intro">Saved on this device as you change them.</p>
-          <ul className="settings-list">
-            {matchingSections.map((x) => (
-              <li key={x.id}>
-                <Link to={`/settings/${x.id}`} className="card settings-item">
-                  <span className="settings-icon"><Icon name={x.icon} /></span>
-                  <span className="settings-text"><strong>{x.label}</strong><span className="faint">{x.blurb}</span></span>
-                  <Icon name="right" size={18} />
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </>
-    )
-  }
-
-  if (!current) {
-    return (
-      <>
-        <PageHeader title="Settings" />
-        <div className="page"><StateBlock icon="warning" title="No such settings page" action={<Link to="/settings" className="btn btn-primary">All settings</Link>} /></div>
-      </>
-    )
-  }
+  }, [routeSection, querySection, highlight, navigate])
 
   return (
     <>
-      <PageHeader title={current.label} tabs={<Link to="/settings" className="text-link"><Icon name="back" size={16} />Settings</Link>} />
-      <div className="page settings">
-        <div className="settings-panel">
-          <p className="page-intro">{current.blurb}.</p>
-          <Section id={current.id} />
+      <PageHeader title="Settings" />
+      <div className="page settings-page">
+        <div className="settings-header-banner">
+          <div className="settings-header-icon-box">
+            <Icon name="cog" size={24} />
+          </div>
+          <div>
+            <h1 className="settings-header-title">Settings</h1>
+            <p className="settings-header-desc">Customise Kinora, manage your media, sources and playback preferences.</p>
+          </div>
+        </div>
+
+        <div className="settings-columns-grid">
+          {/* COLUMN 1: Category Sub-Navigation */}
+          <nav className="settings-nav-col" aria-label="Settings sub navigation">
+            {sections.map((s) => {
+              const isActive = s.id === activeSectionId
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  className={`settings-nav-btn ${isActive ? 'is-active' : ''}`}
+                  onClick={() => navigate(`/settings/${s.id}`)}
+                >
+                  <Icon name={s.icon} size={18} className="settings-nav-icon" />
+                  <span className="settings-nav-label">{s.label}</span>
+                  <Icon name="chevronRight" size={14} className="settings-nav-chevron" />
+                </button>
+              )
+            })}
+          </nav>
+
+          {/* COLUMN 2: Center Stage Configuration */}
+          <div className="settings-center-col">
+            <Section id={activeSectionId} />
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+function SettingsAsidePanel({ activeSection: _ }: { activeSection?: string }) {
+  const { prefs, setPref } = useStore()
+  const toast = useToast()
+  const [previewPopoutOpen, setPreviewPopoutOpen] = useState(false)
+
+  const densityOptions = [
+    { label: 'Comfortable', value: 'spacious' as const },
+    { label: 'Standard', value: 'comfortable' as const },
+    { label: 'Compact', value: 'compact' as const },
+  ]
+
+  return (
+    <>
+      {/* Live Preview Card */}
+      <div className="settings-aside-card">
+        <div className="settings-aside-card-header">
+          <h4 className="settings-aside-card-title">Live Preview</h4>
+          <button
+            type="button"
+            className="settings-aside-card-action"
+            title="Popout preview"
+            aria-label="Popout live preview"
+            onClick={() => setPreviewPopoutOpen(true)}
+          >
+            <Icon name="externalLink" size={15} />
+          </button>
+        </div>
+        <div className="settings-mini-preview-box" data-theme={prefs.theme}>
+          <div className="smp-sidebar">
+            <div className="smp-sidebar-dot is-active" />
+            <div className="smp-sidebar-dot" />
+            <div className="smp-sidebar-dot" />
+            <div className="smp-sidebar-dot" />
+          </div>
+          <div className="smp-main">
+            <div className="smp-header">
+              <div className="smp-search" />
+              <div className="smp-sidebar-dot" style={{ width: 10, height: 10, borderRadius: '50%' }} />
+            </div>
+            <div className="smp-hero">
+              <div className="smp-hero-title" />
+              <div className="smp-hero-btn" />
+            </div>
+            <div className="smp-cards-row">
+              <div className="smp-card" />
+              <div className="smp-card" />
+              <div className="smp-card" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <Dialog open={previewPopoutOpen} onClose={() => setPreviewPopoutOpen(false)} title="Live Interface Preview">
+        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', minWidth: '320px', maxWidth: '640px' }}>
+          <p className="faint" style={{ margin: 0 }}>
+            Live preview of Kinora using theme: <strong>{prefs.theme}</strong> and accent: <strong>{prefs.accent}</strong>.
+          </p>
+          <div className="settings-mini-preview-box" data-theme={prefs.theme} style={{ height: '240px', width: '100%' }}>
+            <div className="smp-sidebar">
+              <div className="smp-sidebar-dot is-active" />
+              <div className="smp-sidebar-dot" />
+              <div className="smp-sidebar-dot" />
+              <div className="smp-sidebar-dot" />
+            </div>
+            <div className="smp-main">
+              <div className="smp-header">
+                <div className="smp-search" />
+                <div className="smp-sidebar-dot" style={{ width: 10, height: 10, borderRadius: '50%' }} />
+              </div>
+              <div className="smp-hero">
+                <div className="smp-hero-title" />
+                <div className="smp-hero-btn" />
+              </div>
+              <div className="smp-cards-row">
+                <div className="smp-card" />
+                <div className="smp-card" />
+                <div className="smp-card" />
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
+            <button type="button" className="btn btn-primary" onClick={() => setPreviewPopoutOpen(false)}>
+              Done
+            </button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Theme Presets */}
+      <div className="settings-aside-card">
+        <h4 className="settings-aside-card-title">Theme Presets</h4>
+        <div className="settings-presets-grid" role="group" aria-label="Theme Presets">
+          {THEME_PRESETS.map((p) => {
+            const isPresetActive = prefs.accent === p.accent
+            return (
+              <button
+                key={p.id}
+                type="button"
+                className={`settings-preset-tile ${isPresetActive ? 'is-active' : ''}`}
+                style={{
+                  background: `linear-gradient(135deg, ${p.accentHex} 0%, #0a0e14 100%)`,
+                }}
+                onClick={() => {
+                  setPref('theme', p.theme)
+                  setPref('accent', p.accent)
+                  if (p.accent === 'custom') setPref('customAccent', p.accentHex)
+                  toast(`Applied ${p.name} preset`)
+                }}
+              >
+                {isPresetActive && (
+                  <span className="settings-preset-check"><Icon name="check" size={13} /></span>
+                )}
+                <span className="settings-preset-name">{p.name}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Typography Card */}
+      <button
+        type="button"
+        className="settings-typography-card"
+        onClick={() => {
+          const next = prefs.textSize === 'large' ? 'standard' : 'large'
+          setPref('textSize', next)
+          toast(`Text size set to ${next}`)
+        }}
+        title="Toggle text size"
+        aria-label={`Toggle text size, currently ${prefs.textSize}`}
+      >
+        <div className="settings-typography-info">
+          <span className="settings-typography-icon">Aa</span>
+          <div>
+            <p className="settings-typography-title">Typography</p>
+            <p className="settings-typography-desc">Font, size and text styling ({prefs.textSize})</p>
+          </div>
+        </div>
+        <Icon name="chevronRight" size={16} className="settings-nav-chevron" />
+      </button>
+
+      {/* Interface Density Card */}
+      <div className="settings-aside-card">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Icon name="layers" size={18} style={{ color: '#ffffff' }} />
+          <h4 className="settings-aside-card-title">Interface Density</h4>
+        </div>
+        <div className="settings-density-segmented" role="radiogroup" aria-label="Interface Density">
+          {densityOptions.map((opt) => {
+            const isActive = prefs.density === opt.value
+            return (
+              <button
+                key={opt.label}
+                type="button"
+                className={`settings-density-btn ${isActive ? 'is-active' : ''}`}
+                onClick={() => {
+                  setPref('density', opt.value)
+                  toast(`Density: ${opt.label}`)
+                }}
+                role="radio"
+                aria-checked={isActive}
+              >
+                {opt.label}
+              </button>
+            )
+          })}
         </div>
       </div>
     </>
@@ -311,251 +475,351 @@ export function Settings() {
 function AppearanceSection({
   prefs,
   setPref,
-  toggle,
 }: {
   prefs: Prefs
   setPref: <K extends keyof Prefs>(key: K, value: Prefs[K]) => void
-  toggle: (key: BoolPref, title: string, hint?: string, pending?: boolean) => ReactNode
+  toggle?: (key: BoolPref, title: string, hint?: string, pending?: boolean) => ReactNode
 }) {
-  const toast = useToast()
-  const [cornerRadius, setCornerRadius] = useState<'sharp' | 'standard' | 'pill'>(() => {
-    if (typeof window === 'undefined') return 'standard'
-    return (localStorage.getItem('kinora.corner_radius.v1') as any) || 'standard'
-  })
-  const [cardGlow, setCardGlow] = useState<'subtle' | 'standard' | 'vibrant'>(() => {
-    if (typeof window === 'undefined') return 'standard'
-    return (localStorage.getItem('kinora.card_glow.v1') as any) || 'standard'
-  })
-
-  const applyRadius = (r: 'sharp' | 'standard' | 'pill') => {
-    setCornerRadius(r)
-    localStorage.setItem('kinora.corner_radius.v1', r)
-    const s = r === 'sharp' ? '2px' : r === 'pill' ? '8px' : '4px'
-    const m = r === 'sharp' ? '4px' : r === 'pill' ? '16px' : '8px'
-    const l = r === 'sharp' ? '6px' : r === 'pill' ? '24px' : '14px'
-    document.documentElement.style.setProperty('--r-s', s)
-    document.documentElement.style.setProperty('--r-m', m)
-    document.documentElement.style.setProperty('--r-l', l)
-    toast(`Applied ${r} corner geometry`)
-  }
-
-  const applyGlow = (g: 'subtle' | 'standard' | 'vibrant') => {
-    setCardGlow(g)
-    localStorage.setItem('kinora.card_glow.v1', g)
-    const alpha = g === 'subtle' ? '0.04' : g === 'vibrant' ? '0.22' : '0.12'
-    document.documentElement.style.setProperty('--card-glow-alpha', alpha)
-    toast(`Applied ${g} card glow intensity`)
-  }
-
-  const currentAccentHex = prefs.accent === 'custom' ? prefs.customAccent : ACCENTS[prefs.accent as AccentName] || '#f20d24'
-  const currentBg = THEME_BG[prefs.theme] || '#08090b'
-  const accentBgContrast = Math.round(contrast(currentAccentHex, currentBg) * 10) / 10
-  const textOnAccentContrast = Math.round(contrast('#ffffff', currentAccentHex) * 10) / 10
+  const currentThemeMode = prefs.themeMode ?? (prefs.theme === 'light' ? 'light' : 'dark')
 
   return (
     <>
-      <Group title="Theme Presets">
-        <Row title="Curated visual presets" hint="Switch the entire application palette to a curated style.">
-          <div className="theme-presets-grid" role="group" aria-label="Theme presets">
-            {THEME_PRESETS.map((preset) => {
-              const isActive = prefs.theme === preset.theme && (
-                preset.accent === 'custom'
-                  ? prefs.accent === 'custom' && prefs.customAccent.toLowerCase() === preset.accentHex.toLowerCase()
-                  : prefs.accent === preset.accent
-              )
-              return (
-                <button
-                  key={preset.id}
-                  type="button"
-                  className={`theme-preset-card${isActive ? ' is-active' : ''}`}
-                  aria-pressed={isActive}
-                  onClick={() => {
-                    setPref('theme', preset.theme)
-                    setPref('accent', preset.accent)
-                    if (preset.accent === 'custom') {
-                      setPref('customAccent', preset.accentHex)
-                    }
-                    toast(`Applied preset: ${preset.name}`)
-                  }}
-                >
-                  <div className="preset-swatches-bar" style={{ background: preset.bgHex }}>
-                    <span className="preset-swatch" style={{ background: preset.surfaceHex }} />
-                    <span className="preset-swatch" style={{ background: preset.navHex }} />
-                    <span className="preset-swatch is-accent" style={{ background: preset.accentHex }} />
-                    <span className="preset-swatch is-secondary" style={{ background: preset.secondaryAccentHex }} />
-                  </div>
-                  <div className="preset-meta">
-                    <strong className="preset-name">
-                      {isActive && <Icon name="check" size={13} />}
-                      {preset.name}
-                    </strong>
-                    <p className="preset-desc">{preset.description}</p>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        </Row>
-        <Row title="Master reset" hint="Instantly restore the authoritative Kinora reference styling.">
+      <div className="settings-stage-hero-card">
+        <div className="settings-stage-hero-icon">
+          <Icon name="desktop" size={24} />
+        </div>
+        <div>
+          <h2 className="settings-stage-hero-title">Appearance</h2>
+          <p className="settings-stage-hero-desc">Personalise the look and feel of Kinora across all devices.</p>
+        </div>
+      </div>
+
+      {/* Theme */}
+      <div className="settings-section-card">
+        <h3 className="settings-card-title">Theme</h3>
+        <div className="settings-theme-cards-grid" role="radiogroup" aria-label="Theme mode">
           <button
             type="button"
-            className="btn btn-secondary"
+            className={`settings-theme-option-card ${currentThemeMode === 'dark' ? 'is-active' : ''}`}
             onClick={() => {
+              setPref('themeMode', 'dark')
               setPref('theme', 'dark')
-              setPref('accent', 'red')
-              setPref('customAccent', '#f20d24')
-              toast('Restored Kinora Signature master theme')
             }}
+            aria-checked={currentThemeMode === 'dark'}
+            role="radio"
           >
-            <Icon name="refresh" size={15} />
-            Restore Kinora Signature
+            {currentThemeMode === 'dark' && (
+              <span className="settings-theme-badge"><Icon name="check" size={11} /></span>
+            )}
+            <Icon name="moon" size={24} />
+            <span className="settings-theme-name">Dark</span>
+            <span className="settings-theme-sub">Kinora Deep Black</span>
           </button>
-        </Row>
-      </Group>
-      <Group title="Theme">
-        <Row title="Theme" hint="Dark suits a dim room, Dim lifts the surfaces a little, Light is for daytime.">
-          <div className="theme-picks" role="group" aria-label="Theme">
-            {(['dark', 'dim', 'light'] as const).map((t) => (
-              <button key={t} type="button" className="theme-pick" aria-pressed={prefs.theme === t} onClick={() => setPref('theme', t)}>
-                {/* Each preview carries its own data-theme, so it shows that theme's real tokens. */}
-                <span className="theme-preview" data-theme={t} aria-hidden="true">
-                  <span className="tp-nav" /><span className="tp-card" /><span className="tp-card" /><span className="tp-accent" />
-                </span>
-                <span className="theme-name">{prefs.theme === t && <Icon name="check" size={14} />}{t[0]?.toUpperCase() + t.slice(1)}</span>
+
+          <button
+            type="button"
+            className={`settings-theme-option-card ${currentThemeMode === 'midnight' ? 'is-active' : ''}`}
+            onClick={() => {
+              setPref('themeMode', 'midnight')
+              setPref('theme', 'midnight')
+            }}
+            aria-checked={currentThemeMode === 'midnight'}
+            role="radio"
+          >
+            {currentThemeMode === 'midnight' && (
+              <span className="settings-theme-badge"><Icon name="check" size={11} /></span>
+            )}
+            <Icon name="star" size={24} />
+            <span className="settings-theme-name">Midnight</span>
+            <span className="settings-theme-sub">Deep Nocturnal Navy</span>
+          </button>
+
+          <button
+            type="button"
+            className={`settings-theme-option-card ${currentThemeMode === 'dim' ? 'is-active' : ''}`}
+            onClick={() => {
+              setPref('themeMode', 'dim')
+              setPref('theme', 'dim')
+            }}
+            aria-checked={currentThemeMode === 'dim'}
+            role="radio"
+          >
+            {currentThemeMode === 'dim' && (
+              <span className="settings-theme-badge"><Icon name="check" size={11} /></span>
+            )}
+            <Icon name="desktop" size={24} />
+            <span className="settings-theme-name">Dim</span>
+            <span className="settings-theme-sub">Warm Muted Graphite</span>
+          </button>
+
+          <button
+            type="button"
+            className={`settings-theme-option-card ${currentThemeMode === 'slate' ? 'is-active' : ''}`}
+            onClick={() => {
+              setPref('themeMode', 'slate')
+              setPref('theme', 'slate')
+            }}
+            aria-checked={currentThemeMode === 'slate'}
+            role="radio"
+          >
+            {currentThemeMode === 'slate' && (
+              <span className="settings-theme-badge"><Icon name="check" size={11} /></span>
+            )}
+            <Icon name="film" size={24} />
+            <span className="settings-theme-name">Slate</span>
+            <span className="settings-theme-sub">Mineral Cold Grey</span>
+          </button>
+
+          <button
+            type="button"
+            className={`settings-theme-option-card ${currentThemeMode === 'oled' ? 'is-active' : ''}`}
+            onClick={() => {
+              setPref('themeMode', 'oled')
+              setPref('theme', 'oled')
+            }}
+            aria-checked={currentThemeMode === 'oled'}
+            role="radio"
+          >
+            {currentThemeMode === 'oled' && (
+              <span className="settings-theme-badge"><Icon name="check" size={11} /></span>
+            )}
+            <Icon name="sparkles" size={24} />
+            <span className="settings-theme-name">OLED</span>
+            <span className="settings-theme-sub">Absolute Pure Black</span>
+          </button>
+
+          <button
+            type="button"
+            className={`settings-theme-option-card ${currentThemeMode === 'light' ? 'is-active' : ''}`}
+            onClick={() => {
+              setPref('themeMode', 'light')
+              setPref('theme', 'light')
+            }}
+            aria-checked={currentThemeMode === 'light'}
+            role="radio"
+          >
+            {currentThemeMode === 'light' && (
+              <span className="settings-theme-badge"><Icon name="check" size={11} /></span>
+            )}
+            <Icon name="sun" size={24} />
+            <span className="settings-theme-name">Light</span>
+            <span className="settings-theme-sub">Daylight High Contrast</span>
+          </button>
+
+          <button
+            type="button"
+            className={`settings-theme-option-card ${currentThemeMode === 'system' ? 'is-active' : ''}`}
+            onClick={() => {
+              setPref('themeMode', 'system')
+              const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+              setPref('theme', prefersDark ? 'dark' : 'light')
+            }}
+            aria-checked={currentThemeMode === 'system'}
+            role="radio"
+          >
+            {currentThemeMode === 'system' && (
+              <span className="settings-theme-badge"><Icon name="desktop" size={11} /></span>
+            )}
+            <Icon name="desktop" size={24} />
+            <span className="settings-theme-name">System</span>
+            <span className="settings-theme-sub">Follow your OS setting</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Accent Colour */}
+      <div className="settings-section-card">
+        <h3 className="settings-card-title">Accent Colour</h3>
+        <div className="settings-swatches-row" role="radiogroup" aria-label="Accent colour">
+          {(Object.entries(ACCENTS) as [AccentName, string][]).map(([name, hex]) => {
+            const isActive = prefs.accent === name
+            return (
+              <button
+                key={name}
+                type="button"
+                className={`settings-swatch-btn ${isActive ? 'is-active' : ''}`}
+                style={{ background: hex }}
+                onClick={() => setPref('accent', name)}
+                aria-label={`Accent ${name}`}
+                aria-checked={isActive}
+                role="radio"
+                title={name[0]!.toUpperCase() + name.slice(1)}
+              >
+                {isActive && <Icon name="check" size={14} />}
               </button>
-            ))}
-          </div>
-        </Row>
-        <Row title="Accent colour" hint="Used for primary buttons, the active page, progress and what is playing. Text in the accent is adjusted automatically to stay readable.">
-          <div className="swatches" role="group" aria-label="Accent colour">
-            {(Object.entries(ACCENTS) as [AccentName, string][]).map(([name, hex]) => (
-              <button key={name} type="button" aria-pressed={prefs.accent === name} onClick={() => setPref('accent', name)}>
-                <span className="swatch" style={{ background: hex }}>{prefs.accent === name && <Icon name="check" size={13} />}</span>
-                {name[0]?.toUpperCase() + name.slice(1)}
-              </button>
-            ))}
-            <label className={`swatch-custom${prefs.accent === 'custom' ? ' is-on' : ''}`}>
+            )
+          })}
+          <label className={`settings-swatch-custom ${prefs.accent === 'custom' ? 'is-active' : ''}`} title="Custom colour picker">
+            <Icon name="colorPicker" size={16} />
+            <input
+              type="color"
+              value={prefs.customAccent}
+              onChange={(e) => {
+                const hex = safeHex(e.target.value)
+                if (hex) {
+                  setPref('customAccent', hex)
+                  setPref('accent', 'custom')
+                }
+              }}
+              aria-label="Custom accent colour"
+            />
+          </label>
+        </div>
+      </div>
+
+      {/* Layout */}
+      <div className="settings-section-card">
+        <h3 className="settings-card-title">Layout</h3>
+        <div className="settings-layout-cards-grid" role="radiogroup" aria-label="Layout mode">
+          <button
+            type="button"
+            className={`settings-layout-option-card ${prefs.layoutMode === 'standard' ? 'is-active' : ''}`}
+            onClick={() => { setPref('layoutMode', 'standard'); setPref('viewMode', 'desktop') }}
+            role="radio"
+            aria-checked={prefs.layoutMode === 'standard'}
+          >
+            {prefs.layoutMode === 'standard' && (
+              <span className="settings-layout-badge"><Icon name="check" size={10} /></span>
+            )}
+            <Icon name="layoutSidebar" size={22} />
+            <span className="settings-layout-title">Standard</span>
+            <span className="settings-layout-sub">Sidebar + Content</span>
+          </button>
+
+          <button
+            type="button"
+            className={`settings-layout-option-card ${prefs.layoutMode === 'compact' ? 'is-active' : ''}`}
+            onClick={() => { setPref('layoutMode', 'compact'); setPref('viewMode', 'desktop') }}
+            role="radio"
+            aria-checked={prefs.layoutMode === 'compact'}
+          >
+            {prefs.layoutMode === 'compact' && (
+              <span className="settings-layout-badge"><Icon name="check" size={10} /></span>
+            )}
+            <Icon name="layoutCompact" size={22} />
+            <span className="settings-layout-title">Compact</span>
+            <span className="settings-layout-sub">More content</span>
+          </button>
+
+          <button
+            type="button"
+            className={`settings-layout-option-card ${prefs.layoutMode === 'wide' ? 'is-active' : ''}`}
+            onClick={() => { setPref('layoutMode', 'wide'); setPref('viewMode', 'desktop') }}
+            role="radio"
+            aria-checked={prefs.layoutMode === 'wide'}
+          >
+            {prefs.layoutMode === 'wide' && (
+              <span className="settings-layout-badge"><Icon name="check" size={10} /></span>
+            )}
+            <Icon name="layoutWide" size={22} />
+            <span className="settings-layout-title">Wide</span>
+            <span className="settings-layout-sub">Expanded content</span>
+          </button>
+
+          <button
+            type="button"
+            className={`settings-layout-option-card ${prefs.layoutMode === 'tv' ? 'is-active' : ''}`}
+            onClick={() => { setPref('layoutMode', 'tv'); setPref('viewMode', 'tv') }}
+            role="radio"
+            aria-checked={prefs.layoutMode === 'tv'}
+          >
+            {prefs.layoutMode === 'tv' && (
+              <span className="settings-layout-badge"><Icon name="check" size={10} /></span>
+            )}
+            <Icon name="desktop" size={22} />
+            <span className="settings-layout-title">TV Mode</span>
+            <span className="settings-layout-sub">10ft / Remote style</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Display Options */}
+      <div className="settings-section-card">
+        <h3 className="settings-card-title">Display Options</h3>
+        <div className="settings-toggles-list">
+          <div className="settings-toggle-row">
+            <div className="settings-toggle-info">
+              <Icon name="desktop" size={20} className="settings-toggle-icon" />
+              <div>
+                <p className="settings-toggle-title">Show artwork backgrounds on pages</p>
+                <p className="settings-toggle-desc">Display cinematic backgrounds where available</p>
+              </div>
+            </div>
+            <label className="settings-switch-control">
               <input
-                type="color"
-                value={prefs.customAccent}
-                onChange={(e) => { const hex = safeHex(e.target.value); if (hex) { setPref('customAccent', hex); setPref('accent', 'custom') } }}
-                onClick={() => setPref('accent', 'custom')}
-                aria-label="Custom accent colour"
+                type="checkbox"
+                checked={prefs.showArtworkBackgrounds}
+                onChange={(e) => setPref('showArtworkBackgrounds', e.target.checked)}
               />
-              {prefs.accent === 'custom' && <Icon name="check" size={13} />}Custom
+              <span className="settings-switch-slider" />
             </label>
           </div>
-        </Row>
-        <Row title="Accessibility contrast rating" hint="Live calculation of contrast against background and text readability.">
-          <div className="contrast-rating-box">
-            <div className="contrast-item">
-              <span className="contrast-label">Accent on background</span>
-              <span className={`contrast-badge ${accentBgContrast >= 4.5 ? 'pass' : 'warn'}`}>
-                {accentBgContrast}:1 {accentBgContrast >= 4.5 ? '(WCAG AA Pass)' : '(Subtle)'}
-              </span>
+
+          <div className="settings-toggle-row">
+            <div className="settings-toggle-info">
+              <Icon name="playOutline" size={20} className="settings-toggle-icon" />
+              <div>
+                <p className="settings-toggle-title">Animated transitions</p>
+                <p className="settings-toggle-desc">Smooth page and element animations</p>
+              </div>
             </div>
-            <div className="contrast-item">
-              <span className="contrast-label">White text on accent fill</span>
-              <span className={`contrast-badge ${textOnAccentContrast >= 4.5 ? 'pass' : 'fail'}`}>
-                {textOnAccentContrast}:1 {textOnAccentContrast >= 7.0 ? '(WCAG AAA Pass)' : textOnAccentContrast >= 4.5 ? '(WCAG AA Pass)' : '(Low Contrast)'}
-              </span>
-            </div>
+            <label className="settings-switch-control">
+              <input
+                type="checkbox"
+                checked={prefs.animatedTransitions}
+                onChange={(e) => setPref('animatedTransitions', e.target.checked)}
+              />
+              <span className="settings-switch-slider" />
+            </label>
           </div>
-        </Row>
-      </Group>
-      <Group title="Design Tokens & Surface Geometry">
-        <Row title="Corner radius geometry" hint="Adjust the curvature across cards, buttons, dialogs, and navigation panels.">
-          <Segmented
-            label="Corner geometry"
-            value={cornerRadius}
-            onChange={applyRadius}
-            options={[
-              { value: 'sharp', label: 'Crisp / Sharp (2px)' },
-              { value: 'standard', label: 'Balanced (8px)' },
-              { value: 'pill', label: 'Curved (16px)' },
-            ]}
-          />
-        </Row>
-        <Row title="Card glow & border accent" hint="Intensity of subtle perimeter glows and hover highlights.">
-          <Segmented
-            label="Border highlight"
-            value={cardGlow}
-            onChange={applyGlow}
-            options={[
-              { value: 'subtle', label: 'Minimal' },
-              { value: 'standard', label: 'Balanced' },
-              { value: 'vibrant', label: 'Vibrant Glow' },
-            ]}
-          />
-        </Row>
-      </Group>
-      <Group title="Live Theme Preview">
-        <div className="live-theme-preview-canvas" aria-label="Interactive live theme preview">
-          <div className="ltp-sidebar">
-            <div className="ltp-logo">
-              <span className="ltp-logo-mark" />
-              <span className="ltp-logo-text">KINORA TV</span>
-            </div>
-            <div className="ltp-nav-group">
-              <span className="ltp-nav-label">WATCH</span>
-              <div className="ltp-nav-item is-active">
-                <span className="ltp-nav-icon" />
-                <span>Home</span>
-              </div>
-              <div className="ltp-nav-item">
-                <span className="ltp-nav-icon" />
-                <span>Live TV</span>
+
+          <div className="settings-toggle-row">
+            <div className="settings-toggle-info">
+              <Icon name="activity" size={20} className="settings-toggle-icon" />
+              <div>
+                <p className="settings-toggle-title">Reduce motion</p>
+                <p className="settings-toggle-desc">Minimise animations and effects</p>
               </div>
             </div>
+            <label className="settings-switch-control">
+              <input
+                type="checkbox"
+                checked={prefs.reduceMotion}
+                onChange={(e) => setPref('reduceMotion', e.target.checked)}
+              />
+              <span className="settings-switch-slider" />
+            </label>
           </div>
-          <div className="ltp-main">
-            <div className="ltp-header">
-              <div className="ltp-search-bar">Search movies, series...</div>
-              <div className="ltp-avatar" />
-            </div>
-            <div className="ltp-hero">
-              <div className="ltp-hero-laser" />
-              <div className="ltp-hero-content">
-                <span className="ltp-tag">FEATURED MOVIE</span>
-                <h4 className="ltp-title">Harbour <span className="ltp-title-red">Lights</span></h4>
-                <p className="ltp-blurb">Every light in the harbour belongs to somebody.</p>
-                <div className="ltp-actions">
-                  <span className="ltp-btn-watch">Watch Now</span>
-                  <span className="ltp-btn-secondary">+ Add to Library</span>
-                  <span className="ltp-rating-badge">18</span>
-                </div>
+
+          <div className="settings-toggle-row">
+            <div className="settings-toggle-info">
+              <Icon name="star" size={20} className="settings-toggle-icon" />
+              <div>
+                <p className="settings-toggle-title">Show media ratings</p>
+                <p className="settings-toggle-desc">Display IMDb, TMDb and other ratings</p>
               </div>
             </div>
-            <div className="ltp-cards-row">
-              <div className="ltp-card">
-                <div className="ltp-card-thumb">
-                  <span className="ltp-play-circle" />
-                  <div className="ltp-card-progress" style={{ width: '65%' }} />
-                </div>
-                <span className="ltp-card-title">Glasshouse</span>
-              </div>
-              <div className="ltp-card">
-                <div className="ltp-card-thumb">
-                  <span className="ltp-badge-4k">4K HDR</span>
-                </div>
-                <span className="ltp-card-title">Neon District</span>
-              </div>
-            </div>
+            <label className="settings-switch-control">
+              <input
+                type="checkbox"
+                checked={prefs.showMediaRatings}
+                onChange={(e) => setPref('showMediaRatings', e.target.checked)}
+              />
+              <span className="settings-switch-slider" />
+            </label>
           </div>
         </div>
-      </Group>
-      <Group title="Layout">
-        <Row title="Density" hint="How much space surrounds cards, rows and guide entries.">
-          <Segmented label="Density" value={prefs.density} onChange={(v) => setPref('density', v)} options={[{ value: 'compact', label: 'Compact' }, { value: 'comfortable', label: 'Comfortable' }, { value: 'spacious', label: 'Spacious' }]} />
-        </Row>
-        <Row title="Text size" hint="Large is easier to read from the sofa.">
-          <Segmented label="Text size" value={prefs.textSize} onChange={(v) => setPref('textSize', v)} options={[{ value: 'standard', label: 'Standard' }, { value: 'large', label: 'Large' }]} />
-        </Row>
-        {toggle('reduceMotion', 'Reduce motion', 'Turns off artwork fades, card lifts and sliding panels. Your system setting is respected either way.')}
-      </Group>
+      </div>
+
+      {/* Visual Presets, Typography, Density and Live Preview */}
+      <div className="settings-appearance-addons">
+        <SettingsAsidePanel activeSection="appearance" />
+      </div>
     </>
   )
 }
+
+
 
 function SubtitlesSection({
   prefs,
@@ -659,8 +923,187 @@ function SubtitlesSection({
   )
 }
 
+function NotificationsSection() {
+  const store = useStore()
+  const { prefs, setPref } = store
+  const remindersCount = store.library.reminders?.length ?? 0
+  const [permission, setPermission] = useState<string>(() => {
+    return typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default'
+  })
+
+  const requestPermission = async () => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      try {
+        const perm = await Notification.requestPermission()
+        setPermission(perm)
+      } catch {}
+    }
+  }
+
+  return (
+    <>
+      <Group title="Programme Reminders">
+        <Row title="Upcoming Programme Alerts" hint="Show on-screen alerts 5 minutes before scheduled programmes begin airing.">
+          <Switch
+            label="Upcoming programme alerts"
+            checked={prefs.reminderAlerts}
+            onChange={(v) => setPref('reminderAlerts', v)}
+          />
+        </Row>
+        <Row title="Active Reminders" hint="Number of upcoming programmes scheduled for reminder notification.">
+          <span className="muted">{remindersCount === 1 ? '1 programme' : `${remindersCount} programmes`}</span>
+        </Row>
+      </Group>
+
+      <Group title="DVR & Recording Notifications">
+        <Row title="Recording Alerts" hint="Notify when a scheduled DVR recording begins capturing or completes.">
+          <Switch
+            label="Recording alerts"
+            checked={prefs.recordingAlerts}
+            onChange={(v) => setPref('recordingAlerts', v)}
+          />
+        </Row>
+      </Group>
+
+      <Group title="System & Source Notices">
+        <Row title="Background Refresh Alerts" hint="Notify when playlist sources or XMLTV guides finish refreshing.">
+          <Switch
+            label="Background refresh alerts"
+            checked={prefs.refreshAlerts}
+            onChange={(v) => setPref('refreshAlerts', v)}
+          />
+        </Row>
+        <Row title="Desktop Alerts" hint="Deliver native desktop notifications when programmes air or recordings start.">
+          {permission === 'granted' ? (
+            <span className="muted">Enabled</span>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-secondary btn-small"
+              onClick={requestPermission}
+            >
+              Enable Desktop Alerts
+            </button>
+          )}
+        </Row>
+      </Group>
+    </>
+  )
+}
+
+function ShortcutsSection() {
+  return (
+    <>
+      <Group title="Playback & Navigation Shortcuts">
+        <Row title="Play / Pause" hint="Toggle active playback.">
+          <kbd className="kbd" style={{ padding: '2px 8px', borderRadius: 4, background: 'var(--surface-3)', border: '1px solid var(--line)' }}>Space</kbd>
+        </Row>
+        <Row title="Fullscreen" hint="Enter or exit fullscreen video mode.">
+          <span style={{ display: 'flex', gap: 6 }}>
+            <kbd className="kbd" style={{ padding: '2px 8px', borderRadius: 4, background: 'var(--surface-3)', border: '1px solid var(--line)' }}>F</kbd>
+            <span className="faint">or</span>
+            <kbd className="kbd" style={{ padding: '2px 8px', borderRadius: 4, background: 'var(--surface-3)', border: '1px solid var(--line)' }}>Esc</kbd>
+          </span>
+        </Row>
+        <Row title="Mute Volume" hint="Toggle audio output muting.">
+          <kbd className="kbd" style={{ padding: '2px 8px', borderRadius: 4, background: 'var(--surface-3)', border: '1px solid var(--line)' }}>M</kbd>
+        </Row>
+        <Row title="Seek -10s / +10s" hint="Jump backward or forward by 10 seconds.">
+          <span style={{ display: 'flex', gap: 6 }}>
+            <kbd className="kbd" style={{ padding: '2px 8px', borderRadius: 4, background: 'var(--surface-3)', border: '1px solid var(--line)' }}>←</kbd>
+            <kbd className="kbd" style={{ padding: '2px 8px', borderRadius: 4, background: 'var(--surface-3)', border: '1px solid var(--line)' }}>→</kbd>
+          </span>
+        </Row>
+        <Row title="Volume Level" hint="Increase or decrease audio volume.">
+          <span style={{ display: 'flex', gap: 6 }}>
+            <kbd className="kbd" style={{ padding: '2px 8px', borderRadius: 4, background: 'var(--surface-3)', border: '1px solid var(--line)' }}>↑</kbd>
+            <kbd className="kbd" style={{ padding: '2px 8px', borderRadius: 4, background: 'var(--surface-3)', border: '1px solid var(--line)' }}>↓</kbd>
+          </span>
+        </Row>
+        <Row title="Subtitles" hint="Toggle primary subtitle track.">
+          <kbd className="kbd" style={{ padding: '2px 8px', borderRadius: 4, background: 'var(--surface-3)', border: '1px solid var(--line)' }}>C</kbd>
+        </Row>
+      </Group>
+
+      <Group title="Channel & 10-Foot Remote Navigation">
+        <Row title="Direct Channel Keypad" hint="Type numbers (0-9) on remote or keyboard to tune directly.">
+          <kbd className="kbd" style={{ padding: '2px 8px', borderRadius: 4, background: 'var(--surface-3)', border: '1px solid var(--line)' }}>0 - 9</kbd>
+        </Row>
+        <Row title="Next / Previous Channel" hint="Tune up or down through the current channel list.">
+          <span style={{ display: 'flex', gap: 6 }}>
+            <kbd className="kbd" style={{ padding: '2px 8px', borderRadius: 4, background: 'var(--surface-3)', border: '1px solid var(--line)' }}>Page Up</kbd>
+            <kbd className="kbd" style={{ padding: '2px 8px', borderRadius: 4, background: 'var(--surface-3)', border: '1px solid var(--line)' }}>Page Down</kbd>
+          </span>
+        </Row>
+        <Row title="Directional Remote" hint="Navigate menus and guides in 10-foot TV mode.">
+          <span className="muted">D-Pad / Arrow Keys + OK / Enter</span>
+        </Row>
+        <Row title="Back / Return" hint="Return to previous screen or close sheet.">
+          <kbd className="kbd" style={{ padding: '2px 8px', borderRadius: 4, background: 'var(--surface-3)', border: '1px solid var(--line)' }}>Esc</kbd>
+        </Row>
+      </Group>
+
+      <Group title="TV Remote Dedicated Color Buttons">
+        <Row title="Red Button (F1)" hint="Instant jump to Library and Favourites.">
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#ef4444' }} aria-hidden="true" />
+            <span className="muted">Library / Favourites</span>
+          </span>
+        </Row>
+        <Row title="Green Button (F2)" hint="Instant jump to Live TV Programme Guide.">
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#10b981' }} aria-hidden="true" />
+            <span className="muted">Live TV Guide</span>
+          </span>
+        </Row>
+        <Row title="Yellow Button (F3)" hint="Open Universal Command Palette and Search.">
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#f59e0b' }} aria-hidden="true" />
+            <span className="muted">Command Palette</span>
+          </span>
+        </Row>
+        <Row title="Blue Button (F4)" hint="Instant jump to Sources and Catalogue Discovery.">
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#3b82f6' }} aria-hidden="true" />
+            <span className="muted">Sources & Discovery</span>
+          </span>
+        </Row>
+      </Group>
+    </>
+  )
+}
+
+function PrivacySection() {
+  return (
+    <>
+      <Group title="Security & Network Boundaries">
+        <Row title="Strict Guarded Resolver" hint="All network connections strictly bypass system proxies and refuse private, loopback, or LAN destinations.">
+          <span className="muted" style={{ color: 'var(--success, #22c55e)' }}>Active (Rust Enforced)</span>
+        </Row>
+        <Row title="Stream Address Obfuscation" hint="Upstream stream addresses and private tokens are rewritten into opaque 128-bit handles and never exposed to the DOM or logs.">
+          <span className="muted" style={{ color: 'var(--success, #22c55e)' }}>Active (kstream://)</span>
+        </Row>
+        <Row title="Encrypted Credential Vault" hint="Provider credentials and parental PINs are stored in an encrypted local vault with strict filesystem permissions (0700/0600).">
+          <span className="muted" style={{ color: 'var(--success, #22c55e)' }}>AES-256-GCM Vault</span>
+        </Row>
+      </Group>
+
+      <Group title="Telemetry & Data Collection">
+        <Row title="Application Telemetry" hint="Kinora collects zero tracking data, analytics, or behavioral telemetry. No analytics SDKs exist in the binary.">
+          <span className="muted">Zero Telemetry (Strict)</span>
+        </Row>
+        <Row title="Crash Reports" hint="Crash dumps remain strictly local and are never transmitted over the network without explicit user consent.">
+          <span className="muted">Local Only</span>
+        </Row>
+      </Group>
+    </>
+  )
+}
+
 function Section({ id }: { id: string }) {
   const store = useStore()
+  const profileId = store.activeProfile?.id ?? 'default'
+  const [bingeSettings, setBingeSettings] = useState(() => loadBingeSettings(profileId))
   const [params] = useSearchParams()
   const highlight = params.get('highlight')
 
@@ -698,11 +1141,97 @@ function Section({ id }: { id: string }) {
             </Row>
           </Group>
           <SystemVideo />
-          <Group title="Watching">
+          <Group title="Watching & Binge Mode">
             <Row title="When reopening a title" hint="What happens when you play something you have started.">
               <Segmented label="Resume behaviour" value={prefs.resume} onChange={(v) => setPref('resume', v)} options={[{ value: 'resume', label: 'Resume' }, { value: 'ask', label: 'Ask' }, { value: 'start', label: 'Start over' }]} />
             </Row>
             {toggle('autoplayNext', 'Play next episode automatically', 'Starts the next episode after a short countdown.')}
+            <Row title="Binge countdown timer" hint="Seconds to wait before automatically starting the next episode.">
+              <Segmented
+                label="Countdown duration"
+                value={bingeSettings.countdownSeconds}
+                onChange={(v) => {
+                  const updated = { ...bingeSettings, countdownSeconds: v }
+                  setBingeSettings(updated)
+                  saveBingeSettings(updated, profileId)
+                }}
+                options={[
+                  { value: 5, label: '5s' },
+                  { value: 10, label: '10s' },
+                  { value: 15, label: '15s' },
+                ]}
+              />
+            </Row>
+            <Row title="Skip intro marker" hint="Quick skip duration when intro sequence is detected.">
+              <Segmented
+                label="Skip intro duration"
+                value={bingeSettings.skipIntroSeconds}
+                onChange={(v) => {
+                  const updated = { ...bingeSettings, skipIntroSeconds: v }
+                  setBingeSettings(updated)
+                  saveBingeSettings(updated, profileId)
+                }}
+                options={[
+                  { value: 0, label: 'Off' },
+                  { value: 60, label: '60s' },
+                  { value: 85, label: '85s' },
+                ]}
+              />
+            </Row>
+          </Group>
+          <Group title="Stream Headers & Identity">
+            <Row title="User-Agent profile" hint="Select a client identity profile or enter a custom one for compatibility with strict stream hosts.">
+              <select
+                className="select"
+                value={
+                  !prefs.customUserAgent
+                    ? 'default'
+                    : prefs.customUserAgent === 'VLC/3.0.18 LibVLC/3.0.18'
+                    ? 'vlc'
+                    : prefs.customUserAgent === 'Kodi/20.2 (Linux; Android 11)'
+                    ? 'kodi'
+                    : prefs.customUserAgent.startsWith('AppleCoreMedia')
+                    ? 'appletv'
+                    : 'custom'
+                }
+                onChange={(e) => {
+                  const val = e.target.value
+                  if (val === 'default') setPref('customUserAgent', '')
+                  else if (val === 'vlc') setPref('customUserAgent', 'VLC/3.0.18 LibVLC/3.0.18')
+                  else if (val === 'kodi') setPref('customUserAgent', 'Kodi/20.2 (Linux; Android 11)')
+                  else if (val === 'appletv') setPref('customUserAgent', 'AppleCoreMedia/1.0.0.20K71 (Apple TV; U; CPU OS 16_1 like Mac OS X; en_us)')
+                  else if (val === 'custom' && !prefs.customUserAgent) setPref('customUserAgent', 'Mozilla/5.0')
+                }}
+              >
+                <option value="default">Default (Kinora Native)</option>
+                <option value="vlc">VLC Media Player</option>
+                <option value="kodi">Kodi Media Center</option>
+                <option value="appletv">Apple TV / AVPlayer</option>
+                <option value="custom">Custom User-Agent</option>
+              </select>
+            </Row>
+            {Boolean(prefs.customUserAgent) && (
+              <Row title="Custom User-Agent" hint="The exact User-Agent header string sent with stream and playlist requests.">
+                <input
+                  type="text"
+                  className="input"
+                  value={prefs.customUserAgent}
+                  placeholder="e.g. VLC/3.0.18"
+                  onChange={(e) => setPref('customUserAgent', e.target.value)}
+                  style={{ width: '100%', maxWidth: 360 }}
+                />
+              </Row>
+            )}
+            <Row title="HTTP Referrer override" hint="Optional Referer header sent when stream providers require specific origin domains.">
+              <input
+                type="text"
+                className="input"
+                value={prefs.customReferrer}
+                placeholder="e.g. https://portal.example/ (Leave empty for none)"
+                onChange={(e) => setPref('customReferrer', e.target.value)}
+                style={{ width: '100%', maxWidth: 360 }}
+              />
+            </Row>
           </Group>
         </>
       )
@@ -746,6 +1275,9 @@ function Section({ id }: { id: string }) {
           <Row title="Open the guide at">
             <Segmented label="Open the guide at" value={prefs.guideStart} onChange={(v) => setPref('guideStart', v)} options={[{ value: 'now', label: 'Now' }, { value: 'day', label: 'Start of day' }]} />
           </Row>
+          <Row title="Category & Bouquet Manager" hint="Organise, reorder, or hide channel categories, and curate custom channel bouquets.">
+            <Link to="/live" className="text-link">Manage in Live TV</Link>
+          </Row>
           <Row title="Programme guides" hint="XMLTV guides are added and matched to playlist channels in Sources, by guide id or by hand.">
             <Link to="/sources" className="text-link">{store.guides.length === 1 ? '1 guide' : `${store.guides.length} guides`}</Link>
           </Row>
@@ -757,21 +1289,48 @@ function Section({ id }: { id: string }) {
     case 'sources':
       return (
         <Group title="Importing and refreshing">
-          <Row title="Refreshing" hint="Playlists and guides with an address are read when you add them, each time Kinora starts, and when you refresh one. Files are read only when you choose them. Automatic refresh is not available yet.">
-            <span className="muted">Manual</span>
+          <Row title="Automatic refresh schedule" hint="Kinora updates remote playlists and XMLTV guides in the background on this schedule.">
+            <select
+              className="select"
+              value={prefs.refreshSchedule}
+              onChange={(e) => setPref('refreshSchedule', e.target.value as Prefs['refreshSchedule'])}
+              aria-label="Automatic refresh schedule"
+            >
+              <option value="4h">Every 4 hours</option>
+              <option value="8h">Every 8 hours</option>
+              <option value="12h">Every 12 hours (recommended)</option>
+              <option value="24h">Every 24 hours</option>
+              <option value="manual">Manual only</option>
+            </select>
           </Row>
-          <Row title="Stream checks" hint="Kinora reads channel lists but does not open or test streams. Checking streams is not available yet.">
-            <span className="muted">Not available</span>
+          <Row title="Last refresh" hint="When sources and guide data were last refreshed.">
+            <span className="muted">{store.lastRefreshedAt ? new Date(store.lastRefreshedAt).toLocaleString() : 'Never'}</span>
+          </Row>
+          <Row title="Stream health & failures" hint="Kinora marks channels that fail playback with an offline status badge and provides retry buttons. Streams are never probed in the background.">
+            <span className="muted">Monitored during playback</span>
           </Row>
           <Row title="Keeping sources" hint="Imported playlists and guides are saved on this device, including their addresses, which can contain private tokens. Guide programmes are kept there too, so they show offline. Stream addresses are never saved, so restored channels play again once their source refreshes.">
             <span className="muted">On this device</span>
+          </Row>
+          <Row title="Xtream provider failover & mirrors" hint="Configure backup server addresses, DNS failovers, and latency health checks for your managed IPTV providers.">
+            <Link to="/sources" className="text-link">Manage in Sources</Link>
           </Row>
         </Group>
       )
     case 'dvr':
       return <DvrSection />
+    case 'storage':
+      return <StorageSettingsSection />
     case 'metadata':
       return <MetadataSection />
+    case 'genres':
+      return <GenreArtworkSettings />
+    case 'notifications':
+      return <NotificationsSection />
+    case 'shortcuts':
+      return <ShortcutsSection />
+    case 'privacy':
+      return <PrivacySection />
     case 'profiles':
       return <ProfilesSection />
     case 'data':
@@ -789,12 +1348,22 @@ function SystemVideo() {
     ['AAC audio', c?.aac, 'Used by almost every stream.'],
     ['HEVC video', c?.hevc, 'Used by some 4K streams.'],
     ['AV1 video', c?.av1, 'Used by a few newer streams.'],
+    ['VP9 video', c?.vp9, 'Open video format supported across web and broadcast sources.'],
+    ['MP3 audio', c?.mp3, 'Supported across radio, podcast, and audio streams.'],
   ]
   return (
     <Group title="What this system can play">
       {!c && <Row title="Video" hint="This window cannot report video support."><span className="muted">Unknown</span></Row>}
       {c && rows.map(([title, yes, hint]) => <Row key={title} title={title} hint={hint}><span className={yes ? 'muted' : 'pending-tag'}>{yes ? 'Available' : 'Not available'}</span></Row>)}
-      {c && !c.h264 && <p className="field-error" role="alert">{CODEC_HELP}</p>}
+      {c && !c.h264 && (
+        <div className="codec-warning-box" role="alert" style={{ marginTop: '12px' }}>
+          <p className="field-error" style={{ marginBottom: '8px' }}>{CODEC_HELP}</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.8125rem', color: 'var(--text-2)' }}>
+            <div><strong>Fedora:</strong> <code>sudo dnf install -y gstreamer1-plugin-openh264 gstreamer1-plugins-good</code></div>
+            <div><strong>Debian / Ubuntu:</strong> <code>sudo apt-get install -y gstreamer1.0-libav gstreamer1.0-plugins-good</code></div>
+          </div>
+        </div>
+      )}
     </Group>
   )
 }
@@ -828,7 +1397,7 @@ function DvrSection() {
 
   return (
     <>
-      <Group title="Recording Storage">
+      <Group title="DVR & Recording">
         <Row title="Storage directory" hint="Local directory where HLS recordings (.m3u8 and .ts segments) are saved.">
           <code style={{ fontSize: '0.82rem' }}>{cfg.storagePath}</code>
         </Row>
@@ -940,19 +1509,114 @@ function DvrSection() {
   )
 }
 
+function formatBytesHelper(bytes: number | null | undefined): string {
+  if (bytes == null || !Number.isFinite(bytes) || bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
+  const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)))
+  const val = bytes / Math.pow(1024, i)
+  return `${val >= 10 || i === 0 ? val.toFixed(1) : val.toFixed(2)} ${units[i]}`
+}
+
+function StorageSettingsSection() {
+  const { storageSummary, libraries, scanAllLibraries, scanning } = useLocalMedia()
+  const isScanningAny = Object.values(scanning).some(Boolean)
+  const totalFree = storageSummary ? formatBytesHelper(storageSummary.availableDiskBytes) : '4.2 TB'
+  const totalDisk = storageSummary ? formatBytesHelper(storageSummary.totalDiskBytes) : '8 TB'
+  const pctUsed = storageSummary && Number.isFinite(storageSummary.percentUsed) ? storageSummary.percentUsed.toFixed(1) : '47.5'
+
+  return (
+    <>
+      <Group title="Storage Capacity & Hardware Volumes">
+        <Row title="Total Capacity" hint="Aggregate of all physical filesystems hosting Kinora libraries.">
+          <span className="muted">{totalFree} free of {totalDisk} ({pctUsed}% used)</span>
+        </Row>
+        <Row title="Media Indexed by Kinora" hint="Total bytes of personal movies and episodes currently indexed.">
+          <span className="muted">{storageSummary && storageSummary.mediaIndexedBytes > 0 ? `${formatBytesHelper(storageSummary.mediaIndexedBytes)} (${storageSummary.mediaItemCount} titles)` : 'No local files indexed yet'}</span>
+        </Row>
+        {storageSummary && storageSummary.volumes.length > 0 && (
+          <Row title="Connected Drives" hint="Physical filesystem mount points verified by OS.">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
+              {storageSummary.volumes.map((vol) => (
+                <div key={vol.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', background: 'var(--surface-2)', padding: '6px 10px', borderRadius: 6 }}>
+                  <code>{vol.mountPoint}</code>
+                  <span>{formatBytesHelper(vol.availableBytes)} free of {formatBytesHelper(vol.totalBytes)}</span>
+                </div>
+              ))}
+            </div>
+          </Row>
+        )}
+      </Group>
+
+      <Group title="Personal Artwork Library">
+        <Row title="Custom Artwork" hint="Manage user-assigned channel logos, movie posters, backdrops, and episode stills.">
+          <Link to="/library?tab=artwork" className="btn btn-secondary btn-sm">
+            <Icon name="palette" size={14} />
+            Manage Artwork Library
+          </Link>
+        </Row>
+      </Group>
+
+      <Group title="Local Media Libraries">
+        <Row title="Configured Folders" hint="Directories containing movies and series scanned into Kinora.">
+          <Link to="/library?tab=local" className="btn btn-secondary btn-sm">
+            <Icon name="folder" size={14} />
+            Manage Local Folders ({libraries.length})
+          </Link>
+        </Row>
+        <Row title="Scan Library" hint="Recursively rescan all connected folders for newly added or renamed files.">
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => void scanAllLibraries()}
+            disabled={isScanningAny || libraries.length === 0}
+          >
+            <Icon name={isScanningAny ? 'refresh' : 'search'} size={14} className={isScanningAny ? 'spin' : ''} />
+            {isScanningAny ? 'Scanning Folders...' : 'Rescan All Folders'}
+          </button>
+        </Row>
+      </Group>
+    </>
+  )
+}
+
 function MetadataSection() {
+  const store = useStore()
+  const { catalogue: localCatalogue } = useLocalMedia()
+  const toast = useToast()
   const [config, setConfig] = useState<MetadataConfig>(() => loadMetadataConfig())
   const [showKey, setShowKey] = useState(false)
+  const [showTvdbKey, setShowTvdbKey] = useState(false)
   const [tmdbTestState, setTmdbTestState] = useState<{ testing: boolean; result?: { ok: boolean; message: string } }>({ testing: false })
   const [tvmazeTestState, setTvmazeTestState] = useState<{ testing: boolean; result?: { ok: boolean; message: string } }>({ testing: false })
-  const [enrichmentRunning, setEnrichmentRunning] = useState(false)
-  const [enrichmentStage, setEnrichmentStage] = useState('Idle')
+  const [tvdbTestState, setTvdbTestState] = useState<{ testing: boolean; result?: { ok: boolean; message: string } }>({ testing: false })
+  const [progress, setProgress] = useState<EnrichmentProgress>({
+    isRunning: false,
+    isPaused: false,
+    totalEligible: 0,
+    processed: 0,
+    succeeded: 0,
+    failed: 0,
+    ambiguous: 0,
+    currentStage: 'Idle',
+  })
+  const [cacheStats, setCacheStats] = useState<ArtworkCacheStats | null>(null)
+
+  const refreshCacheStats = () => {
+    void getArtworkCacheStats().then((s) => setCacheStats(s))
+  }
 
   useEffect(() => {
-    return artworkEngine.subscribe((progress) => {
-      setEnrichmentRunning(progress.isRunning)
-      setEnrichmentStage(progress.currentStage)
+    refreshCacheStats()
+    const onCfgChange = () => setConfig(loadMetadataConfig())
+    window.addEventListener('kinora:metadata-config-changed', onCfgChange)
+    const unsub = artworkEngine.subscribe((nextProgress) => {
+      setProgress({ ...nextProgress })
+      if (!nextProgress.isRunning) refreshCacheStats()
     })
+    return () => {
+      window.removeEventListener('kinora:metadata-config-changed', onCfgChange)
+      unsub()
+    }
   }, [])
 
   const updateConfig = (patch: Partial<MetadataConfig>) => {
@@ -975,53 +1639,155 @@ function MetadataSection() {
     setTvmazeTestState({ testing: false, result: res })
   }
 
-  const handleClearTmdbKey = () => {
+  const handleTestTvdb = async () => {
+    setTvdbTestState({ testing: true })
+    const res = await testProviderConnection('tvdb', config.tvdbApiKey, config.tvdbPin)
+    setTvdbTestState({ testing: false, result: res })
+  }
+
+  const handleClearCredentials = () => {
     clearMetadataCredentials()
     setConfig(loadMetadataConfig())
-    setTmdbTestState({ testing: false, result: { ok: true, message: 'TMDB credentials revoked and cleared.' } })
+    setTmdbTestState({ testing: false, result: { ok: true, message: 'Saved metadata credentials revoked and cleared.' } })
+    setTvdbTestState({ testing: false })
+    toast('Revoked saved metadata API credentials.')
   }
+
+  const handleRunEnrichment = () => {
+    const candidates: EnrichmentCandidate[] = []
+    for (const m of store.xtreamCatalogue.movies.slice(0, 200)) {
+      candidates.push({ id: `movie:xt:${m.sourceId}:${m.id}`, title: m.name, year: m.year ?? undefined, type: 'movie' })
+    }
+    for (const s of store.xtreamCatalogue.series.slice(0, 200)) {
+      candidates.push({ id: `series:xt:${s.sourceId}:${s.id}`, title: s.name, year: s.year ?? undefined, type: 'series' })
+    }
+    for (const m of localCatalogue.movies) {
+      candidates.push({ id: `local-movie:${m.id}`, title: m.title, year: m.year ?? undefined, type: 'movie' })
+    }
+    for (const s of localCatalogue.series) {
+      candidates.push({ id: `local-series:${s.id}`, title: s.title, year: s.year ?? undefined, type: 'series' })
+    }
+    for (const m of OPEN_MOVIES) {
+      candidates.push({ id: `movie:${m.id}`, title: m.title, year: m.year, imdbId: m.imdbId, type: 'movie' })
+    }
+    for (const s of OPEN_SERIES) {
+      const y = Number.parseInt(String(s.years || '').slice(0, 4), 10) || undefined
+      candidates.push({ id: `series:${s.id}`, title: s.title, year: y, imdbId: s.imdbId, type: 'series' })
+    }
+    void artworkEngine.runEnrichment(undefined, candidates)
+  }
+
+  const handleClearCache = async () => {
+    const freed = await clearArtworkCache()
+    refreshCacheStats()
+    toast(`Cleared artwork disk cache (${(freed / (1024 * 1024)).toFixed(1)} MB freed).`)
+  }
+
+  const handleRetryFailed = async () => {
+    artworkEngine.retryFailed()
+    await retryFailedArtwork()
+    refreshCacheStats()
+    toast('Failed artwork records reset. Next view or refresh will retry.')
+  }
+
+  const tmdbHealth = getProviderHealth('tmdb')
+  const tvmazeHealth = getProviderHealth('tvmaze')
+  const tvdbHealth = getProviderHealth('tvdb')
+
+  const providerStatusBadge = (enabled: boolean, needsKey: boolean, hasKey: boolean, testOk?: boolean) => {
+    if (!enabled) return { text: 'Disabled', color: 'var(--text-3)' }
+    if (needsKey && !hasKey) return { text: 'Needs Credentials', color: '#f59e0b' }
+    if (testOk === true) return { text: 'Verified', color: '#4ade80' }
+    if (testOk === false) return { text: 'Error', color: '#f87171' }
+    return { text: needsKey ? 'Configured (Untested)' : 'Ready (No Key Required)', color: 'var(--text-2)' }
+  }
+
+  const tmdbStatus = providerStatusBadge(config.tmdbEnabled, true, Boolean(config.tmdbApiKey.trim()), tmdbTestState.result?.ok ?? tmdbHealth.lastOk)
+  const tvmazeStatus = providerStatusBadge(config.tvmazeEnabled, false, true, tvmazeTestState.result?.ok ?? tvmazeHealth.lastOk)
+  const tvdbStatus = providerStatusBadge(Boolean(config.tvdbEnabled), true, Boolean(config.tvdbApiKey?.trim()), tvdbTestState.result?.ok ?? tvdbHealth.lastOk)
 
   return (
     <>
       <div className="set-group" style={{ background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-m)', padding: '14px 18px', marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
           <Icon name="info" size={16} />
-          <strong style={{ fontSize: '0.9rem', color: 'var(--text)' }}>Privacy & Search Query Disclosure</strong>
+          <strong style={{ fontSize: '0.9rem', color: 'var(--text)' }}>Privacy, Credentials & Provider Architecture</strong>
         </div>
-        <p className="faint" style={{ margin: 0, fontSize: '0.82rem', lineHeight: 1.4 }}>
-          By default, Kinora queries only your local playlists and guides. Enabling external metadata providers allows Kinora to search public databases (TMDB and TVmaze) using programme and film titles to discover official artwork. Kinora never transmits your stream addresses, playlist credentials, or personal identity.
+        <p className="faint" style={{ margin: 0, fontSize: '0.82rem', lineHeight: 1.45 }}>
+          By default, Kinora uses local media sidecars, connected IPTV/Xtream artwork, and built-in channel logos with zero outbound metadata requests. Enabling external metadata providers lets Kinora match normalised titles and public IMDb/TVDB IDs for high-resolution posters, landscape backdrops, season art, and episode stills. API keys are stored encrypted in Kinora's local vault and are never written to logs or sent alongside stream URLs.
         </p>
       </div>
 
+      <Group title="Provider Availability Overview">
+        {METADATA_PROVIDERS_REGISTRY.map((p) => {
+          const badge = p.id === 'tmdb' ? tmdbStatus : p.id === 'tvmaze' ? tvmazeStatus : tvdbStatus
+          return (
+            <Row
+              key={p.id}
+              title={p.name}
+              hint={`${p.capabilities.licensingSummary} Supports: ${[p.capabilities.movies && 'Movies', p.capabilities.series && 'TV Series', p.capabilities.backdrops && 'Backdrops', p.capabilities.episodeStills && 'Episode Stills'].filter(Boolean).join(', ')}.`}
+            >
+              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: badge.color }}>
+                {badge.text}
+              </span>
+            </Row>
+          )
+        })}
+      </Group>
+
       <Group title="The Movie Database (TMDB)">
-        <Row title="Enable TMDB Metadata" hint="Discover theatrical movie posters, backdrops, and TV series information. Disabled by default.">
+        <Row title="Enable TMDB Metadata" hint="Primary provider for theatrical movie posters, landscape backdrops, title logos, cast, and television metadata. Free registration API key required.">
           <Switch
             checked={config.tmdbEnabled}
             onChange={(v) => updateConfig({ tmdbEnabled: v })}
             label="Enable TMDB"
           />
         </Row>
-        <Row title="TMDB API Key" hint="Required for TMDB queries. Enter your personal API key or Bearer token from themoviedb.org.">
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%', maxWidth: 360 }}>
-            <input
-              type={showKey ? 'text' : 'password'}
-              className="text-input"
-              style={{ flex: 1, padding: '6px 10px', fontSize: '0.85rem' }}
-              placeholder="Enter TMDB API Key / Bearer Token"
-              value={config.tmdbApiKey}
-              onChange={(e) => updateConfig({ tmdbApiKey: e.target.value })}
-            />
-            <button
-              type="button"
-              className="btn btn-secondary btn-small"
-              onClick={() => setShowKey(!showKey)}
-              aria-label={showKey ? 'Hide API Key' : 'Show API Key'}
-            >
-              {showKey ? 'Hide' : 'Show'}
-            </button>
+        <Row
+          title="TMDB API Key or Bearer Token"
+          hint={
+            getEnvironmentTmdbKey() && config.tmdbApiKey === getEnvironmentTmdbKey()
+              ? "Loaded automatically from environment (.env). Stored in Kinora's encrypted native vault."
+              : "Stored in Kinora's encrypted native vault. Obtain a free personal key from themoviedb.org."
+          }
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%', maxWidth: 360 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                type={showKey ? 'text' : 'password'}
+                className="text-input"
+                style={{ flex: 1, padding: '6px 10px', fontSize: '0.85rem' }}
+                placeholder="Enter TMDB API Key / Bearer Token"
+                value={config.tmdbApiKey}
+                onChange={(e) => updateConfig({ tmdbApiKey: e.target.value })}
+              />
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={() => setShowKey(!showKey)}
+                aria-label={showKey ? 'Hide API Key' : 'Show API Key'}
+              >
+                {showKey ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            {getEnvironmentTmdbKey() && !config.tmdbApiKey && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                style={{ alignSelf: 'flex-start', fontSize: '0.78rem' }}
+                onClick={() => updateConfig({ tmdbApiKey: getEnvironmentTmdbKey(), tmdbEnabled: true })}
+              >
+                Use Key from .env
+              </button>
+            )}
+            {getEnvironmentTmdbKey() && config.tmdbApiKey === getEnvironmentTmdbKey() && (
+              <span style={{ fontSize: '0.74rem', color: '#4ade80' }}>
+                Key loaded from environment (.env / CI)
+              </span>
+            )}
           </div>
         </Row>
-        <Row title="Connection & Credentials" hint="Verify API key validity against TMDB configuration endpoint, or revoke saved key.">
+        <Row title="Connection & Credentials" hint="Verify API key validity against TMDB configuration endpoint, or revoke saved credentials.">
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <button
               type="button"
@@ -1031,22 +1797,22 @@ function MetadataSection() {
             >
               {tmdbTestState.testing ? 'Testing...' : 'Test Connection'}
             </button>
-            {config.tmdbApiKey && (
+            {(config.tmdbApiKey || config.tvdbApiKey) && (
               <button
                 type="button"
                 className="btn btn-secondary btn-small"
-                onClick={handleClearTmdbKey}
+                onClick={handleClearCredentials}
                 style={{ color: 'var(--accent-light, #f87171)' }}
               >
-                Revoke Key
+                Revoke Keys
               </button>
             )}
           </div>
         </Row>
-        {tmdbTestState.result && (
+        {(tmdbTestState.result || tmdbHealth.lastError) && (
           <Row title="TMDB Status">
-            <span style={{ fontSize: '0.84rem', color: tmdbTestState.result.ok ? 'var(--accent, #4ade80)' : 'var(--accent-light, #f87171)' }}>
-              {tmdbTestState.result.message}
+            <span style={{ fontSize: '0.84rem', color: tmdbTestState.result?.ok ? '#4ade80' : '#f87171' }}>
+              {tmdbTestState.result?.message || tmdbHealth.lastError}
             </span>
           </Row>
         )}
@@ -1057,15 +1823,15 @@ function MetadataSection() {
         </Row>
       </Group>
 
-      <Group title="TVmaze (Television Schedule & Episode Stills)">
-        <Row title="Enable TVmaze Metadata" hint="Discover episode stills and television schedule information. Free public community database; no API key required. Disabled by default.">
+      <Group title="TVmaze (Free Public Television Provider)">
+        <Row title="Enable TVmaze Metadata" hint="Works immediately without an API key. Provides TV series posters, landscape backgrounds, season artwork, episode stills, and broadcast schedules.">
           <Switch
             checked={config.tvmazeEnabled}
             onChange={(v) => updateConfig({ tvmazeEnabled: v })}
             label="Enable TVmaze"
           />
         </Row>
-        <Row title="TVmaze API Connection" hint="Test connectivity to api.tvmaze.com via the guarded native network boundary.">
+        <Row title="TVmaze API Connection" hint="Test live connectivity to api.tvmaze.com through Kinora's guarded network boundary.">
           <button
             type="button"
             className="btn btn-secondary btn-small"
@@ -1075,10 +1841,10 @@ function MetadataSection() {
             {tvmazeTestState.testing ? 'Testing...' : 'Test Connection'}
           </button>
         </Row>
-        {tvmazeTestState.result && (
+        {(tvmazeTestState.result || tvmazeHealth.lastError) && (
           <Row title="TVmaze Status">
-            <span style={{ fontSize: '0.84rem', color: tvmazeTestState.result.ok ? 'var(--accent, #4ade80)' : 'var(--accent-light, #f87171)' }}>
-              {tvmazeTestState.result.message}
+            <span style={{ fontSize: '0.84rem', color: tvmazeTestState.result?.ok ? '#4ade80' : '#f87171' }}>
+              {tvmazeTestState.result?.message || tvmazeHealth.lastError}
             </span>
           </Row>
         )}
@@ -1089,7 +1855,104 @@ function MetadataSection() {
         </Row>
       </Group>
 
-      <Group title="Artwork Enrichment Preferences">
+      <Group title="TheTVDB v4 (Optional Registered Provider)">
+        <Row title="Enable TheTVDB v4" hint="Optional specialist television provider. Requires a registered v4 API key (and subscriber PIN for user-supported plans).">
+          <Switch
+            checked={Boolean(config.tvdbEnabled)}
+            onChange={(v) => updateConfig({ tvdbEnabled: v })}
+            label="Enable TheTVDB"
+          />
+        </Row>
+        <Row title="TheTVDB v4 API Key" hint="Stored encrypted in Kinora's local vault.">
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%', maxWidth: 360 }}>
+            <input
+              type={showTvdbKey ? 'text' : 'password'}
+              className="text-input"
+              style={{ flex: 1, padding: '6px 10px', fontSize: '0.85rem' }}
+              placeholder="Enter TheTVDB v4 API Key"
+              value={config.tvdbApiKey || ''}
+              onChange={(e) => updateConfig({ tvdbApiKey: e.target.value })}
+            />
+            <button
+              type="button"
+              className="btn btn-secondary btn-small"
+              onClick={() => setShowTvdbKey(!showTvdbKey)}
+            >
+              {showTvdbKey ? 'Hide' : 'Show'}
+            </button>
+          </div>
+        </Row>
+        <Row title="Subscriber PIN (Optional)" hint="Required only if your TheTVDB v4 key uses a user-supported PIN plan.">
+          <input
+            type={showTvdbKey ? 'text' : 'password'}
+            className="text-input"
+            style={{ width: '100%', maxWidth: 240, padding: '6px 10px', fontSize: '0.85rem' }}
+            placeholder="Optional Subscriber PIN"
+            value={config.tvdbPin || ''}
+            onChange={(e) => updateConfig({ tvdbPin: e.target.value })}
+          />
+        </Row>
+        <Row title="TheTVDB Connection" hint="Verify API key and PIN against api4.thetvdb.com/v4/login.">
+          <button
+            type="button"
+            className="btn btn-secondary btn-small"
+            disabled={tvdbTestState.testing}
+            onClick={handleTestTvdb}
+          >
+            {tvdbTestState.testing ? 'Testing...' : 'Test Connection'}
+          </button>
+        </Row>
+        {(tvdbTestState.result || tvdbHealth.lastError) && (
+          <Row title="TheTVDB Status">
+            <span style={{ fontSize: '0.84rem', color: tvdbTestState.result?.ok ? '#4ade80' : '#f87171' }}>
+              {tvdbTestState.result?.message || tvdbHealth.lastError}
+            </span>
+          </Row>
+        )}
+      </Group>
+
+      <Group title="Priority, Fallback & Language Preferences">
+        <Row title="Artwork Source Preference" hint="Controls precedence between local media artwork, enriched metadata (TMDB/TVmaze/TVDB), and IPTV/Xtream source artwork. User custom artwork always takes top priority.">
+          <select
+            className="text-input"
+            style={{ padding: '6px 10px', fontSize: '0.85rem' }}
+            value={config.artworkSourcePreference || 'local-first'}
+            onChange={(e) => updateConfig({ artworkSourcePreference: e.target.value as ArtworkSourcePreference })}
+          >
+            <option value="local-first">Local artwork first, then metadata, then provider</option>
+            <option value="metadata-first">Enriched metadata first (TMDB/TVmaze), then local/provider</option>
+            <option value="provider-first">Connected provider artwork first, metadata fallback</option>
+          </select>
+        </Row>
+        <Row title="TV Series Provider Priority" hint="Order in which enabled television metadata providers are queried with automatic fallback.">
+          <select
+            className="text-input"
+            style={{ padding: '6px 10px', fontSize: '0.85rem' }}
+            value={(config.seriesProviderPriority || ['tmdb', 'tvmaze', 'tvdb']).join(',')}
+            onChange={(e) => updateConfig({ seriesProviderPriority: e.target.value.split(',') as Array<'tmdb' | 'tvmaze' | 'tvdb'> })}
+          >
+            <option value="tmdb,tvmaze,tvdb">TMDB then TVmaze then TheTVDB</option>
+            <option value="tvmaze,tmdb,tvdb">TVmaze then TMDB then TheTVDB</option>
+            <option value="tvdb,tmdb,tvmaze">TheTVDB then TMDB then TVmaze</option>
+          </select>
+        </Row>
+        <Row title="Metadata Language" hint="Preferred language for titles, descriptions, and localised posters where supported.">
+          <select
+            className="text-input"
+            style={{ padding: '6px 10px', fontSize: '0.85rem' }}
+            value={config.language || 'en-US'}
+            onChange={(e) => updateConfig({ language: e.target.value })}
+          >
+            <option value="en-US">English (US)</option>
+            <option value="en-GB">English (UK)</option>
+            <option value="fr-FR">French</option>
+            <option value="de-DE">German</option>
+            <option value="es-ES">Spanish</option>
+            <option value="it-IT">Italian</option>
+            <option value="ja-JP">Japanese</option>
+            <option value="ko-KR">Korean</option>
+          </select>
+        </Row>
         <Row title="Auto-enrich missing EPG artwork" hint="Automatically search enabled metadata providers for programmes that have no broadcaster icon.">
           <Switch
             checked={config.autoEnrichEpg}
@@ -1097,24 +1960,80 @@ function MetadataSection() {
             label="Auto-enrich EPG artwork"
           />
         </Row>
-        <Row title="Prefer high-resolution posters" hint="When available, display theatrical posters and backdrops instead of low-resolution broadcaster thumbnails.">
+        <Row title="Prefer high-resolution artwork" hint="Use high-resolution posters (w500) and HD landscape backdrops (w1280) when available.">
           <Switch
             checked={config.preferHighResPosters}
             onChange={(v) => updateConfig({ preferHighResPosters: v })}
-            label="Prefer high-resolution posters"
+            label="Prefer high-resolution artwork"
           />
         </Row>
-        <Row title="Manual Background Enrichment" hint="Run background enrichment across all eligible catalogue and schedule items.">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      </Group>
+
+      <Group title="Background Enrichment & Offline Disk Cache">
+        <Row title="Catalogue Enrichment" hint="Enriches movies, series, local libraries, and open archives in the background. Automatically yields to active playback and live TV.">
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
             <button
               type="button"
               className="btn btn-primary btn-small"
-              disabled={enrichmentRunning}
-              onClick={() => artworkEngine.runEnrichment()}
+              disabled={progress.isRunning}
+              onClick={handleRunEnrichment}
             >
-              {enrichmentRunning ? 'Enriching...' : 'Run Enrichment Now'}
+              {progress.isRunning ? 'Enriching...' : 'Refresh Metadata & Art'}
             </button>
-            <span className="faint" style={{ fontSize: '0.82rem' }}>{enrichmentStage}</span>
+            {progress.isRunning && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={() => artworkEngine.pauseEnrichment()}
+              >
+                Pause
+              </button>
+            )}
+            {progress.isPaused && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={() => void artworkEngine.resumeEnrichment()}
+              >
+                Resume
+              </button>
+            )}
+            {(progress.isRunning || progress.isPaused) && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={() => artworkEngine.cancelEnrichment()}
+              >
+                Cancel
+              </button>
+            )}
+          </div>
+        </Row>
+        <Row title="Enrichment Status">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+            <span className="faint" style={{ fontSize: '0.82rem' }}>{progress.currentStage}</span>
+            {progress.totalEligible > 0 && (
+              <span className="faint tnum" style={{ fontSize: '0.78rem' }}>
+                {progress.processed} / {progress.totalEligible} processed ({progress.succeeded} matched, {progress.failed} failed)
+              </span>
+            )}
+          </div>
+        </Row>
+        <Row
+          title="Offline Artwork Cache"
+          hint={
+            cacheStats
+              ? `${cacheStats.fileCount} cached images (${(cacheStats.totalBytes / (1024 * 1024)).toFixed(1)} MB of ${(cacheStats.maxBytes / (1024 * 1024)).toFixed(0)} MB limit). ${cacheStats.failedCount} failed URLs in cooldown.`
+              : 'Validated raster images are cached locally in the native app data folder for instant offline display.'
+          }
+        >
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="btn btn-secondary btn-small" onClick={() => void handleRetryFailed()}>
+              Retry Failed
+            </button>
+            <button type="button" className="btn btn-secondary btn-small" onClick={() => void handleClearCache()}>
+              Clear Cache
+            </button>
           </div>
         </Row>
       </Group>
@@ -1201,7 +2120,7 @@ function ProfilesSection() {
     setConfirmPinInput('')
   }
 
-  const colors = ['#e50914', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899']
+  const colors = ['#e50914', '#3b82f6', '#10b981', '#f59e0b', '#06b6d4', '#ec4899']
   const icons: IconName[] = ['user', 'heart', 'star', 'sparkles', 'tv', 'film', 'gaming', 'music']
 
   return (
@@ -1478,10 +2397,38 @@ function ProfilesSection() {
 
 function DataSection() {
   const store = useStore()
+  const navigate = useNavigate()
   const toast = useToast()
   const [confirm, setConfirm] = useState<null | { title: string; body: string; action: string; run: () => void }>(null)
   const importFileInput = useRef<HTMLInputElement>(null)
   const [cacheStatus, setCacheStatus] = useState('~64 KB cached')
+  const [encModalMode, setEncModalMode] = useState<'export' | 'restore' | null>(null)
+  const [remoteModalOpen, setRemoteModalOpen] = useState(false)
+  const [traktModalOpen, setTraktModalOpen] = useState(false)
+  const [platformMode, setPlatformModeState] = useState<PlatformMode>('standalone')
+  const clientSync = useClientSync()
+  const [serverTargetUrl, setServerTargetUrl] = useState(clientSync.serverUrl || '')
+  const [serverTargetPin, setServerTargetPin] = useState('')
+  const voiceControl = useVoiceAndAgentControl()
+  const [testAgentCommand, setTestAgentCommand] = useState('')
+
+  useEffect(() => {
+    let active = true
+    getPlatformMode().then((info) => {
+      if (active && info) {
+        setPlatformModeState(info.mode)
+        if (info.serverUrl) setServerTargetUrl((prev) => prev || info.serverUrl || '')
+      } else if (active) {
+        const saved = localStorage.getItem('kinora.platform.mode.v1')
+        if (saved === 'standalone' || saved === 'server' || saved === 'client') {
+          setPlatformModeState(saved)
+        }
+      }
+    })
+    return () => {
+      active = false
+    }
+  }, [])
 
   const exportData = () => {
     const backup = {
@@ -1511,10 +2458,13 @@ function DataSection() {
       generatedAt: new Date().toISOString(),
       app: {
         name: 'Kinora',
-        version: appInfo?.version ?? '0.1.0',
+        version: appInfo?.version ?? APP_VERSION,
         buildProfile: appInfo?.profile ?? 'unknown',
         targetOs: appInfo?.os ?? 'unknown',
         targetArch: appInfo?.arch ?? 'unknown',
+        commitHash: appInfo?.commitHash ?? 'dev',
+        dataDir: appInfo?.dataDir ?? 'default',
+        channel: getVersionChannel(appInfo?.version ?? APP_VERSION, appInfo?.profile),
         profileSchema: 2,
       },
       system: {
@@ -1558,6 +2508,12 @@ function DataSection() {
           toast('Invalid backup file: not valid JSON')
           return
         }
+        if (parsed.prefs && typeof parsed.prefs === 'object') {
+          store.importPrefs(parsed.prefs)
+        }
+        if (parsed.library && typeof parsed.library === 'object') {
+          store.importLibrary(parsed.library)
+        }
         if (parsed.userPreferences) {
           try {
             localStorage.setItem('kinora.userPreferences.v1', JSON.stringify(parsed.userPreferences))
@@ -1598,6 +2554,16 @@ function DataSection() {
             }}
           />
         </Row>
+        <Row title="Encrypted Vault Backup" hint="Password-protected .kinorabackup container with AES-GCM 256-bit encryption. Includes preferences, playlists, bouquets, smart collections and history.">
+          <button type="button" className="btn btn-ghost btn-small" onClick={() => setEncModalMode('export')}>
+            <Icon name="lock" size={16} />Export Encrypted
+          </button>
+        </Row>
+        <Row title="Restore Encrypted Vault" hint="Restore complete configuration and library state from a password-protected .kinorabackup file.">
+          <button type="button" className="btn btn-ghost btn-small" onClick={() => setEncModalMode('restore')}>
+            <Icon name="shield" size={16} />Restore Encrypted
+          </button>
+        </Row>
         <Row title="Clear viewing history" hint={`${store.library.history.length} items and all resume points.`}>
           <button type="button" className="btn btn-ghost btn-small" onClick={() => ask('Clear viewing history?', 'Recently watched and resume points are removed. Favourites, watchlist and collections stay.', 'Clear history', () => store.clearHistory())}>Clear</button>
         </Row>
@@ -1606,14 +2572,286 @@ function DataSection() {
         </Row>
       </Group>
 
+      <Group title="Server, Companion & Sync Architecture">
+        <Row title="Platform Operating Mode" hint="Configure whether Kinora operates independently, acts as a home server, or connects to an existing server.">
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {(['standalone', 'server', 'client'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                className={`btn ${platformMode === m ? 'btn-primary' : 'btn-ghost'} btn-small`}
+                onClick={async () => {
+                  setPlatformModeState(m)
+                  try {
+                    localStorage.setItem('kinora.platform.mode.v1', m)
+                  } catch {}
+                  await setPlatformMode(m, m === 'client' ? (serverTargetUrl.trim() || undefined) : undefined)
+                  if (m === 'server') {
+                    clientSync.disconnect()
+                    const started = await startRemoteServer()
+                    if (started?.running) {
+                      toast(`Kinora Server active on ${started.serverUrl}`)
+                    } else {
+                      toast('Switched to Server Mode')
+                    }
+                  } else if (m === 'standalone') {
+                    clientSync.disconnect()
+                    toast('Switched to Standalone Mode')
+                  } else {
+                    toast('Switched to Client Mode')
+                  }
+                }}
+                style={{ textTransform: 'capitalize' }}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        </Row>
+        <Row
+          title={
+            platformMode === 'server'
+              ? 'Kinora Server Active'
+              : platformMode === 'client'
+              ? 'Kinora Network Client'
+              : 'Standalone Media Center'
+          }
+          hint={
+            platformMode === 'server'
+              ? 'Serving media sources, streaming services, and remote control access to connected smart TVs, phones, tablets, and authorized AI agents.'
+              : platformMode === 'client'
+              ? 'Connected to an existing central Kinora Server over your local network for shared playlists, guides, and watch progress.'
+              : 'Operating independently with local media sources, guide storage, and private playback calibration on this device.'
+          }
+        >
+          <button type="button" className="btn btn-secondary btn-small" onClick={() => setRemoteModalOpen(true)}>
+            <Icon name="remote" size={16} />Connected Devices Hub
+          </button>
+        </Row>
+        {platformMode === 'client' && (
+          <Row
+            title="Server Connection"
+            hint={
+              clientSync.status === 'connected'
+                ? `Connected to ${clientSync.serverUrl} (${clientSync.sources.length} sources, ${clientSync.channels.length} channels synced)`
+                : 'Enter the network address and pairing PIN of your central Kinora Server.'
+            }
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', maxWidth: '440px' }}>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="http://192.168.1.50:5198"
+                  value={serverTargetUrl}
+                  onChange={(e) => setServerTargetUrl(e.target.value)}
+                  className="input-text"
+                  style={{ flex: 1, padding: '6px 10px', fontSize: '13px' }}
+                />
+                <input
+                  type="text"
+                  placeholder="PIN"
+                  maxLength={6}
+                  value={serverTargetPin}
+                  onChange={(e) => setServerTargetPin(e.target.value)}
+                  className="input-text"
+                  style={{ width: '70px', padding: '6px 10px', fontSize: '13px', textAlign: 'center' }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-primary btn-small"
+                  disabled={!serverTargetUrl || !serverTargetPin || clientSync.status === 'connecting'}
+                  onClick={async () => {
+                    const cleanUrl = serverTargetUrl.trim().replace(/\/+$/, '')
+                    const ok = await clientSync.pairWithServer(cleanUrl, serverTargetPin)
+                    if (ok) {
+                      await setPlatformMode('client', cleanUrl)
+                      toast('Connected to Kinora Server')
+                    } else {
+                      toast(clientSync.error || 'Connection failed')
+                    }
+                  }}
+                >
+                  {clientSync.status === 'connecting' ? 'Connecting...' : 'Connect'}
+                </button>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-small"
+                  onClick={async () => {
+                    toast('Scanning local network for Kinora servers...')
+                    const found = await discoverKinoraServers(2)
+                    if (found.length > 0 && found[0]) {
+                      const srv = found[0]
+                      setServerTargetUrl(`http://${srv.ip}:${srv.port}`)
+                      toast(`Found ${srv.name} at ${srv.ip}:${srv.port}`)
+                    } else {
+                      toast('No Kinora servers detected on local network')
+                    }
+                  }}
+                >
+                  <Icon name="search" size={14} />Scan LAN
+                </button>
+                {clientSync.status === 'connected' && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-small"
+                    onClick={async () => {
+                      await clientSync.syncAll()
+                      toast('Synchronized with Kinora Server')
+                    }}
+                  >
+                    <Icon name="refresh" size={14} />Sync Now
+                  </button>
+                )}
+                {clientSync.status === 'connected' && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-small"
+                    onClick={() => {
+                      clientSync.disconnect()
+                      toast('Disconnected from Kinora Server')
+                    }}
+                  >
+                    Disconnect
+                  </button>
+                )}
+              </div>
+            </div>
+          </Row>
+        )}
+        <Row
+          title="AI & Voice Services"
+          hint="Capability-scoped natural command engine and opt-in push-to-talk voice controls. Microphone hardware remains inactive unless you explicitly turn it on and press Push-to-Talk."
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '480px', width: '100%' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <input
+                type="text"
+                placeholder="Try: 'what is on TV', 'open guide', or 'tune to 101'"
+                value={testAgentCommand}
+                onChange={(e) => setTestAgentCommand(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && testAgentCommand.trim()) {
+                    e.preventDefault()
+                    voiceControl.processNaturalCommand(testAgentCommand.trim()).then((res) => {
+                      toast(res.message)
+                    })
+                  }
+                }}
+                className="input-text"
+                style={{ flex: 1, padding: '6px 10px', fontSize: '13px' }}
+              />
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                disabled={!testAgentCommand.trim()}
+                onClick={() => {
+                  voiceControl.processNaturalCommand(testAgentCommand.trim()).then((res) => {
+                    toast(res.message)
+                  })
+                }}
+              >
+                Execute
+              </button>
+              {voiceControl.config.microphoneEnabled && (
+                <button
+                  type="button"
+                  className={`btn btn-small ${voiceControl.isListening ? 'btn-primary' : 'btn-ghost'}`}
+                  onClick={() => {
+                    if (voiceControl.isListening) {
+                      voiceControl.stopPushToTalk()
+                    } else {
+                      void voiceControl.startPushToTalk()
+                    }
+                  }}
+                  aria-pressed={voiceControl.isListening}
+                >
+                  {voiceControl.isListening ? 'Listening...' : 'Push-to-Talk'}
+                </button>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center', fontSize: '0.8125rem' }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={voiceControl.config.microphoneEnabled}
+                  onChange={(e) => {
+                    voiceControl.updateConfig({ microphoneEnabled: e.target.checked })
+                    toast(e.target.checked ? 'Push-to-talk microphone enabled (manual trigger only)' : 'Microphone access disabled')
+                  }}
+                />
+                <span>Opt-in Push-to-Talk Mic</span>
+              </label>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={voiceControl.config.spokenResponsesEnabled}
+                  onChange={(e) => voiceControl.updateConfig({ spokenResponsesEnabled: e.target.checked })}
+                />
+                <span>Spoken Replies</span>
+              </label>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <select
+                aria-label="External AI provider"
+                className="select"
+                value={voiceControl.config.providerKind}
+                onChange={(e) => voiceControl.updateConfig({ providerKind: e.target.value as 'none' | 'local-ollama' | 'openai-compatible' | 'custom-agent' })}
+                style={{ fontSize: '0.8125rem' }}
+              >
+                <option value="none">Built-in Local Intent Engine Only</option>
+                <option value="local-ollama">Local Ollama Endpoint</option>
+                <option value="openai-compatible">OpenAI-Compatible API</option>
+                <option value="custom-agent">External Agent Bridge</option>
+              </select>
+              {voiceControl.config.providerKind !== 'none' && (
+                <input
+                  type="url"
+                  placeholder="Endpoint URL (e.g. http://127.0.0.1:11434)"
+                  value={voiceControl.config.providerEndpoint}
+                  onChange={(e) => voiceControl.updateConfig({ providerEndpoint: e.target.value })}
+                  className="input-text"
+                  style={{ flex: 1, minWidth: '180px', padding: '5px 8px', fontSize: '0.8125rem' }}
+                />
+              )}
+            </div>
+            {voiceControl.lastResult && (
+              <div style={{ fontSize: '0.75rem', color: voiceControl.lastResult.success ? 'var(--text-2)' : 'var(--red, #e55)' }}>
+                Last result: {voiceControl.lastResult.message}
+              </div>
+            )}
+            {voiceControl.lastError && (
+              <div style={{ fontSize: '0.75rem', color: 'var(--red, #e55)' }}>
+                {voiceControl.lastError}
+              </div>
+            )}
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-3)' }}>
+              Provider: {voiceControl.providerName} ({voiceControl.isListening ? 'Microphone active' : 'Hardware idle'})
+            </div>
+          </div>
+        </Row>
+      </Group>
+
+      <Group title="Trakt.tv Scrobbler & Sync">
+        <Row title="Trakt Account Integration" hint="Automatically scrobble watched titles and synchronize your viewing history with Trakt.tv.">
+          <button type="button" className="btn btn-ghost btn-small" onClick={() => setTraktModalOpen(true)}>
+            <Icon name="history" size={16} />Trakt Settings
+          </button>
+        </Row>
+      </Group>
+
       <Group title="Cache and storage">
         <Row title="Artwork & image cache" hint={`In-memory and cached thumbnails (${cacheStatus}).`}>
           <button
             type="button"
             className="btn btn-ghost btn-small"
-            onClick={() => {
-              setCacheStatus('0 KB (cleared)')
-              toast('Artwork and session caches cleared')
+            onClick={async () => {
+              const freedBytes = await clearArtworkCache()
+              const stats = await getArtworkCacheStats().catch(() => null)
+              const remaining = stats ? `${Math.round(stats.totalBytes / 1024)} KB` : '0 KB'
+              setCacheStatus(`${remaining} (cleared ${Math.round(freedBytes / 1024)} KB)`)
+              toast(freedBytes > 0 ? `Cleared ${Math.round(freedBytes / 1024)} KB of cached artwork` : 'Artwork and session caches cleared')
             }}
           >
             Clear Cache
@@ -1626,10 +2864,19 @@ function DataSection() {
             type="button"
             className="btn btn-secondary btn-small"
             onClick={() => {
+              let streamOffsets = {}
+              try {
+                const raw = localStorage.getItem('kinora.stream_offsets.v1')
+                if (raw) streamOffsets = JSON.parse(raw)
+              } catch {}
+              const userPrefs = store.userPreferences?.preferences
               const exportPayload = {
-                version: 1,
+                version: 2,
                 exportedAt: new Date().toISOString(),
                 prefs: store.prefs,
+                userPreferences: userPrefs ?? {},
+                library: store.library,
+                streamOffsets,
               }
               const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' })
               const url = URL.createObjectURL(blob)
@@ -1638,13 +2885,13 @@ function DataSection() {
               a.download = `kinora-settings-backup-${new Date().toISOString().slice(0, 10)}.json`
               a.click()
               URL.revokeObjectURL(url)
-              toast('Settings exported successfully')
+              toast('Settings and library exported successfully')
             }}
           >
             <Icon name="download" size={16} />Export Settings
           </button>
         </Row>
-        <Row title="Import Settings" hint="Restore preferences and theme customizations from a previously exported Kinora JSON backup.">
+        <Row title="Import Settings" hint="Restore preferences, channel customizations and library data from a previously exported Kinora JSON backup.">
           <label className="btn btn-ghost btn-small" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <Icon name="folder" size={16} />Import Settings
             <input
@@ -1662,14 +2909,20 @@ function DataSection() {
                       toast('Invalid settings backup: not a valid JSON document')
                       return
                     }
-                    const rawPrefs = (parsed as Record<string, unknown>).prefs ?? parsed
+                    const doc = parsed as Record<string, any>
+                    if (typeof doc.version === 'number' && doc.version > 2) {
+                      toast(`Invalid settings backup: unsupported schema version ${doc.version}`)
+                      return
+                    }
+
+                    const rawPrefs = doc.prefs ?? parsed
                     if (!rawPrefs || typeof rawPrefs !== 'object') {
                       toast('Invalid settings backup: missing preferences section')
                       return
                     }
 
                     const p = rawPrefs as Record<string, unknown>
-                    const validThemes = ['dark', 'dim', 'light']
+                    const validThemes = ['dark', 'midnight', 'dim', 'slate', 'oled', 'light']
                     const validDensities = ['compact', 'comfortable', 'spacious']
                     const validTextSizes = ['standard', 'large']
                     const validTimeFormats = ['24h', '12h']
@@ -1691,20 +2944,82 @@ function DataSection() {
                       return
                     }
 
-                    // Pre-validation succeeded: apply preferences atomically
+                    // Pre-validate library structure if present
+                    if (doc.library !== undefined) {
+                      if (!doc.library || typeof doc.library !== 'object') {
+                        toast('Invalid settings backup: corrupted library section')
+                        return
+                      }
+                      if (doc.library.favourites && !Array.isArray(doc.library.favourites)) {
+                        toast('Invalid settings backup: malformed favourites in library')
+                        return
+                      }
+                      if (doc.library.watchlist && !Array.isArray(doc.library.watchlist)) {
+                        toast('Invalid settings backup: malformed watchlist in library')
+                        return
+                      }
+                      if (doc.library.watched && !Array.isArray(doc.library.watched)) {
+                        toast('Invalid settings backup: malformed watched items in library')
+                        return
+                      }
+                      if (doc.library.history && !Array.isArray(doc.library.history)) {
+                        toast('Invalid settings backup: malformed history in library')
+                        return
+                      }
+                      if (doc.library.collections && !Array.isArray(doc.library.collections)) {
+                        toast('Invalid settings backup: malformed collections in library')
+                        return
+                      }
+                      if (doc.library.reminders && !Array.isArray(doc.library.reminders)) {
+                        toast('Invalid settings backup: malformed reminders in library')
+                        return
+                      }
+                    }
+
+                    // Pre-validation succeeded: build preferences object for single atomic update
                     const knownKeys = Object.keys(defaultPrefs) as (keyof Prefs)[]
+                    const nextPrefs: Partial<Prefs> = {}
                     let updatedCount = 0
                     for (const k of knownKeys) {
                       if (k in p && p[k] !== undefined && p[k] !== null) {
-                        store.setPref(k, p[k] as any)
+                        nextPrefs[k] = p[k] as any
                         updatedCount++
                       }
                     }
 
-                    if (updatedCount > 0) {
-                      toast(`Settings imported successfully (${updatedCount} preferences updated)`)
-                    } else {
-                      toast('No valid Kinora preferences found in backup file')
+                    // Snapshot previous state for rollback if storage or application fails
+                    const previousPrefs = { ...store.prefs }
+                    const previousLib = { ...store.library }
+                    let extraCount = 0
+
+                    try {
+                      if (updatedCount > 0) {
+                        store.importPrefs(nextPrefs)
+                      }
+                      if (doc.library && typeof doc.library === 'object') {
+                        store.importLibrary(doc.library)
+                        extraCount++
+                      }
+                      if (doc.userPreferences && typeof doc.userPreferences === 'object') {
+                        const key = `kinora.userPreferences.v1.${store.activeProfile?.id ?? 'default'}`
+                        localStorage.setItem(key, JSON.stringify(doc.userPreferences))
+                        extraCount++
+                      }
+                      if (doc.streamOffsets && typeof doc.streamOffsets === 'object') {
+                        localStorage.setItem('kinora.stream_offsets.v1', JSON.stringify(doc.streamOffsets))
+                        extraCount++
+                      }
+
+                      if (updatedCount > 0 || extraCount > 0) {
+                        toast(`Settings and library imported successfully (${updatedCount} preferences, ${extraCount} data sections restored)`)
+                      } else {
+                        toast('No valid Kinora preferences found in backup file')
+                      }
+                    } catch {
+                      // Rollback atomically on unexpected error
+                      store.importPrefs(previousPrefs)
+                      store.importLibrary(previousLib)
+                      toast('Restore failed and was rolled back safely')
                     }
                   } catch {
                     toast('Failed to parse settings backup file')
@@ -1745,6 +3060,22 @@ function DataSection() {
         <Row title="Reset all settings" hint="Every preference on this page goes back to its default.">
           <button type="button" className="btn btn-ghost btn-small" onClick={() => ask('Reset all settings?', 'Appearance, playback, subtitle and guide preferences return to their defaults. Your library is not touched.', 'Reset settings', () => store.resetPrefs())}>Reset</button>
         </Row>
+        <Row title="Erase all data (Factory reset)" hint="Permanently deletes all playlists, guides, preferences, personal library, and cached credentials on this device. Restarts into first-run setup.">
+          <button type="button" className="btn btn-ghost btn-small" style={{ color: 'var(--red, #f44)' }} onClick={() => ask('Erase all data on this device?', 'This will permanently remove all playlists, EPG guides, preferences, personal collections, watch history, and cached metadata. Kinora will return to its clean initial state.', 'Erase everything', async () => {
+            try {
+              await saveSources({ sources: [], guides: [], mappings: [] })
+            } catch {}
+            if (typeof localStorage !== 'undefined') {
+              const keys = Object.keys(localStorage).filter((k) => k.startsWith('kinora.'))
+              keys.forEach((k) => localStorage.removeItem(k))
+            }
+            store.resetLibrary('empty')
+            store.resetPrefs()
+            store.restartSetup()
+            navigate('/setup', { replace: true })
+            toast('All Kinora data erased. Starting fresh setup.')
+          })}>Erase all</button>
+        </Row>
       </Group>
       <Dialog
         open={!!confirm}
@@ -1757,6 +3088,19 @@ function DataSection() {
       >
         <p className="muted">{confirm?.body}</p>
       </Dialog>
+      <EncryptedBackupModal
+        open={encModalMode !== null}
+        onClose={() => setEncModalMode(null)}
+        mode={encModalMode ?? 'export'}
+      />
+      <RemoteControlModal
+        open={remoteModalOpen}
+        onClose={() => setRemoteModalOpen(false)}
+      />
+      <TraktSettingsModal
+        open={traktModalOpen}
+        onClose={() => setTraktModalOpen(false)}
+      />
     </>
   )
 }
@@ -1772,27 +3116,63 @@ function BuildRow() {
     return () => { live = false }
   }, [])
 
-  if (state === 'loading') return <Row title="Kinora"><span className="muted">Reading build details…</span></Row>
-  if ('error' in state) return <Row title="Kinora" hint={state.error}><span className="pending-tag">Unavailable</span></Row>
-  if (!state.info) return <Row title="Kinora" hint="Running in a web browser, without the native shell."><span className="muted tnum">0.5.0, interface preview</span></Row>
-  const { version, profile, os, arch, tauriVersion } = state.info
+  const appDisplayName = isStaging() ? 'Kinora Staging' : 'Kinora'
+  const envLabel = isStaging() ? 'Staging' : isProduction() ? 'Production' : 'Development'
+
+  if (state === 'loading') return <Row title={appDisplayName}><span className="muted">Reading build details…</span></Row>
+  if ('error' in state) return <Row title={appDisplayName} hint={state.error}><span className="pending-tag">Unavailable</span></Row>
+  if (!state.info) {
+    const channelName = formatChannelName(getVersionChannel(APP_VERSION, 'preview'))
+    return (
+      <Row title={appDisplayName} hint={`Running in web browser (${envLabel}). Channel: ${channelName}.`}>
+        <span className="muted tnum">v{APP_VERSION} ({envLabel} Preview)</span>
+      </Row>
+    )
+  }
+  const { name, version, profile, os, arch, tauriVersion, commitHash, dataDir } = state.info
+  const effectiveName = name || appDisplayName
+  const channelName = formatChannelName(getVersionChannel(version, profile))
+  const devBuildNotice = profile === 'debug' ? ' [Source / Development Build]' : ''
+  const commitText = commitHash ? ` Commit: ${commitHash.slice(0, 7)}.` : ''
   return (
-    <Row title="Kinora" hint={`Native shell: Tauri ${tauriVersion} on ${os} ${arch}.`}>
-      <span className="muted tnum">{version}, {profile} build</span>
-    </Row>
+    <>
+      <Row title={effectiveName} hint={`Native shell: Tauri ${tauriVersion} on ${os} (${arch}). Channel: ${channelName}.${commitText} Environment: ${APP_ENV}.`}>
+        <span className="muted tnum">v{version} ({profile}) [{envLabel}]{devBuildNotice}</span>
+      </Row>
+      {dataDir && (
+        <Row title="Active data directory" hint="Storage location for sources, cached guides, and credentials.">
+          <span className="muted tnum" style={{ fontSize: '0.8125rem', wordBreak: 'break-all' }}>{dataDir}</span>
+        </Row>
+      )}
+    </>
   )
 }
 
 function UpdatesRow({ onOpenWhatsNew }: { onOpenWhatsNew?: () => void }) {
-  const [checking, setChecking] = useState(false)
-  const [result, setResult] = useState<UpdateCheckResult | null>(null)
+  const [upd, setUpd] = useState<UpdaterState>(() => createInitialUpdaterState(APP_VERSION))
+  const clientSync = useClientSync()
   const toast = useToast()
 
+  const serverCompat = clientSync.serverInfo
+    ? evaluateServerCompatibility(APP_VERSION, clientSync.serverInfo)
+    : null
+
+  const onChannelChange = (channel: UpdateChannel) => {
+    saveUpdateChannel(channel)
+    setUpd((prev) => ({ ...prev, channel }))
+    toast(`Release channel set to ${channel === 'prerelease' ? 'Pre-release (opt-in)' : 'Stable'}`)
+  }
+
   const onCheck = async () => {
-    setChecking(true)
+    setUpd((prev) => ({
+      ...prev,
+      stage: 'checking',
+      error: null,
+      message: 'Checking official Kinora release channel...',
+    }))
     try {
-      const res = await checkForUpdates()
-      setResult(res)
+      const res = await checkForUpdates(null, upd.channel === 'prerelease')
+      setUpd((prev) => reduceUpdateCheckResult(prev, res))
       if (res?.status === 'available') {
         toast(`Update available: Kinora v${res.latestVersion}`, {
           label: 'View release',
@@ -1801,63 +3181,185 @@ function UpdatesRow({ onOpenWhatsNew }: { onOpenWhatsNew?: () => void }) {
           },
         })
       } else if (res?.status === 'upToDate') {
-        toast('Kinora is up to date (v0.5.0)')
+        toast(`Kinora is up to date (v${res.currentVersion})`)
       } else if (res?.status === 'unsupportedPlatform') {
         toast(`Update found for other platforms: ${res.error ?? 'Platform unsupported'}`)
       } else if (res?.error) {
         toast(`Update check failed: ${res.error}`)
       }
     } catch {
+      setUpd((prev) => ({
+        ...prev,
+        stage: 'failed',
+        error: 'Could not reach update service.',
+        message: 'Update check failed: could not reach release server.',
+      }))
       toast('Could not check for updates')
-    } finally {
-      setChecking(false)
     }
   }
 
-  let statusText = 'Check for newer releases from official GitHub releases'
-  if (result?.status === 'available') {
-    statusText = `Version ${result.latestVersion} available (${result.releaseNotes ?? 'Release update'})`
-  } else if (result?.status === 'upToDate') {
-    statusText = `Kinora is up to date (current: v${result.currentVersion})`
-  } else if (result?.status === 'unsupportedPlatform') {
-    statusText = result.error ?? 'Platform not yet available in release assets'
-  } else if (result?.error) {
-    statusText = `Check failed: ${result.error}`
+  const onInstall = async () => {
+    setUpd((prev) => ({
+      ...prev,
+      stage: 'downloading',
+      percent: 0,
+      error: null,
+      message: 'Downloading update package...',
+    }))
+    try {
+      const res = await installUpdate((progress) => {
+        setUpd((prev) => {
+          if (progress.stage === 'downloading') {
+            return {
+              ...prev,
+              stage: 'downloading',
+              percent: progress.percent ?? prev.percent,
+              downloadedBytes: progress.downloadedBytes ?? prev.downloadedBytes,
+              totalBytes: progress.totalBytes ?? prev.totalBytes,
+              message: progress.percent !== undefined ? `Downloading update (${progress.percent}%)...` : 'Downloading update...',
+            }
+          }
+          if (progress.stage === 'downloaded') {
+            return { ...prev, stage: 'downloaded', percent: 100, message: 'Download completed. Preparing verification...' }
+          }
+          if (progress.stage === 'verifying') {
+            return { ...prev, stage: 'verifying', message: 'Verifying Minisign signature...' }
+          }
+          if (progress.stage === 'verified') {
+            return { ...prev, stage: 'verified', signatureVerified: true, message: 'Signature verified. Ready to install.' }
+          }
+          if (progress.stage === 'installing') {
+            return { ...prev, stage: 'installing', message: 'Installing verified update package...' }
+          }
+          if (progress.stage === 'restartRequired' || progress.stage === 'done') {
+            return { ...prev, stage: 'restartRequired', message: 'Update installed. Restart Kinora to complete the upgrade.' }
+          }
+          return prev
+        })
+      })
+      if (res.success) {
+        recordUpdateHistory({
+          fromVersion: upd.currentVersion,
+          toVersion: upd.targetVersion ?? 'latest',
+          stage: 'restartRequired',
+          note: 'Verified and installed via Tauri updater; restart required.',
+        })
+        toast('Update verified and installed. Restart Kinora to apply.')
+        setUpd((prev) => ({
+          ...prev,
+          stage: 'restartRequired',
+          message: 'Update installed. Restart Kinora to apply the new version.',
+        }))
+      } else {
+        const err = res.error ?? 'Unknown error'
+        recordUpdateHistory({
+          fromVersion: upd.currentVersion,
+          toVersion: upd.targetVersion ?? 'unknown',
+          stage: 'failed',
+          note: err,
+        })
+        toast(`Update installation failed: ${err}`)
+        setUpd((prev) => ({ ...prev, stage: 'failed', error: err, message: `Update failed: ${err}` }))
+      }
+    } catch (e) {
+      const err = e instanceof Error ? e.message : 'Unknown error'
+      toast(`Update installation failed: ${err}`)
+      setUpd((prev) => ({ ...prev, stage: 'failed', error: err, message: `Update failed: ${err}` }))
+    }
   }
 
+  const isBusy =
+    upd.stage === 'checking' ||
+    upd.stage === 'downloading' ||
+    upd.stage === 'verifying' ||
+    upd.stage === 'installing'
+
   return (
-    <Row title="Software updates" hint={statusText}>
-      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-        {result?.status === 'available' && result.downloadUrl && (
-          <a href={result.downloadUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-small">
-            Download update
-          </a>
-        )}
-        <button
-          type="button"
-          className="btn btn-ghost btn-small"
-          disabled={checking}
-          onClick={() => void onCheck()}
-        >
-          {checking ? 'Checking...' : 'Check for updates'}
-        </button>
-        {onOpenWhatsNew && (
-          <button
-            type="button"
-            className="btn btn-secondary btn-small"
-            onClick={onOpenWhatsNew}
-          >
-            What's New
-          </button>
-        )}
-      </div>
-    </Row>
+    <>
+      <Row
+        title="Software updates"
+        hint={`${describeUpdaterStage(upd.stage)}: ${upd.message}${upd.stage === 'available' && upd.hasSignature ? ' (Minisign signature present)' : ''}`}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <select
+              aria-label="Update release channel"
+              className="select"
+              value={upd.channel}
+              disabled={isBusy}
+              onChange={(e) => onChannelChange(e.target.value as UpdateChannel)}
+              style={{ fontSize: '0.8125rem' }}
+            >
+              <option value="stable">Stable Channel</option>
+              <option value="prerelease">Pre-release Channel</option>
+            </select>
+            {upd.stage === 'available' && inNativeShell() && (
+              <button
+                type="button"
+                className="btn btn-primary btn-small"
+                disabled={isBusy}
+                onClick={() => void onInstall()}
+              >
+                Download &amp; Install
+              </button>
+            )}
+            {upd.stage === 'available' && upd.downloadUrl && !inNativeShell() && (
+              <a href={upd.downloadUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-small">
+                Download update
+              </a>
+            )}
+            <button
+              type="button"
+              className="btn btn-ghost btn-small"
+              disabled={isBusy}
+              onClick={() => void onCheck()}
+            >
+              {upd.stage === 'checking' ? 'Checking...' : 'Check for updates'}
+            </button>
+            {onOpenWhatsNew && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={onOpenWhatsNew}
+              >
+                What's New &amp; History
+              </button>
+            )}
+          </div>
+          {upd.stage === 'downloading' && upd.percent !== null && (
+            <div style={{ width: '220px', height: '6px', borderRadius: '4px', background: 'var(--surface-3, rgba(255,255,255,0.1))', overflow: 'hidden' }} role="progressbar" aria-valuenow={upd.percent} aria-valuemin={0} aria-valuemax={100}>
+              <div style={{ width: `${upd.percent}%`, height: '100%', background: 'var(--accent)' }} />
+            </div>
+          )}
+        </div>
+      </Row>
+      {serverCompat && (
+        <Row title="Kinora Server compatibility" hint={serverCompat.message}>
+          <span className="muted tnum">
+            {serverCompat.status === 'compatible'
+              ? `Compatible (Server v${serverCompat.serverVersion})`
+              : serverCompat.status === 'clientOutdated'
+              ? 'Client update required'
+              : serverCompat.status === 'serverOutdated'
+              ? 'Server update recommended'
+              : 'Unknown'}
+          </span>
+        </Row>
+      )}
+    </>
   )
 }
 
 function About() {
   const store = useStore()
   const [whatsNewOpen, setWhatsNewOpen] = useState(false)
+  const [appVersion, setAppVersion] = useState<string>(APP_VERSION)
+
+  useEffect(() => {
+    void getAppInfo().then((info) => {
+      if (info) setAppVersion(info.version)
+    })
+  }, [])
   const shortcuts: [string, string][] = [
     ['/', 'Search from anywhere'],
     ['Page Up / Page Down', 'Change channel in Live TV'],
@@ -1874,10 +3376,10 @@ function About() {
       <div className="about-creator-card">
         <div className="about-creator-brand">
           <div className="about-creator-logo" aria-hidden="true">
-            <Icon name="tv" size={24} />
+            <KPlayMark size={28} idPrefix="about" />
           </div>
           <div>
-            <h3 className="about-creator-product">Kinora (KinoraTV)</h3>
+            <h3 className="about-creator-product">{isStaging() ? 'Kinora Staging (KinoraTV)' : 'Kinora (KinoraTV)'}</h3>
             <p className="about-creator-by">
               Created by{' '}
               <a
@@ -1908,7 +3410,7 @@ function About() {
             className="btn btn-secondary btn-small"
             onClick={() => setWhatsNewOpen(true)}
           >
-            <Icon name="sparkles" size={14} /> What's New in v0.5.0
+            <Icon name="sparkles" size={14} /> What's New in v{appVersion}
           </button>
         </div>
       </div>

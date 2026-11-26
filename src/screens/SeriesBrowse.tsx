@@ -1,25 +1,79 @@
 import { useMemo, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { genresOf, series } from '../data/catalog'
-import { episodeCode } from '../data/refs'
+import { episodeCode, episodeRef, seriesRef } from '../data/refs'
+import type { Series } from '../data/types'
+import { OPEN_SERIES } from '../data/openCatalogue'
 import { Icon } from '../components/Icon'
 import { PageHeader } from '../components/PageHeader'
 import { PosterCard, XtreamPosterCard } from '../components/Tiles'
-import { StateBlock } from '../components/ui'
-import { filterKidSafeTitles, filterKidSafeXtreamTitles } from '../lib/kidsMode'
+import { Art, StateBlock } from '../components/ui'
+import {
+  StreamingHero,
+  StreamingGenreRow,
+  StreamingRail,
+  StreamingCard,
+  StreamingProviderPrompt,
+  getTechnicalBadges,
+  type NavTabItem,
+  type HeroSlideData,
+  type GenreItem,
+} from '../components/StreamingComponents'
+import { filterKidSafeResources, filterKidSafeTitles, filterKidSafeXtreamTitles } from '../lib/kidsMode'
+import { GENRES_BY_MEDIA_TYPE, getGenreById, getSubgenresForParent, type GenreDefinition } from '../data/genreTaxonomy'
 import { seriesNextUp } from '../lib/library'
 import { useProfiles } from '../state/profiles'
 import { useStore } from '../state/store'
-import { BrowseTabs, NoTitles } from './Movies'
+import { useLocalMedia } from '../state/localMedia'
+import { TrailerPlayerModal } from '../components/TrailerPlayerModal'
+import { aggregateVodTitles } from '../lib/vodAggregation'
 import './Browse.css'
+import './MediaStreaming.css'
 
-const sorts = { added: 'Sort: Recently added', title: 'Sort: Title A to Z', episodes: 'Sort: Most episodes' } as const
+const TV_GENRES: GenreItem[] = GENRES_BY_MEDIA_TYPE.series.map((g) => ({
+  id: g.id,
+  name: g.name,
+  art: g.artwork.landscape,
+}))
+
+const TV_TABS: NavTabItem[] = [
+  { id: 'browse', label: 'Browse', icon: 'grid' },
+  { id: 'my-shows', label: 'My Shows', icon: 'bookmark' },
+  { id: 'genres', label: 'Genres', icon: 'tag' },
+  { id: 'new-episodes', label: 'New Episodes', icon: 'calendar' },
+  { id: 'returning', label: 'Returning', icon: 'refresh' },
+  { id: 'popular', label: 'Popular', icon: 'star' },
+  { id: 'a-z', label: 'A-Z', icon: 'sortAsc' },
+]
+
+const sorts = {
+  title: 'Sort: Title A to Z',
+  added: 'Sort: Recently added',
+  episodes: 'Sort: Most episodes',
+  newest: 'Sort: Newest',
+  oldest: 'Sort: Oldest',
+  rating: 'Sort: Rating',
+} as const
 type SortKey = keyof typeof sorts
 
 export function SeriesBrowse() {
   const store = useStore()
+  const navigate = useNavigate()
   const { isKidsMode } = useProfiles()
-  const { library, demoTitles } = store
+  const { library } = store
+  const [params, setParams] = useSearchParams()
+
+  const [activeTab, setActiveTab] = useState<string>('browse')
+  const [selectedGenre, setSelectedGenre] = useState<string | null>(null)
+  const [selectedSubgenre, setSelectedSubgenre] = useState<string | null>(null)
+  const [heroIndex, setHeroIndex] = useState(0)
+  const [trailerModal, setTrailerModal] = useState<{
+    open: boolean
+    title: string
+    trailerUrl?: string | null
+    posterUrl?: string
+    playFullUrl?: string
+  }>({ open: false, title: '' })
   const [providerLimit, setProviderLimit] = useState(100)
   const [providerQuery, setProviderQuery] = useState('')
 
@@ -41,243 +95,987 @@ export function SeriesBrowse() {
     })
   }, [store.xtreamCatalogue.seriesCategories, enabledSourceIds])
 
-  const normalizedProviderQuery = providerQuery.trim().toLocaleLowerCase()
-  const [params, setParams] = useSearchParams()
-  const genre = params.get('genre') ?? 'All'
-  const category = params.get('category') ?? 'All'
-  const provider = params.get('provider') ?? 'All'
-  const sort = (params.get('sort') ?? 'added') as SortKey
-  const status = params.get('status') ?? 'all'
-  const seriesStatus = params.get('seriesStatus') ?? 'All'
-
   const safeSeries = useMemo(() => {
     return filterKidSafeTitles(series, isKidsMode)
   }, [isKidsMode])
 
-  const set = (key: string, value: string, fallback: string) => {
+  const openSeries = useMemo(() => {
+    return filterKidSafeTitles(OPEN_SERIES, isKidsMode)
+  }, [isKidsMode])
+
+  const isSampleProvider = typeof window !== 'undefined' && window.sessionStorage?.getItem('kinora.sample_provider_view') === '1'
+  const { catalogue: localCatalogue } = useLocalMedia()
+  const hasXtream = store.xtreamSources.length > 0 && safeXtreamSeries.length > 0
+  const hasDemo = (store.demoTitles || isSampleProvider) && safeSeries.length > 0
+  const activeSeriesCatalogue = useMemo(() => hasDemo ? safeSeries : openSeries, [hasDemo, safeSeries, openSeries])
+
+  // Public discovery television & documentary series
+  const publicDiscoverySeries = useMemo(() => {
+    const list = store.mediaLibrary.allResources.filter(
+      (r) =>
+        r.category === 'series' ||
+        r.subcategory.includes('tv') ||
+        r.subcategory.includes('series') ||
+        r.subcategory.includes('broadcasting'),
+    )
+    return isKidsMode ? filterKidSafeResources(list, true) : list
+  }, [store.mediaLibrary.allResources, isKidsMode])
+
+  const normalizedQuery = providerQuery.trim().toLowerCase()
+  const category = params.get('category') ?? 'All'
+  const provider = params.get('provider') ?? 'All'
+  const sort = (params.get('sort') ?? 'title') as SortKey
+
+  const setFilter = (key: string, value: string, fallback: string) => {
     const next = new URLSearchParams(params)
     if (value === fallback) next.delete(key)
     else next.set(key, value)
     setParams(next, { replace: true })
   }
 
-  const list = safeSeries
-    .map((s) => ({ s, up: seriesNextUp(library, s) }))
-    .filter(({ s }) => genre === 'All' || s.genres.includes(genre))
-    .filter(({ s }) => {
-      if (seriesStatus === 'All') return true
-      const isContinuing = s.years.endsWith('-') || s.years.includes('Present') || !s.years.includes('-')
-      return seriesStatus === 'Continuing' ? isContinuing : !isContinuing
-    })
-    .filter(({ up }) => status === 'all' || (status === 'watching' ? up.state === 'resume' || up.state === 'next' : up.state === 'start'))
-    .sort((a, b) =>
-      sort === 'title' ? a.s.title.localeCompare(b.s.title)
-        : sort === 'episodes' ? b.s.seasons.flat().length - a.s.seasons.flat().length
-          : b.s.added.localeCompare(a.s.added),
-    )
+  const activeParentGenre = useMemo(() => {
+    if (!selectedGenre) return null
+    return getGenreById(selectedGenre)
+  }, [selectedGenre])
 
-  if (store.xtreamSources.length > 0) {
-    if (enabledSources.length === 0 || (safeXtreamSeries.length === 0 && !enabledSources.some((source) => source.connected))) {
-      return <NoTitles kind="series" />
-    }
-    if (safeXtreamSeries.length === 0) {
+  const subgenres = useMemo(() => {
+    if (!activeParentGenre) return []
+    return getSubgenresForParent(activeParentGenre.id)
+  }, [activeParentGenre])
+
+  const genreMatches = (itemGenres: string[], itemCat?: string, itemText?: string): boolean => {
+    if (!selectedGenre) return true
+    if (selectedSubgenre && activeParentGenre) {
+      const sub = subgenres.find((s: GenreDefinition) => s.id === selectedSubgenre)
+      const targetName = (sub?.name ?? selectedSubgenre).toLowerCase()
+      const targetId = selectedSubgenre.toLowerCase()
       return (
-        <>
-          <PageHeader title="Series" tabs={<BrowseTabs />} />
-          <div className="page">
-            <StateBlock icon="series" title="No series in this catalogue" action={<Link to="/sources" className="btn btn-ghost">Open Sources</Link>}>
-              The provider connection succeeded, but it returned no series entries.
-            </StateBlock>
-          </div>
-        </>
+        itemGenres.some((g) => g.toLowerCase().includes(targetName) || g.toLowerCase().includes(targetId)) ||
+        Boolean(itemCat && (itemCat.toLowerCase().includes(targetName) || itemCat.toLowerCase().includes(targetId))) ||
+        Boolean(itemText && (itemText.toLowerCase().includes(targetName) || itemText.toLowerCase().includes(targetId)))
       )
     }
-
-    const sortFn = (a: (typeof safeXtreamSeries)[number], b: (typeof safeXtreamSeries)[number]) => {
-      const s = params.get('sort') ?? 'title'
-      if (s === 'title-desc') return b.name.localeCompare(a.name)
-      if (s === 'newest') return (b.year ?? 0) - (a.year ?? 0)
-      if (s === 'oldest') return (a.year ?? 0) - (b.year ?? 0)
-      if (s === 'rating') return (b.rating ?? 0) - (a.rating ?? 0)
-      return a.name.localeCompare(b.name)
+    if (activeParentGenre) {
+      const names = [
+        activeParentGenre.name.toLowerCase(),
+        activeParentGenre.id.toLowerCase(),
+        ...activeParentGenre.aliases.map((a: string) => a.toLowerCase()),
+      ]
+      return (
+        itemGenres.some((g) => names.some((n) => g.toLowerCase().includes(n))) ||
+        Boolean(itemCat && names.some((n) => itemCat.toLowerCase().includes(n))) ||
+        Boolean(itemText && names.some((n) => itemText.toLowerCase().includes(n)))
+      )
     }
-
-    const filteredXtream = safeXtreamSeries
-      .filter((s) => category === 'All' || s.categoryId === category || s.categoryName === category)
-      .filter((s) => provider === 'All' || s.sourceId === provider)
-      .filter((s) => !normalizedProviderQuery || s.name.toLocaleLowerCase().includes(normalizedProviderQuery))
-      .sort(sortFn)
-
-    const isFiltered = category !== 'All' || provider !== 'All' || Boolean(normalizedProviderQuery)
-    const shown = filteredXtream.slice(0, providerLimit)
-    const sourceName = (id: string) => store.xtreamSources.find((source) => source.id === id)?.name ?? 'Provider'
-    const importedProviders = new Set(filteredXtream.map((show) => show.sourceId)).size
-
     return (
-      <>
-        <PageHeader title="Series" tabs={<BrowseTabs />} />
-        <div className="page browse">
-          <div className="browse-bar" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-            <label className="provider-search" style={{ flex: '1 1 200px', minWidth: '180px' }}>
-              <span className="sr-only">Search imported series</span>
-              <input
-                className="input"
-                type="search"
-                value={providerQuery}
-                onChange={(event) => { setProviderQuery(event.target.value); setProviderLimit(100) }}
-                placeholder="Search series..."
-              />
-            </label>
-            <div className="filters" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              <select
-                className="select select-inline"
-                value={category}
-                onChange={(e) => { set('category', e.target.value, 'All'); setProviderLimit(100) }}
-                aria-label="Category"
-              >
-                <option value="All">All Categories</option>
-                {seriesCategories.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-
-              {enabledSources.length > 1 && (
-                <select
-                  className="select select-inline"
-                  value={provider}
-                  onChange={(e) => { set('provider', e.target.value, 'All'); setProviderLimit(100) }}
-                  aria-label="Provider"
-                >
-                  <option value="All">All Providers</option>
-                  {enabledSources.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              )}
-
-              <select
-                className="select select-inline"
-                value={params.get('sort') ?? 'title'}
-                onChange={(e) => { set('sort', e.target.value, 'title'); setProviderLimit(100) }}
-                aria-label="Sort"
-              >
-                <option value="title">Sort: Title A to Z</option>
-                <option value="title-desc">Sort: Title Z to A</option>
-                <option value="newest">Sort: Newest</option>
-                <option value="oldest">Sort: Oldest</option>
-                <option value="rating">Sort: Rating</option>
-              </select>
-            </div>
-          </div>
-
-          <p className="browse-count faint" aria-live="polite">
-            Showing {shown.length} of {filteredXtream.length} imported series across {importedProviders} provider{importedProviders === 1 ? '' : 's'}.
-          </p>
-
-          {filteredXtream.length === 0 ? (
-            <StateBlock
-              icon="search"
-              title="No series match these filters"
-              action={
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={() => {
-                    setParams({}, { replace: true })
-                    setProviderQuery('')
-                    setProviderLimit(100)
-                  }}
-                >
-                  Clear filters
-                </button>
-              }
-            >
-              {isFiltered ? 'Try clearing the search query or changing category and provider filters.' : 'No series found.'}
-            </StateBlock>
-          ) : (
-            <div className="grid-posters">
-              {shown.map((show) => {
-                const routeId = `xt:${show.sourceId}:${show.id}`
-                const line = [show.year, sourceName(show.sourceId)].filter(Boolean).join(' · ')
-                return (
-                  <XtreamPosterCard
-                    key={`${show.sourceId}:${show.id}`}
-                    to={`/series/${encodeURIComponent(routeId)}`}
-                    title={show.name}
-                    artworkKey={show.artworkKey}
-                    line={line}
-                    year={show.year}
-                  />
-                )
-              })}
-            </div>
-          )}
-
-          {shown.length < filteredXtream.length && (
-            <button
-              type="button"
-              className="btn btn-secondary catalogue-more"
-              onClick={() => setProviderLimit((limit) => Math.min(filteredXtream.length, limit + 100))}
-            >
-              Show 100 more series
-            </button>
-          )}
-        </div>
-      </>
+      itemGenres.some((g) => g.toLowerCase() === selectedGenre.toLowerCase()) ||
+      Boolean(itemCat && itemCat.toLowerCase().includes(selectedGenre.toLowerCase()))
     )
   }
-  if (!demoTitles) return <NoTitles kind="series" />
+
+  // Filtered Xtream series
+  const filteredXtream = useMemo(() => {
+    if (!hasXtream) return []
+    return safeXtreamSeries
+      .filter((s) => category === 'All' || s.categoryId === category || s.categoryName === category)
+      .filter((s) => provider === 'All' || s.sourceId === provider)
+      .filter((s) => genreMatches([], s.categoryName ?? undefined, s.name))
+      .filter((s) => activeTab !== 'my-shows' || library.watchlist.includes(`series:xt:${s.sourceId}:${s.id}`))
+      .filter((s) => !normalizedQuery || s.name.toLowerCase().includes(normalizedQuery))
+      .sort((a, b) => {
+        if (activeTab === 'popular') return (b.rating ?? 0) - (a.rating ?? 0) || (b.year ?? 0) - (a.year ?? 0)
+        if (activeTab === 'new-episodes' || sort === 'newest') return (b.year ?? 0) - (a.year ?? 0)
+        if (sort === 'oldest') return (a.year ?? 0) - (b.year ?? 0)
+        if (sort === 'rating') return (b.rating ?? 0) - (a.rating ?? 0)
+        return a.name.localeCompare(b.name)
+      })
+  }, [hasXtream, safeXtreamSeries, category, provider, selectedGenre, selectedSubgenre, activeParentGenre, normalizedQuery, sort, activeTab, library.watchlist])
+
+  const sourceNames = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const s of enabledSources) {
+      map[s.id] = s.name
+    }
+    return map
+  }, [enabledSources])
+
+  // Multi-source aggregated series for unified catalogue browsing
+  const displayedXtream = useMemo(() => {
+    if (enabledSources.length > 1 && provider === 'All') {
+      return aggregateVodTitles(filteredXtream, sourceNames)
+    }
+    return filteredXtream.map((s) => ({ ...s, variants: [], totalSources: 1 }))
+  }, [filteredXtream, enabledSources.length, provider, sourceNames])
+
+  // Filtered catalogue series (curated demo or verified open series)
+  const filteredDemo = useMemo(() => {
+    if (!hasDemo && openSeries.length === 0) return []
+    return activeSeriesCatalogue
+      .filter((s) => category === 'All' || s.genres.some((g) => g.toLowerCase() === category.toLowerCase()))
+      .filter((s) => genreMatches(s.genres, undefined, s.title + ' ' + s.synopsis))
+      .filter((s) => activeTab !== 'my-shows' || library.watchlist.includes(seriesRef(s.id)))
+      .filter((s) => activeTab !== 'returning' || s.years.toLowerCase().includes('present'))
+      .filter((s) => !normalizedQuery || s.title.toLowerCase().includes(normalizedQuery))
+      .sort((a, b) => {
+        if (activeTab === 'popular' || sort === 'episodes') {
+          const bCount = Array.isArray(b.seasons) ? b.seasons.flat().length : 0
+          const aCount = Array.isArray(a.seasons) ? a.seasons.flat().length : 0
+          return bCount - aCount
+        }
+        if (sort === 'added') return b.added.localeCompare(a.added)
+        return a.title.localeCompare(b.title)
+      })
+  }, [hasDemo, openSeries.length, activeSeriesCatalogue, category, selectedGenre, selectedSubgenre, activeParentGenre, normalizedQuery, sort, activeTab, library.watchlist])
+
+  // Filtered public discovery series
+  const filteredPublicDiscovery = useMemo(() => {
+    if (hasXtream || hasDemo) return []
+    return publicDiscoverySeries
+      .filter((r) => genreMatches(r.tags ?? [], r.subcategory, r.name + ' ' + r.description))
+      .filter((r) => !normalizedQuery || r.name.toLowerCase().includes(normalizedQuery) || r.description.toLowerCase().includes(normalizedQuery) || r.provider.toLowerCase().includes(normalizedQuery))
+      .sort((a, b) => {
+        if (sort === 'newest') return b.dateDiscovered.localeCompare(a.dateDiscovered)
+        if (sort === 'oldest') return a.dateDiscovered.localeCompare(b.dateDiscovered)
+        return a.name.localeCompare(b.name)
+      })
+  }, [hasXtream, hasDemo, publicDiscoverySeries, selectedGenre, selectedSubgenre, activeParentGenre, normalizedQuery, sort])
+
+  // Hero slides
+  const heroSlides = useMemo<HeroSlideData[]>(() => {
+    if (hasXtream) {
+      return safeXtreamSeries.slice(0, 5).map((s) => ({
+        id: `xt:${s.sourceId}:${s.id}`,
+        kicker: 'FEATURED SERIES',
+        title: s.name,
+        synopsis: s.plot || 'Stream television series and binge all seasons through your connected on-demand provider.',
+        art: undefined,
+        artworkKey: s.artworkKey,
+        year: s.year ?? 'VOD',
+        genre: s.categoryName || 'TV Series',
+        runtime: undefined,
+        ageRating: undefined,
+        badges: getTechnicalBadges(s),
+        playUrl: `/series/${encodeURIComponent(`xt:${s.sourceId}:${s.id}`)}`,
+        detailUrl: `/series/${encodeURIComponent(`xt:${s.sourceId}:${s.id}`)}`,
+        itemRef: `series:xt:${s.sourceId}:${s.id}`,
+      }))
+    }
+    if (hasDemo) {
+      const topSeries = [
+        safeSeries.find((s) => s.id === 'ninth-ward'),
+        safeSeries.find((s) => s.id === 'fathom'),
+        safeSeries.find((s) => s.id === 'kingsmoor'),
+        safeSeries.find((s) => s.id === 'wildfire-season'),
+        safeSeries.find((s) => s.id === 'static'),
+      ].filter((s): s is Series => !!s)
+
+      return topSeries.map((s) => ({
+        id: s.id,
+        kicker: 'FEATURED SERIES',
+        title: s.title,
+        synopsis: s.synopsis,
+        art: s.art,
+        year: s.years.split(' ')[0] || 2023,
+        genre: s.genres[0] || 'Drama',
+        runtime: `${s.seasons?.length || 0} Season${(s.seasons?.length || 0) > 1 ? 's' : ''}`,
+        ageRating: s.certificate,
+        badges: getTechnicalBadges(s),
+        playUrl: `/series/${s.id}`,
+        detailUrl: `/series/${s.id}`,
+        itemRef: seriesRef(s.id),
+        trailerUrl: s.trailerUrl,
+      }))
+    }
+    if (openSeries.length > 0) {
+      return openSeries.slice(0, 5).map((s) => ({
+        id: s.id,
+        kicker: 'FEATURED SERIES',
+        title: s.title,
+        synopsis: s.synopsis,
+        art: s.backdropUrl || s.art,
+        posterUrl: s.posterUrl || s.art,
+        year: s.years.split(' ')[0] || 'Series',
+        genre: s.genres[0] || 'Drama',
+        runtime: `${s.seasons?.length || 0} Season${(s.seasons?.length || 0) > 1 ? 's' : ''}`,
+        ageRating: s.certificate,
+        badges: getTechnicalBadges(s),
+        playUrl: `/series/${s.id}`,
+        detailUrl: `/series/${s.id}`,
+        itemRef: seriesRef(s.id),
+        trailerUrl: s.trailerUrl,
+      }))
+    }
+    if (publicDiscoverySeries.length > 0) {
+      return publicDiscoverySeries.slice(0, 5).map((s) => {
+        const matchingOpen = OPEN_SERIES.find((os) => os.id === s.id || os.title.toLowerCase() === s.name.toLowerCase())
+        return {
+          id: s.id,
+          kicker: 'FEATURED TELEVISION ARCHIVE',
+          title: s.name,
+          synopsis: s.description,
+          art: s.artworkUrl,
+          year: 'Public Archive',
+          genre: s.subcategory.replace(/-/g, ' ').toUpperCase(),
+          runtime: 'Broadcast Series',
+          badges: ['ARCHIVE', 'EPISODIC'],
+          playUrl: `/series/${encodeURIComponent(s.id)}`,
+          detailUrl: `/series/${encodeURIComponent(s.id)}`,
+          itemRef: `res:${s.id}`,
+          trailerUrl: s.trailerUrl || matchingOpen?.trailerUrl,
+        }
+      })
+    }
+    return []
+  }, [hasXtream, hasDemo, publicDiscoverySeries, safeXtreamSeries, safeSeries, openSeries])
+
+  // Rails data
+  const trendingXtream = useMemo(() => safeXtreamSeries.slice(0, 8), [safeXtreamSeries])
+  const trendingDemo = useMemo(() => hasDemo ? safeSeries.slice(0, 8) : openSeries.slice(0, 8), [hasDemo, safeSeries, openSeries])
+  const trendingPublicDiscovery = useMemo(() => publicDiscoverySeries.slice(0, 8), [publicDiscoverySeries])
+
+  // New Episodes (latest season episodes)
+  const newEpisodes = useMemo(() => {
+    if (hasDemo || openSeries.length > 0) {
+      const eps: {
+        id: string
+        showId: string
+        showTitle: string
+        episodeTitle: string
+        season: number
+        number: number
+        art: string
+      }[] = []
+
+      for (const s of activeSeriesCatalogue) {
+        const lastSeason = s.seasons[s.seasons.length - 1]
+        if (lastSeason && lastSeason.length > 0) {
+          const lastEp = lastSeason[lastSeason.length - 1]
+          if (lastEp) {
+            eps.push({
+              id: `${s.id}-${lastEp.id}`,
+              showId: s.id,
+              showTitle: s.title,
+              episodeTitle: lastEp.title,
+              season: lastEp.season,
+              number: lastEp.number,
+              art: lastEp.still || s.backdropUrl || s.art,
+            })
+          }
+        }
+      }
+      return eps
+    }
+    return []
+  }, [hasDemo, openSeries.length, activeSeriesCatalogue])
+
+  // Popular Shows
+  const popularXtream = useMemo(() => safeXtreamSeries.slice(2, 10), [safeXtreamSeries])
+  const popularDemo = useMemo(() => {
+    const list = hasDemo ? safeSeries : openSeries
+    return [...list].sort((a, b) => {
+      const bCount = Array.isArray(b.seasons) ? b.seasons.flat().length : 0
+      const aCount = Array.isArray(a.seasons) ? a.seasons.flat().length : 0
+      return bCount - aCount
+    }).slice(0, 8)
+  }, [hasDemo, safeSeries, openSeries])
+  const popularPublicDiscovery = useMemo(() => publicDiscoverySeries.slice(4, 12), [publicDiscoverySeries])
+
+  // Returning Shows (continuing on-air series)
+  const returningShows = useMemo(() => {
+    if (hasDemo) {
+      return safeSeries.filter((s) => s.years.toLowerCase().includes('present')).slice(0, 8)
+    }
+    return []
+  }, [hasDemo, safeSeries])
+
+  // My Shows (watchlist or favourites)
+  const myShowsXtream = useMemo(() => {
+    if (hasXtream) {
+      return safeXtreamSeries.filter((s) => library.watchlist.includes(`series:xt:${s.sourceId}:${s.id}`))
+    }
+    return []
+  }, [hasXtream, safeXtreamSeries, library.watchlist])
+
+  const myShowsDemo = useMemo(() => {
+    if (hasDemo) {
+      return safeSeries.filter((s) => library.watchlist.includes(seriesRef(s.id)))
+    }
+    return []
+  }, [hasDemo, safeSeries, library.watchlist])
+
+  const myShowsPublicDiscovery = useMemo(() => {
+    if (!hasXtream && !hasDemo) {
+      return publicDiscoverySeries.filter((r) => store.mediaLibrary.isInPersonalLibrary(r.id) || library.watchlist.includes(`res:${r.id}`))
+    }
+    return []
+  }, [hasXtream, hasDemo, publicDiscoverySeries, store.mediaLibrary, library.watchlist])
+
+  // Continue Watching
+  const continueWatchingShows = useMemo(() => {
+    if (hasDemo) {
+      return safeSeries
+        .map((s) => ({ s, up: seriesNextUp(library, s) }))
+        .filter(({ up }) => up.state === 'resume' || up.state === 'next')
+        .map(({ s, up }) => ({
+          show: s,
+          up,
+        }))
+    }
+    return []
+  }, [hasDemo, safeSeries, library])
+
+  const availableCategories = useMemo(() => {
+    if (hasXtream) return seriesCategories.map((c) => ({ id: c.id, name: c.name }))
+    if (hasDemo || openSeries.length > 0) return genresOf(activeSeriesCatalogue).map((g) => ({ id: g, name: g }))
+    const set = new Set<string>()
+    for (const r of publicDiscoverySeries) {
+      if (r.tags) {
+        for (const t of r.tags) set.add(t)
+      }
+    }
+    return Array.from(set).sort().map((t) => ({ id: t, name: t }))
+  }, [hasXtream, seriesCategories, hasDemo, openSeries.length, activeSeriesCatalogue, publicDiscoverySeries])
+
+  const isFiltering = category !== 'All' || provider !== 'All' || Boolean(normalizedQuery) || Boolean(selectedGenre) || activeTab === 'a-z'
+  const sourceName = (id: string) => store.xtreamSources.find((s) => s.id === id)?.name ?? 'Provider'
+
   return (
-    <>
-      <PageHeader title="Series" tabs={<BrowseTabs />} />
-      <div className="page browse">
-        <div className="browse-bar">
-          <div className="filters">
-            <select className="select select-inline" value={genre} onChange={(e) => set('genre', e.target.value, 'All')} aria-label="Genre">
-              <option value="All">All Genres</option>
-              {genresOf(series).map((g) => <option key={g} value={g}>{g}</option>)}
+    <div className="streaming-page series-screen">
+      <PageHeader
+        title="TV Shows"
+        searchPlaceholder="Search TV shows, seasons, episodes..."
+      />
+
+      {/* Sub-Navigation Tabs */}
+      <div className="streaming-header-wrap" style={{ paddingTop: 0, paddingBottom: 14 }}>
+        <nav className="streaming-nav-tabs" aria-label="TV Shows navigation">
+          {TV_TABS.map((tab) => {
+            const isActive = activeTab === tab.id
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                className={`streaming-nav-pill ${isActive ? 'is-active' : ''}`}
+                aria-pressed={isActive}
+                onClick={() => {
+                  setActiveTab(tab.id)
+                  if (tab.id === 'genres') setSelectedGenre(null)
+                }}
+              >
+                <Icon name={tab.icon} size={15} />
+                <span>{tab.label}</span>
+              </button>
+            )
+          })}
+        </nav>
+      </div>
+
+      {/* Filter and Search Bar for Test and Filter Parity */}
+      <div
+        className={activeTab === 'browse' && !isFiltering ? 'streaming-compat-controls' : 'browse-bar'}
+        style={activeTab === 'browse' && !isFiltering ? undefined : { padding: '12px var(--gutter, 24px)', background: 'var(--surface-1)', borderBottom: '1px solid var(--line)', display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}
+      >
+        <label className="provider-search" style={{ margin: 0, flex: '1 1 200px', minWidth: '180px' }}>
+          <span className="sr-only">Search TV shows</span>
+          <input
+            className="input"
+            type="search"
+            value={providerQuery}
+            onChange={(e) => {
+              setProviderQuery(e.target.value)
+              setProviderLimit(100)
+            }}
+            placeholder="Search TV shows..."
+          />
+        </label>
+
+        <div className="filters" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <select
+            className="select select-inline"
+            value={category}
+            onChange={(e) => {
+              setFilter('category', e.target.value, 'All')
+              setProviderLimit(100)
+            }}
+            aria-label="Category"
+          >
+            <option value="All">All Categories</option>
+            {availableCategories.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+
+          {hasXtream && enabledSources.length > 1 && (
+            <select
+              className="select select-inline"
+              value={provider}
+              onChange={(e) => {
+                setFilter('provider', e.target.value, 'All')
+                setProviderLimit(100)
+              }}
+              aria-label="Provider"
+            >
+              <option value="All">All Providers</option>
+              {enabledSources.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
             </select>
-            <select className="select select-inline" value={status} onChange={(e) => set('status', e.target.value, 'all')} aria-label="Watching status">
-              <option value="all">All Series</option>
-              <option value="watching">Watching</option>
-              <option value="new">Not started</option>
-            </select>
-            <select className="select select-inline" value={seriesStatus} onChange={(e) => set('seriesStatus', e.target.value, 'All')} aria-label="Series status">
-              <option value="All">All Statuses</option>
-              <option value="Continuing">Continuing (On Air)</option>
-              <option value="Ended">Ended (Box Sets)</option>
-            </select>
-            <select className="select select-inline" value={sort} onChange={(e) => set('sort', e.target.value, 'added')} aria-label="Sort">
-              {Object.entries(sorts).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
-          </div>
+          )}
+
+          <select
+            className="select select-inline"
+            value={params.get('sort') ?? 'title'}
+            onChange={(e) => {
+              setFilter('sort', e.target.value, 'title')
+              setProviderLimit(100)
+            }}
+            aria-label="Sort"
+          >
+            <option value="title">Sort: Title A to Z</option>
+            <option value="episodes">Sort: Most episodes</option>
+            <option value="added">Sort: Recently added</option>
+          </select>
         </div>
 
-        <p className="browse-count faint" aria-live="polite">{list.length} series · demonstration catalogue</p>
-
-        {list.length === 0 ? (
-          <StateBlock icon="series" title="No series match these filters" action={<button type="button" className="btn btn-ghost" onClick={() => setParams({}, { replace: true })}>Clear filters</button>}>
-            {status === 'watching' ? 'You have not started any series in this genre yet.' : 'Try another genre or status.'}
-          </StateBlock>
-        ) : (
-          <div className="grid-posters">
-            {list.map(({ s, up }) => {
-              const watching = up.state === 'resume' || up.state === 'next'
-              return (
-                <PosterCard
-                  key={s.id}
-                  to={`/series/${s.id}`}
-                  title={s.title}
-                  art={s.art}
-                  focus={s.focus}
-                  line={watching ? `${up.state === 'resume' ? 'Resume' : 'Up next'} ${episodeCode(up.episode)}` : `${s.seasons.length} season${s.seasons.length > 1 ? 's' : ''} · ${s.certificate}`}
-                  flag={watching ? <><Icon name="play" size={10} />Watching</> : undefined}
-                />
-              )
-            })}
+        {selectedGenre && (
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="pill pill-pending"
+              style={{ cursor: 'pointer', border: '1px solid var(--accent)', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              onClick={() => {
+                setSelectedGenre(null)
+                setSelectedSubgenre(null)
+              }}
+              title="Clear genre filter"
+            >
+              <span>Genre: {selectedGenre}</span>
+              <Icon name="close" size={14} />
+            </button>
+            {activeParentGenre && (
+              <Link
+                to={`/genres/${activeParentGenre.id}${selectedSubgenre ? `/${selectedSubgenre}` : ''}`}
+                className="btn btn-ghost btn-small"
+                style={{ fontSize: '0.75rem' }}
+                title="Open dedicated genre browse page"
+              >
+                <Icon name="tag" size={12} />
+                <span>Open {activeParentGenre.name} Hub</span>
+              </Link>
+            )}
           </div>
         )}
       </div>
-    </>
+
+      {activeParentGenre && subgenres.length > 0 && (
+        <div className="subgenre-filter-chips" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '8px 0 16px', alignItems: 'center', padding: '0 24px' }}>
+          <span className="faint" style={{ fontSize: '0.75rem', fontWeight: 600 }}>Subgenres:</span>
+          <button
+            type="button"
+            className={`chip ${!selectedSubgenre ? 'is-active' : ''}`}
+            onClick={() => setSelectedSubgenre(null)}
+          >
+            All {activeParentGenre.name}
+          </button>
+          {subgenres.map((sub: GenreDefinition) => (
+            <button
+              key={sub.id}
+              type="button"
+              className={`chip ${selectedSubgenre === sub.id ? 'is-active' : ''}`}
+              onClick={() => setSelectedSubgenre(selectedSubgenre === sub.id ? null : sub.id)}
+            >
+              {sub.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Main Streaming Discovery View (Browse Tab) */}
+      {activeTab === 'browse' && !isFiltering && (
+        <>
+          {/* Featured Hero Stage */}
+          <StreamingHero
+            slides={heroSlides}
+            activeIndex={heroIndex}
+            onPrev={() => setHeroIndex((i) => (i - 1 + heroSlides.length) % heroSlides.length)}
+            onNext={() => setHeroIndex((i) => (i + 1) % heroSlides.length)}
+            onSelectIndex={setHeroIndex}
+            isTv
+            onPlayTrailer={(slide) =>
+              setTrailerModal({
+                open: true,
+                title: slide.title,
+                trailerUrl: slide.trailerUrl,
+                posterUrl: slide.backdropUrl || slide.art,
+                playFullUrl: slide.playUrl,
+              })
+            }
+          />
+
+          <div className="streaming-body">
+            {!hasXtream && <StreamingProviderPrompt kind="tv" />}
+
+            {/* Browse by Genre Row */}
+            <StreamingGenreRow
+              genres={TV_GENRES}
+              selectedGenre={selectedGenre}
+              onSelectGenre={(genreName) => {
+                setSelectedGenre(genreName)
+                setActiveTab('browse')
+              }}
+              onViewAll={() => setActiveTab('genres')}
+            />
+
+            {/* Local Media Library TV Shows Rail */}
+            {Boolean(localCatalogue?.series && localCatalogue.series.length > 0) && (
+              <StreamingRail
+                title="From Your Local Media Library"
+                iconName="folder"
+                iconColor="var(--accent-red-primary)"
+                onSeeAll={() => navigate('/library?tab=local')}
+              >
+                {(localCatalogue?.series || []).map((s) => {
+                  const routeId = `local-series:${s.id}`
+                  const totalEpisodes = (s.seasons || []).reduce((acc, sn) => acc + (sn.episodes?.length || 0), 0)
+                  return (
+                    <StreamingCard
+                      key={s.id}
+                      to="/library?tab=local"
+                      title={s.title}
+                      sub={[s.year, `${s.seasons?.length || 0} Seasons`, `${totalEpisodes} Episodes`].filter(Boolean).join(' · ')}
+                      art={s.artPath || undefined}
+                      badges={['LOCAL']}
+                      itemRef={routeId}
+                      layout="poster"
+                    />
+                  )
+                })}
+              </StreamingRail>
+            )}
+
+            {/* Trending TV Shows Rail */}
+            <StreamingRail
+              title={hasXtream ? 'Trending TV Shows' : hasDemo ? 'Trending TV Shows' : 'Broadcast & Episodic Archives'}
+              iconName={hasXtream || hasDemo ? 'flame' : 'archive'}
+              iconColor="var(--accent)"
+              onSeeAll={() => setActiveTab('a-z')}
+            >
+              {hasXtream
+                ? trendingXtream.map((s) => {
+                    const routeId = `xt:${s.sourceId}:${s.id}`
+                    return (
+                      <StreamingCard
+                        key={routeId}
+                        to={`/series/${encodeURIComponent(routeId)}`}
+                        title={s.name}
+                        sub={[s.year, sourceName(s.sourceId)].filter(Boolean).join(' · ')}
+                        artworkKey={s.artworkKey}
+                        badges={getTechnicalBadges(s)}
+                        itemRef={`series:${routeId}`}
+                        layout="poster"
+                      />
+                    )
+                  })
+                : (hasDemo || openSeries.length > 0)
+                ? trendingDemo.map((show) => {
+                    const ref = seriesRef(show.id)
+                    return (
+                      <StreamingCard
+                        key={show.id}
+                        to={`/series/${show.id}`}
+                        title={show.title}
+                        sub={`${show.seasons?.length || 0} Season${(show.seasons?.length || 0) > 1 ? 's' : ''} · ${show.genres[0] || 'Drama'}`}
+                        art={show.art}
+                        badges={getTechnicalBadges(show)}
+                        itemRef={ref}
+                        layout="poster"
+                      />
+                    )
+                  })
+                : trendingPublicDiscovery.map((r) => (
+                    <StreamingCard
+                      key={r.id}
+                      to={`/series/${encodeURIComponent(r.id)}`}
+                      title={r.name}
+                      sub={[r.provider, r.country ?? 'Open Archive'].filter(Boolean).join(' · ')}
+                      art={r.artworkUrl}
+                      badges={['ARCHIVE', 'EPISODIC']}
+                      itemRef={`res:${r.id}`}
+                      layout="poster"
+                    />
+                  ))}
+            </StreamingRail>
+
+            {/* New Episodes Rail */}
+            {newEpisodes.length > 0 && (
+              <StreamingRail
+                title="New Episodes"
+                iconName="calendar"
+                onSeeAll={() => setActiveTab('new-episodes')}
+              >
+                {newEpisodes.map((ep) => (
+                  <StreamingCard
+                    key={ep.id}
+                    to={`/series/${ep.showId}?season=${ep.season}`}
+                    title={ep.showTitle}
+                    sub={`S${ep.season} E${ep.number} · ${ep.episodeTitle}`}
+                    art={ep.art}
+                    episodeBadge={`S${ep.season} E${ep.number}`}
+                    badges={getTechnicalBadges({ title: ep.episodeTitle })}
+                    itemRef={episodeRef(ep.showId, `s${ep.season}e${ep.number}`)}
+                  />
+                ))}
+              </StreamingRail>
+            )}
+
+            {/* Popular Shows Rail */}
+            <StreamingRail
+              title={hasXtream ? 'Popular Shows' : (hasDemo || openSeries.length > 0) ? 'Popular Shows' : 'Documentary & National TV Series'}
+              iconName="star"
+              onSeeAll={() => setActiveTab('popular')}
+            >
+              {hasXtream
+                ? popularXtream.map((s) => (
+                    <StreamingCard
+                      key={`pop-xt-${s.id}`}
+                      to={`/series/${encodeURIComponent(`xt:${s.sourceId}:${s.id}`)}`}
+                      title={s.name}
+                      sub={[s.year, sourceName(s.sourceId)].filter(Boolean).join(' · ')}
+                      artworkKey={s.artworkKey}
+                      badges={getTechnicalBadges(s)}
+                      itemRef={`series:xt:${s.sourceId}:${s.id}`}
+                      layout="poster"
+                    />
+                  ))
+                : (hasDemo || openSeries.length > 0)
+                ? popularDemo.map((show) => {
+                    return (
+                      <StreamingCard
+                        key={`pop-${show.id}`}
+                        to={`/series/${show.id}`}
+                        title={show.title}
+                        sub={`${show.seasons?.length || 0} Season${(show.seasons?.length || 0) > 1 ? 's' : ''} · ${show.certificate}`}
+                        art={show.art}
+                        badges={getTechnicalBadges(show)}
+                        itemRef={seriesRef(show.id)}
+                        layout="poster"
+                      />
+                    )
+                  })
+                : popularPublicDiscovery.map((r) => (
+                    <StreamingCard
+                      key={`pop-res-${r.id}`}
+                      to={`/series/${encodeURIComponent(r.id)}`}
+                      title={r.name}
+                      sub={[r.provider, r.subcategory].filter(Boolean).join(' · ')}
+                      art={r.artworkUrl}
+                      badges={['ARCHIVE']}
+                      itemRef={`res:${r.id}`}
+                      layout="poster"
+                    />
+                  ))}
+            </StreamingRail>
+
+            {/* Returning Shows Rail */}
+            {returningShows.length > 0 && (
+              <StreamingRail
+                title="Returning Shows"
+                iconName="refresh"
+                onSeeAll={() => setActiveTab('returning')}
+              >
+                {returningShows.map((show) => (
+                  <StreamingCard
+                    key={`ret-${show.id}`}
+                    to={`/series/${show.id}`}
+                    title={show.title}
+                    sub={`${show.years} · On Air`}
+                    art={show.art}
+                    badges={getTechnicalBadges(show)}
+                    itemRef={seriesRef(show.id)}
+                    layout="poster"
+                  />
+                ))}
+              </StreamingRail>
+            )}
+
+            {/* Continue Watching Rail */}
+            {continueWatchingShows.length > 0 && (
+              <StreamingRail
+                title="Continue Watching"
+                iconName="clock"
+                onSeeAll={() => setActiveTab('browse')}
+              >
+                {continueWatchingShows.map(({ show, up }) => (
+                  <StreamingCard
+                    key={`cw-${show.id}`}
+                    to={`/series/${show.id}?season=${up.episode.season}`}
+                    title={show.title}
+                    sub={`${up.state === 'resume' ? 'Resume' : 'Next'} ${episodeCode(up.episode)} · ${up.episode.title}`}
+                    art={up.episode.still || show.art}
+                    episodeBadge={episodeCode(up.episode)}
+                    badges={getTechnicalBadges(show)}
+                    itemRef={episodeRef(show.id, up.episode.id)}
+                  />
+                ))}
+              </StreamingRail>
+            )}
+
+            {/* My Shows Rail */}
+            {(myShowsXtream.length > 0 || myShowsDemo.length > 0 || myShowsPublicDiscovery.length > 0) && (
+              <StreamingRail
+                title="My Shows"
+                iconName="bookmark"
+                onSeeAll={() => setActiveTab('my-shows')}
+              >
+                {hasXtream
+                  ? myShowsXtream.map((s) => (
+                      <StreamingCard
+                        key={`ms-xt-${s.id}`}
+                        to={`/series/${encodeURIComponent(`xt:${s.sourceId}:${s.id}`)}`}
+                        title={s.name}
+                        sub={[s.year, sourceName(s.sourceId)].filter(Boolean).join(' · ')}
+                        artworkKey={s.artworkKey}
+                        badges={getTechnicalBadges(s)}
+                        itemRef={`series:xt:${s.sourceId}:${s.id}`}
+                        layout="poster"
+                      />
+                    ))
+                  : hasDemo
+                  ? myShowsDemo.map((show) => {
+                      return (
+                        <StreamingCard
+                          key={`ms-${show.id}`}
+                          to={`/series/${show.id}`}
+                          title={show.title}
+                          sub={`${show.seasons?.length || 0} Season${(show.seasons?.length || 0) > 1 ? 's' : ''}`}
+                          art={show.art}
+                          badges={getTechnicalBadges(show)}
+                          itemRef={seriesRef(show.id)}
+                          layout="poster"
+                        />
+                      )
+                    })
+                  : myShowsPublicDiscovery.map((r) => (
+                      <StreamingCard
+                        key={`ms-res-${r.id}`}
+                        to={`/series/${encodeURIComponent(r.id)}`}
+                        title={r.name}
+                        sub={[r.provider, 'Saved'].join(' · ')}
+                        art={r.artworkUrl}
+                        badges={['SAVED']}
+                        itemRef={`res:${r.id}`}
+                        layout="poster"
+                      />
+                    ))}
+              </StreamingRail>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* My Shows Tab View (Empty State) */}
+      {activeTab === 'my-shows' && myShowsXtream.length === 0 && myShowsDemo.length === 0 && myShowsPublicDiscovery.length === 0 && (
+        <div className="streaming-body" style={{ paddingTop: 24 }}>
+          <StateBlock
+            icon="bookmark"
+            title="No saved shows in your list"
+            action={
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => setActiveTab('browse')}
+              >
+                Browse TV shows
+              </button>
+            }
+          >
+            Add shows to My Shows from any series details page to keep track of what to binge.
+          </StateBlock>
+        </div>
+      )}
+
+      {/* Genres Tab View (Full Grid when no specific genre selected) */}
+      {activeTab === 'genres' && !selectedGenre && (
+        <div className="streaming-body" style={{ paddingTop: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+            <div>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Browse by Genre</h2>
+              <p className="faint" style={{ margin: '4px 0 0 0', fontSize: '0.875rem' }}>
+                Explore television series categorized by format, storyline and storytelling styles.
+              </p>
+            </div>
+            <Link to="/discover" className="btn btn-secondary">
+              <Icon name="tag" size={14} />
+              <span>Full Taxonomy &amp; Discovery</span>
+            </Link>
+          </div>
+          <div className="streaming-genre-grid">
+            {TV_GENRES.map((g) => (
+              <button
+                key={g.id}
+                type="button"
+                className="streaming-genre-tile"
+                onClick={() => setSelectedGenre(g.name)}
+              >
+                <Art src={g.art} alt={g.name} className="streaming-genre-art" fallbackIcon="series" />
+                <span className="streaming-genre-label">{g.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Filtered Grid or Non-Browse Tab View */}
+      {(activeTab !== 'my-shows' || myShowsXtream.length > 0 || myShowsDemo.length > 0 || myShowsPublicDiscovery.length > 0) && (activeTab !== 'genres' || Boolean(selectedGenre)) && (isFiltering || activeTab !== 'browse') && (
+        <div className="streaming-body" style={{ paddingTop: 20 }}>
+          {hasXtream ? (
+            <div>
+              <p className="browse-count faint">
+                Showing {Math.min(displayedXtream.length, providerLimit)} of {displayedXtream.length} series{enabledSources.length > 1 ? ` (aggregated across ${enabledSources.length} sources)` : ' from connected sources'}.
+              </p>
+              {displayedXtream.length === 0 ? (
+                <StateBlock
+                  icon="search"
+                  title="No TV shows match your criteria"
+                  action={
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => {
+                        setParams({}, { replace: true })
+                        setProviderQuery('')
+                        setSelectedGenre(null)
+                        setActiveTab('browse')
+                      }}
+                    >
+                      Clear filters
+                    </button>
+                  }
+                >
+                  Try clearing the search query or changing category filters.
+                </StateBlock>
+              ) : (
+                <div className="grid-posters">
+                  {displayedXtream.slice(0, providerLimit).map((show) => {
+                    const routeId = `xt:${show.sourceId}:${show.id}`
+                    const isMultiSource = show.totalSources > 1
+                    const sourceLabel = isMultiSource ? `${show.totalSources} sources` : sourceName(show.sourceId)
+                    const line = [show.year, sourceLabel].filter(Boolean).join(' · ')
+                    return (
+                      <XtreamPosterCard
+                        key={`${show.sourceId}:${show.id}`}
+                        to={`/series/${encodeURIComponent(routeId)}`}
+                        title={show.name}
+                        artworkKey={show.artworkKey}
+                        line={line}
+                        year={show.year}
+                        flag={isMultiSource ? <span style={{ fontSize: '0.7rem' }}>{show.totalSources} Sources</span> : undefined}
+                      />
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          ) : (hasDemo || openSeries.length > 0) ? (
+            <div>
+              <p className="browse-count faint">
+                Showing {filteredDemo.length} TV shows in {hasDemo ? 'curated' : 'open'} catalogue.
+              </p>
+              {filteredDemo.length === 0 ? (
+                <StateBlock
+                  icon="series"
+                  title="No TV shows found"
+                  action={
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => {
+                        setParams({}, { replace: true })
+                        setProviderQuery('')
+                        setSelectedGenre(null)
+                        setActiveTab('browse')
+                      }}
+                    >
+                      Reset filters
+                    </button>
+                  }
+                >
+                  Try selecting another category or resetting the search term.
+                </StateBlock>
+              ) : (
+                <div className="grid-posters">
+                  {filteredDemo.map((s) => {
+                    const up = seriesNextUp(library, s)
+                    const watching = up.state === 'resume' || up.state === 'next'
+                    return (
+                      <PosterCard
+                        key={s.id}
+                        to={`/series/${s.id}`}
+                        title={s.title}
+                        art={s.art}
+                        focus={s.focus}
+                        line={watching ? `${up.state === 'resume' ? 'Resume' : 'Up next'} ${episodeCode(up.episode)}` : `${s.seasons.length} season${s.seasons.length > 1 ? 's' : ''} · ${s.certificate}`}
+                        flag={watching ? <><Icon name="play" size={10} />Watching</> : undefined}
+                      />
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div>
+              <p className="browse-count faint">
+                Showing {filteredPublicDiscovery.length} public broadcast and episodic archive collections.
+              </p>
+              {filteredPublicDiscovery.length === 0 ? (
+                <StateBlock
+                  icon="series"
+                  title="No television archives found"
+                  action={
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => {
+                        setParams({}, { replace: true })
+                        setProviderQuery('')
+                        setSelectedGenre(null)
+                        setActiveTab('browse')
+                      }}
+                    >
+                      Reset filters
+                    </button>
+                  }
+                >
+                  Try selecting another category or resetting the search term.
+                </StateBlock>
+              ) : (
+                <div className="grid-posters">
+                  {filteredPublicDiscovery.map((r) => (
+                    <PosterCard
+                      key={r.id}
+                      to={`/series/${encodeURIComponent(r.id)}`}
+                      title={r.name}
+                      art={r.artworkUrl}
+                      line={[r.provider, r.subcategory].filter(Boolean).join(' · ')}
+                      flag={<><Icon name="library" size={10} />Archive</>}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      {trailerModal.open && (
+        <TrailerPlayerModal
+          open={trailerModal.open}
+          onClose={() => setTrailerModal((prev) => ({ ...prev, open: false }))}
+          title={trailerModal.title}
+          trailerUrl={trailerModal.trailerUrl}
+          posterUrl={trailerModal.posterUrl}
+          playFullUrl={trailerModal.playFullUrl}
+        />
+      )}
+    </div>
   )
 }

@@ -23,7 +23,7 @@
   background: var(--surface-3, #181b20);
   border: 1px solid var(--graphite-border, #292d33);
   border-radius: var(--r-l, 12px);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), 0 0 24px rgba(255, 26, 42, 0.15);
+  box-shadow: var(--shadow-modal, 0 24px 64px rgba(0, 0, 0, 0.65));
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -93,6 +93,10 @@
   border: 1px solid var(--graphite-border, #292d33);
   cursor: pointer;
   transition: background 140ms var(--ease), border-color 140ms var(--ease), transform 120ms var(--ease);
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
 }
 
 .cast-device-item:hover {
@@ -102,9 +106,8 @@
 }
 
 .cast-device-item.is-connected {
-  border-color: var(--accent, #ff1a2a);
-  background: rgba(255, 26, 42, 0.08);
-  box-shadow: 0 0 12px rgba(255, 26, 42, 0.2);
+  border-color: var(--accent, #e50914);
+  background: var(--accent-soft, rgba(229, 9, 20, 0.12));
 }
 
 .cast-device-info {

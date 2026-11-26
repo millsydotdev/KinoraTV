@@ -34,23 +34,23 @@ export interface UserPreferencesData {
   preferredServers?: Record<string, string>
   autoFallbackEnabled?: boolean
   liveTvGroupingMode?: 'canonical' | 'provider'
+  viewMode?: 'desktop' | 'tv'
 }
 
 const STORAGE_KEY = 'kinora.userPreferences.v1'
 
 export const DEFAULT_HOME_SECTIONS: HomeSectionSetting[] = [
   { id: 'continue-watching', title: 'Continue Watching', visible: true, order: 1 },
-  { id: 'recommended-for-you', title: 'Recommended for You', visible: true, order: 2 },
-  { id: 'live-tv-right-now', title: 'Live TV Right Now', visible: true, order: 3 },
-  { id: 'because-you-watched', title: 'Because You Watched', visible: true, order: 4 },
-  { id: 'trending-popular', title: 'Trending & Popular', visible: true, order: 5 },
-  { id: 'radio-audio', title: 'Live Radio & Spoken Audio', visible: true, order: 6 },
-  { id: 'favourites-rail', title: 'Your Favourites', visible: true, order: 7 },
-  { id: 'scifi-space', title: 'Sci-Fi & Space', visible: true, order: 8 },
-  { id: 'crime-drama', title: 'Crime & Drama', visible: true, order: 9 },
-  { id: 'action-adventure', title: 'Action & Adventure', visible: true, order: 10 },
-  { id: 'comedy-entertainment', title: 'Comedy & Entertainment', visible: true, order: 11 },
-  { id: 'recently-added', title: 'Recently Added', visible: true, order: 12 },
+  { id: 'live-tv-right-now', title: 'Live TV Right Now', visible: true, order: 2 },
+  { id: 'trending-popular', title: 'Movies', visible: true, order: 3 },
+  { id: 'series-rail', title: 'Series & TV Shows', visible: true, order: 4 },
+  { id: 'explore-genres', title: 'Explore Genres', visible: true, order: 5 },
+  { id: 'recommended-for-you', title: 'Recommended for You', visible: true, order: 6 },
+  { id: 'because-you-watched', title: 'Because You Watched', visible: true, order: 7 },
+  { id: 'cultural-vault', title: 'Cultural Film Vault & Archives', visible: true, order: 8 },
+  { id: 'radio-audio', title: 'Live Radio & Spoken Audio', visible: true, order: 9 },
+  { id: 'favourites-rail', title: 'Your Favourites', visible: true, order: 10 },
+  { id: 'recently-added', title: 'Recently Added', visible: true, order: 11 },
 ]
 
 export const initialUserPreferences: UserPreferencesData = {

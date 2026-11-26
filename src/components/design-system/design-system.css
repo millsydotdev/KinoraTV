@@ -825,14 +825,16 @@
 }
 
 .ds-card.is-clickable:hover {
-  transform: translateY(-2px);
-  border-color: var(--line-strong, rgb(255 255 255 / 0.25));
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
+  transform: translateY(-4px);
+  border-color: var(--accent, #e50914);
+  box-shadow: 0 0 14px rgba(229, 9, 20, 0.45), 0 8px 24px rgb(0 0 0 / 0.5);
 }
 
 .ds-card.is-clickable:focus-visible {
   outline: 2px solid var(--accent, #e50914);
-  outline-offset: 2px;
+  outline-offset: 1px;
+  border-color: var(--accent, #e50914);
+  box-shadow: 0 0 18px rgba(229, 9, 20, 0.65), 0 12px 28px rgb(0 0 0 / 0.6);
 }
 
 .ds-card-header {

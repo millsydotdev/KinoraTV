@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { isTauri, testSourceConnection } from '../lib/native'
 import { DISCOVERED_RESOURCES } from '../data/discoveredResources'
 import type { MediaResource, PersonalMediaLibraryState, PersonalResourceItem, VerificationStatus } from '../data/personalLibrary'
 import { initialPersonalLibraryState } from '../data/personalLibrary'
@@ -31,6 +32,7 @@ export interface AudioTrackState {
   artworkUrl?: string
   accentHue?: number
   mediaType?: 'radio' | 'podcast' | 'audiobook' | 'music' | 'stream'
+  lyrics?: string
 }
 
 function getQueueStorageKey(profileId: string): string {
@@ -142,6 +144,10 @@ export function usePersonalMediaLibrary(profileId = 'default') {
 
   const clearQueue = useCallback(() => {
     setAudioQueue([])
+  }, [])
+
+  const updateAudioLyrics = useCallback((lyrics: string) => {
+    setCurrentAudio((prev) => (prev ? { ...prev, lyrics } : null))
   }, [])
 
   const playAudio = useCallback((track: AudioTrackState) => {
@@ -411,28 +417,50 @@ export function usePersonalMediaLibrary(profileId = 'default') {
     let status: VerificationStatus = res.verificationStatus
 
     try {
-      const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 6000)
-
+      if (isTauri()) {
+      const targetUrl = res.playbackUrl ?? res.url
       try {
-        await fetch(res.playbackUrl ?? res.url, {
-          method: 'HEAD',
-          signal: controller.signal,
-          mode: 'no-cors',
-        })
-        clearTimeout(timer)
-        ok = true
-        status = res.playbackUrl ? 'working' : 'verified'
-      } catch (err) {
-        clearTimeout(timer)
-        if (err instanceof Error && err.name === 'AbortError') {
-          status = 'unavailable'
-          ok = false
-        } else {
-          status = res.playbackUrl ? 'working' : 'verified'
+        const testRes = await testSourceConnection(targetUrl)
+        if (testRes && testRes.ok) {
           ok = true
+          status = res.playbackUrl ? 'working' : 'verified'
+        } else {
+          ok = false
+          status = 'unavailable'
         }
+      } catch {
+        ok = false
+        status = 'unavailable'
       }
+    } else {
+      try {
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), 6000)
+
+        try {
+          await fetch(res.playbackUrl ?? res.url, {
+            method: 'HEAD',
+            signal: controller.signal,
+            mode: 'no-cors',
+          })
+          clearTimeout(timer)
+          ok = true
+          status = res.playbackUrl ? 'working' : 'verified'
+        } catch (err) {
+          clearTimeout(timer)
+          if (err instanceof Error && err.name === 'AbortError') {
+            status = 'unavailable'
+            ok = false
+          } else {
+            status = res.playbackUrl ? 'working' : 'verified'
+            ok = true
+          }
+        }
+      } catch {
+        status = 'unavailable'
+        ok = false
+      }
+    }
 
       const today = new Date().toISOString().slice(0, 10)
       setVerificationOverrides((prev) => ({
@@ -559,6 +587,7 @@ export function usePersonalMediaLibrary(profileId = 'default') {
     clearQueue,
     playNextInQueue,
     setSleepTimer,
+    updateAudioLyrics,
   }
 }
 

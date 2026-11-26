@@ -67,6 +67,8 @@ describe('automatic channel matching', () => {
     expect(canonicalTvgId('QVC.uk@SD')).toBe('qvc.uk')
     expect(canonicalTvgId('BBCOne.uk@Scotland')).toBe('bbcone.uk@scotland')
     expect(canonicalTvgId('BBCOne.uk@Wales')).toBe('bbcone.uk@wales')
+    expect(canonicalTvgId('ITV1.uk@EastMidlandsHD')).toBe('itv1.uk@eastmidlands')
+    expect(canonicalTvgId('ITV1.uk@EastMidlands')).toBe('itv1.uk@eastmidlands')
 
     const scotland = channel('pl-world', 'scot', 'BBCOne.uk@Scotland', 'BBC One Scotland')
     const wales = channel('pl-world', 'wales', 'BBCOne.uk@Wales', 'BBC One Wales')

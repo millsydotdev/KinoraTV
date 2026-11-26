@@ -1,0 +1,37 @@
+.chapter-ticks-container {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.chapter-tick-mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background-color: rgba(0, 0, 0, 0.7);
+  box-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
+  transform: translateX(-50%);
+  z-index: 2;
+  transition: transform 0.1s ease, background-color 0.1s ease;
+}
+
+.chapter-tick-mark.is-active {
+  background-color: var(--accent);
+  width: 3px;
+}
+
+.chapter-badge-hud {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius-sm, 4px);
+  background-color: rgba(0, 0, 0, 0.75);
+  color: var(--text);
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}

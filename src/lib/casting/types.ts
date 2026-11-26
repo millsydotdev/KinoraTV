@@ -4,7 +4,7 @@
  * Strictly adheres to typography standard: zero em-dashes.
  */
 
-export type CastProtocol = 'chromecast' | 'airplay' | 'dlna' | 'local'
+export type CastProtocol = 'chromecast' | 'airplay' | 'dlna' | 'kinora' | 'local'
 
 export type CastDeviceStatus = 'available' | 'connecting' | 'connected' | 'busy'
 

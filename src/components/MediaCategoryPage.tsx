@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { PageHeader } from './PageHeader'
 import { Icon } from './Icon'
 import { ResourceCard, type ResourceCardVariant } from './ResourceCard'
@@ -203,6 +204,15 @@ export function MediaCategoryPage({ categoryId, customBannerHero, featuredIds, c
                 </button>
               )
             })}
+            <Link
+              to={categoryId === 'music' || categoryId === 'radio' || categoryId === 'podcasts' ? '/discover?type=audio' : categoryId === 'books' || categoryId === 'audiobooks' ? '/discover?type=books' : '/discover'}
+              className="media-subcat-chip media-genre-hub-link"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderColor: 'var(--accent)' }}
+              title="Explore canonical genres in Discovery"
+            >
+              <Icon name="tag" size={12} />
+              <span>Explore Genres</span>
+            </Link>
           </div>
         )}
 
@@ -220,21 +230,21 @@ export function MediaCategoryPage({ categoryId, customBannerHero, featuredIds, c
           </div>
 
           <div className="media-filters-group">
-            {/* View filter: All, My Sources, Favourites */}
+            {/* View filter: Public Discovery, My Sources, Favourites */}
             <div className="media-view-segmented" role="group" aria-label="View Filter">
               <button
                 type="button"
                 className={`media-seg-btn ${viewFilter === 'all' ? 'active' : ''}`}
                 onClick={() => setViewFilter('all')}
               >
-                All
+                Public Discovery
               </button>
               <button
                 type="button"
                 className={`media-seg-btn ${viewFilter === 'my-sources' ? 'active' : ''}`}
                 onClick={() => setViewFilter('my-sources')}
               >
-                My Sources
+                My Sources ({categoryResources.filter((r) => store.mediaLibrary.isInPersonalLibrary(r.id)).length})
               </button>
               <button
                 type="button"
@@ -277,32 +287,66 @@ export function MediaCategoryPage({ categoryId, customBannerHero, featuredIds, c
         <section className="media-sec" aria-label="Catalogued Resources">
           <div className="media-sec-header">
             <h2 className="media-sec-title">
-              {viewFilter === 'my-sources' ? 'My Saved Sources' : viewFilter === 'favourites' ? 'My Favourites' : 'Discovered Resources'}
+              {viewFilter === 'my-sources' ? 'My Saved Sources' : viewFilter === 'favourites' ? 'My Favourites' : 'Public Discovery Catalogue'}
               <span className="media-sec-count">({filteredResources.length})</span>
             </h2>
           </div>
 
           {mainList.length === 0 ? (
-            <StateBlock
-              icon="search"
-              title="No resources match your filters"
-              action={
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    setSearchQuery('')
-                    setSelectedSubcategory('all')
-                    setStatusFilter('all')
-                    setViewFilter('all')
-                  }}
-                >
-                  Reset all filters
-                </button>
-              }
-            >
-              Try clearing the search query or expanding the subcategory selection to view more available media.
-            </StateBlock>
+            viewFilter === 'my-sources' ? (
+              <StateBlock
+                icon="sources"
+                title="No Personal Sources Saved in this Category"
+                action={
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => setViewFilter('all')}
+                  >
+                    Browse Public Discovery
+                  </button>
+                }
+              >
+                You have not added any {categoryDef?.shortName ?? 'media'} sources to your personal library yet. Switch to Public Discovery to explore verified open streams and catalogues, and click + on any card to save them to My Sources.
+              </StateBlock>
+            ) : viewFilter === 'favourites' ? (
+              <StateBlock
+                icon="heart"
+                title="No Favourited Sources"
+                action={
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setViewFilter('all')}
+                  >
+                    Browse Public Discovery
+                  </button>
+                }
+              >
+                You have not favourited any {categoryDef?.shortName ?? 'media'} resources yet. Click the heart icon on any card to add it to your favourites for quick access.
+              </StateBlock>
+            ) : (
+              <StateBlock
+                icon="search"
+                title="No resources match your filters"
+                action={
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setSearchQuery('')
+                      setSelectedSubcategory('all')
+                      setStatusFilter('all')
+                      setViewFilter('all')
+                    }}
+                  >
+                    Reset all filters
+                  </button>
+                }
+              >
+                Try clearing the search query or expanding the subcategory selection to view more available media.
+              </StateBlock>
+            )
           ) : (
             <div className={`media-resources-grid variant-${computedCardVariant}`}>
               {mainList.map((res) => (

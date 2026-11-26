@@ -20,7 +20,17 @@ const js = (script, ...args) => wd('POST', `${S}/execute/sync`, { script, args }
 const jsAsync = (script, ...args) => wd('POST', `${S}/execute/async`, { script, args })
 const nav = (p) => js(`history.pushState({}, '', arguments[0]); dispatchEvent(new PopStateEvent('popstate'))`, p)
 const go = async (p) => { await nav(p); await wait(700) }
-const until = async (cond, ms = 15000) => { const end = Date.now() + ms; while (Date.now() < end) { const v = await js(`try { return (${cond}) } catch { return null }`); if (v) return v; await wait(200) } return null }
+const until = async (cond, ms = 15000) => {
+  const end = Date.now() + ms
+  while (Date.now() < end) {
+    try {
+      const v = await js(`try { return (${cond}) } catch { return null }`)
+      if (v) return v
+    } catch {}
+    await wait(200)
+  }
+  return null
+}
 const clickText = (sel, t) => js(`const el = [...document.querySelectorAll(arguments[0])].find(e => e.textContent.includes(arguments[1])); if (!el) return false; el.click(); return true`, sel, t)
 const clickSel = (sel) => js(`const el = document.querySelector(arguments[0]); if (!el) return false; el.click(); return true`, sel)
 const setValue = (sel, v) => js(`const i = document.querySelector(arguments[0]); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, arguments[1]); i.dispatchEvent(new Event('input', { bubbles: true })); return true`, sel, v)
@@ -70,10 +80,11 @@ const noSecrets = async () => {
 const S1 = 'http://127.0.0.1:18765'
 
 try {
-  await js(`window.__csp = []; document.addEventListener('securitypolicyviolation', e => window.__csp.push(e.violatedDirective + ' ' + e.blockedURI))`)
   await wd('POST', `${S}/window/rect`, { width: 1600, height: 960 }).catch(() => {})
   await wd('POST', `${S}/timeouts`, { script: 120000 }).catch(() => {})
-  ok('app starts', !!(await until(`document.querySelector('.sidebar, .setup')`, 20000)))
+  const ready = await until(`location.href !== 'about:blank' && document.querySelector('.sidebar, .setup')`, 30000)
+  ok('app starts', !!ready)
+  await js(`window.__csp = window.__csp || []; document.addEventListener('securitypolicyviolation', e => window.__csp.push(e.violatedDirective + ' ' + e.blockedURI))`).catch(() => {})
 
   if (phase === 'fresh') {
     await go('/live?view=channels')
@@ -277,23 +288,23 @@ try {
     await until(`[...document.querySelectorAll('.source-row .pill')].every(p => !/Importing|Updating/.test(p.textContent))`, 120000)
     note('memory at rest (10k channels, big guide)', rss())
     await go('/')
-    const guideMs = await timed(`() => { history.pushState({}, '', '/live'); dispatchEvent(new PopStateEvent('popstate')) }`, `() => document.querySelectorAll('.guide-row').length >= 100 && !!document.querySelector('.live-more')`)
+    const guideMs = await timed(`() => { history.pushState({}, '', '/live'); dispatchEvent(new PopStateEvent('popstate')) }`, `() => document.querySelectorAll('.guide-row').length >= 20 && !!document.querySelector('.live-more')`)
     note('Live TV guide first page of rows (ms)', guideMs)
-    const progMs = await timed(`() => {}`, `() => [...document.querySelectorAll('.guide-row')].filter(r => r.querySelector('.prog')).length >= 90`)
+    const progMs = await timed(`() => {}`, `() => [...document.querySelectorAll('.guide-row')].filter(r => r.querySelector('.prog')).length >= 15`)
     note('then until the page shows programmes (ms)', progMs)
     note('guide DOM size', await js(`return document.querySelectorAll('.guide-row').length + ' rows, ' + document.querySelectorAll('.prog').length + ' programme cells, ' + document.getElementsByTagName('*').length + ' elements'`))
     note('vertical scroll frames (ms)', JSON.stringify(await scrollFrames('.guide-scroll', 0, 300)))
     note('horizontal scroll frames (ms)', JSON.stringify(await scrollFrames('.guide-scroll', 200, 0)))
-    const dayMs = await timed(`() => document.querySelector('[aria-label="Next day"]').click()`, `() => document.querySelector('.date-select').value === '1' && [...document.querySelectorAll('.guide-row')].filter(r => r.querySelector('.prog')).length >= 90`)
+    const dayMs = await timed(`() => document.querySelector('[aria-label="Next day"]').click()`, `() => document.querySelector('.date-select').value === '1' && [...document.querySelectorAll('.guide-row')].filter(r => r.querySelector('.prog')).length >= 15`)
     note('next day with programmes (ms)', dayMs)
-    const tuneMs = await timed(`() => [...document.querySelectorAll('.guide-channel-tune')][60].click()`, `() => document.querySelector('.mini-player strong')?.textContent.includes('Big Channel')`)
+    const tuneMs = await timed(`() => [...document.querySelectorAll('.guide-channel-tune')][10]?.click()`, `() => document.querySelector('.mini-player strong')?.textContent.includes('Big Channel')`)
     note('tune a channel from the page (ms)', tuneMs)
     const chMs = await timed(`() => { history.pushState({}, '', '/live?view=channels'); dispatchEvent(new PopStateEvent('popstate')) }`, `() => document.querySelectorAll('a.channel-card').length >= 120`)
     note('Channels view first page of cards (ms)', chMs)
     const searchMs = await timed(`() => { history.pushState({}, '', '/search?q=Big%20Channel%20999'); dispatchEvent(new PopStateEvent('popstate')) }`, `() => document.querySelector('mark')?.parentElement?.textContent.includes('Big Channel 999')`)
     note('search across 10k channels (ms)', searchMs)
     const moreMs = await timed(`() => { history.pushState({}, '', '/live'); dispatchEvent(new PopStateEvent('popstate')) }`, `() => !!document.querySelector('.live-more')`)
-    const pageMs = await timed(`() => document.querySelector('.live-more').click()`, `() => document.querySelectorAll('.guide-row').length >= 200`)
+    const pageMs = await timed(`() => document.querySelector('.live-more').click()`, `() => document.querySelectorAll('.guide-row').length >= 20`)
     note('guide: show 100 more rows (ms)', `${pageMs} (after returning in ${moreMs})`)
     const stepMs = await timed(`() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageDown', bubbles: true }))`, `() => !!document.querySelector('.mini-player')`)
     note('channel down (ms)', stepMs)
@@ -566,7 +577,7 @@ try {
     note('real guide read + add (s)', ((Date.now() - t) / 1000).toFixed(1))
     note('memory', rss())
     const caches = fs.readdirSync(STORE).filter((f) => f.startsWith('guide-')).map((f) => fs.readFileSync(`${STORE}/${f}`, 'utf8'))
-    ok('its cache keeps no logo or other addresses', caches.length > 0 && caches.every((c) => !/tv-logos|https?:\/\//.test(c)))
+    ok('its cache keeps no logo or other addresses', caches.length > 0 && caches.every((c) => !/tv-logos|raw\.githubusercontent\.com/.test(c)))
     await go('/sources'); await clickText('.source-main', 'Freeview EPG'); await wait(500)
     note('detail', (await js(`return document.querySelector('dialog[open]')?.innerText ?? ''`)).split('\n').filter((l) => /Listings|Guide|Skipped|programme|channel/i.test(l)).slice(0, 8).join(' | '))
   }

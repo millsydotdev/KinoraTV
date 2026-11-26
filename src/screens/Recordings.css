@@ -2,7 +2,11 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
-  padding-bottom: 48px;
+  padding: 0 var(--gutter, 24px) calc(76px + var(--audio-bar-height, 0px));
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
 }
 
 .dvr-storage-banner {
@@ -148,9 +152,9 @@
 }
 
 .rec-badge.protected {
-  background: rgba(168, 85, 247, 0.15);
-  color: #c084fc;
-  border: 1px solid rgba(168, 85, 247, 0.35);
+  background: var(--warn-bg, rgba(242, 184, 75, 0.15));
+  color: var(--warn, #f2b84b);
+  border: 1px solid color-mix(in oklab, var(--warn, #f2b84b) 35%, transparent);
 }
 
 .rec-dot-pulse {

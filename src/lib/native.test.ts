@@ -169,6 +169,9 @@ describe('stream session boundary', () => {
 
   it('accepts only an opaque kstream address and a positive session id', () => {
     expect(parseOpenedStream({ ...ok, extra: 'https://cdn.example/a.m3u8' })).toEqual(ok)
+    expect(parseOpenedStream({ ...ok, format: 'direct' })).toEqual({ ...ok, format: 'direct' })
+    expect(parseOpenedStream({ ...ok, format: 'dash' })).toEqual({ ...ok, format: 'dash' })
+    expect(parseOpenedStream({ ...ok, format: 'hls' })).toEqual({ ...ok, format: 'hls' })
     for (const bad of [
       null, { ...ok, url: 'https://cdn.example/a.m3u8' }, { ...ok, url: 'kstream://localhost/abc' },
       { ...ok, url: `kstream://localhost/${'A'.repeat(32)}` }, { ...ok, url: `kstream://evil.example/${'0'.repeat(32)}` },
@@ -186,6 +189,17 @@ describe('stream session boundary', () => {
     shell.invoke.mockResolvedValueOnce(undefined)
     await closeStream(3)
     expect(shell.invoke).toHaveBeenLastCalledWith('close_stream', { session: 3 })
+  })
+
+  it('passes custom stream options to Rust open_stream command', async () => {
+    shell.inside = true
+    shell.invoke.mockResolvedValueOnce(ok)
+    const opts = { userAgent: 'CustomVLC/3.0', referrer: 'https://ref.example/', headers: { 'X-Auth': '123' } }
+    await expect(openStream('https://cdn.example/custom.m3u8', opts)).resolves.toEqual(ok)
+    expect(shell.invoke).toHaveBeenLastCalledWith('open_stream', {
+      url: 'https://cdn.example/custom.m3u8',
+      options: opts,
+    })
   })
 
   it('sends stream commands one at a time, so the session Rust keeps is the last one asked for', async () => {
@@ -487,6 +501,133 @@ describe('catalogue boundary', () => {
     shell.inside = false
     expect(await hashParentalPin('5678')).toBeNull()
     expect(await verifyParentalPin('5678', storedPin)).toBeNull()
+  })
+})
+
+describe('platform and device management boundary', () => {
+  it('handles platform mode queries and updates', async () => {
+    const { getPlatformMode, setPlatformMode } = await import('./native')
+
+    // Web fallback
+    shell.inside = false
+    const webMode = await getPlatformMode()
+    expect(webMode?.mode).toBe('standalone')
+
+    // Inside Tauri
+    shell.inside = true
+    shell.invoke.mockResolvedValueOnce({
+      mode: 'server',
+      serverUrl: null,
+      isServerActive: true,
+      trustedDevicesCount: 2,
+      activeConnections: 1,
+    })
+
+    const serverMode = await getPlatformMode()
+    expect(serverMode?.mode).toBe('server')
+    expect(serverMode?.isServerActive).toBe(true)
+
+    shell.invoke.mockResolvedValueOnce({
+      mode: 'client',
+      serverUrl: 'http://192.168.1.100:5198',
+      isServerActive: false,
+      trustedDevicesCount: 0,
+      activeConnections: 0,
+    })
+
+    const clientMode = await setPlatformMode('client', 'http://192.168.1.100:5198')
+    expect(clientMode?.mode).toBe('client')
+    expect(shell.invoke).toHaveBeenCalledWith('set_platform_mode', {
+      mode: 'client',
+      serverUrl: 'http://192.168.1.100:5198',
+    })
+  })
+
+  it('handles trusted devices queries and revocations', async () => {
+    const { getTrustedDevices, revokeTrustedDevice, renameTrustedDevice } = await import('./native')
+
+    shell.inside = true
+    shell.invoke.mockResolvedValueOnce([
+      {
+        id: 'dev-1',
+        name: 'Living Room TV',
+        deviceType: 'tv',
+        capabilities: ['remoteControl'],
+        authToken: 'tok-1',
+        pairedAt: 1700000000,
+        lastSeenAt: 1700000050,
+        revoked: false,
+      },
+    ])
+
+    const devs = await getTrustedDevices()
+    expect(devs.length).toBe(1)
+    expect(devs[0]!.name).toBe('Living Room TV')
+
+    shell.invoke.mockResolvedValueOnce(true)
+    const revoked = await revokeTrustedDevice('dev-1')
+    expect(revoked).toBe(true)
+    expect(shell.invoke).toHaveBeenCalledWith('revoke_trusted_device', { deviceId: 'dev-1' })
+
+    shell.invoke.mockResolvedValueOnce(true)
+    const renamed = await renameTrustedDevice('dev-1', 'Bedroom TV')
+    expect(renamed).toBe(true)
+    expect(shell.invoke).toHaveBeenCalledWith('rename_trusted_device', { deviceId: 'dev-1', newName: 'Bedroom TV' })
+  })
+
+  it('handles audit log and remote channels updates', async () => {
+    const { getAuditLog, updateRemoteChannels, updateRemoteSources, updateRemoteLibrary, discoverKinoraServers } = await import('./native')
+
+    shell.inside = true
+    shell.invoke.mockResolvedValueOnce([
+      {
+        id: 'aud-1',
+        timestamp: 1700000000,
+        deviceId: 'dev-1',
+        deviceName: 'Mobile Remote',
+        capability: 'RemoteControl',
+        action: 'dpad_up',
+        details: '{}',
+        status: 'success',
+      },
+    ])
+
+    const audit = await getAuditLog()
+    expect(audit.length).toBe(1)
+    expect(audit[0]!.action).toBe('dpad_up')
+
+    shell.invoke.mockResolvedValueOnce(true)
+    const updated = await updateRemoteChannels([
+      { id: 'ch-1', name: 'BBC One', number: 101 },
+    ])
+    expect(updated).toBe(true)
+
+    shell.invoke.mockResolvedValueOnce(true)
+    const updatedSources = await updateRemoteSources([
+      { id: 'src-1', label: 'UK Freeview', origin: 'https://example.com/playlist.m3u', channelCount: 40, kind: 'playlist' },
+    ])
+    expect(updatedSources).toBe(true)
+
+    shell.invoke.mockResolvedValueOnce(true)
+    const updatedLib = await updateRemoteLibrary({
+      favourites: ['ch-1'],
+      watchlist: ['mov-1'],
+      watchProgress: [{ itemRef: 'mov-1', title: 'Movie 1', position: 100, duration: 5000, updatedAt: 1700000000 }],
+    })
+    expect(updatedLib).toBe(true)
+
+    shell.invoke.mockResolvedValueOnce([
+      {
+        name: 'Kinora Server',
+        ip: '192.168.1.50',
+        port: 5198,
+        version: '0.6.0',
+        mode: 'server',
+      },
+    ])
+    const discovered = await discoverKinoraServers(1)
+    expect(discovered.length).toBe(1)
+    expect(discovered[0]!.ip).toBe('192.168.1.50')
   })
 })
 

@@ -231,3 +231,28 @@ Inspected in D8, with evidence:
 - The guide is paged, not virtualised (see above); memory grows towards 1 GB with heavy browsing of
   very large inputs.
 - Saved addresses may carry tokens and are stored in plain text for the OS user (`README.md`).
+
+---
+
+## Release Readiness Overhaul (v0.6.0)
+
+Verified on 2026-11-19 against `v0.6.0` baseline.
+
+### Key Milestones Delivered
+1. **UI Layout and Interpretation Corrections**:
+   - Eliminated permanent split-column right-hand menus in `Movies.tsx` and `LiveTV.tsx`. Both now operate as contextual overlay drawers with backdrop blur, preventing page content shifting and eliminating placeholder empty states.
+   - Resolved tablet/desktop breakpoint mismatch between `Sidebar.css` (previously 900px) and `global.css` (760px), eliminating phantom empty columns on the left.
+   - Unified collapsed sidebar width to 76px across both CSS variables and component styling.
+   - Cleaned up `Settings.css` 3-column grid declaration (`260px 1fr 340px` to `240px 1fr`), moving live preview and visual presets into the Appearance section and eliminating the 340px phantom right margin.
+   - Added standard gutter padding (`var(--gutter, 24px)`) to `Recordings.tsx`, aligning its layout with all other application screens.
+
+2. **Staging Environment Separation**:
+   - Implemented dedicated staging configuration `src-tauri/tauri.staging.conf.json` with isolated bundle identifier `io.github.millsydotdev.kinora.staging`.
+   - Guaranteed full data directory isolation (`~/.local/share/io.github.millsydotdev.kinora.staging/`), ensuring staging builds cannot touch production data.
+   - Added `build:staging`, `tauri:dev:staging`, and `tauri:build:staging` npm scripts.
+   - Injected `__APP_ENV__` via Vite configuration and exposed `APP_ENV`, `isStaging()`, `isProduction()` in `src/lib/native.ts`.
+
+3. **Release Pipeline and Developer Experience**:
+   - Authored comprehensive `docs/DEVELOPMENT-AND-RELEASE-WORKFLOW.md` detailing architecture, environment separation, secrets policy, CI/CD gates, and release procedures.
+   - Verified full quality gate (`scripts/quality-gate.sh`): all 476 Vitest tests, 176 Cargo tests, multi-timezone invariance tests, Rust Clippy and formatting pass cleanly.
+   - Documented explicit deployment, verification, and rollback procedures.

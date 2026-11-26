@@ -7,9 +7,7 @@ import type { MediaResource } from './personalLibrary'
  */
 export const DISCOVERED_RESOURCES: MediaResource[] = [
 
-  // =========================================================================
   // LIVE-TV
-  // =========================================================================
   {
     id: 'res-live-france24-en',
     name: 'France 24 English Live',
@@ -277,9 +275,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 160,
   },
 
-  // =========================================================================
   // EPG
-  // =========================================================================
   {
     id: 'res-epg-iptv-org-uk',
     name: 'iptv-org UK EPG Guide',
@@ -406,9 +402,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 120,
   },
 
-  // =========================================================================
   // MOVIES
-  // =========================================================================
   {
     id: 'res-mov-internet-archive-features',
     name: 'Internet Archive Feature Films',
@@ -432,7 +426,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     playbackType: 'web',
     compatibilityNotes: 'Files streamable directly; catalogue searchable via Archive API.',
     tags: ['movies', 'public-domain', 'classic', 'archive', 'film-noir'],
-    artworkUrl: 'https://archive.org/services/img/Night_of_the_Living_Dead',
+    artworkUrl: '/art/understudies.jpg',
     artworkFallbackIcon: 'film',
     accentHue: 45,
   },
@@ -459,7 +453,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     playbackType: 'web',
     compatibilityNotes: 'Open public domain files in MP4/H.264 formats.',
     tags: ['historical', 'ephemeral', 'educational', 'public-domain', 'vintage'],
-    artworkUrl: 'https://archive.org/services/img/prelinger',
+    artworkUrl: '/art/copper-saints.jpg',
     artworkFallbackIcon: 'film',
     accentHue: 30,
   },
@@ -484,7 +478,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     supportedByKinora: true,
     compatibilityNotes: 'Aggregates Archive.org, YouTube, and Vimeo open streams.',
     tags: ['curation', 'classics', 'independent', 'directors', 'cinema'],
-    artworkUrl: 'https://archive.org/services/img/Charade1963',
+    artworkUrl: '/art/velvet-hour.jpg',
     artworkFallbackIcon: 'film',
     accentHue: 190,
   },
@@ -511,7 +505,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     playbackType: 'web',
     compatibilityNotes: 'Available via LOC digital API in MP4 and HLS formats.',
     tags: ['preservation', 'history', 'cinema', 'national-registry', 'archives'],
-    artworkUrl: 'https://archive.org/services/img/TheGeneral1926',
+    artworkUrl: '/art/northbound.jpg',
     artworkFallbackIcon: 'film',
     accentHue: 220,
   },
@@ -541,9 +535,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 340,
   },
 
-  // =========================================================================
   // SERIES
-  // =========================================================================
   {
     id: 'res-ser-classic-tv-online',
     name: 'Classic TV Online Public Domain Archive',
@@ -622,9 +614,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 20,
   },
 
-  // =========================================================================
   // METADATA
-  // =========================================================================
   {
     id: 'res-meta-tmdb',
     name: 'The Movie Database (TMDB) API',
@@ -726,9 +716,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 120,
   },
 
-  // =========================================================================
   // MUSIC
-  // =========================================================================
   {
     id: 'res-mus-free-music-archive',
     name: 'Free Music Archive (FMA)',
@@ -886,9 +874,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 140,
   },
 
-  // =========================================================================
   // RADIO
-  // =========================================================================
   {
     id: 'res-rad-radio-browser',
     name: 'Radio Browser Community API',
@@ -1052,9 +1038,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 215,
   },
 
-  // =========================================================================
   // PODCASTS
-  // =========================================================================
   {
     id: 'res-pod-podcast-index',
     name: 'Podcast Index Open Registry & API',
@@ -1156,9 +1140,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 80,
   },
 
-  // =========================================================================
   // AUDIOBOOKS
-  // =========================================================================
   {
     id: 'res-aud-librivox',
     name: 'LibriVox Public Domain Audiobooks API',
@@ -1237,9 +1219,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 110,
   },
 
-  // =========================================================================
   // DOCUMENTARIES
-  // =========================================================================
   {
     id: 'res-doc-pbs-frontline',
     name: 'PBS Frontline Investigative Portal',
@@ -1316,9 +1296,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 195,
   },
 
-  // =========================================================================
   // EDUCATION
-  // =========================================================================
   {
     id: 'res-edu-mit-ocw',
     name: 'MIT OpenCourseWare',
@@ -1395,9 +1373,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 215,
   },
 
-  // =========================================================================
   // NEWS
-  // =========================================================================
   {
     id: 'res-new-reuters',
     name: 'Reuters World News Wire',
@@ -1449,9 +1425,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 355,
   },
 
-  // =========================================================================
   // SPORTS
-  // =========================================================================
   {
     id: 'res-spo-olympic-channel',
     name: 'Olympic Channel Replays & Archives',
@@ -1503,9 +1477,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 195,
   },
 
-  // =========================================================================
   // BOOKS
-  // =========================================================================
   {
     id: 'res-boo-project-gutenberg',
     name: 'Project Gutenberg Ebook Archive',
@@ -1607,9 +1579,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 345,
   },
 
-  // =========================================================================
   // CULTURE
-  // =========================================================================
   {
     id: 'res-cul-met-museum-api',
     name: 'The Metropolitan Museum of Art Open Access API',
@@ -1686,9 +1656,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 210,
   },
 
-  // =========================================================================
   // GAMING
-  // =========================================================================
   {
     id: 'res-gam-internet-archive-dos',
     name: 'Internet Archive MS-DOS Games Library',
@@ -1765,9 +1733,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 15,
   },
 
-  // =========================================================================
   // NATURE-SCIENCE
-  // =========================================================================
   {
     id: 'res-nat-nasa-api',
     name: 'NASA Open Innovation API Portal',
@@ -1844,9 +1810,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 195,
   },
 
-  // =========================================================================
   // LANGUAGE
-  // =========================================================================
   {
     id: 'res-lan-dw-learn-german',
     name: 'Deutsche Welle: Learn German Media Courses',
@@ -1923,9 +1887,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 215,
   },
 
-  // =========================================================================
   // SUBTITLES
-  // =========================================================================
   {
     id: 'res-sub-opensubtitles-api',
     name: 'OpenSubtitles REST API v1',
@@ -1977,9 +1939,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 200,
   },
 
-  // =========================================================================
   // ARCHIVES
-  // =========================================================================
   {
     id: 'res-arc-internet-archive',
     name: 'Internet Archive (archive.org)',
@@ -2108,9 +2068,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 350,
   },
 
-  // =========================================================================
   // LIVE-TV
-  // =========================================================================
   {
     id: 'res-freetv-france',
     name: 'Free-TV · France',
@@ -2625,9 +2583,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     epgUrl: 'https://epgshare01.online/epgshare01/epg_ripper_AU1.xml.gz',
   },
 
-  // =========================================================================
   // EPG
-  // =========================================================================
   {
     id: 'res-epg-germany',
     name: 'EPG Germany (epgshare01)',
@@ -2749,9 +2705,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 120,
   },
 
-  // =========================================================================
   // RADIO
-  // =========================================================================
   {
     id: 'res-radio-bbc-world-service',
     name: 'BBC World Service',
@@ -2885,9 +2839,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 175,
   },
 
-  // =========================================================================
   // MUSIC
-  // =========================================================================
   {
     id: 'res-radio-somafm-groove-salad',
     name: 'SomaFM · Groove Salad',
@@ -2941,9 +2893,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 35,
   },
 
-  // =========================================================================
   // NATURE-SCIENCE
-  // =========================================================================
   {
     id: 'res-nat-eso-video',
     name: 'European Southern Observatory (ESO) Video Archive',
@@ -2969,9 +2919,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 230,
   },
 
-  // =========================================================================
   // SPORTS
-  // =========================================================================
   {
     id: 'res-sports-redbull-tv',
     name: 'Red Bull TV Live & Action Sports',
@@ -2997,9 +2945,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 350,
   },
 
-  // =========================================================================
   // CULTURE
-  // =========================================================================
   {
     id: 'res-culture-europeana',
     name: 'Europeana Cultural Heritage Digital Collections',
@@ -3025,9 +2971,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 215,
   },
 
-  // =========================================================================
   // AUDIOBOOKS
-  // =========================================================================
   {
     id: 'res-audio-librivox-catalog',
     name: 'LibriVox Free Public Domain Audiobooks',
@@ -3053,9 +2997,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 30,
   },
 
-  // =========================================================================
   // ARCHIVES
-  // =========================================================================
   {
     id: 'res-arc-internet-archive-movies',
     name: 'Internet Archive Moving Images Library',
@@ -3081,9 +3023,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 20,
   },
 
-  // =========================================================================
   // NEWS
-  // =========================================================================
   {
     id: 'res-live-aljazeera-en',
     name: 'Al Jazeera English Live',
@@ -3137,9 +3077,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 190,
   },
 
-  // =========================================================================
   // LIVE-TV
-  // =========================================================================
   {
     id: 'res-iptv-south-africa',
     name: 'iptv-org · South Africa',
@@ -3395,9 +3333,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     epgUrl: 'https://epgshare01.online/epgshare01/epg_ripper_NZ1.xml.gz',
   },
 
-  // =========================================================================
   // DOCUMENTARIES
-  // =========================================================================
   {
     id: 'res-doc-iptv-documentary',
     name: 'iptv-org · Documentary Channels',
@@ -3425,9 +3361,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     epgAvailable: true,
   },
 
-  // =========================================================================
   // EDUCATION
-  // =========================================================================
   {
     id: 'res-edu-iptv-education',
     name: 'iptv-org · Educational Channels',
@@ -3455,9 +3389,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     epgAvailable: true,
   },
 
-  // =========================================================================
   // SPORTS
-  // =========================================================================
   {
     id: 'res-spt-iptv-sports',
     name: 'iptv-org · Sports Channels',
@@ -3485,9 +3417,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     epgAvailable: true,
   },
 
-  // =========================================================================
   // CULTURE
-  // =========================================================================
   {
     id: 'res-cul-iptv-culture',
     name: 'iptv-org · Culture Channels',
@@ -3515,9 +3445,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     epgAvailable: true,
   },
 
-  // =========================================================================
   // ARCHIVES
-  // =========================================================================
   {
     id: 'res-cls-iptv-classic',
     name: 'iptv-org · Classic Channels',
@@ -3545,9 +3473,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     epgAvailable: true,
   },
 
-  // =========================================================================
   // METADATA
-  // =========================================================================
   {
     id: 'res-epg-nl-share',
     name: 'EPG Netherlands (epgshare01)',
@@ -3576,9 +3502,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     epgUrl: 'https://epgshare01.online/epgshare01/epg_ripper_NL1.xml.gz',
   },
 
-  // =========================================================================
   // LIVE-TV
-  // =========================================================================
   {
     id: 'res-livetv-france24-en',
     name: 'France 24 English',
@@ -4680,9 +4604,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 0,
   },
 
-  // =========================================================================
   // EPG
-  // =========================================================================
   {
     id: 'res-epg-epgshare01-all',
     name: 'epgshare01 Global Master XMLTV Guide',
@@ -4707,9 +4629,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 210,
   },
 
-  // =========================================================================
   // DOCUMENTARIES
-  // =========================================================================
   {
     id: 'res-doc-british-council-archive',
     name: 'British Council Film Archive',
@@ -4734,9 +4654,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 90,
   },
 
-  // =========================================================================
   // MOVIES
-  // =========================================================================
   {
     id: 'res-mov-korean-classic-film',
     name: 'Korean Classic Film Theater (KOFA / KMDb)',
@@ -4830,9 +4748,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 260,
   },
 
-  // =========================================================================
   // DOCUMENTARIES
-  // =========================================================================
   {
     id: 'res-doc-idfa-archive',
     name: 'IDFA Online Documentary Collection',
@@ -4926,9 +4842,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 90,
   },
 
-  // =========================================================================
   // SERIES
-  // =========================================================================
   {
     id: 'res-ser-american-archive-public-broadcasting',
     name: 'American Archive of Public Broadcasting (AAPB)',
@@ -5022,9 +4936,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 280,
   },
 
-  // =========================================================================
   // MOVIES
-  // =========================================================================
   {
     id: 'res-mov-henri-cinematheque',
     name: 'HENRI - Plateforme VOD de La Cinematheque Francaise',
@@ -5095,9 +5007,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 260,
   },
 
-  // =========================================================================
   // DOCUMENTARIES
-  // =========================================================================
   {
     id: 'res-doc-open-beelden',
     name: 'Open Beelden (Open Images)',
@@ -5122,9 +5032,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 90,
   },
 
-  // =========================================================================
   // MOVIES
-  // =========================================================================
   {
     id: 'res-mov-ninateka',
     name: 'Ninateka - Filmoteka Narodowa (FINA)',
@@ -5149,9 +5057,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 260,
   },
 
-  // =========================================================================
   // DOCUMENTARIES
-  // =========================================================================
   {
     id: 'res-doc-archivio-luce',
     name: 'Archivio Storico Luce Cinecitta',
@@ -5176,9 +5082,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 90,
   },
 
-  // =========================================================================
   // MOVIES
-  // =========================================================================
   {
     id: 'res-mov-cineteca-milano',
     name: 'Cineteca Milano - Videoteca di Morando',
@@ -5341,9 +5245,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 260,
   },
 
-  // =========================================================================
   // SERIES
-  // =========================================================================
   {
     id: 'res-ser-rtvcplay-colombia',
     name: 'RTVCPlay - Medios Publicos de Colombia',
@@ -5368,9 +5270,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 280,
   },
 
-  // =========================================================================
   // MOVIES
-  // =========================================================================
   {
     id: 'res-mov-african-film-heritage-project',
     name: 'African Film Heritage Project (AFHP)',
@@ -5395,9 +5295,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 260,
   },
 
-  // =========================================================================
   // DOCUMENTARIES
-  // =========================================================================
   {
     id: 'res-doc-colonial-film-database',
     name: 'Colonial Film: Moving Images of the British Empire',
@@ -5422,9 +5320,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 90,
   },
 
-  // =========================================================================
   // MOVIES
-  // =========================================================================
   {
     id: 'res-mov-fespaco-cinematheque',
     name: 'Cinematheque Africaine de Ouagadougou (FESPACO)',
@@ -5449,9 +5345,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 260,
   },
 
-  // =========================================================================
   // DOCUMENTARIES
-  // =========================================================================
   {
     id: 'res-doc-encounters-south-africa',
     name: 'Encounters South African International Documentary Festival',
@@ -5476,9 +5370,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 90,
   },
 
-  // =========================================================================
   // MOVIES
-  // =========================================================================
   {
     id: 'res-mov-palestine-film-institute',
     name: 'Palestine Film Institute & Palestine Film Platform',
@@ -5526,9 +5418,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 260,
   },
 
-  // =========================================================================
   // DOCUMENTARIES
-  // =========================================================================
   {
     id: 'res-doc-dox-box',
     name: 'DOX BOX Arab Documentary Archive & Knowledge Hub',
@@ -5553,9 +5443,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 90,
   },
 
-  // =========================================================================
   // MOVIES
-  // =========================================================================
   {
     id: 'res-mov-japanese-animated-classics',
     name: 'Japanese Animated Film Classics - National Film Archive of Japan',
@@ -5580,9 +5468,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 260,
   },
 
-  // =========================================================================
   // DOCUMENTARIES
-  // =========================================================================
   {
     id: 'res-doc-taiwan-docs',
     name: 'Taiwan Docs - Taiwan Film and Audiovisual Institute (TFAI)',
@@ -5607,9 +5493,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 90,
   },
 
-  // =========================================================================
   // MOVIES
-  // =========================================================================
   {
     id: 'res-mov-indiancine-ma',
     name: 'Indiancine.ma Open Film Archive',
@@ -5634,9 +5518,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 260,
   },
 
-  // =========================================================================
   // DOCUMENTARIES
-  // =========================================================================
   {
     id: 'res-doc-films-division-india',
     name: 'Films Division of India Digital Documentary Archive',
@@ -5661,9 +5543,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 90,
   },
 
-  // =========================================================================
   // MOVIES
-  // =========================================================================
   {
     id: 'res-mov-asian-film-archive',
     name: 'Asian Film Archive (AFA)',
@@ -5711,9 +5591,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 260,
   },
 
-  // =========================================================================
   // DOCUMENTARIES
-  // =========================================================================
   {
     id: 'res-doc-nfsa-australia',
     name: 'National Film and Sound Archive of Australia (NFSA)',
@@ -5761,9 +5639,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 90,
   },
 
-  // =========================================================================
   // SERIES
-  // =========================================================================
   {
     id: 'res-ser-nz-on-screen',
     name: 'NZ On Screen',
@@ -5788,9 +5664,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 280,
   },
 
-  // =========================================================================
   // DOCUMENTARIES
-  // =========================================================================
   {
     id: 'res-doc-folkstreams',
     name: 'Folkstreams National Preserve of American Documentary Films',
@@ -5863,9 +5737,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 90,
   },
 
-  // =========================================================================
   // RADIO
-  // =========================================================================
   {
     id: 'res-radio-rf-fip',
     name: 'Radio France FIP',
@@ -7240,9 +7112,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 160,
   },
 
-  // =========================================================================
   // MUSIC
-  // =========================================================================
   {
     id: 'res-music-imslp',
     name: 'IMSLP / Petrucci Music Library Audio Recordings',
@@ -7394,9 +7264,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 330,
   },
 
-  // =========================================================================
   // PODCASTS
-  // =========================================================================
   {
     id: 'res-podcasts-podcast-index',
     name: 'Podcast Index (Podcasting 2.0)',
@@ -8249,9 +8117,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 30,
   },
 
-  // =========================================================================
   // AUDIOBOOKS
-  // =========================================================================
   {
     id: 'res-audiobooks-gutenberg-open-collection',
     name: 'Project Gutenberg Open Audiobook Collection',
@@ -8322,9 +8188,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 45,
   },
 
-  // =========================================================================
   // PODCASTS
-  // =========================================================================
   {
     id: 'res-podcasts-ia-old-time-radio',
     name: 'Internet Archive: Old Time Radio (OTR) Collection',
@@ -8441,9 +8305,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 30,
   },
 
-  // =========================================================================
   // AUDIOBOOKS
-  // =========================================================================
   {
     id: 'res-audiobooks-ubuweb-sound',
     name: 'UbuWeb Sound: Historic Avant-Garde Sound Art and Poetry',
@@ -8468,9 +8330,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 45,
   },
 
-  // =========================================================================
   // BOOKS
-  // =========================================================================
   {
     id: 'res-boo-standard-ebooks-2',
     name: 'Standard Ebooks',
@@ -9553,9 +9413,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 220,
   },
 
-  // =========================================================================
   // EDUCATION
-  // =========================================================================
   {
     id: 'res-edu-harvard-open-learning',
     name: 'Harvard Online Open Learning',
@@ -10845,9 +10703,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 140,
   },
 
-  // =========================================================================
   // NEWS
-  // =========================================================================
   {
     id: 'res-news-reuters-connect',
     name: 'Reuters Connect Video Archive',
@@ -11292,9 +11148,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 10,
   },
 
-  // =========================================================================
   // SPORTS
-  // =========================================================================
   {
     id: 'res-sports-olympic-channel',
     name: 'Olympics.com Video & Historical Games Archive',
@@ -11597,9 +11451,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 25,
   },
 
-  // =========================================================================
   // CULTURE
-  // =========================================================================
   {
     id: 'res-culture-smithsonian-open-access',
     name: 'Smithsonian Open Access Digital Collections',
@@ -12268,9 +12120,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 290,
   },
 
-  // =========================================================================
   // ARCHIVES
-  // =========================================================================
   {
     id: 'res-archives-british-pathe',
     name: 'British Pathé Historical Newsreel Archive',
@@ -12433,9 +12283,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 40,
   },
 
-  // =========================================================================
   // NATURE-SCIENCE
-  // =========================================================================
   {
     id: 'res-nature-macaulay-library',
     name: 'Macaulay Library Wildlife Media Archive',
@@ -12667,9 +12515,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 175,
   },
 
-  // =========================================================================
   // GAMING
-  // =========================================================================
   {
     id: 'res-gaming-console-living-room',
     name: 'Internet Archive Console Living Room',
@@ -12809,9 +12655,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 120,
   },
 
-  // =========================================================================
   // LANGUAGE
-  // =========================================================================
   {
     id: 'res-language-endangered-languages-project',
     name: 'Endangered Languages Project (ELP)',
@@ -12951,9 +12795,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 200,
   },
 
-  // =========================================================================
   // METADATA
-  // =========================================================================
   {
     id: 'res-meta-tvmaze-api',
     name: 'TVmaze REST API',
@@ -12978,9 +12820,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 190,
   },
 
-  // =========================================================================
   // SUBTITLES
-  // =========================================================================
   {
     id: 'res-sub-amara-subtitles',
     name: 'Amara Community Subtitling Platform',
@@ -13005,9 +12845,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 240,
   },
 
-  // =========================================================================
   // EPG
-  // =========================================================================
   {
     id: 'res-epg-iptv-org-epg',
     name: 'iptv-org EPG Global Repository',
@@ -13055,9 +12893,7 @@ export const DISCOVERED_RESOURCES: MediaResource[] = [
     accentHue: 210,
   },
 
-  // =========================================================================
   // LIVE-TV
-  // =========================================================================
   {
     id: 'res-live-sabc-news',
     name: 'SABC News South Africa',

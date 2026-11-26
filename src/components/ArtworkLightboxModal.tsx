@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Icon } from './Icon'
+import { inNativeShell, loadCachedArtwork } from '../lib/native'
 import './ArtworkLightboxModal.css'
 
 export interface ArtworkLightboxModalProps {
@@ -21,6 +22,23 @@ export function ArtworkLightboxModal({
   format = 'WEBP/JPEG',
 }: ArtworkLightboxModalProps) {
   const [zoomed, setZoomed] = useState(false)
+  const [resolvedUrl, setResolvedUrl] = useState<string>(() => {
+    const isRemote = imageUrl.startsWith('http://') || imageUrl.startsWith('https://')
+    return isRemote && inNativeShell() ? '' : imageUrl
+  })
+
+  useEffect(() => {
+    let active = true
+    const isRemote = imageUrl.startsWith('http://') || imageUrl.startsWith('https://')
+    if (isRemote && inNativeShell()) {
+      void loadCachedArtwork(`lightbox:${imageUrl}`, imageUrl).then((uri) => {
+        if (active && uri) setResolvedUrl(uri)
+      })
+    } else {
+      setResolvedUrl(imageUrl)
+    }
+    return () => { active = false }
+  }, [imageUrl])
 
   useEffect(() => {
     if (!isOpen) return
@@ -78,7 +96,7 @@ export function ArtworkLightboxModal({
 
       <main className="lightbox-body" onClick={(e) => { e.stopPropagation(); setZoomed(!zoomed) }}>
         <div className={`lightbox-image-wrap ${zoomed ? 'is-zoomed' : ''}`}>
-          <img src={imageUrl} alt={title} className="lightbox-img" />
+          <img src={resolvedUrl || imageUrl} alt={title} className="lightbox-img" />
         </div>
       </main>
 

@@ -1,80 +1,147 @@
-import { useState, useEffect, useRef, useLayoutEffect, type ReactNode } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { useState, useEffect, useLayoutEffect } from 'react'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useStore } from '../state/store'
 import { Icon, type IconName } from './Icon'
+import { KPlayMark } from './KPlayMark'
 import './Sidebar.css'
-
-interface NavItem {
-  to: string
-  label: string
-  icon: IconName
-  end?: boolean
-}
-
-const watchItems: NavItem[] = [
-  { to: '/', label: 'Home', icon: 'home', end: true },
-  { to: '/live', label: 'Live TV', icon: 'live' },
-  { to: '/movies', label: 'Movies', icon: 'film' },
-  { to: '/series', label: 'Series', icon: 'series' },
-]
-
-const listenItems: NavItem[] = [
-  { to: '/radio', label: 'Radio', icon: 'radio' },
-  { to: '/music', label: 'Music', icon: 'music' },
-  { to: '/podcasts', label: 'Podcasts', icon: 'podcast' },
-  { to: '/audiobooks', label: 'Audiobooks', icon: 'book' },
-]
-
-const exploreCoreItems: NavItem[] = [
-  { to: '/library', label: 'Library', icon: 'library' },
-  { to: '/sources', label: 'Sources', icon: 'sources' },
-  { to: '/search', label: 'Search', icon: 'search' },
-  { to: '/settings', label: 'Settings', icon: 'settings' },
-]
-
-const exploreMoreItems: NavItem[] = [
-  { to: '/recordings', label: 'Recordings', icon: 'record' },
-  { to: '/documentaries', label: 'Documentaries', icon: 'documentary' },
-  { to: '/news', label: 'News', icon: 'news' },
-  { to: '/sports', label: 'Sports', icon: 'sports' },
-  { to: '/education', label: 'Education', icon: 'education' },
-  { to: '/books', label: 'Books', icon: 'book' },
-  { to: '/culture', label: 'Culture & Arts', icon: 'palette' },
-  { to: '/nature-science', label: 'Nature & Space', icon: 'nature' },
-  { to: '/gaming', label: 'Gaming', icon: 'gaming' },
-  { to: '/language', label: 'Languages', icon: 'globe' },
-  { to: '/archives', label: 'Media Archives', icon: 'archive' },
-]
 
 export function Logo() {
   return (
     <span className="logo">
-      <svg className="logo-mark" viewBox="0 0 32 32" aria-hidden="true">
-        <path d="M7 4.5 L26 16 L7 27.5 Z" fill="#e50914" />
-        <path d="M13 12 L19 16 L13 20 Z" fill="#ffffff" />
-      </svg>
-      <span className="logo-word">KINORA<span className="logo-tv"> TV</span></span>
+      <KPlayMark size={26} className="logo-mark" idPrefix="sb-logo" />
+      <span className="logo-text">
+        <span className="logo-word">KINORA</span>
+        <span className="logo-badge logo-tv">TV</span>
+      </span>
     </span>
   )
 }
 
-interface GroupState {
-  watch: boolean
-  listen: boolean
-  explore: boolean
+interface NavLeaf {
+  to: string
+  label: string
+  icon: IconName
+  exact?: boolean
 }
 
-const STORAGE_KEY = 'kinora.sidebar.groups.v1'
+interface NavSection {
+  id: string
+  label: string
+  icon: IconName
+  to?: string
+  children?: NavLeaf[]
+}
 
-function loadSavedGroupState(): GroupState {
-  if (typeof window === 'undefined') return { watch: true, listen: true, explore: true }
+interface NavGroup {
+  id: string
+  title?: string
+  sections: NavSection[]
+}
+
+const navGroups: NavGroup[] = [
+  {
+    id: 'primary',
+    sections: [
+      {
+        id: 'home',
+        label: 'Home',
+        icon: 'home',
+        to: '/',
+      },
+      {
+        id: 'live',
+        label: 'Live TV',
+        icon: 'live',
+        to: '/live',
+        children: [
+          { to: '/live', label: 'TV Guide', icon: 'calendar', exact: true },
+          { to: '/live?view=channels', label: 'Channels', icon: 'grid' },
+          { to: '/live?tab=catchup', label: 'Catch-Up', icon: 'rotateCw' },
+          { to: '/recordings', label: 'Recordings', icon: 'record' },
+        ],
+      },
+      {
+        id: 'movies-series',
+        label: 'Movies & Series',
+        icon: 'film',
+        to: '/movies',
+        children: [
+          { to: '/movies', label: 'Movies', icon: 'film' },
+          { to: '/series', label: 'TV Shows', icon: 'series' },
+        ],
+      },
+      {
+        id: 'library',
+        label: 'Media Library',
+        icon: 'library',
+        to: '/library',
+      },
+      {
+        id: 'sources',
+        label: 'Sources',
+        icon: 'sources',
+        to: '/sources',
+      },
+    ],
+  },
+  {
+    id: 'audio-reading',
+    title: 'Audio & Books',
+    sections: [
+      {
+        id: 'audio',
+        label: 'Audio',
+        icon: 'audio',
+        to: '/radio',
+        children: [
+          { to: '/radio', label: 'Radio', icon: 'radio' },
+          { to: '/music', label: 'Music', icon: 'music' },
+          { to: '/podcasts', label: 'Podcasts', icon: 'podcast' },
+          { to: '/audiobooks', label: 'Audiobooks', icon: 'book' },
+        ],
+      },
+      {
+        id: 'reading',
+        label: 'Books',
+        icon: 'book',
+        to: '/books',
+      },
+    ],
+  },
+  {
+    id: 'explore-group',
+    title: 'Discover',
+    sections: [
+      {
+        id: 'discover',
+        label: 'Discover',
+        icon: 'compass',
+        to: '/documentaries',
+        children: [
+          { to: '/documentaries', label: 'Documentaries', icon: 'documentary' },
+          { to: '/news', label: 'News', icon: 'news' },
+          { to: '/sports', label: 'Sports', icon: 'sports' },
+          { to: '/education', label: 'Education', icon: 'education' },
+          { to: '/culture', label: 'Culture & Arts', icon: 'palette' },
+          { to: '/nature-science', label: 'Nature & Space', icon: 'nature' },
+          { to: '/gaming', label: 'Gaming', icon: 'gaming' },
+          { to: '/language', label: 'Languages', icon: 'globe' },
+          { to: '/archives', label: 'Media Archives', icon: 'archive' },
+        ],
+      },
+    ],
+  },
+]
+
+const STORAGE_KEY = 'kinora.sidebar.sections.v2'
+
+function loadSavedSectionState(): Record<string, boolean> {
+  if (typeof window === 'undefined') return { live: true, 'movies-series': true }
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) return JSON.parse(raw)
-  } catch {
-    // Ignore storage parse error
-  }
-  return { watch: true, listen: true, explore: true }
+  } catch {}
+  return { live: true, 'movies-series': true }
 }
 
 function getSynchronousSidebarCollapsed(): boolean {
@@ -91,93 +158,123 @@ function getSynchronousSidebarCollapsed(): boolean {
   return false
 }
 
-// Synchronously apply dataset attribute immediately before mount to eliminate visual layout flash
 if (typeof document !== 'undefined') {
   const initialCollapsed = getSynchronousSidebarCollapsed()
   document.documentElement.dataset.sidebar = initialCollapsed ? 'collapsed' : 'expanded'
 }
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { sources, playlists, channels, totalPlaylistEntries, channelMode, mediaLibrary, prefs, setPref, recordings = [], xtreamSources = [], guides = [] } = useStore()
-  const { pathname } = useLocation()
+  const navigate = useNavigate()
+  const { playlists, prefs, setPref, recordings = [], xtreamSources = [], guides = [] } = useStore()
+  const location = useLocation()
+  const { pathname, search } = location
 
-  const [groupState, setGroupState] = useState<GroupState>(loadSavedGroupState)
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(loadSavedSectionState)
   const [initialCollapsed] = useState(getSynchronousSidebarCollapsed)
   const collapsed = prefs.sidebarCollapsed ?? initialCollapsed
+
   const setCollapsed = (val: boolean | ((c: boolean) => boolean)) => {
     const next = typeof val === 'function' ? val(collapsed) : val
     setPref('sidebarCollapsed', next)
   }
-  const isExploreMoreActive = exploreMoreItems.some((i) => pathname.startsWith(i.to))
-  const [exploreMoreOpen, setExploreMoreOpen] = useState(isExploreMoreActive)
-  const exploreNavRef = useRef<HTMLElement>(null)
 
-  useEffect(() => onClose(), [pathname, onClose])
-
-  useEffect(() => {
-    if (isExploreMoreActive) setExploreMoreOpen(true)
-  }, [isExploreMoreActive])
+  useEffect(() => onClose(), [pathname, search, onClose])
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(groupState))
-    } catch {
-      // Ignore storage write error
-    }
-  }, [groupState])
-
-  // Ensure group containing active item is open
-  useEffect(() => {
-    if (watchItems.some((i) => pathname === i.to || (i.to !== '/' && pathname.startsWith(i.to)))) {
-      setGroupState((s) => (s.watch ? s : { ...s, watch: true }))
-    } else if (listenItems.some((i) => pathname.startsWith(i.to))) {
-      setGroupState((s) => (s.listen ? s : { ...s, listen: true }))
-    } else if (
-      exploreCoreItems.some((i) => pathname.startsWith(i.to)) ||
-      exploreMoreItems.some((i) => pathname.startsWith(i.to))
-    ) {
-      setGroupState((s) => (s.explore ? s : { ...s, explore: true }))
-    }
-  }, [pathname])
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(expandedSections))
+    } catch {}
+  }, [expandedSections])
 
   useLayoutEffect(() => {
     document.documentElement.dataset.sidebar = collapsed ? 'collapsed' : 'expanded'
   }, [collapsed])
 
-  const toggleGroup = (key: keyof GroupState) => {
-    setGroupState((prev) => ({ ...prev, [key]: !prev[key] }))
+  // Keyboard shortcut: Ctrl+B or Cmd+B to toggle sidebar collapse
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b' && !e.shiftKey && !e.altKey) {
+        const activeEl = document.activeElement
+        const isInput = activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement
+        if (!isInput) {
+          e.preventDefault()
+          setCollapsed((c) => !c)
+        }
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [collapsed])
+
+  const isLeafActive = (leaf: NavLeaf) => {
+    if (leaf.to.includes('?')) {
+      const [leafPath, leafQuery] = leaf.to.split('?')
+      return pathname === leafPath && search === `?${leafQuery}`
+    }
+    if (leaf.exact) {
+      return pathname === leaf.to && !search
+    }
+    if (leaf.to === '/series') {
+      return pathname === '/series' || pathname.startsWith('/series/') || pathname.startsWith('/tv-shows')
+    }
+    return pathname === leaf.to || pathname.startsWith(leaf.to + '/')
   }
 
-  // Live navigation badges (Audit #89)
-  const isAnyRecording = recordings.some((r) => r.status === 'recording')
+  // Automatically expand group containing active item
+  useEffect(() => {
+    for (const group of navGroups) {
+      for (const section of group.sections) {
+        if (section.children) {
+          const matchesChild = section.children.some(isLeafActive)
+          if (matchesChild && !expandedSections[section.id]) {
+            setExpandedSections((prev) => ({ ...prev, [section.id]: true }))
+          }
+        }
+      }
+    }
+  }, [pathname, search])
+
+  const toggleSection = (id: string) => {
+    setExpandedSections((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
+
+  const isSectionActive = (section: NavSection) => {
+    if (section.to === '/') return pathname === '/'
+    if (section.id === 'live') {
+      return pathname === '/live' || pathname.startsWith('/live/') || pathname === '/recordings'
+    }
+    if (section.id === 'movies-series') {
+      return (
+        pathname === '/movies' ||
+        pathname.startsWith('/movies/') ||
+        pathname === '/series' ||
+        pathname.startsWith('/series/') ||
+        pathname.startsWith('/tv-shows')
+      )
+    }
+    if (section.id === 'audio') {
+      return pathname === '/radio' || pathname === '/music' || pathname === '/podcasts' || pathname === '/audiobooks'
+    }
+    if (section.id === 'discover') {
+      return section.children?.some(isLeafActive) ?? false
+    }
+    if (section.to) {
+      return pathname === section.to || pathname.startsWith(section.to + '/')
+    }
+    if (section.children) {
+      return section.children.some(isLeafActive)
+    }
+    return false
+  }
+
+  const isSettingsActive = pathname === '/settings' || pathname.startsWith('/settings/')
   const totalSources = playlists.length + xtreamSources.length + guides.length
-
-  const getNavBadge = (to: string): ReactNode => {
-    if (to === '/live' && channels.length > 0) {
-      return <span className="side-link-badge">{channels.length}</span>
-    }
-    if (to === '/sources' && totalSources > 0) {
-      return <span className="side-link-badge">{totalSources}</span>
-    }
-    if (to === '/recordings') {
-      if (isAnyRecording) {
-        return (
-          <span className="side-link-badge is-rec" title="Recording active">
-            <span className="rec-pulse-dot" /> REC
-          </span>
-        )
-      }
-      const scheduledCount = recordings.filter((r) => r.status === 'scheduled').length
-      if (scheduledCount > 0) {
-        return <span className="side-link-badge">{scheduledCount}</span>
-      }
-    }
-    return null
-  }
+  const isAnyRecording = recordings.some((r) => r.status === 'recording')
 
   return (
     <>
       <aside className={`sidebar${open ? ' is-open' : ''}${collapsed ? ' is-collapsed' : ''}`} aria-label="Main navigation">
+        {/* Dedicated Rounded Header Area */}
         <div className="sidebar-top">
           <NavLink to="/" className="sidebar-brand" aria-label="Kinora home" title="Kinora Home">
             <Logo />
@@ -186,180 +283,139 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             type="button"
             className="sidebar-collapse-btn"
             onClick={() => setCollapsed((c) => !c)}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            title={collapsed ? 'Expand navigation' : 'Collapse navigation'}
+            aria-label={collapsed ? 'Expand sidebar (Ctrl+B)' : 'Collapse sidebar (Ctrl+B)'}
+            title={collapsed ? 'Expand navigation (Ctrl+B)' : 'Collapse navigation (Ctrl+B)'}
           >
-            <Icon name={collapsed ? 'right' : 'left'} size={16} />
+            <Icon name="layoutSidebar" size={18} />
           </button>
         </div>
 
-        <div className="sidebar-scrollable">
-          {/* WATCH GROUP */}
-          <div className="sidebar-section">
-            <button
-              type="button"
-              className="sidebar-section-header-btn"
-              onClick={() => toggleGroup('watch')}
-              aria-expanded={groupState.watch}
-              aria-controls="sidebar-nav-watch"
-              title={groupState.watch ? 'Collapse Watch section' : 'Expand Watch section'}
-            >
-              <span className="sidebar-section-title">Watch</span>
-              <Icon name="down" size={13} className={`sidebar-chevron sidebar-expand-icon ${groupState.watch ? 'is-open' : ''}`} />
-            </button>
-            <div
-              id="sidebar-nav-watch"
-              className={`sidebar-collapsible-grid ${groupState.watch ? 'is-open' : ''}`}
-            >
-              <nav className="sidebar-nav" aria-label="Watch">
-                {watchItems.map((i) => (
-                  <NavLink key={i.to} to={i.to} end={i.end} className="side-link" title={i.label} data-tip={i.label}>
-                    <Icon name={i.icon} size={18} />
-                    <span>{i.label}</span>
-                    {getNavBadge(i.to)}
-                  </NavLink>
-                ))}
-              </nav>
-            </div>
-          </div>
-
-          {/* LISTEN GROUP */}
-          <div className="sidebar-section">
-            <button
-              type="button"
-              className="sidebar-section-header-btn"
-              onClick={() => toggleGroup('listen')}
-              aria-expanded={groupState.listen}
-              aria-controls="sidebar-nav-listen"
-              title={groupState.listen ? 'Collapse Listen section' : 'Expand Listen section'}
-            >
-              <span className="sidebar-section-title">Listen</span>
-              <Icon name="down" size={13} className={`sidebar-chevron sidebar-expand-icon ${groupState.listen ? 'is-open' : ''}`} />
-            </button>
-            <div
-              id="sidebar-nav-listen"
-              className={`sidebar-collapsible-grid ${groupState.listen ? 'is-open' : ''}`}
-            >
-              <nav className="sidebar-nav" aria-label="Listen">
-                {listenItems.map((i) => (
-                  <NavLink key={i.to} to={i.to} end={i.end} className="side-link" title={i.label} data-tip={i.label}>
-                    <Icon name={i.icon} size={18} />
-                    <span>{i.label}</span>
-                  </NavLink>
-                ))}
-              </nav>
-            </div>
-          </div>
-
-          {/* EXPLORE GROUP */}
-          <div className="sidebar-section sidebar-section-explore">
-            <button
-              type="button"
-              className="sidebar-section-header-btn"
-              onClick={() => setExploreMoreOpen((o) => !o)}
-              aria-expanded={exploreMoreOpen}
-              aria-controls="sidebar-nav-explore-wrapper"
-              title={exploreMoreOpen ? 'Collapse additional categories' : 'Expand additional categories'}
-            >
-              <span className="sidebar-section-title">Explore</span>
-              <Icon name="down" size={13} className={`sidebar-chevron sidebar-expand-icon ${exploreMoreOpen ? 'is-open' : ''}`} />
-            </button>
-            <div
-              id="sidebar-nav-explore-wrapper"
-              className="sidebar-collapsible-grid is-open"
-            >
-              <nav className="sidebar-nav" aria-label="Explore">
-                {exploreCoreItems.map((i) => (
-                  <NavLink key={i.to} to={i.to} end={i.end} className="side-link" title={i.label} data-tip={i.label}>
-                    <Icon name={i.icon} size={18} />
-                    <span>{i.label}</span>
-                    {getNavBadge(i.to)}
-                  </NavLink>
-                ))}
-              </nav>
-
-              {exploreMoreOpen && (
-                <nav ref={exploreNavRef} className="sidebar-nav sidebar-nav-explore" aria-label="Explore Categories">
-                  {exploreMoreItems.map((i) => (
-                    <NavLink
-                      key={i.to}
-                      to={i.to}
-                      end={i.end}
-                      className="side-link side-link-sub"
-                      title={i.label}
-                      data-tip={i.label}
-                    >
-                      <Icon name={i.icon} size={17} />
-                      <span>{i.label}</span>
-                      {getNavBadge(i.to)}
-                    </NavLink>
-                  ))}
-                </nav>
+        {/* Separated Navigation Sections */}
+        <nav className="sidebar-scrollable" aria-label="Primary navigation">
+          {navGroups.map((group, groupIdx) => (
+            <div key={group.id} className="sidebar-group-block">
+              {groupIdx > 0 && (
+                <div className="sidebar-section-divider sidebar-group-divider" aria-hidden="true" />
               )}
-            </div>
-          </div>
-        </div>
 
-        {/* BOTTOM STORAGE CARD & STATUS */}
-        <div className="sidebar-bottom">
-          <div className="sidebar-storage-card" title="Personal storage and media library space">
-            <div className="storage-card-row">
-              <span className="storage-card-icon">
-                <Icon name="hardDrive" size={18} />
-              </span>
-              <div className="storage-card-meta">
-                <strong className="storage-card-title">Library</strong>
-                <span className="storage-card-sub">4.2 TB free of 8 TB</span>
+              {group.title && !collapsed && (
+                <div className="sidebar-group-header">
+                  <span className="sidebar-group-label">{group.title}</span>
+                </div>
+              )}
+
+              <div className="sidebar-group-surface">
+                {group.sections.map((section) => {
+                  const hasChildren = Boolean(section.children && section.children.length > 0)
+                  const isExpanded = Boolean(expandedSections[section.id])
+                  const active = isSectionActive(section)
+
+                  if (!hasChildren) {
+                    return (
+                      <div key={section.id} className="sidebar-item-wrap">
+                        <NavLink
+                          to={section.to ?? '/'}
+                          className={({ isActive }) => `sidebar-root-btn ${isActive ? 'is-active' : ''}`}
+                          title={section.id === 'sources' ? `Sources (${playlists.length} playlists, ${guides.length} guide feeds)` : section.label}
+                        >
+                          <span className="sidebar-icon-box">
+                            <Icon name={section.icon} size={20} className="sidebar-icon" />
+                          </span>
+                          {!collapsed && <span className="sidebar-label">{section.label}</span>}
+                          {!collapsed && section.id === 'sources' && totalSources > 0 && (
+                            <span className="sidebar-badge">{totalSources}</span>
+                          )}
+                        </NavLink>
+                      </div>
+                    )
+                  }
+
+                  // If expanded and not collapsed, the parent button should not look selected when a child is active
+                  const isHeaderActive = active && (!isExpanded || collapsed)
+
+                  return (
+                    <div key={section.id} className={`sidebar-section-wrap ${active ? 'is-active-parent' : ''}`}>
+                      <div className="sidebar-group-header-row">
+                        <button
+                          type="button"
+                          className={`sidebar-root-btn ${isHeaderActive ? 'is-active' : ''}`}
+                          onClick={() => {
+                            if (collapsed) {
+                              const target = section.to ?? section.children?.[0]?.to ?? '/'
+                              navigate(target)
+                            } else {
+                              toggleSection(section.id)
+                            }
+                          }}
+                          title={section.label}
+                          aria-expanded={isExpanded}
+                        >
+                          <span className="sidebar-icon-box">
+                            <Icon name={section.icon} size={20} className="sidebar-icon" />
+                          </span>
+                          {!collapsed && <span className="sidebar-label">{section.label}</span>}
+                          {!collapsed && section.id === 'live' && isAnyRecording && (
+                            <span className="sidebar-badge is-rec" title="Recording active">
+                              <span className="sidebar-rec-dot" /> REC
+                            </span>
+                          )}
+                          {!collapsed && (
+                            <Icon
+                              name="chevronRight"
+                              size={14}
+                              className={`sidebar-chevron ${isExpanded ? 'is-open' : ''}`}
+                            />
+                          )}
+                        </button>
+                      </div>
+
+                      {!collapsed && isExpanded && (
+                        <div className={`sidebar-children-list ${section.id === 'discover' ? 'sidebar-nav-explore' : ''}`}>
+                          {section.children!.map((child) => {
+                            const childActive = isLeafActive(child)
+                            return (
+                              <NavLink
+                                key={child.to + child.label}
+                                to={child.to}
+                                className={`sidebar-child-link side-link ${childActive ? 'is-active' : ''}`}
+                              >
+                                <Icon name={child.icon} size={16} className="sidebar-child-icon" />
+                                <span className="sidebar-child-label">{child.label}</span>
+                                {child.to === '/recordings' && isAnyRecording && (
+                                  <span className="sidebar-rec-dot" title="Active recording" />
+                                )}
+                              </NavLink>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             </div>
-            <div className="storage-progress-bar" aria-label="Storage used: 3.8 of 8 TB">
-              <div className="storage-progress-fill" style={{ width: '47.5%' }} />
-            </div>
-          </div>
+          ))}
+        </nav>
 
-          <div
-            className="sidebar-status-card"
-            title={
-              channelMode === 'playlists'
-                ? `${totalPlaylistEntries} total playlist entries combined into ${channels.length} unique channels`
-                : channelMode === 'demo'
-                  ? 'Sample mode: fictional content, nothing streams'
-                  : 'Personal media library'
-            }
-          >
-            {channelMode === 'playlists' ? (
-              <>
-                <p>
-                  <span className="status-dot is-live" aria-hidden="true" />
-                  <span>Playlist mode</span>
-                </p>
-                <p className="faint">
-                  {playlists.length} {playlists.length === 1 ? 'playlist' : 'playlists'} · {channels.length} channels
-                </p>
-              </>
-            ) : channelMode === 'demo' ? (
-              <>
-                <p>
-                  <span className="status-dot is-live" aria-hidden="true" />
-                  <span>Sample mode</span>
-                </p>
-                <p className="faint">
-                  {sources.length} sample sources · {channels.length} channels
-                </p>
-              </>
-            ) : (
-              <>
-                <p>
-                  <span className="status-dot is-live" aria-hidden="true" />
-                  <span>Media library</span>
-                </p>
-                <p className="faint">{mediaLibrary.mySources.length} saved personal sources</p>
-              </>
-            )}
+        {/* Visually Separate Settings Area Anchored at the Bottom */}
+        <div className="sidebar-bottom">
+          <div className="sidebar-section-divider sidebar-bottom-divider" aria-hidden="true" />
+          <div className="sidebar-settings-card">
+            <NavLink
+              to="/settings"
+              className={`sidebar-root-btn settings-root-btn ${isSettingsActive ? 'is-active' : ''}`}
+              title="Settings"
+            >
+              <span className="sidebar-icon-box">
+                <Icon name="settings" size={20} className="sidebar-icon" />
+              </span>
+              {!collapsed && <span className="sidebar-label">Settings</span>}
+            </NavLink>
           </div>
         </div>
       </aside>
-      {open && <button type="button" className="sidebar-scrim" aria-label="Close menu" onClick={onClose} />}
+
+      {open && <div className="sidebar-backdrop" onClick={onClose} aria-hidden="true" />}
     </>
   )
 }

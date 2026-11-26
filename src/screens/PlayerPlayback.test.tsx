@@ -116,6 +116,7 @@ afterEach(async () => {
   await act(async () => root.unmount())
   host.remove()
   document.body.replaceChildren()
+  localStorage.clear()
   vi.restoreAllMocks()
 })
 
@@ -255,6 +256,17 @@ describe('errors and retry', () => {
     await mount(watch(one.id))
     expect(text()).toContain('Playback needs the Kinora desktop app.')
   })
+
+  it('explains unsupported DASH streams clearly without mounting HLS', async () => {
+    native.openStream.mockResolvedValueOnce({
+      url: `kstream://localhost/${'d'.repeat(32)}`,
+      session: 42,
+      format: 'dash',
+    })
+    await mount(watch(one.id))
+    expect(text()).toContain('MPEG-DASH (.mpd) streams are not supported in this player build.')
+    expect(FakeHls.instances).toHaveLength(0)
+  })
 })
 
 describe('switching and leaving', () => {
@@ -299,13 +311,19 @@ describe('switching and leaving', () => {
     expect(text()).not.toContain('not HLS')
   })
 
-  it('leaving the player destroys hls.js and closes the session', async () => {
+  it('leaving the player preserves playback in the dock; explicit stop destroys hls.js and closes the session', async () => {
     await mount(watch(one.id))
     const player = latest()
     await act(async () => { go('/elsewhere') })
+    expect(player.destroyed).toBe(false)
+    expect(native.closeStream).not.toHaveBeenCalled()
+    expect(text()).toContain('elsewhere')
+    expect(document.querySelector('.pip-dock-container.is-docked')).not.toBeNull()
+
+    const closeBtn = document.querySelector<HTMLButtonElement>('button[aria-label="Close player"]')!
+    await click(closeBtn)
     expect(player.destroyed).toBe(true)
     expect(native.closeStream).toHaveBeenCalledWith(1)
-    expect(text()).toContain('elsewhere')
   })
 })
 
@@ -414,5 +432,27 @@ describe('language and quality choices', () => {
     expect(levelCap(levels, '480p')).toBe(0)
     expect(levelCap(levels, 'auto')).toBe(-1)
     expect(levelCap([{ height: 1080 }], '480p')).toBe(-1)
+  })
+
+  it('formats level bitrate and names cleanly for player menus', () => {
+    const lvl = { id: 1, height: 1080, bitrate: 5_500_000 }
+    const mbps = lvl.bitrate ? ` (${(lvl.bitrate / 1_000_000).toFixed(1)} Mbps)` : ''
+    expect(`${lvl.height}p${mbps}`).toBe('1080p (5.5 Mbps)')
+  })
+})
+
+describe('direct media playback', () => {
+  it('attaches direct stream url directly to video element without loading hls.js', async () => {
+    native.openStream.mockResolvedValueOnce({
+      url: 'kstream://localhost/0123456789abcdef0123456789abcdef',
+      session: 42,
+      format: 'direct',
+    })
+    await mount(watch(one.id))
+    await settle()
+    const v = video()
+    expect(v).not.toBeNull()
+    expect(v?.src).toBe('kstream://localhost/0123456789abcdef0123456789abcdef')
+    expect(FakeHls.instances).toHaveLength(0)
   })
 })

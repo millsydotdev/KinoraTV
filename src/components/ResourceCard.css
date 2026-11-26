@@ -12,16 +12,16 @@
 }
 
 .res-card:hover {
-  transform: translateY(-3px);
-  border-color: color-mix(in oklab, var(--text) 22%, var(--line));
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.42);
+  transform: translateY(-2px);
+  border-color: var(--accent, #e50914);
+  box-shadow: var(--card-shadow, 0 10px 26px rgba(0, 0, 0, 0.6));
 }
 
 .res-card:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: -1px;
-  border-color: transparent;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
+  outline: 2px solid var(--focus, #ff6b73);
+  outline-offset: 2px;
+  border-color: var(--accent, #e50914);
+  box-shadow: var(--card-shadow, 0 12px 28px rgba(0, 0, 0, 0.7));
   z-index: 4;
 }
 
@@ -150,8 +150,53 @@
   top: 10px;
   left: 10px;
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+  max-width: calc(100% - 50px);
   z-index: 2;
+}
+
+.res-provenance-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: var(--r-s, 4px);
+}
+
+.res-prov-public {
+  background: rgba(14, 116, 144, 0.45);
+  border: 1px solid rgba(56, 189, 248, 0.55);
+  color: #38bdf8;
+}
+
+.res-prov-personal {
+  background: rgba(16, 185, 129, 0.35);
+  border: 1px solid rgba(52, 211, 153, 0.55);
+  color: #34d399;
+}
+
+.res-prov-dev {
+  background: rgba(245, 158, 11, 0.35);
+  border: 1px solid rgba(251, 191, 36, 0.55);
+  color: #fbbf24;
+}
+
+.res-cap-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: var(--r-s, 4px);
+  background: rgba(12, 15, 20, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #e2e8f0;
 }
 
 .res-status-pill {
@@ -162,9 +207,7 @@
   font-weight: 600;
   padding: 3px 8px;
   border-radius: var(--r-s, 4px);
-  background: rgba(12, 15, 20, 0.85);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(12, 15, 20, 0.9);
   color: var(--pill-color, var(--text));
   border: 1px solid color-mix(in oklab, var(--pill-color, var(--line)) 40%, transparent);
 }
@@ -174,18 +217,16 @@
   height: 6px;
   border-radius: 50%;
   background: var(--pill-color, var(--text));
-  box-shadow: 0 0 6px var(--pill-color);
 }
 
 .res-card-fav-btn {
   position: absolute;
   top: 10px;
   right: 10px;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  background: rgba(12, 15, 20, 0.78);
-  backdrop-filter: blur(6px);
+  background: rgba(12, 15, 20, 0.85);
   border: 1px solid var(--line);
   color: var(--text-2);
   display: flex;
@@ -194,6 +235,13 @@
   cursor: pointer;
   z-index: 2;
   transition: transform 120ms var(--ease), color 120ms var(--ease), background 120ms var(--ease);
+}
+
+@media (pointer: coarse) {
+  .res-card-fav-btn {
+    width: 44px;
+    height: 44px;
+  }
 }
 
 .res-card-fav-btn:hover {
@@ -235,12 +283,7 @@
 }
 
 .res-card-play-btn.is-active {
-  animation: pulsePlay 1.6s infinite ease-in-out;
-}
-
-@keyframes pulsePlay {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.08); }
+  box-shadow: 0 0 0 2px var(--accent-ink, #ffffff);
 }
 
 /* Card Body */
@@ -365,9 +408,7 @@
   color: var(--text);
 }
 
-/* ==========================================================================
-   COMPACT VARIANT (Horizontal Station Tuner Tile)
-   ========================================================================== */
+/* Compact Variant (Horizontal Station Tuner Tile) */
 .res-card-compact {
   flex-direction: row;
   align-items: center;
@@ -416,13 +457,6 @@
   height: 8px;
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 8px var(--accent);
-  animation: pulseDot 1.4s infinite ease-in-out;
-}
-
-@keyframes pulseDot {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(1.2); }
 }
 
 .res-compact-body {

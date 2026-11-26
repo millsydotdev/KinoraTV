@@ -1,8 +1,17 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Icon } from './Icon'
+import { APP_VERSION } from '../lib/native'
+import {
+  categoryBadgeTone,
+  getAllReleases,
+  getReleaseByVersion,
+  getReleaseCategories,
+  getReleaseEntries,
+  type ChangelogEntry,
+} from '../lib/changelog'
 import './WhatsNewModal.css'
 
-export const CURRENT_RELEASE_VERSION = '0.5.0'
+export const CURRENT_RELEASE_VERSION = APP_VERSION
 const STORAGE_KEY = 'kinora.whats_new_seen.v1'
 
 export interface ReleaseHighlight {
@@ -11,38 +20,23 @@ export interface ReleaseHighlight {
   description: string
 }
 
-export const V050_HIGHLIGHTS: ReleaseHighlight[] = [
-  {
-    category: 'Feature',
-    title: 'Proprietary Source-Available Licence',
-    description: 'Kinora is published under an explicit All Rights Reserved source-available licence prohibiting unauthorised redistribution, commercial use, and AI/ML model ingestion.',
-  },
-  {
-    category: 'Feature',
-    title: 'Original Creator Attribution',
-    description: 'Official attribution to creator millsydotdev embedded in Settings > About with direct links to the official GitHub profile (https://github.com/millsydotdev).',
-  },
-  {
-    category: 'Feature',
-    title: 'Integrated Tauri 2 Updater',
-    description: 'Automatic update checks over guarded HTTPS connections against the canonical KinoraTV repository, complete with download verification and release notes.',
-  },
-  {
-    category: 'Improvement',
-    title: 'Cinematic Card Visual Parity',
-    description: 'Restored authentic high-resolution mock artworks from the master reference in the Home Recommended for You rail with 220x185 tile framing.',
-  },
-  {
-    category: 'Fix',
-    title: 'Multi-Platform Compatibility',
-    description: 'Standardised atomic storage and directory synchronisation across Windows, macOS, and Linux desktop environments.',
-  },
-  {
-    category: 'Security',
-    title: 'SSRF & Secret Protection',
-    description: 'Rigorous destination verification for all network calls, loopback restrictions in production, and zero exposed credentials.',
-  },
-]
+function mapEntriesToLegacyHighlights(version: string): ReleaseHighlight[] {
+  const rel = getReleaseByVersion(version)
+  if (!rel) return []
+  return getReleaseEntries(rel).map((entry) => {
+    const tone = categoryBadgeTone(entry.category)
+    const category: ReleaseHighlight['category'] =
+      tone === 'security' ? 'Security' : tone === 'fix' ? 'Fix' : tone === 'feature' ? 'Feature' : 'Improvement'
+    return {
+      category,
+      title: entry.title,
+      description: entry.description,
+    }
+  })
+}
+
+export const V060_HIGHLIGHTS: ReleaseHighlight[] = mapEntriesToLegacyHighlights('0.6.0')
+export const V050_HIGHLIGHTS: ReleaseHighlight[] = mapEntriesToLegacyHighlights('0.5.0')
 
 export function hasSeenWhatsNew(version: string = CURRENT_RELEASE_VERSION): boolean {
   try {
@@ -70,11 +64,28 @@ interface WhatsNewModalProps {
   open: boolean
   onClose: () => void
   version?: string
+  /** Optional fresh online release note banner fetched from the trusted updater manifest. */
+  onlineReleaseNotice?: { version: string; releaseDate?: string | null; notes?: string | null } | null
 }
 
-export function WhatsNewModal({ open, onClose, version = CURRENT_RELEASE_VERSION }: WhatsNewModalProps) {
+export function WhatsNewModal({
+  open,
+  onClose,
+  version = CURRENT_RELEASE_VERSION,
+  onlineReleaseNotice = null,
+}: WhatsNewModalProps) {
+  const releases = useMemo(() => getAllReleases(), [])
+  const initialRelease = useMemo(() => getReleaseByVersion(version) ?? releases[0]!, [version, releases])
+
+  const [selectedVersion, setSelectedVersion] = useState<string>(initialRelease.version)
+  const [selectedCategory, setSelectedCategory] = useState<string>('All')
+  const [showTechnical, setShowTechnical] = useState(false)
+  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({})
+
   useEffect(() => {
     if (open) {
+      setSelectedVersion(initialRelease.version)
+      setSelectedCategory('All')
       markWhatsNewSeen(version)
       const onKeyDown = (e: KeyboardEvent) => {
         if (e.key === 'Escape') onClose()
@@ -82,17 +93,46 @@ export function WhatsNewModal({ open, onClose, version = CURRENT_RELEASE_VERSION
       window.addEventListener('keydown', onKeyDown)
       return () => window.removeEventListener('keydown', onKeyDown)
     }
-  }, [open, onClose, version])
+  }, [open, onClose, version, initialRelease.version])
+
+  const activeRelease = useMemo(
+    () => releases.find((r) => r.version === selectedVersion) ?? initialRelease,
+    [releases, selectedVersion, initialRelease],
+  )
+
+  const categories = useMemo(
+    () => getReleaseCategories(activeRelease, showTechnical),
+    [activeRelease, showTechnical],
+  )
+
+  const entries: ChangelogEntry[] = useMemo(
+    () =>
+      getReleaseEntries(activeRelease, {
+        includeDeveloper: showTechnical,
+        category: selectedCategory === 'All' ? null : selectedCategory,
+      }),
+    [activeRelease, showTechnical, selectedCategory],
+  )
+
+  const toggleExpanded = (id: string) => {
+    setExpandedIds((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
 
   if (!open) return null
 
   return (
-    <div className="whats-new-backdrop" role="dialog" aria-modal="true" aria-labelledby="whats-new-title">
-      <div className="whats-new-modal">
+    <div
+      className="whats-new-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="whats-new-title"
+      onClick={onClose}
+    >
+      <div className="whats-new-modal" onClick={(e) => e.stopPropagation()}>
         <header className="whats-new-header">
           <div className="whats-new-badge">
-            <Icon name="sparkles" size={14} />
-            <span>What's New in Kinora</span>
+            <Icon name="info" size={14} />
+            <span>Release Notes &amp; Version History</span>
           </div>
           <button
             type="button"
@@ -104,34 +144,119 @@ export function WhatsNewModal({ open, onClose, version = CURRENT_RELEASE_VERSION
           </button>
         </header>
 
+        <div className="whats-new-version-bar" role="tablist" aria-label="Kinora version history">
+          {releases.map((rel) => {
+            const isCurrentInstalled = rel.version === CURRENT_RELEASE_VERSION
+            const isSelected = rel.version === activeRelease.version
+            return (
+              <button
+                key={rel.version}
+                type="button"
+                role="tab"
+                aria-selected={isSelected}
+                className={`whats-new-version-chip ${isSelected ? 'is-active' : ''}`}
+                onClick={() => {
+                  setSelectedVersion(rel.version)
+                  setSelectedCategory('All')
+                }}
+              >
+                <span>v{rel.version}</span>
+                {isCurrentInstalled && <span className="whats-new-installed-dot" title="Installed version" />}
+              </button>
+            )
+          })}
+        </div>
+
         <div className="whats-new-title-block">
-          <h2 id="whats-new-title" className="whats-new-title">
-            Kinora v{version}
-          </h2>
-          <p className="whats-new-subtitle">
-            Release Candidate: Public Repository & Multi-Platform Update
-          </p>
+          <div className="whats-new-title-row">
+            <h2 id="whats-new-title" className="whats-new-title">
+              Kinora v{activeRelease.version}
+            </h2>
+            <span className="whats-new-date">
+              Released {activeRelease.releaseDate} ({activeRelease.channel})
+            </span>
+          </div>
+          <p className="whats-new-subtitle">{activeRelease.title}</p>
+          <p className="whats-new-summary">{activeRelease.summary}</p>
+        </div>
+
+        {onlineReleaseNotice && onlineReleaseNotice.version !== CURRENT_RELEASE_VERSION && (
+          <div className="whats-new-online-banner">
+            <strong>Newer release available online: v{onlineReleaseNotice.version}</strong>
+            {onlineReleaseNotice.notes && <span> ({onlineReleaseNotice.notes.slice(0, 140)})</span>}
+          </div>
+        )}
+
+        <div className="whats-new-filters">
+          <div className="whats-new-category-chips" role="group" aria-label="Filter release changes by category">
+            <button
+              type="button"
+              className={`whats-new-cat-chip ${selectedCategory === 'All' ? 'is-active' : ''}`}
+              onClick={() => setSelectedCategory('All')}
+            >
+              All ({getReleaseEntries(activeRelease, { includeDeveloper: showTechnical }).length})
+            </button>
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                className={`whats-new-cat-chip ${selectedCategory === cat ? 'is-active' : ''}`}
+                onClick={() => setSelectedCategory(cat)}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
+          <label className="whats-new-tech-toggle">
+            <input
+              type="checkbox"
+              checked={showTechnical}
+              onChange={(e) => {
+                setShowTechnical(e.target.checked)
+                setSelectedCategory('All')
+              }}
+            />
+            <span>Engineering notes</span>
+          </label>
         </div>
 
         <div className="whats-new-content">
           <ul className="whats-new-list">
-            {V050_HIGHLIGHTS.map((item, idx) => (
-              <li key={idx} className="whats-new-item">
-                <span className={`whats-new-tag tag-${item.category.toLowerCase()}`}>
-                  {item.category}
-                </span>
-                <div className="whats-new-item-body">
-                  <h4 className="whats-new-item-title">{item.title}</h4>
-                  <p className="whats-new-item-desc">{item.description}</p>
-                </div>
-              </li>
-            ))}
+            {entries.map((item) => {
+              const tone = categoryBadgeTone(item.category)
+              const isExpanded = Boolean(expandedIds[item.id])
+              return (
+                <li key={item.id} className="whats-new-item">
+                  <span className={`whats-new-tag tag-${tone}`}>
+                    {item.category}
+                  </span>
+                  <div className="whats-new-item-body">
+                    <h4 className="whats-new-item-title">{item.title}</h4>
+                    <p className="whats-new-item-desc">{item.description}</p>
+                    {item.details && (
+                      <div className="whats-new-details-wrap">
+                        <button
+                          type="button"
+                          className="whats-new-details-btn"
+                          onClick={() => toggleExpanded(item.id)}
+                          aria-expanded={isExpanded}
+                        >
+                          {isExpanded ? 'Hide details' : 'More details'}
+                        </button>
+                        {isExpanded && <p className="whats-new-item-details">{item.details}</p>}
+                      </div>
+                    )}
+                  </div>
+                </li>
+              )
+            })}
           </ul>
         </div>
 
         <footer className="whats-new-footer">
           <div className="whats-new-creator-credit">
-            Created by{' '}
+            Installed: <strong>v{CURRENT_RELEASE_VERSION}</strong> (offline history bundled) | Created by{' '}
             <a
               href="https://github.com/millsydotdev"
               target="_blank"

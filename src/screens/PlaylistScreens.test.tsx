@@ -145,12 +145,12 @@ describe('other channel screens and Sources', () => {
     for (const s of SECRETS) expect(html).not.toContain(s)
   })
 
-  it('Settings › Sources describes manual refresh with no controls for features that do not exist', () => {
+  it('Settings › Sources describes refresh and stream health with no controls for features that do not exist', () => {
     const html = render('/settings/sources', <Settings />, [], '/settings/:section')
     const t = text(html)
-    expect(t).toContain('Automatic refresh is not available yet')
-    expect(t).toContain('Checking streams is not available yet')
-    expect(html).not.toMatch(/role="switch"|<select|aria-label="Parallel checks"/)
+    expect(t).toContain('Automatic refresh schedule')
+    expect(t).toContain('Monitored during playback')
+    expect(html).not.toMatch(/role="switch"|aria-label="Parallel checks"/)
     expect(t).not.toMatch(/Refresh sources automatically|Default refresh interval|Drop a stream after|Streams checked at once/)
   })
 

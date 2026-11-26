@@ -4,7 +4,8 @@
 // or starting a request never counts as playing. Nothing waits forever: starting and buffering are
 // both bounded, and a timeout tears the attempt down and says so.
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
-import { closeStream, IngestError, openStream, openXtreamCatchup } from './native'
+import { closeClientServerStream, closeStream, inNativeShell, IngestError, openClientServerStream, openM3uCatchup, openStream, openXtreamCatchup, type StreamOptions } from './native'
+import { clientSyncManager } from './clientSync'
 
 export type PlaybackStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'buffering' | 'error' | 'unsupported'
 
@@ -89,10 +90,17 @@ export function playbackText(s: PlaybackState): string {
 }
 
 export interface Track { id: number; label: string; lang: string | null }
-export interface Tracks { audio: Track[]; audioId: number; subtitles: Track[]; subtitleId: number; levels: { id: number; height: number }[]; levelId: number }
+export interface LevelInfo { id: number; height: number; width?: number; bitrate?: number; name?: string }
+export interface Tracks { audio: Track[]; audioId: number; subtitles: Track[]; subtitleId: number; levels: LevelInfo[]; levelId: number }
 const NO_TRACKS: Tracks = { audio: [], audioId: -1, subtitles: [], subtitleId: -1, levels: [], levelId: -1 }
 
-export interface PlaybackPrefs { quality: string; audioLanguage: string; subtitles: boolean; subtitleLanguage: string }
+export interface PlaybackPrefs {
+  quality: string
+  audioLanguage: string
+  subtitles: boolean
+  subtitleLanguage: string
+  streamOptions?: StreamOptions
+}
 const NO_PREFS: PlaybackPrefs = { quality: 'auto', audioLanguage: 'English', subtitles: false, subtitleLanguage: 'English' }
 
 const LANG_CODES: Record<string, string[]> = { English: ['en', 'eng'], French: ['fr', 'fra', 'fre'], German: ['de', 'deu', 'ger'], Spanish: ['es', 'spa'], Welsh: ['cy', 'cym', 'wel'] }
@@ -150,6 +158,8 @@ export function useStreamPlayback(streamUrl: string | null, video: RefObject<HTM
     // Everything below belongs to this channel and attempt; once superseded it must not touch state.
     let live = true
     let session: number | null = null
+    let isClientServerSession = false
+    let remoteProxySessionKey: string | null = null
     let hls: { destroy: () => void } | null = null
     const set = (s: PlaybackState) => { if (live) setCurrent(s) }
     set(LOADING)
@@ -163,7 +173,14 @@ export function useStreamPlayback(streamUrl: string | null, video: RefObject<HTM
       hls?.destroy()
       hls = null
       hlsRef.current = null
-      if (session !== null) void closeStream(session)
+      if (session !== null) {
+        if (isClientServerSession) void closeClientServerStream(session)
+        else void closeStream(session)
+      }
+      if (remoteProxySessionKey) {
+        void clientSyncManager.closeServerStream(remoteProxySessionKey)
+        remoteProxySessionKey = null
+      }
       session = null
     }
     const arm = (ms: number, message: () => PlaybackState) => {
@@ -203,7 +220,24 @@ export function useStreamPlayback(streamUrl: string | null, video: RefObject<HTM
       let opened
       try {
         if (streamUrl.startsWith('kstream://')) {
-          opened = { url: streamUrl, session: 0 }
+          const isDirect = streamUrl.includes('/stream') || (!streamUrl.endsWith('.m3u8') && !streamUrl.endsWith('.mpd'))
+          opened = { url: streamUrl, session: 0, format: isDirect ? ('direct' as const) : ('hls' as const) }
+        } else if (streamUrl.startsWith('catchup://m3u/')) {
+          const parsed = new URL(streamUrl)
+          const baseStreamUrl = parsed.searchParams.get('url') || ''
+          const catchupType = parsed.searchParams.get('type')
+          const catchupSource = parsed.searchParams.get('source')
+          const startTimestamp = parseInt(parsed.searchParams.get('start') || '0', 10)
+          const durationMins = parseInt(parsed.searchParams.get('dur') || '60', 10)
+          const stopTimestamp = parseInt(parsed.searchParams.get('stop') || '0', 10)
+          opened = await openM3uCatchup(
+            baseStreamUrl,
+            catchupType,
+            catchupSource,
+            startTimestamp,
+            durationMins,
+            stopTimestamp,
+          )
         } else if (streamUrl.startsWith('catchup://')) {
           const parsed = new URL(streamUrl)
           const sourceId = parsed.hostname || parsed.host
@@ -212,16 +246,76 @@ export function useStreamPlayback(streamUrl: string | null, video: RefObject<HTM
           const startTimestamp = parseInt(parts[1] || '0', 10)
           const durationMins = parseInt(parts[2] || '60', 10)
           opened = await openXtreamCatchup(sourceId, streamId, startTimestamp, durationMins)
+        } else if (streamUrl.startsWith('client-sync://') || streamUrl.startsWith('client-sync-media://')) {
+          const isMedia = streamUrl.startsWith('client-sync-media://')
+          const targetId = isMedia
+            ? streamUrl.replace('client-sync-media://', '')
+            : streamUrl.replace('client-sync://', '')
+          const syncState = clientSyncManager.getState()
+          if (!syncState.serverUrl || !syncState.authToken) {
+            disarm()
+            return set(state('error', 'Connect to a Kinora Server first to play this item.'))
+          }
+          if (inNativeShell()) {
+            opened = await openClientServerStream(
+              syncState.serverUrl,
+              syncState.authToken,
+              isMedia ? { mediaId: targetId } : { channelId: targetId },
+            )
+            isClientServerSession = true
+          } else {
+            const proxied = isMedia
+              ? await clientSyncManager.openServerMediaStream(targetId)
+              : await clientSyncManager.openServerStream(targetId)
+            if (!proxied) {
+              disarm()
+              return set(state('error', 'Unable to open proxied stream on Kinora server.', true))
+            }
+            remoteProxySessionKey = proxied.sessionKey
+            opened = { url: proxied.streamUrl, session: 0, format: proxied.format }
+          }
         } else {
-          opened = await openStream(streamUrl)
+          opened = prefsRef.current.streamOptions
+            ? await openStream(streamUrl, prefsRef.current.streamOptions)
+            : await openStream(streamUrl)
         }
       } catch (e) {
         disarm()
         return set(fromOpenError(e))
       }
       if (!opened) { disarm(); return set(state('unsupported', 'Playback needs the Kinora desktop app.')) }
-      if (!live) return void closeStream(opened.session) // left or switched while Rust was opening
-      session = opened.session
+      if (!live) {
+        if (isClientServerSession) void closeClientServerStream(opened.session)
+        else if (remoteProxySessionKey) void clientSyncManager.closeServerStream(remoteProxySessionKey)
+        else void closeStream(opened.session)
+        return
+      }
+      session = remoteProxySessionKey ? null : opened.session
+      if (opened.format === 'direct') {
+        el.src = opened.url
+        const tryPlay = () => el.play().catch((e: unknown) => {
+          if (!live) return
+          if (e instanceof DOMException && e.name === 'AbortError') el.addEventListener('canplay', () => void tryPlay(), { once: true })
+          else { disarm(); set(state('paused', 'Press Play to start.')) }
+        })
+        const onCanPlay = () => {
+          if (!live) return
+          void tryPlay()
+        }
+        const onError = () => {
+          if (!live) return
+          disarm()
+          set(state('error', 'Direct stream playback could not be decoded or was interrupted.', true))
+        }
+        el.addEventListener('canplay', onCanPlay, { once: true })
+        el.addEventListener('error', onError, { once: true })
+        el.load()
+        return
+      }
+      if (opened.format === 'dash') {
+        disarm()
+        return set(state('unsupported', 'Kinora currently supports HLS and direct media streams. MPEG-DASH (.mpd) streams are not supported in this player build.'))
+      }
       const { default: Hls } = await import('hls.js')
       if (!live) return
       if (!Hls.isSupported()) { disarm(); return set(state('unsupported', 'This system cannot play HLS: Media Source Extensions are unavailable.')) }
@@ -235,7 +329,13 @@ export function useStreamPlayback(streamUrl: string | null, video: RefObject<HTM
           audioId: player.audioTrack,
           subtitles: player.subtitleTracks.map((t) => ({ id: t.id, label: t.name || t.lang || `Track ${t.id + 1}`, lang: t.lang ?? null })),
           subtitleId: player.subtitleTrack,
-          levels: player.levels.map((l, id) => ({ id, height: l.height })),
+          levels: player.levels.map((l, id) => ({
+            id,
+            height: l.height,
+            width: l.width,
+            bitrate: l.bitrate,
+            name: l.name || (l.height ? `${l.height}p` : `Level ${id + 1}`),
+          })),
           levelId: player.autoLevelEnabled ? -1 : player.currentLevel,
         })
       }
@@ -292,7 +392,13 @@ export function useStreamPlayback(streamUrl: string | null, video: RefObject<HTM
       hlsRef.current = null
       el.removeAttribute('src')
       el.load()
-      if (session !== null) void closeStream(session)
+      if (session !== null) {
+        if (isClientServerSession) void closeClientServerStream(session)
+        else void closeStream(session)
+      }
+      if (remoteProxySessionKey) {
+        void clientSyncManager.closeServerStream(remoteProxySessionKey)
+      }
     }
   }, [streamUrl, attempt, video])
 

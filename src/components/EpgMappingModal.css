@@ -1,0 +1,249 @@
+/* EpgMappingModal.css - Interactive EPG channel manual and auto-fuzzy mapping dialog.
+   Strictly adheres to typography standards: zero em-dashes across all code and comments. */
+
+.epg-mapping-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 20px;
+}
+
+.epg-mapping-modal {
+  width: 100%;
+  max-width: 580px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface, #141820);
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.12));
+  border-radius: var(--r-l, 12px);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7);
+  overflow: hidden;
+  color: var(--text-1, #fff);
+  animation: modal-enter 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modal-enter {
+  0% { transform: scale(0.95); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.epg-mapping-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+}
+
+.epg-mapping-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.epg-mapping-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-m, 8px);
+  background: var(--accent-soft, rgba(229, 9, 20, 0.15));
+  color: var(--accent-text, #ff6b73);
+  flex-shrink: 0;
+}
+
+.epg-mapping-header h2 {
+  font-size: 1.125rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-1, #fff);
+}
+
+.epg-mapping-channel-badge {
+  font-size: 0.8125rem;
+  color: var(--text-2, rgba(255, 255, 255, 0.7));
+  margin-top: 2px;
+}
+
+.epg-mapping-body {
+  padding: 20px 24px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.epg-mapping-current-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-radius: var(--r-m, 8px);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+}
+
+.epg-mapping-current-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.8125rem;
+}
+
+.epg-mapping-current-label {
+  color: var(--text-3, rgba(255, 255, 255, 0.5));
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.6875rem;
+  letter-spacing: 0.05em;
+}
+
+.epg-mapping-current-val {
+  color: var(--accent-text, #ff6b73);
+  font-weight: 600;
+  font-family: monospace;
+}
+
+.epg-mapping-controls-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.epg-mapping-search-box {
+  position: relative;
+  flex: 1;
+}
+
+.epg-mapping-search-box input {
+  width: 100%;
+  padding: 10px 14px 10px 36px;
+  border-radius: var(--r-m, 8px);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.15));
+  color: var(--text, #f5f5f5);
+  font-size: 0.875rem;
+  transition: border-color 0.15s ease;
+}
+
+.epg-mapping-search-box input:focus-visible {
+  outline: 2px solid var(--focus, #ff6b73);
+  outline-offset: 1px;
+  border-color: var(--accent, #e50914);
+}
+
+.epg-mapping-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-3, rgba(255, 255, 255, 0.4));
+  pointer-events: none;
+}
+
+.epg-mapping-results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.epg-mapping-result-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: var(--r-m, 6px);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.12s ease;
+  width: 100%;
+}
+
+.epg-mapping-result-item:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: var(--line, rgba(255, 255, 255, 0.1));
+}
+
+.epg-mapping-result-item.is-selected {
+  background: var(--accent-soft, rgba(229, 9, 20, 0.12));
+  border-color: var(--accent, #e50914);
+}
+
+.epg-mapping-result-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.epg-mapping-result-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.epg-mapping-result-id {
+  font-size: 0.75rem;
+  color: var(--text-3, rgba(255, 255, 255, 0.5));
+  font-family: monospace;
+}
+
+.epg-mapping-score-pill {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.epg-mapping-score-exact {
+  background: rgba(34, 197, 94, 0.18);
+  color: #4ade80;
+}
+
+.epg-mapping-score-high {
+  background: rgba(59, 130, 246, 0.18);
+  color: #60a5fa;
+}
+
+.epg-mapping-score-partial {
+  background: rgba(234, 179, 8, 0.18);
+  color: #facc15;
+}
+
+.epg-mapping-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  color: var(--text-3, rgba(255, 255, 255, 0.45));
+  font-size: 0.875rem;
+  gap: 8px;
+}
+
+.epg-mapping-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-top: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.epg-mapping-footer-end {
+  display: flex;
+  gap: 8px;
+}

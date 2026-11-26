@@ -95,45 +95,58 @@ export function CastModal({ open, onClose }: CastModalProps) {
           </div>
 
           <div className="cast-device-list">
-            {devices.map((device) => {
-              const active = session?.device.id === device.id
-              return (
-                <div
-                  key={device.id}
-                  className={`cast-device-item ${active ? 'is-connected' : ''}`}
-                  onClick={() => {
-                    if (active) disconnect()
-                    else connect(device)
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault()
+            {devices.length === 0 ? (
+              <div
+                style={{
+                  padding: '24px 16px',
+                  textAlign: 'center',
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(255, 255, 255, 0.05)',
+                }}
+              >
+                <Icon name="cast" size={28} style={{ opacity: 0.4, marginBottom: '8px' }} />
+                <p style={{ margin: '0 0 6px 0', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text, #fff)' }}>
+                  No cast receivers found
+                </p>
+                <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-3, rgba(255,255,255,0.6))', lineHeight: 1.4 }}>
+                  Ensure your smart TV or DLNA MediaRenderer is powered on and connected to the same local network.
+                </p>
+              </div>
+            ) : (
+              devices.map((device) => {
+                const active = session?.device.id === device.id
+                return (
+                  <button
+                    type="button"
+                    key={device.id}
+                    className={`cast-device-item ${active ? 'is-connected' : ''}`}
+                    onClick={() => {
                       if (active) disconnect()
                       else connect(device)
-                    }
-                  }}
-                >
-                  <div className="cast-device-info">
-                    <span className="cast-device-name">{device.name}</span>
-                    <span className="cast-device-sub">
-                      <span className="cast-proto-badge">{device.protocol}</span>
-                      <span>{device.location || device.model}</span>
-                    </span>
-                  </div>
-                  <div>
-                    {active ? (
-                      <span style={{ color: 'var(--accent, #ff1a2a)', fontSize: '0.8125rem', fontWeight: 600 }}>
-                        Connected
+                    }}
+                    aria-label={`${active ? 'Disconnect from' : 'Connect to'} ${device.name}`}
+                  >
+                    <div className="cast-device-info">
+                      <span className="cast-device-name">{device.name}</span>
+                      <span className="cast-device-sub">
+                        <span className="cast-proto-badge">{device.protocol}</span>
+                        <span>{device.location || device.model}</span>
                       </span>
-                    ) : (
-                      <Icon name="right" size={16} />
-                    )}
-                  </div>
-                </div>
-              )
-            })}
+                    </div>
+                    <div>
+                      {active ? (
+                        <span style={{ color: 'var(--accent, #ff1a2a)', fontSize: '0.8125rem', fontWeight: 600 }}>
+                          Connected
+                        </span>
+                      ) : (
+                        <Icon name="right" size={16} />
+                      )}
+                    </div>
+                  </button>
+                )
+              })
+            )}
           </div>
         </div>
 

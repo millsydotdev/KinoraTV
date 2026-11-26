@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { MediaResource } from '../data/personalLibrary'
-import { VERIFICATION_STATUS_META } from '../data/personalLibrary'
+import { classifyMediaResource } from '../data/provenance'
 import { inNativeShell, loadProgrammeArtwork } from '../lib/native'
 import { Icon, type IconName } from './Icon'
 import { MediaContextMenu } from './MediaContextMenu'
@@ -83,8 +83,8 @@ export function ResourceCard({
   inLibrary,
   isFavourite,
   isEnabled = true,
-  checkStatus,
-  lastChecked,
+  checkStatus: _checkStatus,
+  lastChecked: _lastChecked,
   onToggleLibrary,
   onToggleFavourite,
   onToggleEnabled,
@@ -93,11 +93,11 @@ export function ResourceCard({
   isPlaying,
   variant,
 }: ResourceCardProps) {
-  const statusMeta = VERIFICATION_STATUS_META[resource.verificationStatus] ?? VERIFICATION_STATUS_META.discovered
   const hue = resource.accentHue ?? 215
   const iconName = resource.artworkFallbackIcon ?? getCategoryIcon(resource.category)
   const computedVariant = variant ?? getDefaultVariant(resource.category)
   const isPlayable = Boolean(resource.playbackUrl) && (resource.playbackType === 'audio' || resource.playbackType === 'hls')
+  const { capability } = classifyMediaResource(resource, inLibrary)
   const isLogo = isLogoArtwork(resource)
   const roleLabel = getRoleLabel(resource)
   const monogram = getMonogram(resource.name)
@@ -192,24 +192,10 @@ export function ResourceCard({
           </div>
           <div className="res-compact-meta">
             <span className="res-role-pill-inline">{roleLabel}</span>
-            <span className="res-compact-separator" aria-hidden="true">·</span>
-            <span className="res-compact-provider">{resource.provider}</span>
-            {resource.channelCount !== undefined && (
+            {resource.provider && (
               <>
                 <span className="res-compact-separator" aria-hidden="true">·</span>
-                <span className="res-compact-channels">{resource.channelCount} ch</span>
-              </>
-            )}
-            {resource.epgAvailable && (
-              <>
-                <span className="res-compact-separator" aria-hidden="true">·</span>
-                <span className="res-compact-epg">EPG</span>
-              </>
-            )}
-            {checkStatus && checkStatus !== 'unchecked' && (
-              <>
-                <span className="res-compact-separator" aria-hidden="true">·</span>
-                <span className={`res-compact-check res-check-${checkStatus}`}>{checkStatus}</span>
+                <span className="res-compact-provider">{resource.provider}</span>
               </>
             )}
           </div>
@@ -313,29 +299,17 @@ export function ResourceCard({
           />
         )}
 
-        {/* Verification Status Pill */}
+        {/* Essential format & status badge only */}
         <div className="res-card-badges">
-          <span className="res-status-pill res-role-badge">
-            {roleLabel}
-          </span>
           {!isEnabled && (
             <span className="res-status-pill res-pill-disabled" title="Source is currently disabled">
               <span className="res-status-dot" aria-hidden="true" />
               Disabled
             </span>
           )}
-          {checkStatus && checkStatus !== 'unchecked' && (
-            <span
-              className={`res-status-pill res-pill-check res-check-${checkStatus}`}
-              title={lastChecked ? `Availability check: ${checkStatus} (${new Date(lastChecked).toLocaleTimeString()})` : `Availability check: ${checkStatus}`}
-            >
-              <span className="res-status-dot" aria-hidden="true" />
-              {checkStatus}
-            </span>
-          )}
-          <span className="res-status-pill" style={{ '--pill-color': statusMeta.tone } as React.CSSProperties} title={statusMeta.description}>
-            <span className="res-status-dot" aria-hidden="true" />
-            {statusMeta.label}
+          <span className="res-cap-pill" title={capability.description}>
+            <Icon name={capability.icon} size={11} />
+            <span>{roleLabel}</span>
           </span>
         </div>
 
@@ -384,9 +358,6 @@ export function ResourceCard({
         <div className="res-card-tags">
           <span className="res-tag res-tag-category">{resource.subcategory.replace(/-/g, ' ')}</span>
           {resource.channelCount !== undefined && <span className="res-tag res-tag-channels">{resource.channelCount} {resource.channelCount === 1 ? 'channel' : 'channels'}</span>}
-          {resource.epgAvailable && <span className="res-tag res-tag-epg">EPG Guide</span>}
-          {resource.language && <span className="res-tag">{resource.language}</span>}
-          {resource.region && <span className="res-tag res-tag-region">{resource.region}</span>}
         </div>
 
         {/* Card Footer Actions */}

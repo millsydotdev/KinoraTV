@@ -1,0 +1,117 @@
+/* Remote Hint Bar CSS for 10-foot television remote legends */
+.remote-hint-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  background: color-mix(in oklab, var(--surface, #0e1117) 85%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  padding: 6px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  animation: remoteHintFadeIn 180ms var(--ease, ease-out);
+}
+
+@keyframes remoteHintFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.remote-hint-container {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  max-width: 1200px;
+}
+
+.remote-hint-group {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.remote-hint-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--border-subtle, rgba(255, 255, 255, 0.15));
+}
+
+.remote-hint-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Color dot indicators for standard red/green/yellow/blue TV remote buttons */
+.remote-color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  box-shadow: 0 0 6px currentColor;
+}
+
+.color-red {
+  background-color: #ef4444;
+  color: #ef4444;
+}
+
+.color-green {
+  background-color: #22c55e;
+  color: #22c55e;
+}
+
+.color-yellow {
+  background-color: #eab308;
+  color: #eab308;
+}
+
+.color-blue {
+  background-color: #3b82f6;
+  color: #3b82f6;
+}
+
+/* Physical key badges (OK, BACK, INFO, etc.) */
+.remote-badge-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 5px;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--text, #ffffff);
+  background: var(--surface-3, rgba(255, 255, 255, 0.12));
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.2));
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.remote-hint-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-2, rgba(255, 255, 255, 0.8));
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.remote-hint-bar.remote-hint-with-audio {
+  bottom: 74px;
+}

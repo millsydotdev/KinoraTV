@@ -1,0 +1,190 @@
+name: Staging Deployment
+
+on:
+  push:
+    branches:
+      - staging
+    tags:
+      - 'staging-*'
+      - 'v*-staging*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (build staging artifacts without publishing release)'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  quality-gate:
+    name: Staging Quality Gate
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev patchelf rpm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Execute Quality Gate
+        run: bash scripts/quality-gate.sh
+
+  build-staging:
+    name: Build Staging (${{ matrix.platform }})
+    needs: quality-gate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'linux-x64'
+            os: 'ubuntu-24.04'
+            target: 'x86_64-unknown-linux-gnu'
+          - platform: 'windows-x64'
+            os: 'windows-latest'
+            target: 'x86_64-pc-windows-msvc'
+          - platform: 'macos-arm64'
+            os: 'macos-latest'
+            target: 'aarch64-apple-darwin'
+          - platform: 'macos-x64'
+            os: 'macos-latest'
+            target: 'x86_64-apple-darwin'
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev patchelf rpm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Tauri Staging Package
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || secrets.TAURI_SIGNING_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || secrets.TAURI_SIGNING_KEY_PASSWORD }}
+          VITE_TMDB_API_KEY: ${{ secrets.VITE_TMDB_API_KEY }}
+        shell: bash
+        run: |
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            npm run tauri:build:staging -- --target ${{ matrix.target }}
+          else
+            npm run tauri:build:staging -- --target ${{ matrix.target }} --no-sign
+          fi
+
+      - name: Generate SHA-256 Checksums (Linux / macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          cd src-tauri/target/${{ matrix.target }}/release/bundle
+          find . -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" -o -name "*.dmg" -o -name "*.tar.gz" -o -name "*.zip" \) -exec sha256sum {} + > SHA256SUMS-staging-${{ matrix.platform }}.txt
+          cat SHA256SUMS-staging-${{ matrix.platform }}.txt
+
+      - name: Generate SHA-256 Checksums (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Set-Location -Path "src-tauri/target/${{ matrix.target }}/release/bundle"
+          $files = Get-ChildItem -Recurse -File -Include "*.exe", "*.msi", "*.zip"
+          $hashes = foreach ($f in $files) {
+            $h = Get-FileHash -Path $f.FullName -Algorithm SHA256
+            "$($h.Hash.ToLower())  $($f.Name)"
+          }
+          $hashes | Out-File -Encoding ascii -FilePath "SHA256SUMS-staging-${{ matrix.platform }}.txt"
+          Get-Content "SHA256SUMS-staging-${{ matrix.platform }}.txt"
+
+      - name: Upload Platform Staging Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kinora-staging-${{ matrix.platform }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/**
+            !src-tauri/target/${{ matrix.target }}/release/bundle/**/build
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-staging:
+    name: Publish Staging Release
+    needs: build-staging
+    if: (github.event.inputs.dry_run != 'true') && !cancelled()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate version
+        id: ver
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+
+      - name: Download all staging artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: staging-artifacts
+
+      - name: Consolidate Staging Artifacts and Checksums
+        run: |
+          mkdir -p staging-dist
+          find staging-artifacts -type f -name "SHA256SUMS-staging-*.txt" -exec cat {} + > staging-dist/SHA256SUMS-staging.txt
+          find staging-artifacts -type f \( -name "*Kinora*" -o -name "*kinora*" \) -a \( -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage*" -o -name "*.dmg" -o -name "*.exe*" -o -name "*.msi*" -o -name "*.tar.gz*" -o -name "*.zip*" \) -exec cp {} staging-dist/ \;
+          echo "=== Consolidated Staging Distribution Contents ==="
+          ls -la staging-dist
+          cat staging-dist/SHA256SUMS-staging.txt
+
+      - name: Publish Staging Release on GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: staging-latest
+          name: Kinora Staging v${{ steps.ver.outputs.version }} (${{ steps.ver.outputs.short_sha }})
+          body: |
+            ### Kinora Staging Release (v${{ steps.ver.outputs.version }})
+            
+            - Commit: `${{ steps.ver.outputs.short_sha }}`
+            - Environment: Staging
+            - Bundle Identifier: `io.github.millsydotdev.kinora.staging`
+            - Isolated Data Directory: `~/.local/share/io.github.millsydotdev.kinora.staging/`
+            
+            This staging build is isolated from production. Installing this release will not modify your production Kinora configuration or media library.
+          prerelease: true
+          draft: false
+          files: |
+            staging-dist/*

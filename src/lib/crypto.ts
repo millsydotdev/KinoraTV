@@ -149,14 +149,13 @@ export function isValidPinFormat(pin: string): boolean {
 
 function nodePbkdf2Sync(pin: string, saltHex: string, iterations: number): string | null {
   try {
-    const isNode = typeof process !== 'undefined' && Boolean(process.versions?.node)
-    if (!isNode) return null
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const nodeCrypto = typeof require !== 'undefined' ? require('node:crypto') : null
+    const g = globalThis as unknown as { process?: { versions?: { node?: string } }; require?: (mod: string) => unknown }
+    if (!g.process?.versions?.node || typeof g.require !== 'function') return null
+    const nodeCrypto = g.require('node' + ':crypto') as { pbkdf2Sync?: (password: string, salt: Uint8Array, iterations: number, keylen: number, digest: string) => Uint8Array } | null
     if (nodeCrypto && typeof nodeCrypto.pbkdf2Sync === 'function') {
       const saltBuf = Buffer.from(saltHex, 'hex')
       const derived = nodeCrypto.pbkdf2Sync(pin, saltBuf, iterations, 32, 'sha256')
-      return derived.toString('hex')
+      return Buffer.from(derived).toString('hex')
     }
   } catch {}
   return null

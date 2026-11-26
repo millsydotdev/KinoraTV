@@ -6,25 +6,28 @@ const art = (name: string) => `/art/${name}.jpg`
 
 export const CHANNEL_GROUPS = ['Entertainment', 'News', 'Sports', 'Documentary', 'Movies', 'Kids', 'Music', 'Lifestyle'] as const
 
-const ch = (number: number, id: string, name: string, group: string, text: string, tone: string, hd = true): Channel => ({
-  id, number, name, group, categories: [group], logoUrl: null, mark: { text, tone }, streamUrl: null, hd, sourceId: null, tvgId: null,
+const demoLogo = (bg: string, fg: string, glyph: string, sub?: string) =>
+  `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="20" fill="${encodeURIComponent(bg)}"/><text x="50" y="${sub ? '52' : '62'}" font-family="system-ui,-apple-system,sans-serif" font-weight="800" font-size="${sub ? '28' : '38'}" fill="${encodeURIComponent(fg)}" text-anchor="middle">${glyph}</text>${sub ? `<text x="50" y="78" font-family="system-ui,-apple-system,sans-serif" font-weight="700" font-size="16" fill="${encodeURIComponent(fg)}" opacity="0.85" text-anchor="middle">${sub}</text>` : ''}</svg>`
+
+const ch = (number: number, id: string, name: string, group: string, text: string, tone: string, hd = true, subText?: string): Channel => ({
+  id, number, name, group, categories: [group], logoUrl: demoLogo(tone, '#ffffff', text, subText), mark: { text, tone }, streamUrl: null, hd, sourceId: null, tvgId: null,
 })
 
 export const channels: Channel[] = [
-  ch(1, 'northlight-one', 'Northlight One', 'Entertainment', 'N1', '#2f4a6b'),
-  ch(2, 'northlight-two', 'Northlight Two', 'Entertainment', 'N2', '#3a3f6e'),
-  ch(3, 'meridian-news', 'Meridian News', 'News', 'MN', '#7a2e2e'),
-  ch(4, 'pitchside', 'Pitchside', 'Sports', 'PS', '#1f5a43'),
-  ch(5, 'pitchside-extra', 'Pitchside Extra', 'Sports', 'PS+', '#2b5d3a'),
-  ch(6, 'atlas', 'Atlas', 'Documentary', 'AT', '#6b5326'),
-  ch(7, 'habitat', 'Habitat', 'Documentary', 'HB', '#3f5f2a'),
-  ch(8, 'reel-classics', 'Reel Classics', 'Movies', 'RC', '#5b2a44'),
-  ch(9, 'matinee', 'Matinee', 'Movies', 'MT', '#6a3a22'),
-  ch(10, 'tidewater', 'Tidewater', 'Entertainment', 'TW', '#22566a', false),
-  ch(11, 'pocket', 'Pocket', 'Kids', 'PK', '#6a5a1e'),
-  ch(12, 'encore', 'Encore', 'Music', 'EN', '#4e2f6a'),
-  ch(13, 'civic', 'Civic', 'News', 'CV', '#3d4650', false),
-  ch(14, 'hearth', 'Hearth', 'Lifestyle', 'HR', '#6e3b2c'),
+  ch(1, 'northlight-one', 'Northlight One', 'Entertainment', 'N1', '#2f4a6b', true, 'ONE'),
+  ch(2, 'northlight-two', 'Northlight Two', 'Entertainment', 'N2', '#3a3f6e', true, 'TWO'),
+  ch(3, 'meridian-news', 'Meridian News', 'News', 'MN', '#7a2e2e', true, 'NEWS'),
+  ch(4, 'pitchside', 'Pitchside', 'Sports', 'PS', '#1f5a43', true, 'LIVE'),
+  ch(5, 'pitchside-extra', 'Pitchside Extra', 'Sports', 'PS+', '#2b5d3a', true, 'EXTRA'),
+  ch(6, 'atlas', 'Atlas', 'Documentary', 'AT', '#6b5326', true, 'DOC'),
+  ch(7, 'habitat', 'Habitat', 'Documentary', 'HB', '#3f5f2a', true, 'EARTH'),
+  ch(8, 'reel-classics', 'Reel Classics', 'Movies', 'RC', '#5b2a44', true, 'CINEMA'),
+  ch(9, 'matinee', 'Matinee', 'Movies', 'MT', '#6a3a22', true, 'FILM'),
+  ch(10, 'tidewater', 'Tidewater', 'Entertainment', 'TW', '#22566a', false, 'TV'),
+  ch(11, 'pocket', 'Pocket', 'Kids', 'PK', '#6a5a1e', true, 'KIDS'),
+  ch(12, 'encore', 'Encore', 'Music', 'EN', '#4e2f6a', true, 'MUSIC'),
+  ch(13, 'civic', 'Civic', 'News', 'CV', '#3d4650', false, 'CIVIC'),
+  ch(14, 'hearth', 'Hearth', 'Lifestyle', 'HR', '#6e3b2c', true, 'HOME'),
 ]
 
 type Slot = { title: string; desc: string; category: string; mins: number; art: string; episode?: boolean }
