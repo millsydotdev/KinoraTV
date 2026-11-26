@@ -187,8 +187,6 @@ export function callerHasScope(caller: CapabilityCaller | undefined, scope: Capa
       return normalized.some((c) => c.includes('sync') || c.includes('agent'))
     case 'control:cast':
       return normalized.some((c) => c.includes('cast') || c.includes('agent'))
-    case 'admin:sensitive':
-      return normalized.includes('admin:sensitive') && Boolean(caller.confirmed)
     default:
       return false
   }
