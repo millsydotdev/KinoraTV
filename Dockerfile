@@ -124,7 +124,7 @@ CMD ["bash", "scripts/quality-gate.sh"]
 # ==============================================================================
 # Stage 4: Headless Server Compiler (Zero WebKitGTK / GUI dependencies)
 # ==============================================================================
-FROM rust:1.90-bookworm AS server-builder
+FROM rust:1-bookworm AS server-builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \

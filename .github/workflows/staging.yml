@@ -142,7 +142,7 @@ jobs:
   publish-staging:
     name: Publish Staging Release
     needs: build-staging
-    if: (github.event.inputs.dry_run != 'true') && !cancelled()
+    if: (inputs.dry_run != true) && !cancelled()
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
