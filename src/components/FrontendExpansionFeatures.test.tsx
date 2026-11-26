@@ -120,12 +120,17 @@ describe('Kinora Frontend Expansion Features Suite', () => {
           title="The Odyssey"
           author="Homer"
           sourceName="Project Gutenberg"
+          chapters={[
+            { title: 'Book I', content: ['Tell me, Muse, of the man of many turns.'] },
+            { title: 'Book II', content: ['As soon as early Dawn appeared, Telemachus rose.'] },
+            { title: 'Book III', content: ['The sun rose from the fair sea into the brazen sky.'] },
+          ]}
         />
       </ToastProvider>
     )
 
     expect(container.textContent).toContain('The Odyssey')
-    expect(container.textContent).toContain('Page 1 of 3')
+    expect(container.textContent).toContain('Section 1 of 3')
 
     // Navigate to next page
     const nextBtn = container.querySelector('button[aria-label="Next page"]') as HTMLButtonElement
@@ -133,7 +138,7 @@ describe('Kinora Frontend Expansion Features Suite', () => {
     await act(async () => {
       nextBtn.click()
     })
-    expect(container.textContent).toContain('Page 2 of 3')
+    expect(container.textContent).toContain('Section 2 of 3')
 
     // Open typography settings and change theme
     const appearanceBtn = container.querySelector('button[title="Typography and appearance settings"]') as HTMLButtonElement

@@ -2313,10 +2313,9 @@ export async function checkForUpdates(
     }
   }
   try {
-    const payload: { endpoint?: string; allowPrereleases?: boolean } = {
-      allowPrereleases,
-    }
+    const payload: { endpoint?: string; allowPrereleases?: boolean } = {}
     if (endpoint) payload.endpoint = endpoint
+    if (allowPrereleases) payload.allowPrereleases = true
     const raw = await invoke('check_for_updates', payload)
     if (!raw || typeof raw !== 'object') return null
     const r = raw as Record<string, unknown>
