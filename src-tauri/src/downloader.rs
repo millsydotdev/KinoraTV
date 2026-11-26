@@ -72,7 +72,9 @@ impl DownloadEngine {
                 if let Ok(mut items) = serde_json::from_slice::<Vec<DownloadItem>>(&data) {
                     for item in &mut items {
                         // Any item left in Downloading state is transitioned to Paused on restart
-                        if item.status == DownloadStatus::Downloading || item.status == DownloadStatus::Queued {
+                        if item.status == DownloadStatus::Downloading
+                            || item.status == DownloadStatus::Queued
+                        {
                             item.status = DownloadStatus::Paused;
                             item.speed_bps = 0;
                             item.eta_seconds = None;
@@ -129,12 +131,7 @@ impl DownloadEngine {
     }
 
     pub fn get(&self, id: &str) -> Option<DownloadItem> {
-        self.items
-            .lock()
-            .ok()?
-            .iter()
-            .find(|i| i.id == id)
-            .cloned()
+        self.items.lock().ok()?.iter().find(|i| i.id == id).cloned()
     }
 
     pub fn start_download(
@@ -334,7 +331,11 @@ impl DownloadEngine {
                 existing_bytes = metadata.len();
             }
 
-            engine.update_status(&id, DownloadStatus::Downloading, Some(target_path_str.clone()));
+            engine.update_status(
+                &id,
+                DownloadStatus::Downloading,
+                Some(target_path_str.clone()),
+            );
 
             let policy = Policy::default();
             let client = match fetch::guarded_client(&policy) {
@@ -369,7 +370,10 @@ impl DownloadEngine {
 
             let content_len = res.content_length().unwrap_or(0);
             if content_len > MAX_DOWNLOAD_SIZE_BYTES {
-                engine.mark_failed(&id, "Download exceeds maximum permitted file size of 50 GB.");
+                engine.mark_failed(
+                    &id,
+                    "Download exceeds maximum permitted file size of 50 GB.",
+                );
                 return;
             }
             let total_bytes = if is_partial {
@@ -382,6 +386,7 @@ impl DownloadEngine {
             let mut file = match OpenOptions::new()
                 .create(true)
                 .write(true)
+                .truncate(!is_partial)
                 .open(&target_path)
             {
                 Ok(f) => f,
@@ -465,7 +470,8 @@ impl DownloadEngine {
             Err(_) => return,
         };
         if let Some(item) = guard.iter_mut().find(|i| i.id == id) {
-            if item.status == DownloadStatus::Cancelled || item.status == DownloadStatus::Completed {
+            if item.status == DownloadStatus::Cancelled || item.status == DownloadStatus::Completed
+            {
                 return;
             }
             if item.status == DownloadStatus::Paused && status == DownloadStatus::Downloading {
@@ -549,7 +555,10 @@ impl DownloadEngine {
                 "Access-Control-Allow-Origin",
                 origin.unwrap_or("*").to_string(),
             ),
-            ("Access-Control-Allow-Methods", "GET, OPTIONS, HEAD".to_string()),
+            (
+                "Access-Control-Allow-Methods",
+                "GET, OPTIONS, HEAD".to_string(),
+            ),
             ("Access-Control-Allow-Headers", "Range".to_string()),
             ("Access-Control-Max-Age", "600".to_string()),
         ];
@@ -697,11 +706,7 @@ impl DownloadEngine {
         }
 
         res_headers.push(("Content-Length", bytes.len().to_string()));
-        let body = if method == "HEAD" {
-            Vec::new()
-        } else {
-            bytes
-        };
+        let body = if method == "HEAD" { Vec::new() } else { bytes };
 
         DownloadReply {
             status: 200,
@@ -792,7 +797,10 @@ mod tests {
         assert_eq!(paused.status, DownloadStatus::Paused);
 
         let resumed = engine.resume_download(&item.id).unwrap();
-        assert!(resumed.status == DownloadStatus::Queued || resumed.status == DownloadStatus::Downloading);
+        assert!(
+            resumed.status == DownloadStatus::Queued
+                || resumed.status == DownloadStatus::Downloading
+        );
 
         engine.cancel_download(&item.id).unwrap();
         let cancelled = engine.get(&item.id).unwrap();
@@ -844,7 +852,11 @@ mod tests {
         let dummy_data = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
         fs::write(&file_path, dummy_data).unwrap();
 
-        engine.mark_completed(&item.id, file_path.to_str().unwrap(), dummy_data.len() as u64);
+        engine.mark_completed(
+            &item.id,
+            file_path.to_str().unwrap(),
+            dummy_data.len() as u64,
+        );
 
         // Test normal GET
         let path = format!("/downloads/{}/video.mp4", item.id);

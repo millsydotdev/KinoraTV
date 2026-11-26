@@ -64,10 +64,16 @@ impl fmt::Debug for Channel {
             .field("chno", &self.chno)
             .field("catchup", &self.catchup)
             .field("catchup_days", &self.catchup_days)
-            .field("catchup_source", &self.catchup_source.as_ref().map(|_| "<redacted>"))
+            .field(
+                "catchup_source",
+                &self.catchup_source.as_ref().map(|_| "<redacted>"),
+            )
             .field("stream", &self.stream_display)
             .field("http_user_agent", &self.http_user_agent)
-            .field("http_referrer", &self.http_referrer.as_ref().map(|_| "<redacted>"))
+            .field(
+                "http_referrer",
+                &self.http_referrer.as_ref().map(|_| "<redacted>"),
+            )
             .finish()
     }
 }
@@ -391,8 +397,12 @@ pub fn format_m3u_catchup_url(
             return interpolated;
         }
         if interpolated.starts_with('?') || interpolated.starts_with('&') {
-            let sep = if base_stream_url.contains('?') { "&" } else { "?" };
-            let query = interpolated.trim_start_matches(|c| c == '?' || c == '&');
+            let sep = if base_stream_url.contains('?') {
+                "&"
+            } else {
+                "?"
+            };
+            let query = interpolated.trim_start_matches(['?', '&']);
             return format!("{base_stream_url}{sep}{query}");
         }
         if base_stream_url.contains('?') {
@@ -403,7 +413,11 @@ pub fn format_m3u_catchup_url(
     } else {
         match catchup_type.unwrap_or("default") {
             "shift" => {
-                let sep = if base_stream_url.contains('?') { "&" } else { "?" };
+                let sep = if base_stream_url.contains('?') {
+                    "&"
+                } else {
+                    "?"
+                };
                 format!("{base_stream_url}{sep}timeshift={offset_secs}&duration={duration_secs}")
             }
             "flussonic" => {
@@ -411,12 +425,20 @@ pub fn format_m3u_catchup_url(
                     let prefix = &base_stream_url[..idx];
                     format!("{prefix}/archive/{start_timestamp}/{duration_secs}.m3u8")
                 } else {
-                    let sep = if base_stream_url.contains('?') { "&" } else { "?" };
+                    let sep = if base_stream_url.contains('?') {
+                        "&"
+                    } else {
+                        "?"
+                    };
                     format!("{base_stream_url}{sep}utc={start_timestamp}&lutc={now_ts}")
                 }
             }
             _ => {
-                let sep = if base_stream_url.contains('?') { "&" } else { "?" };
+                let sep = if base_stream_url.contains('?') {
+                    "&"
+                } else {
+                    "?"
+                };
                 format!("{base_stream_url}{sep}utc={start_timestamp}&lutc={now_ts}")
             }
         }
@@ -494,7 +516,7 @@ fn clean(s: &str) -> Option<String> {
 fn parse_pipe_headers(pipe: &str) -> (Option<String>, Option<String>) {
     let mut ua = None;
     let mut referrer = None;
-    for token in pipe.split(|c| c == '&' || c == '|') {
+    for token in pipe.split(['&', '|']) {
         let token = token.trim();
         if let Some((k, v)) = token.split_once('=') {
             let k = k.trim().to_ascii_lowercase();

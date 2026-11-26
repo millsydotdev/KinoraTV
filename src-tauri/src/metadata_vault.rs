@@ -206,13 +206,13 @@ impl MetadataVault {
             let key = derive_key(dir)?;
             let mut nonce = [0u8; NONCE_LEN];
             rand_bytes(&mut nonce).map_err(|_| {
-                IngestError::new(
-                    ErrorCode::Network,
-                    "Failed to generate encryption nonce.",
-                )
+                IngestError::new(ErrorCode::Network, "Failed to generate encryption nonce.")
             })?;
             let plaintext = serde_json::to_vec(&clean).map_err(|_| {
-                IngestError::new(ErrorCode::NotCatalogue, "Metadata credential encoding failed.")
+                IngestError::new(
+                    ErrorCode::NotCatalogue,
+                    "Metadata credential encoding failed.",
+                )
             })?;
             let mut tag = [0u8; TAG_LEN];
             let ciphertext = encrypt_aead(
@@ -224,7 +224,10 @@ impl MetadataVault {
                 &mut tag,
             )
             .map_err(|_| {
-                IngestError::new(ErrorCode::Network, "Failed to encrypt metadata credentials.")
+                IngestError::new(
+                    ErrorCode::Network,
+                    "Failed to encrypt metadata credentials.",
+                )
             })?;
             let payload = VaultPayload {
                 version: VAULT_VERSION,
@@ -232,9 +235,8 @@ impl MetadataVault {
                 ciphertext: hex_encode(&ciphertext),
                 tag: hex_encode(&tag),
             };
-            let encoded = serde_json::to_vec_pretty(&payload).map_err(|_| {
-                IngestError::new(ErrorCode::NotCatalogue, "Vault encoding failed.")
-            })?;
+            let encoded = serde_json::to_vec_pretty(&payload)
+                .map_err(|_| IngestError::new(ErrorCode::NotCatalogue, "Vault encoding failed."))?;
             sources::write_atomically(dir, VAULT_FILE, &encoded).map_err(|_| {
                 IngestError::new(ErrorCode::Network, "Failed to write metadata vault.")
             })?;
@@ -258,10 +260,8 @@ mod tests {
     use super::*;
 
     fn temp_dir(label: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "kinora-meta-vault-{label}-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("kinora-meta-vault-{label}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
@@ -307,10 +307,7 @@ mod tests {
             .unwrap();
 
         let vault_path = dir.join("sources").join(VAULT_FILE);
-        let tampered = fs::read_to_string(&vault_path)
-            .unwrap()
-            .replace("\"version\": 1", "\"version\": 1")
-            .replace('a', "b");
+        let tampered = fs::read_to_string(&vault_path).unwrap().replace('a', "b");
         fs::write(&vault_path, tampered).unwrap();
 
         let fresh = MetadataVault::new(Some(dir.clone()));

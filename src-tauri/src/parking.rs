@@ -6,10 +6,10 @@
 //! proxy parks the already-read buffer here. When the direct player engine requests the
 //! stream a moment later, it claims the parked bytes, preventing redundant connections.
 
+use reqwest::Url;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use reqwest::Url;
 
 #[derive(Debug, Clone)]
 pub struct ParkedBuffer {
@@ -49,7 +49,10 @@ impl StreamParking {
             parked_at: Instant::now(),
         };
         let mut guard = self.slot.lock().unwrap_or_else(|p| p.into_inner());
-        *guard = Some(Slot { _id: id, stream: parked });
+        *guard = Some(Slot {
+            _id: id,
+            stream: parked,
+        });
     }
 
     /// Takes the parked buffer if it matches `target` and has not expired past `ttl`.

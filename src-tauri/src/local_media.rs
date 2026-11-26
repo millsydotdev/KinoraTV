@@ -1622,7 +1622,12 @@ mod tests {
 
             // Test range request for direct media streaming
             let reply_range = engine
-                .serve("GET", &format!("/local/{movie_id}/stream"), None, &["bytes=0-9"])
+                .serve(
+                    "GET",
+                    &format!("/local/{movie_id}/stream"),
+                    None,
+                    &["bytes=0-9"],
+                )
                 .await;
             assert_eq!(reply_range.status, 206);
             assert_eq!(reply_range.body, &video_data[0..10]);

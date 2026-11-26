@@ -124,7 +124,11 @@ fn parse_byte_range(header: &str, total_len: u64) -> Result<(u64, u64), ()> {
     Ok((start, end))
 }
 
-async fn serve_local_file(path: &Path, content_type: &'static str, range: Option<&str>) -> ProxyReply {
+async fn serve_local_file(
+    path: &Path,
+    content_type: &'static str,
+    range: Option<&str>,
+) -> ProxyReply {
     let path_owned = path.to_path_buf();
     let range_owned = range.map(|s| s.to_string());
 
@@ -538,7 +542,11 @@ impl LanStreamProxy {
         while session.handles.len() >= MAX_HANDLES_PER_SESSION {
             if let Some(old) = session.order.pop_front() {
                 if let Some(entry) = session.handles.remove(&old) {
-                    if let ProxyTarget::Remote { url: old_url, kind: old_kind } = entry.target {
+                    if let ProxyTarget::Remote {
+                        url: old_url,
+                        kind: old_kind,
+                    } = entry.target
+                    {
                         session.by_url.remove(&(old_url.to_string(), old_kind));
                     }
                 }
@@ -560,12 +568,7 @@ impl LanStreamProxy {
     }
 
     /// Serves one proxied HLS playlist, segment, key, or direct media resource.
-    pub async fn serve(
-        &self,
-        session_key: &str,
-        handle: &str,
-        range: Option<&str>,
-    ) -> ProxyReply {
+    pub async fn serve(&self, session_key: &str, handle: &str, range: Option<&str>) -> ProxyReply {
         if !is_valid_hex_token(session_key) || !is_valid_hex_token(handle) {
             return ProxyReply::error(404, "Stream resource not found.");
         }
@@ -700,7 +703,8 @@ impl LanStreamProxy {
 
 /// Validates that a client-configured Kinora Server URL points to a safe LAN IP address.
 pub fn validate_lan_server_url(raw_url: &str) -> Result<Url, String> {
-    let parsed = Url::parse(raw_url.trim()).map_err(|_| "Invalid Kinora Server URL.".to_string())?;
+    let parsed =
+        Url::parse(raw_url.trim()).map_err(|_| "Invalid Kinora Server URL.".to_string())?;
     let scheme = parsed.scheme();
     if scheme != "http" && scheme != "https" {
         return Err("Kinora Server URL must use http or https.".to_string());
@@ -718,7 +722,7 @@ pub fn validate_lan_server_url(raw_url: &str) -> Result<Url, String> {
         .map_err(|_| "Kinora Server address must be a local network IP address.".to_string())?;
 
     let allow_loopback = cfg!(test) || (cfg!(dev) && cfg!(feature = "loopback-fixtures"));
-    if !is_safe_lan_ip(ip) && !(allow_loopback && ip.is_loopback()) {
+    if !(is_safe_lan_ip(ip) || (allow_loopback && ip.is_loopback())) {
         return Err("Kinora Server address must be on the local network.".to_string());
     }
 
@@ -1136,10 +1140,8 @@ pub fn validate_api_path(path: &str) -> Result<&str, String> {
         return Err("API path contains disallowed characters.".to_string());
     }
     let route = trimmed.split('?').next().unwrap_or(trimmed);
-    let allowed = route == "/pair"
-        || route == "/info"
-        || route == "/status"
-        || route.starts_with("/api/");
+    let allowed =
+        route == "/pair" || route == "/info" || route == "/status" || route.starts_with("/api/");
     if !allowed {
         return Err("API path is outside permitted Kinora Server routes.".to_string());
     }
@@ -1397,9 +1399,15 @@ mod tests {
     #[test]
     fn production_policy_blocks_private_and_loopback_upstream() {
         let proxy = LanStreamProxy::default();
-        assert!(proxy.open("dev-1", "http://127.0.0.1:8080/live.m3u8").is_err());
-        assert!(proxy.open("dev-1", "http://192.168.1.50/secret.m3u8").is_err());
-        assert!(proxy.open("dev-1", "http://169.254.169.254/latest/meta-data").is_err());
+        assert!(proxy
+            .open("dev-1", "http://127.0.0.1:8080/live.m3u8")
+            .is_err());
+        assert!(proxy
+            .open("dev-1", "http://192.168.1.50/secret.m3u8")
+            .is_err());
+        assert!(proxy
+            .open("dev-1", "http://169.254.169.254/latest/meta-data")
+            .is_err());
     }
 
     #[tokio::test]
@@ -1418,12 +1426,17 @@ mod tests {
         );
         let addr = start_fixture_http_server(routes).await;
 
-        let mut test_policy = Policy::default();
-        test_policy.allow_loopback = true;
+        let test_policy = Policy {
+            allow_loopback: true,
+            ..Policy::default()
+        };
         let proxy = LanStreamProxy::new(test_policy);
 
         let opened = proxy
-            .open("dev-tablet", &format!("http://{addr}/secret-token/index.m3u8"))
+            .open(
+                "dev-tablet",
+                &format!("http://{addr}/secret-token/index.m3u8"),
+            )
             .unwrap();
         assert_eq!(opened.format, "hls");
         assert!(opened.proxy_path.starts_with("/api/stream/h/"));
@@ -1534,12 +1547,16 @@ mod tests {
         .expect("pair request succeeds");
         assert!(pair_resp.ok);
         let pair_json: serde_json::Value = serde_json::from_str(&pair_resp.body).unwrap();
-        let token = pair_json["token"].as_str().expect("token issued").to_string();
+        let token = pair_json["token"]
+            .as_str()
+            .expect("token issued")
+            .to_string();
 
         // 2. Fetch channels through the CSP-safe bridge and confirm streamUrl is stripped.
-        let ch_resp = client_server_request(&server_url, "GET", "/api/channels", Some(&token), None)
-            .await
-            .expect("channels request succeeds");
+        let ch_resp =
+            client_server_request(&server_url, "GET", "/api/channels", Some(&token), None)
+                .await
+                .expect("channels request succeeds");
         assert!(ch_resp.ok);
         assert!(ch_resp.body.contains("BBC One"));
         assert!(!ch_resp.body.contains("secret.example"));
@@ -1608,7 +1625,10 @@ mod tests {
         .into_bytes();
 
         let mut routes = HashMap::new();
-        routes.insert("/api/stream/open".to_string(), ("application/json", open_body));
+        routes.insert(
+            "/api/stream/open".to_string(),
+            ("application/json", open_body),
+        );
         routes.insert(
             format!("/api/stream/h/{session_key}/{root_handle}"),
             (PLAYLIST_TYPE, playlist_body),
@@ -1696,40 +1716,56 @@ mod tests {
         let roots = vec![lib_root.clone()];
 
         // Reject file outside authorized library roots
-        assert!(proxy.open_local_file("dev-tv", &outside_path, &roots).is_err());
+        assert!(proxy
+            .open_local_file("dev-tv", &outside_path, &roots)
+            .is_err());
         // Reject unsupported file extension inside root
         assert!(proxy.open_local_file("dev-tv", &text_path, &roots).is_err());
         // Reject empty allowed roots
         assert!(proxy.open_local_file("dev-tv", &movie_path, &[]).is_err());
 
         // Valid media file inside root succeeds and serves full & partial HTTP ranges
-        let opened = proxy.open_local_file("dev-tv", &movie_path, &roots).unwrap();
+        let opened = proxy
+            .open_local_file("dev-tv", &movie_path, &roots)
+            .unwrap();
         assert_eq!(opened.format, "direct");
         assert!(!opened.proxy_path.contains("Solaris"));
 
-        let full = proxy.serve(&opened.session_key, &opened.root_handle, None).await;
+        let full = proxy
+            .serve(&opened.session_key, &opened.root_handle, None)
+            .await;
         assert_eq!(full.status, 200);
         assert_eq!(full.content_type, "video/mp4");
         assert_eq!(full.body, payload);
-        assert!(full.extra_headers.iter().any(|(k, v)| *k == "Accept-Ranges" && v == "bytes"));
+        assert!(full
+            .extra_headers
+            .iter()
+            .any(|(k, v)| *k == "Accept-Ranges" && v == "bytes"));
 
         let partial = proxy
-            .serve(&opened.session_key, &opened.root_handle, Some("bytes=10-19"))
+            .serve(
+                &opened.session_key,
+                &opened.root_handle,
+                Some("bytes=10-19"),
+            )
             .await;
         assert_eq!(partial.status, 206);
-        assert_eq!(
-            partial.content_range.as_deref(),
-            Some("bytes 10-19/36")
-        );
+        assert_eq!(partial.content_range.as_deref(), Some("bytes 10-19/36"));
         assert_eq!(partial.body, b"ABCDEFGHIJ");
 
         let invalid = proxy
-            .serve(&opened.session_key, &opened.root_handle, Some("bytes=999-1000"))
+            .serve(
+                &opened.session_key,
+                &opened.root_handle,
+                Some("bytes=999-1000"),
+            )
             .await;
         assert_eq!(invalid.status, 416);
 
         proxy.revoke_device("dev-tv");
-        let revoked = proxy.serve(&opened.session_key, &opened.root_handle, None).await;
+        let revoked = proxy
+            .serve(&opened.session_key, &opened.root_handle, None)
+            .await;
         assert_eq!(revoked.status, 410);
 
         let _ = std::fs::remove_dir_all(&base);

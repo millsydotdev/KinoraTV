@@ -863,10 +863,7 @@ mod tests {
             .collect();
 
         // Under naive exact-only matching (before Tier 2 and Tier 3), only 1 of 8 matches:
-        let exact_matches_count = query_ids
-            .iter()
-            .filter(|&&id| id == "bbcone.uk")
-            .count();
+        let exact_matches_count = query_ids.iter().filter(|&&id| id == "bbcone.uk").count();
         assert_eq!(exact_matches_count, 1);
 
         // Under multi-tier guarded matching, 7 of 7 distinct channels match correctly,

@@ -287,8 +287,7 @@ impl DvrEngine {
                     } else {
                         rec.status = RecordingStatus::Failed;
                         rec.error_message = Some(
-                            "Recording incomplete: interrupted by application shutdown."
-                                .into(),
+                            "Recording incomplete: interrupted by application shutdown.".into(),
                         );
                     }
                 }

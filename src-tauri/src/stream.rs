@@ -213,7 +213,7 @@ pub fn parse_pipe_headers(raw: &str) -> (&str, Vec<(String, String)>) {
     };
     let mut headers = Vec::new();
     if let Some(pipe) = pipe_part {
-        for item in pipe.split(|c| c == '&' || c == '|') {
+        for item in pipe.split(['&', '|']) {
             let item = item.trim();
             if let Some((k, v)) = item.split_once('=') {
                 let k = k.trim();
@@ -251,7 +251,11 @@ impl Streams {
     }
 
     /// Starts a session for `raw` with optional custom stream options (headers, user-agent, referrer).
-    pub fn open_with_options(&self, raw: &str, options: Option<StreamOptions>) -> Result<Opened, IngestError> {
+    pub fn open_with_options(
+        &self,
+        raw: &str,
+        options: Option<StreamOptions>,
+    ) -> Result<Opened, IngestError> {
         let (url_raw, pipe_headers) = parse_pipe_headers(raw);
         let scheme = url_raw
             .trim()
@@ -297,13 +301,17 @@ impl Streams {
             if let Some(ua) = opts.user_agent {
                 let trimmed = ua.trim();
                 if !trimmed.is_empty() {
-                    stream_policy.custom_headers.push(("User-Agent".into(), trimmed.to_string()));
+                    stream_policy
+                        .custom_headers
+                        .push(("User-Agent".into(), trimmed.to_string()));
                 }
             }
             if let Some(r) = opts.referrer {
                 let trimmed = r.trim();
                 if !trimmed.is_empty() {
-                    stream_policy.custom_headers.push(("Referer".into(), trimmed.to_string()));
+                    stream_policy
+                        .custom_headers
+                        .push(("Referer".into(), trimmed.to_string()));
                 }
             }
             if let Some(custom) = opts.headers {
@@ -311,14 +319,20 @@ impl Streams {
                     let k_trim = k.trim();
                     let v_trim = v.trim();
                     if !k_trim.is_empty() && !v_trim.is_empty() {
-                        stream_policy.custom_headers.retain(|(name, _)| !name.eq_ignore_ascii_case(k_trim));
-                        stream_policy.custom_headers.push((k_trim.to_string(), v_trim.to_string()));
+                        stream_policy
+                            .custom_headers
+                            .retain(|(name, _)| !name.eq_ignore_ascii_case(k_trim));
+                        stream_policy
+                            .custom_headers
+                            .push((k_trim.to_string(), v_trim.to_string()));
                     }
                 }
             }
         }
         for (k, v) in pipe_headers {
-            stream_policy.custom_headers.retain(|(name, _)| !name.eq_ignore_ascii_case(&k));
+            stream_policy
+                .custom_headers
+                .retain(|(name, _)| !name.eq_ignore_ascii_case(&k));
             stream_policy.custom_headers.push((k, v));
         }
         let client = fetch::guarded_client(&stream_policy)?;
@@ -472,7 +486,8 @@ impl Streams {
                 )
             })
         });
-        let Some((url, kind, session, mut cancelled, client, requests, budget, policy)) = found else {
+        let Some((url, kind, session, mut cancelled, client, requests, budget, policy)) = found
+        else {
             return self.fail(404, "Unknown or expired stream resource.");
         };
         // Only a prefix handle has anything after it, and nothing can leave its host.
@@ -1367,7 +1382,11 @@ mod tests {
 
         // Park buffer to verify claim:
         let parsed_url = Url::parse(stream_url).unwrap();
-        s.parking.park(parsed_url, vec![0x47, 0xAA, 0xBB], Some("video/mp2t".into()));
+        s.parking.park(
+            parsed_url,
+            vec![0x47, 0xAA, 0xBB],
+            Some("video/mp2t".into()),
+        );
 
         // Answer for direct stream handle claims the parked buffer without network hit:
         let handle = handle_of(&opened_direct.url);
@@ -1406,11 +1425,19 @@ mod tests {
         let headers = &session.policy.custom_headers;
 
         // Pipe override must win for User-Agent
-        assert!(headers.iter().any(|(k, v)| k == "User-Agent" && v == "PipeOverride/2.0"));
+        assert!(headers
+            .iter()
+            .any(|(k, v)| k == "User-Agent" && v == "PipeOverride/2.0"));
         // Referrer was provided in options
-        assert!(headers.iter().any(|(k, v)| k == "Referer" && v == "https://portal.example/"));
+        assert!(headers
+            .iter()
+            .any(|(k, v)| k == "Referer" && v == "https://portal.example/"));
         // Custom headers were retained
-        assert!(headers.iter().any(|(k, v)| k == "X-Custom-Auth" && v == "Token123"));
-        assert!(headers.iter().any(|(k, v)| k == "Origin" && v == "https://allowed.example"));
+        assert!(headers
+            .iter()
+            .any(|(k, v)| k == "X-Custom-Auth" && v == "Token123"));
+        assert!(headers
+            .iter()
+            .any(|(k, v)| k == "Origin" && v == "https://allowed.example"));
     }
 }

@@ -308,7 +308,9 @@ pub async fn hydrate_headless_local_media(
                 for lib in libs {
                     if let Some(folders) = lib.get("folders").and_then(|v| v.as_array()) {
                         for f in folders {
-                            if let Some(path_str) = f.as_str().map(str::trim).filter(|s| !s.is_empty()) {
+                            if let Some(path_str) =
+                                f.as_str().map(str::trim).filter(|s| !s.is_empty())
+                            {
                                 allowed_roots.push(PathBuf::from(path_str));
                             }
                         }
@@ -351,10 +353,18 @@ pub async fn hydrate_headless_local_media(
                 .map(|s| s.to_string());
             let duration_secs = m.get("durationSecs").and_then(|v| v.as_u64());
             let media_key = format!("local:{id}");
-            if let Some(fp) = m.get("filePath").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+            if let Some(fp) = m
+                .get("filePath")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+            {
                 media_files.insert(media_key.clone(), PathBuf::from(fp));
             }
-            if let Some(ap) = m.get("artPath").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+            if let Some(ap) = m
+                .get("artPath")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+            {
                 artwork_files.insert(media_key.clone(), PathBuf::from(ap));
             }
             let backdrop_key = m
@@ -397,7 +407,11 @@ pub async fn hydrate_headless_local_media(
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
             let media_key = format!("local:{id}");
-            if let Some(ap) = s.get("artPath").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+            if let Some(ap) = s
+                .get("artPath")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+            {
                 artwork_files.insert(media_key.clone(), PathBuf::from(ap));
             }
             let backdrop_key = s
@@ -418,7 +432,8 @@ pub async fn hydrate_headless_local_media(
                                 ep.get("filePath").and_then(|v| v.as_str()),
                             ) {
                                 if !ep_path.is_empty() {
-                                    media_files.insert(format!("local:{ep_id}"), PathBuf::from(ep_path));
+                                    media_files
+                                        .insert(format!("local:{ep_id}"), PathBuf::from(ep_path));
                                 }
                             }
                         }
@@ -605,8 +620,10 @@ mod tests {
             }],
         }];
 
-        let mut policy = fetch::Policy::default();
-        policy.allow_loopback = true;
+        let policy = fetch::Policy {
+            allow_loopback: true,
+            ..fetch::Policy::default()
+        };
 
         let mgr = remote_server::RemoteServerManager::with_stream_policy(None, policy.clone());
         let (total, playable) = hydrate_sources_list(saved_sources, &mgr, &policy).await;

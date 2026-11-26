@@ -273,10 +273,9 @@ fn origin_ok(origin: Origin, url: &Option<String>) -> bool {
         // The same check Add Source and every fetch use: http(s), no sign-in details, no local address.
         (Origin::Url, Some(url)) => {
             #[cfg(test)]
-            let policy = {
-                let mut p = Policy::default();
-                p.allow_loopback = true;
-                p
+            let policy = Policy {
+                allow_loopback: true,
+                ..Policy::default()
             };
             #[cfg(not(test))]
             let policy = Policy::default();

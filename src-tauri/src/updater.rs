@@ -232,7 +232,8 @@ pub fn evaluate_manifest_with_options(
 ) -> UpdateCheckResult {
     let platform = current_platform_key();
     let asset = manifest.platforms.get(platform);
-    let channel_compatible = is_channel_compatible(&manifest.version, current_version, allow_prereleases);
+    let channel_compatible =
+        is_channel_compatible(&manifest.version, current_version, allow_prereleases);
     let newer = channel_compatible && is_newer(&manifest.version, current_version);
 
     if newer {

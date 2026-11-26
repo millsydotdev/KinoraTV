@@ -20,10 +20,8 @@ fn val_to_str(v: Option<&Value>) -> Option<String> {
     v.and_then(|val| {
         if let Some(s) = val.as_str() {
             Some(s.to_string())
-        } else if let Some(n) = val.as_i64() {
-            Some(n.to_string())
         } else {
-            None
+            val.as_i64().map(|n| n.to_string())
         }
     })
 }
@@ -192,12 +190,19 @@ impl StalkerEngine {
             .header(reqwest::header::COOKIE, format!("mac={norm_mac}"))
             .send()
             .await
-            .map_err(|e| IngestError::new(ErrorCode::Network, format!("Stalker connection failed: {e}")))?;
+            .map_err(|e| {
+                IngestError::new(
+                    ErrorCode::Network,
+                    format!("Stalker connection failed: {e}"),
+                )
+            })?;
 
-        let text = res
-            .text()
-            .await
-            .map_err(|e| IngestError::new(ErrorCode::HttpStatus, format!("Failed to read Stalker handshake: {e}")))?;
+        let text = res.text().await.map_err(|e| {
+            IngestError::new(
+                ErrorCode::HttpStatus,
+                format!("Failed to read Stalker handshake: {e}"),
+            )
+        })?;
 
         let token = Self::parse_token_from_response(&text)?;
 
@@ -215,7 +220,12 @@ impl StalkerEngine {
             .header("Authorization", format!("Bearer {token}"))
             .send()
             .await
-            .map_err(|e| IngestError::new(ErrorCode::Network, format!("Stalker profile request failed: {e}")))?;
+            .map_err(|e| {
+                IngestError::new(
+                    ErrorCode::Network,
+                    format!("Stalker profile request failed: {e}"),
+                )
+            })?;
 
         let profile_text = profile_res.text().await.unwrap_or_default();
         let profile = Self::parse_profile_from_response(&profile_text, &norm_mac);
@@ -389,7 +399,9 @@ impl StalkerEngine {
             .header("Authorization", format!("Bearer {token}"))
             .send()
             .await
-            .map_err(|e| IngestError::new(ErrorCode::Network, format!("Failed to create link: {e}")))?;
+            .map_err(|e| {
+                IngestError::new(ErrorCode::Network, format!("Failed to create link: {e}"))
+            })?;
 
         let text = link_res.text().await.unwrap_or_default();
         let stream_url = Self::parse_create_link_response(&text)?;
@@ -419,7 +431,10 @@ impl StalkerEngine {
         let (portal_url, mac) = {
             let lock = self.session.lock().unwrap();
             let sess = lock.as_ref().ok_or_else(|| {
-                IngestError::new(ErrorCode::Storage, "No active Stalker portal session to reauthenticate.")
+                IngestError::new(
+                    ErrorCode::Storage,
+                    "No active Stalker portal session to reauthenticate.",
+                )
             })?;
             (sess.portal_url.clone(), sess.mac.clone())
         };
@@ -436,12 +451,19 @@ impl StalkerEngine {
             .header(reqwest::header::COOKIE, format!("mac={mac}"))
             .send()
             .await
-            .map_err(|e| IngestError::new(ErrorCode::Network, format!("Stalker reauthentication handshake failed: {e}")))?;
+            .map_err(|e| {
+                IngestError::new(
+                    ErrorCode::Network,
+                    format!("Stalker reauthentication handshake failed: {e}"),
+                )
+            })?;
 
-        let text = res
-            .text()
-            .await
-            .map_err(|e| IngestError::new(ErrorCode::HttpStatus, format!("Failed to read Stalker handshake response: {e}")))?;
+        let text = res.text().await.map_err(|e| {
+            IngestError::new(
+                ErrorCode::HttpStatus,
+                format!("Failed to read Stalker handshake response: {e}"),
+            )
+        })?;
 
         let token = Self::parse_token_from_response(&text)?;
 
@@ -523,7 +545,10 @@ impl StalkerEngine {
     }
 
     /// Fetches short EPG for a specific channel ID.
-    pub async fn get_short_epg(&self, channel_id: &str) -> Result<Vec<StalkerEpgProgramme>, IngestError> {
+    pub async fn get_short_epg(
+        &self,
+        channel_id: &str,
+    ) -> Result<Vec<StalkerEpgProgramme>, IngestError> {
         let (endpoint_str, mac, token) = {
             let lock = self.session.lock().unwrap();
             let sess = lock.as_ref().ok_or_else(|| {
@@ -555,7 +580,12 @@ impl StalkerEngine {
             .header("Authorization", format!("Bearer {token}"))
             .send()
             .await
-            .map_err(|e| IngestError::new(ErrorCode::Network, format!("Failed to fetch Stalker EPG: {e}")))?;
+            .map_err(|e| {
+                IngestError::new(
+                    ErrorCode::Network,
+                    format!("Failed to fetch Stalker EPG: {e}"),
+                )
+            })?;
 
         let text = res.text().await.unwrap_or_default();
         Ok(Self::parse_epg_response(&text, channel_id))
@@ -564,7 +594,8 @@ impl StalkerEngine {
     /// Parses EPG timetable items from a Stalker get_short_epg response.
     pub fn parse_epg_response(raw: &str, channel_id: &str) -> Vec<StalkerEpgProgramme> {
         let val: Value = serde_json::from_str(raw).unwrap_or(Value::Null);
-        let list = val.pointer("/js/data")
+        let list = val
+            .pointer("/js/data")
             .or_else(|| val.get("js"))
             .or_else(|| val.get("data"))
             .and_then(|v| v.as_array());
@@ -572,15 +603,37 @@ impl StalkerEngine {
         let mut res = Vec::new();
         if let Some(arr) = list {
             for item in arr {
-                let id = val_to_str(item.get("id")).unwrap_or_else(|| format!("{channel_id}-{}", res.len()));
-                let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("Untitled Programme").to_string();
-                let time = item.get("time").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let time_to = item.get("time_to").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let duration = item.get("duration")
+                let id = val_to_str(item.get("id"))
+                    .unwrap_or_else(|| format!("{channel_id}-{}", res.len()));
+                let name = item
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Untitled Programme")
+                    .to_string();
+                let time = item
+                    .get("time")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let time_to = item
+                    .get("time_to")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let duration = item
+                    .get("duration")
                     .and_then(|v| v.as_u64())
-                    .or_else(|| item.get("duration").and_then(|v| v.as_str()).and_then(|s| s.parse().ok()))
+                    .or_else(|| {
+                        item.get("duration")
+                            .and_then(|v| v.as_str())
+                            .and_then(|s| s.parse().ok())
+                    })
                     .unwrap_or(3600) as u32;
-                let desc = item.get("descr").or_else(|| item.get("description")).and_then(|v| v.as_str()).map(|s| s.to_string());
+                let desc = item
+                    .get("descr")
+                    .or_else(|| item.get("description"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
 
                 res.push(StalkerEpgProgramme {
                     id,
@@ -634,7 +687,12 @@ impl StalkerEngine {
             .header("Authorization", format!("Bearer {token}"))
             .send()
             .await
-            .map_err(|e| IngestError::new(ErrorCode::Network, format!("Failed to create catchup link: {e}")))?;
+            .map_err(|e| {
+                IngestError::new(
+                    ErrorCode::Network,
+                    format!("Failed to create catchup link: {e}"),
+                )
+            })?;
 
         let text = link_res.text().await.unwrap_or_default();
         let stream_url = Self::parse_create_link_response(&text)?;
@@ -707,7 +765,10 @@ impl StalkerEngine {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let phone = js.get("phone").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let phone = js
+            .get("phone")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
 
         StalkerProfile {
             mac: mac.to_string(),
@@ -720,7 +781,8 @@ impl StalkerEngine {
 
     pub fn parse_genres(raw: &str) -> Vec<StalkerGenre> {
         let val: Value = serde_json::from_str(raw).unwrap_or(Value::Null);
-        let list = val.pointer("/js/data")
+        let list = val
+            .pointer("/js/data")
             .or_else(|| val.get("js"))
             .or_else(|| val.get("data"))
             .and_then(|v| v.as_array());
@@ -746,7 +808,8 @@ impl StalkerEngine {
 
     pub fn parse_channels(raw: &str) -> Vec<StalkerChannel> {
         let val: Value = serde_json::from_str(raw).unwrap_or(Value::Null);
-        let list = val.pointer("/js/data")
+        let list = val
+            .pointer("/js/data")
             .or_else(|| val.get("js"))
             .or_else(|| val.get("data"))
             .and_then(|v| v.as_array());
@@ -762,11 +825,19 @@ impl StalkerEngine {
                     let num = item
                         .get("number")
                         .and_then(|v| v.as_u64())
-                        .or_else(|| item.get("number").and_then(|v| v.as_str()).and_then(|s| s.parse().ok()))
+                        .or_else(|| {
+                            item.get("number")
+                                .and_then(|v| v.as_str())
+                                .and_then(|s| s.parse().ok())
+                        })
                         .unwrap_or(res.len() as u64 + 1) as u32;
 
-                    let logo = item.get("logo").and_then(|v| v.as_str()).map(|s| s.to_string());
-                    let genre_id = val_to_str(item.get("tv_genre_id")).unwrap_or_else(|| "0".to_string());
+                    let logo = item
+                        .get("logo")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    let genre_id =
+                        val_to_str(item.get("tv_genre_id")).unwrap_or_else(|| "0".to_string());
 
                     res.push(StalkerChannel {
                         id,
@@ -784,7 +855,8 @@ impl StalkerEngine {
 
     pub fn parse_vod(raw: &str) -> Vec<StalkerVodItem> {
         let val: Value = serde_json::from_str(raw).unwrap_or(Value::Null);
-        let list = val.pointer("/js/data")
+        let list = val
+            .pointer("/js/data")
             .or_else(|| val.get("js"))
             .or_else(|| val.get("data"))
             .and_then(|v| v.as_array());
@@ -803,7 +875,10 @@ impl StalkerEngine {
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string());
 
-                    let year = item.get("year").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    let year = item
+                        .get("year")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
                     let category_id = val_to_str(item.get("category_id"));
 
                     res.push(StalkerVodItem {
@@ -825,7 +900,8 @@ impl StalkerEngine {
             IngestError::new(ErrorCode::HttpStatus, "Invalid JSON from create_link.")
         })?;
 
-        let cmd = val.pointer("/js/cmd")
+        let cmd = val
+            .pointer("/js/cmd")
             .or_else(|| val.get("cmd"))
             .and_then(|v| v.as_str());
 

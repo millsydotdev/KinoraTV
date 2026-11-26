@@ -8,7 +8,9 @@ fn main() {
         .or_else(|_| std::env::var("PORT"))
         .ok()
         .and_then(|v| v.parse::<u16>().ok());
-    let mut pin = std::env::var("KINORA_PIN").ok().filter(|s| !s.trim().is_empty());
+    let mut pin = std::env::var("KINORA_PIN")
+        .ok()
+        .filter(|s| !s.trim().is_empty());
 
     let mut idx = 1;
     while idx < args.len() {
@@ -26,7 +28,10 @@ fn main() {
                 idx += 1;
             }
             "--help" | "-h" => {
-                println!("Kinora Media Server v{} (Headless)", env!("CARGO_PKG_VERSION"));
+                println!(
+                    "Kinora Media Server v{} (Headless)",
+                    env!("CARGO_PKG_VERSION")
+                );
                 println!("Usage: kinora-server [--port <PORT>] [--pin <PIN>] [--data-dir <DIR>]");
                 println!("Environment: KINORA_PORT, KINORA_PIN, KINORA_DATA_DIR");
                 return;

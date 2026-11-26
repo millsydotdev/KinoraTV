@@ -680,10 +680,7 @@ pub async fn post_metadata(
 }
 
 /// Queries an approved subtitle provider or downloads subtitle text (OpenSubtitles).
-pub async fn fetch_subtitle(
-    raw_url: &str,
-    api_key: Option<&str>,
-) -> Result<String, IngestError> {
+pub async fn fetch_subtitle(raw_url: &str, api_key: Option<&str>) -> Result<String, IngestError> {
     let policy = Policy::subtitle();
     let url = check_url(raw_url, &policy)?;
     let host = url.host_str().unwrap_or_default().to_owned();
@@ -759,9 +756,14 @@ pub async fn fetch_trakt_api(
             let mut b = client.post(url);
             if let Some(json) = body_json {
                 if json.len() > 65536 {
-                    return Err(IngestError::new(ErrorCode::TooLarge, "Request payload too large"));
+                    return Err(IngestError::new(
+                        ErrorCode::TooLarge,
+                        "Request payload too large",
+                    ));
                 }
-                b = b.header(CONTENT_TYPE, "application/json").body(json.to_string());
+                b = b
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(json.to_string());
             }
             b
         }
@@ -2013,11 +2015,7 @@ mod tests {
             &policy
         )
         .is_ok());
-        assert!(check_url(
-            "https://dl.opensubtitles.org/subtitles/12345.vtt",
-            &policy
-        )
-        .is_ok());
+        assert!(check_url("https://dl.opensubtitles.org/subtitles/12345.vtt", &policy).is_ok());
     }
 
     #[test]

@@ -3,6 +3,7 @@
 // Manages persistent trusted devices, capability-based security, and AI agent interfaces.
 // Strictly adheres to typography standards: zero em-dashes across all code and comments.
 
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -10,7 +11,6 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, oneshot, Mutex};
@@ -26,36 +26,26 @@ const API_RATE_LIMIT_MAX_REQUESTS: u32 = 240;
 pub const SERVER_API_VERSION: &str = "1.0";
 pub const MIN_COMPATIBLE_CLIENT_VERSION: &str = "0.6.0";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum PlatformMode {
+    #[default]
     Standalone,
     Server,
     Client,
 }
 
-impl Default for PlatformMode {
-    fn default() -> Self {
-        Self::Standalone
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum DeviceType {
     Phone,
     Tablet,
     Tv,
+    #[default]
     RemoteWeb,
     AiAgent,
     DesktopClient,
     Unknown,
-}
-
-impl Default for DeviceType {
-    fn default() -> Self {
-        Self::RemoteWeb
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -409,7 +399,11 @@ impl RemoteServerManager {
         }
     }
 
-    pub async fn set_platform_mode(&self, mode: PlatformMode, server_url: Option<String>) -> PlatformModeInfo {
+    pub async fn set_platform_mode(
+        &self,
+        mode: PlatformMode,
+        server_url: Option<String>,
+    ) -> PlatformModeInfo {
         let mut state = self.inner.lock().await;
         state.mode = mode;
         state.server_client_url = server_url;
@@ -568,7 +562,9 @@ impl RemoteServerManager {
         // Broadcast to SSE streams
         if let Ok(json) = serde_json::to_string(&new_state) {
             let msg = format!("data: {json}\n\n");
-            state.sse_senders.retain(|sender| sender.send(msg.clone()).is_ok());
+            state
+                .sse_senders
+                .retain(|sender| sender.send(msg.clone()).is_ok());
         }
     }
 
@@ -664,7 +660,10 @@ impl RemoteServerManager {
                 }
                 Err(_) => return,
             };
-            let broadcast_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(255, 255, 255, 255)), DEFAULT_DISCOVERY_PORT);
+            let broadcast_addr = SocketAddr::new(
+                IpAddr::V4(Ipv4Addr::new(255, 255, 255, 255)),
+                DEFAULT_DISCOVERY_PORT,
+            );
             let beacon_payload = format!(
                 r#"{{"name":"Kinora Media Server","ip":"{}","port":{},"version":"0.6.0","mode":"server"}}"#,
                 beacon_ip, beacon_port
@@ -838,7 +837,9 @@ fn broadcast_sse_envelope(state: &mut ServerInner, event_type: &str, data: serde
     });
     if let Ok(json) = serde_json::to_string(&envelope) {
         let msg = format!("data: {json}\n\n");
-        state.sse_senders.retain(|sender| sender.send(msg.clone()).is_ok());
+        state
+            .sse_senders
+            .retain(|sender| sender.send(msg.clone()).is_ok());
     }
 }
 
@@ -1059,7 +1060,9 @@ async fn handle_connection<F>(
         }
         // Keep rate-limit map bounded
         if state.rate_limits.len() > 256 {
-            state.rate_limits.retain(|_, (ts, _)| now_inst.duration_since(*ts) < Duration::from_secs(API_RATE_LIMIT_WINDOW_SECS * 2));
+            state.rate_limits.retain(|_, (ts, _)| {
+                now_inst.duration_since(*ts) < Duration::from_secs(API_RATE_LIMIT_WINDOW_SECS * 2)
+            });
         }
     }
 
@@ -1094,9 +1097,14 @@ async fn handle_connection<F>(
         }
         ("POST", "/pair") => {
             let body = extract_body(&req_str);
-            let result = handle_pair_request(&manager, body, addr.ip().to_string(), user_agent).await;
+            let result =
+                handle_pair_request(&manager, body, addr.ip().to_string(), user_agent).await;
             let (status_code, json_resp) = match result {
-                Ok(pair_resp) => (200, serde_json::to_string(&pair_resp).unwrap_or_else(|_| r#"{"ok":true}"#.to_string())),
+                Ok(pair_resp) => (
+                    200,
+                    serde_json::to_string(&pair_resp)
+                        .unwrap_or_else(|_| r#"{"ok":true}"#.to_string()),
+                ),
                 Err(err) => (401, format!(r#"{{"ok":false,"error":"{err}"}}"#)),
             };
             let resp = format!(
@@ -1132,13 +1140,25 @@ async fn handle_connection<F>(
             let _ = stream.write_all(resp.as_bytes()).await;
         }
         ("GET", "/api/status") | ("GET", "/status") => {
-            if !validate_token(&manager, auth_token.as_deref(), &[DeviceCapability::RemoteControl, DeviceCapability::PlaybackControl, DeviceCapability::MediaBrowse, DeviceCapability::AiAgent]).await {
+            if !validate_token(
+                &manager,
+                auth_token.as_deref(),
+                &[
+                    DeviceCapability::RemoteControl,
+                    DeviceCapability::PlaybackControl,
+                    DeviceCapability::MediaBrowse,
+                    DeviceCapability::AiAgent,
+                ],
+            )
+            .await
+            {
                 send_unauthorized(&mut stream).await;
                 return;
             }
 
             let state = manager.inner.lock().await;
-            let json = serde_json::to_string(&state.playback_state).unwrap_or_else(|_| "{}".to_string());
+            let json =
+                serde_json::to_string(&state.playback_state).unwrap_or_else(|_| "{}".to_string());
             let resp = format!(
                 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
                 json.len(),
@@ -1147,25 +1167,40 @@ async fn handle_connection<F>(
             let _ = stream.write_all(resp.as_bytes()).await;
         }
         ("GET", "/api/channels") => {
-            if !validate_token(&manager, auth_token.as_deref(), &[DeviceCapability::MediaBrowse, DeviceCapability::RemoteControl, DeviceCapability::ClientSync, DeviceCapability::AiAgent]).await {
+            if !validate_token(
+                &manager,
+                auth_token.as_deref(),
+                &[
+                    DeviceCapability::MediaBrowse,
+                    DeviceCapability::RemoteControl,
+                    DeviceCapability::ClientSync,
+                    DeviceCapability::AiAgent,
+                ],
+            )
+            .await
+            {
                 send_unauthorized(&mut stream).await;
                 return;
             }
 
             let now_ms = (now_unix_secs() as i64).saturating_mul(1000);
             let state = manager.inner.lock().await;
-            let sanitized: Vec<RemoteChannelSummary> = state.channels.iter().map(|c| {
-                let mut s = c.clone();
-                s.stream_url = None;
-                if s.current_programme.is_none() {
-                    s.current_programme = state
-                        .epg
-                        .iter()
-                        .find(|p| p.channel_id == s.id && p.start <= now_ms && now_ms < p.stop)
-                        .map(|p| p.title.clone());
-                }
-                s
-            }).collect();
+            let sanitized: Vec<RemoteChannelSummary> = state
+                .channels
+                .iter()
+                .map(|c| {
+                    let mut s = c.clone();
+                    s.stream_url = None;
+                    if s.current_programme.is_none() {
+                        s.current_programme = state
+                            .epg
+                            .iter()
+                            .find(|p| p.channel_id == s.id && p.start <= now_ms && now_ms < p.stop)
+                            .map(|p| p.title.clone());
+                    }
+                    s
+                })
+                .collect();
             let json = serde_json::to_string(&sanitized).unwrap_or_else(|_| "[]".to_string());
             let resp = format!(
                 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
@@ -1175,7 +1210,18 @@ async fn handle_connection<F>(
             let _ = stream.write_all(resp.as_bytes()).await;
         }
         ("GET", "/api/epg") => {
-            if !validate_token(&manager, auth_token.as_deref(), &[DeviceCapability::MediaBrowse, DeviceCapability::RemoteControl, DeviceCapability::ClientSync, DeviceCapability::AiAgent]).await {
+            if !validate_token(
+                &manager,
+                auth_token.as_deref(),
+                &[
+                    DeviceCapability::MediaBrowse,
+                    DeviceCapability::RemoteControl,
+                    DeviceCapability::ClientSync,
+                    DeviceCapability::AiAgent,
+                ],
+            )
+            .await
+            {
                 send_unauthorized(&mut stream).await;
                 return;
             }
@@ -1231,7 +1277,17 @@ async fn handle_connection<F>(
             let _ = stream.write_all(resp.as_bytes()).await;
         }
         ("GET", "/api/media") => {
-            if !validate_token(&manager, auth_token.as_deref(), &[DeviceCapability::MediaBrowse, DeviceCapability::ClientSync, DeviceCapability::AiAgent]).await {
+            if !validate_token(
+                &manager,
+                auth_token.as_deref(),
+                &[
+                    DeviceCapability::MediaBrowse,
+                    DeviceCapability::ClientSync,
+                    DeviceCapability::AiAgent,
+                ],
+            )
+            .await
+            {
                 send_unauthorized(&mut stream).await;
                 return;
             }
@@ -1285,7 +1341,18 @@ async fn handle_connection<F>(
             let _ = stream.write_all(resp.as_bytes()).await;
         }
         ("GET", "/api/artwork") => {
-            if !validate_token(&manager, auth_token.as_deref(), &[DeviceCapability::MediaBrowse, DeviceCapability::RemoteControl, DeviceCapability::ClientSync, DeviceCapability::AiAgent]).await {
+            if !validate_token(
+                &manager,
+                auth_token.as_deref(),
+                &[
+                    DeviceCapability::MediaBrowse,
+                    DeviceCapability::RemoteControl,
+                    DeviceCapability::ClientSync,
+                    DeviceCapability::AiAgent,
+                ],
+            )
+            .await
+            {
                 send_unauthorized(&mut stream).await;
                 return;
             }
@@ -1318,7 +1385,8 @@ async fn handle_connection<F>(
                     if let Some((art_path, roots)) = local_lookup {
                         cached = tokio::task::spawn_blocking(move || {
                             let safe_path =
-                                crate::lan_proxy::canonicalize_contained_path(&art_path, &roots).ok()?;
+                                crate::lan_proxy::canonicalize_contained_path(&art_path, &roots)
+                                    .ok()?;
                             let meta = std::fs::metadata(&safe_path).ok()?;
                             if !meta.is_file() || meta.len() == 0 || meta.len() > 5 * 1024 * 1024 {
                                 return None;
@@ -1363,20 +1431,30 @@ async fn handle_connection<F>(
             }
             let caller = caller_opt.unwrap();
             if !caller.capabilities.contains(&DeviceCapability::ClientSync)
-                && !caller.capabilities.contains(&DeviceCapability::PlaybackControl)
+                && !caller
+                    .capabilities
+                    .contains(&DeviceCapability::PlaybackControl)
             {
-                send_forbidden(&mut stream, "Device lacks ClientSync or PlaybackControl capability").await;
+                send_forbidden(
+                    &mut stream,
+                    "Device lacks ClientSync or PlaybackControl capability",
+                )
+                .await;
                 return;
             }
 
             let body = extract_body(&req_str);
             let parsed_body = serde_json::from_str::<serde_json::Value>(body).ok();
-            let target_cid = parsed_body
-                .as_ref()
-                .and_then(|v| v.get("channelId").and_then(|c| c.as_str()).map(|s| s.to_string()));
-            let target_mid = parsed_body
-                .as_ref()
-                .and_then(|v| v.get("mediaId").and_then(|c| c.as_str()).map(|s| s.to_string()));
+            let target_cid = parsed_body.as_ref().and_then(|v| {
+                v.get("channelId")
+                    .and_then(|c| c.as_str())
+                    .map(|s| s.to_string())
+            });
+            let target_mid = parsed_body.as_ref().and_then(|v| {
+                v.get("mediaId")
+                    .and_then(|c| c.as_str())
+                    .map(|s| s.to_string())
+            });
 
             handle_open_proxy_stream(
                 &mut stream,
@@ -1398,7 +1476,11 @@ async fn handle_connection<F>(
             let body = extract_body(&req_str);
             let session_key = serde_json::from_str::<serde_json::Value>(body)
                 .ok()
-                .and_then(|v| v.get("sessionKey").and_then(|s| s.as_str()).map(|s| s.to_string()))
+                .and_then(|v| {
+                    v.get("sessionKey")
+                        .and_then(|s| s.as_str())
+                        .map(|s| s.to_string())
+                })
                 .unwrap_or_default();
             let closed = manager.stream_proxy.close(&session_key, &caller.id);
             let json_body = serde_json::json!({ "ok": closed }).to_string();
@@ -1417,9 +1499,15 @@ async fn handle_connection<F>(
             }
             let caller = caller_opt.unwrap();
             if !caller.capabilities.contains(&DeviceCapability::ClientSync)
-                && !caller.capabilities.contains(&DeviceCapability::PlaybackControl)
+                && !caller
+                    .capabilities
+                    .contains(&DeviceCapability::PlaybackControl)
             {
-                send_forbidden(&mut stream, "Device lacks ClientSync or PlaybackControl capability").await;
+                send_forbidden(
+                    &mut stream,
+                    "Device lacks ClientSync or PlaybackControl capability",
+                )
+                .await;
                 return;
             }
 
@@ -1433,7 +1521,15 @@ async fn handle_connection<F>(
                 }
             }
 
-            handle_open_proxy_stream(&mut stream, &manager, &caller, target_cid, None, host_header.as_deref()).await;
+            handle_open_proxy_stream(
+                &mut stream,
+                &manager,
+                &caller,
+                target_cid,
+                None,
+                host_header.as_deref(),
+            )
+            .await;
         }
         ("GET", p) if p.starts_with("/api/stream/h/") => {
             let rest = &p["/api/stream/h/".len()..];
@@ -1493,7 +1589,17 @@ async fn handle_connection<F>(
             let _ = stream.write_all(&reply.body).await;
         }
         ("GET", "/api/sources") => {
-            if !validate_token(&manager, auth_token.as_deref(), &[DeviceCapability::MediaBrowse, DeviceCapability::ClientSync, DeviceCapability::AiAgent]).await {
+            if !validate_token(
+                &manager,
+                auth_token.as_deref(),
+                &[
+                    DeviceCapability::MediaBrowse,
+                    DeviceCapability::ClientSync,
+                    DeviceCapability::AiAgent,
+                ],
+            )
+            .await
+            {
                 send_unauthorized(&mut stream).await;
                 return;
             }
@@ -1508,7 +1614,17 @@ async fn handle_connection<F>(
             let _ = stream.write_all(resp.as_bytes()).await;
         }
         ("GET", "/api/library") => {
-            if !validate_token(&manager, auth_token.as_deref(), &[DeviceCapability::MediaBrowse, DeviceCapability::ClientSync, DeviceCapability::AiAgent]).await {
+            if !validate_token(
+                &manager,
+                auth_token.as_deref(),
+                &[
+                    DeviceCapability::MediaBrowse,
+                    DeviceCapability::ClientSync,
+                    DeviceCapability::AiAgent,
+                ],
+            )
+            .await
+            {
                 send_unauthorized(&mut stream).await;
                 return;
             }
@@ -1523,13 +1639,20 @@ async fn handle_connection<F>(
             let _ = stream.write_all(resp.as_bytes()).await;
         }
         ("GET", "/api/devices") => {
-            if !validate_token(&manager, auth_token.as_deref(), &[DeviceCapability::ClientSync]).await {
+            if !validate_token(
+                &manager,
+                auth_token.as_deref(),
+                &[DeviceCapability::ClientSync],
+            )
+            .await
+            {
                 send_unauthorized(&mut stream).await;
                 return;
             }
 
             let state = manager.inner.lock().await;
-            let json = serde_json::to_string(&state.trusted_devices).unwrap_or_else(|_| "[]".to_string());
+            let json =
+                serde_json::to_string(&state.trusted_devices).unwrap_or_else(|_| "[]".to_string());
             let resp = format!(
                 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
                 json.len(),
@@ -1538,7 +1661,13 @@ async fn handle_connection<F>(
             let _ = stream.write_all(resp.as_bytes()).await;
         }
         ("GET", "/api/audit") => {
-            if !validate_token(&manager, auth_token.as_deref(), &[DeviceCapability::ClientSync, DeviceCapability::AiAgent]).await {
+            if !validate_token(
+                &manager,
+                auth_token.as_deref(),
+                &[DeviceCapability::ClientSync, DeviceCapability::AiAgent],
+            )
+            .await
+            {
                 send_unauthorized(&mut stream).await;
                 return;
             }
@@ -1562,8 +1691,15 @@ async fn handle_connection<F>(
 
             let body = extract_body(&req_str);
             if let Ok(cmd_obj) = serde_json::from_str::<serde_json::Value>(body) {
-                let cmd_str = cmd_obj.get("command").and_then(|v| v.as_str()).unwrap_or("noop").to_string();
-                let payload = cmd_obj.get("payload").cloned().unwrap_or(serde_json::Value::Null);
+                let cmd_str = cmd_obj
+                    .get("command")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("noop")
+                    .to_string();
+                let payload = cmd_obj
+                    .get("payload")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
 
                 // Audit the command
                 {
@@ -1616,7 +1752,10 @@ async fn handle_connection<F>(
                     .unwrap_or("unknown")
                     .trim()
                     .to_ascii_lowercase();
-                let payload = cmd_obj.get("payload").cloned().unwrap_or(serde_json::Value::Null);
+                let payload = cmd_obj
+                    .get("payload")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
 
                 let (status_code, response_json) = match action.as_str() {
                     "search" => {
@@ -1690,7 +1829,11 @@ async fn handle_connection<F>(
                         })
                         .to_string();
                         drop(state);
-                        if payload.get("navigate").and_then(|v| v.as_bool()).unwrap_or(false) {
+                        if payload
+                            .get("navigate")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false)
+                        {
                             on_command(RemoteCommandEvent {
                                 command: "agent_search".to_string(),
                                 payload: payload.clone(),
@@ -1711,9 +1854,18 @@ async fn handle_connection<F>(
                         (200, json)
                     }
                     "query_epg" => {
-                        let cid = payload.get("channelId").and_then(|v| v.as_str()).map(|s| s.to_string());
-                        let cname = payload.get("channelName").and_then(|v| v.as_str()).map(|s| s.to_ascii_lowercase());
-                        let q = payload.get("query").and_then(|v| v.as_str()).map(|s| s.to_ascii_lowercase());
+                        let cid = payload
+                            .get("channelId")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
+                        let cname = payload
+                            .get("channelName")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_ascii_lowercase());
+                        let q = payload
+                            .get("query")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_ascii_lowercase());
                         let state = manager.inner.lock().await;
                         let matched_ids: Vec<String> = if let Some(ref name_q) = cname {
                             state
@@ -1739,7 +1891,12 @@ async fn handle_connection<F>(
                                 }
                                 if let Some(ref text_q) = q {
                                     if !p.title.to_ascii_lowercase().contains(text_q)
-                                        && !p.description.as_deref().unwrap_or("").to_ascii_lowercase().contains(text_q)
+                                        && !p
+                                            .description
+                                            .as_deref()
+                                            .unwrap_or("")
+                                            .to_ascii_lowercase()
+                                            .contains(text_q)
                                     {
                                         return false;
                                     }
@@ -1769,7 +1926,8 @@ async fn handle_connection<F>(
                     }
                     "status" => {
                         let mut state = manager.inner.lock().await;
-                        let active_devices = state.trusted_devices.iter().filter(|d| !d.revoked).count();
+                        let active_devices =
+                            state.trusted_devices.iter().filter(|d| !d.revoked).count();
                         let json = serde_json::json!({
                             "ok": true,
                             "action": "status",
@@ -1865,11 +2023,18 @@ async fn handle_connection<F>(
                             "Unsupported agent action",
                             "rejected",
                         );
-                        (400, r#"{"ok":false,"error":"Unsupported agent action"}"#.to_string())
+                        (
+                            400,
+                            r#"{"ok":false,"error":"Unsupported agent action"}"#.to_string(),
+                        )
                     }
                 };
 
-                let reason = if status_code == 200 { "OK" } else { "Bad Request" };
+                let reason = if status_code == 200 {
+                    "OK"
+                } else {
+                    "Bad Request"
+                };
                 let resp = format!(
                     "HTTP/1.1 {status_code} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
                     response_json.len(),
@@ -1889,7 +2054,9 @@ async fn handle_connection<F>(
             }
             let caller = caller_opt.unwrap();
             if !caller.capabilities.contains(&DeviceCapability::InputText)
-                && !caller.capabilities.contains(&DeviceCapability::RemoteControl)
+                && !caller
+                    .capabilities
+                    .contains(&DeviceCapability::RemoteControl)
             {
                 send_forbidden(&mut stream, "Device lacks InputText capability").await;
                 return;
@@ -1897,7 +2064,11 @@ async fn handle_connection<F>(
 
             let body = extract_body(&req_str);
             if let Ok(input_obj) = serde_json::from_str::<serde_json::Value>(body) {
-                let text = input_obj.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let text = input_obj
+                    .get("text")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 let char_len = text.chars().count();
 
                 {
@@ -1943,16 +2114,35 @@ async fn handle_connection<F>(
 
             let body = extract_body(&req_str);
             if let Ok(prog_obj) = serde_json::from_str::<serde_json::Value>(body) {
-                let item_ref = prog_obj.get("itemRef").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let title = prog_obj.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let position = prog_obj.get("position").and_then(|v| v.as_f64()).unwrap_or(0.0);
-                let duration = prog_obj.get("duration").and_then(|v| v.as_f64()).unwrap_or(0.0);
-                let remove = prog_obj.get("remove").and_then(|v| v.as_bool()).unwrap_or(false);
+                let item_ref = prog_obj
+                    .get("itemRef")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let title = prog_obj
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let position = prog_obj
+                    .get("position")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0);
+                let duration = prog_obj
+                    .get("duration")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0);
+                let remove = prog_obj
+                    .get("remove")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 let client_updated_at = prog_obj.get("updatedAt").and_then(|v| v.as_u64());
 
                 if !item_ref.is_empty() {
                     let now = now_unix_secs();
-                    let effective_ts = client_updated_at.unwrap_or(now).min(now.saturating_add(300));
+                    let effective_ts = client_updated_at
+                        .unwrap_or(now)
+                        .min(now.saturating_add(300));
                     let payload = serde_json::json!({
                         "itemRef": item_ref,
                         "title": title,
@@ -1965,8 +2155,16 @@ async fn handle_connection<F>(
                     {
                         let mut state = manager.inner.lock().await;
                         if remove {
-                            state.library.watch_progress.retain(|p| p.item_ref != item_ref);
-                        } else if let Some(existing) = state.library.watch_progress.iter_mut().find(|p| p.item_ref == item_ref) {
+                            state
+                                .library
+                                .watch_progress
+                                .retain(|p| p.item_ref != item_ref);
+                        } else if let Some(existing) = state
+                            .library
+                            .watch_progress
+                            .iter_mut()
+                            .find(|p| p.item_ref == item_ref)
+                        {
                             if let Some(incoming_ts) = client_updated_at {
                                 if incoming_ts < existing.updated_at {
                                     ignored_stale = true;
@@ -2000,7 +2198,11 @@ async fn handle_connection<F>(
                                 &caller.id,
                                 &caller.name,
                                 "ClientSync",
-                                if remove { "RemoveProgress" } else { "SyncProgress" },
+                                if remove {
+                                    "RemoveProgress"
+                                } else {
+                                    "SyncProgress"
+                                },
                                 &format!("Updated progress for {item_ref}: {position}/{duration}s"),
                                 "success",
                             );
@@ -2048,8 +2250,16 @@ async fn handle_connection<F>(
 
             let body = extract_body(&req_str);
             if let Ok(lib_obj) = serde_json::from_str::<serde_json::Value>(body) {
-                let action = lib_obj.get("action").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let id = lib_obj.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let action = lib_obj
+                    .get("action")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let id = lib_obj
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
 
                 if !id.is_empty() {
                     let now = now_unix_secs();
@@ -2057,14 +2267,18 @@ async fn handle_connection<F>(
                         let mut state = manager.inner.lock().await;
                         match action.as_str() {
                             "toggle_favourite" => {
-                                if let Some(pos) = state.library.favourites.iter().position(|f| f == &id) {
+                                if let Some(pos) =
+                                    state.library.favourites.iter().position(|f| f == &id)
+                                {
                                     state.library.favourites.remove(pos);
                                 } else {
                                     state.library.favourites.push(id.clone());
                                 }
                             }
                             "toggle_watchlist" => {
-                                if let Some(pos) = state.library.watchlist.iter().position(|w| w == &id) {
+                                if let Some(pos) =
+                                    state.library.watchlist.iter().position(|w| w == &id)
+                                {
                                     state.library.watchlist.remove(pos);
                                 } else {
                                     state.library.watchlist.push(id.clone());
@@ -2125,8 +2339,12 @@ async fn handle_connection<F>(
             }
             let caller = caller_opt.unwrap();
             if !caller.capabilities.contains(&DeviceCapability::MediaCast)
-                && !caller.capabilities.contains(&DeviceCapability::PlaybackControl)
-                && !caller.capabilities.contains(&DeviceCapability::RemoteControl)
+                && !caller
+                    .capabilities
+                    .contains(&DeviceCapability::PlaybackControl)
+                && !caller
+                    .capabilities
+                    .contains(&DeviceCapability::RemoteControl)
             {
                 send_forbidden(&mut stream, "Device lacks MediaCast capability").await;
                 return;
@@ -2134,7 +2352,11 @@ async fn handle_connection<F>(
 
             let body = extract_body(&req_str);
             if let Ok(cast_obj) = serde_json::from_str::<serde_json::Value>(body) {
-                let title = cast_obj.get("title").and_then(|v| v.as_str()).unwrap_or("Media").to_string();
+                let title = cast_obj
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Media")
+                    .to_string();
 
                 {
                     let mut state = manager.inner.lock().await;
@@ -2166,7 +2388,20 @@ async fn handle_connection<F>(
             }
         }
         ("GET", "/api/events") | ("GET", "/events") => {
-            if !validate_token(&manager, auth_token.as_deref(), &[DeviceCapability::RemoteControl, DeviceCapability::PlaybackControl, DeviceCapability::MediaBrowse, DeviceCapability::ClientSync, DeviceCapability::MediaCast, DeviceCapability::AiAgent]).await {
+            if !validate_token(
+                &manager,
+                auth_token.as_deref(),
+                &[
+                    DeviceCapability::RemoteControl,
+                    DeviceCapability::PlaybackControl,
+                    DeviceCapability::MediaBrowse,
+                    DeviceCapability::ClientSync,
+                    DeviceCapability::MediaCast,
+                    DeviceCapability::AiAgent,
+                ],
+            )
+            .await
+            {
                 send_unauthorized(&mut stream).await;
                 return;
             }
@@ -2199,7 +2434,8 @@ async fn handle_connection<F>(
             }
         }
         _ => {
-            let not_found = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            let not_found =
+                "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
             let _ = stream.write_all(not_found.as_bytes()).await;
         }
     }
@@ -2215,7 +2451,10 @@ fn extract_body(request: &str) -> &str {
     ""
 }
 
-async fn get_device_by_token(manager: &RemoteServerManager, token: Option<&str>) -> Option<TrustedDevice> {
+async fn get_device_by_token(
+    manager: &RemoteServerManager,
+    token: Option<&str>,
+) -> Option<TrustedDevice> {
     let tok = token?;
     let mut state = manager.inner.lock().await;
     for dev in &mut state.trusted_devices {
@@ -2227,7 +2466,11 @@ async fn get_device_by_token(manager: &RemoteServerManager, token: Option<&str>)
     None
 }
 
-async fn validate_token(manager: &RemoteServerManager, token: Option<&str>, required_caps: &[DeviceCapability]) -> bool {
+async fn validate_token(
+    manager: &RemoteServerManager,
+    token: Option<&str>,
+    required_caps: &[DeviceCapability],
+) -> bool {
     let tok = match token {
         Some(t) => t,
         None => return false,
@@ -2239,7 +2482,9 @@ async fn validate_token(manager: &RemoteServerManager, token: Option<&str>, requ
             if required_caps.is_empty() {
                 return true;
             }
-            return required_caps.iter().any(|cap| dev.capabilities.contains(cap));
+            return required_caps
+                .iter()
+                .any(|cap| dev.capabilities.contains(cap));
         }
     }
     false
@@ -2262,10 +2507,22 @@ async fn handle_pair_request(
     ip: String,
     ua: Option<String>,
 ) -> Result<PairResponse, String> {
-    let parsed: serde_json::Value = serde_json::from_str(body_str).map_err(|_| "Malformed request body.".to_string())?;
-    let pin_attempt = parsed.get("pin").and_then(|v| v.as_str()).unwrap_or("").trim();
-    let client_name = parsed.get("deviceName").and_then(|v| v.as_str()).unwrap_or("Mobile Remote").trim();
-    let dev_type_str = parsed.get("deviceType").and_then(|v| v.as_str()).unwrap_or("phone");
+    let parsed: serde_json::Value =
+        serde_json::from_str(body_str).map_err(|_| "Malformed request body.".to_string())?;
+    let pin_attempt = parsed
+        .get("pin")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim();
+    let client_name = parsed
+        .get("deviceName")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Mobile Remote")
+        .trim();
+    let dev_type_str = parsed
+        .get("deviceType")
+        .and_then(|v| v.as_str())
+        .unwrap_or("phone");
 
     let device_type = match dev_type_str.to_lowercase().as_str() {
         "tablet" => DeviceType::Tablet,
@@ -2281,7 +2538,9 @@ async fn handle_pair_request(
     if let Some(lockout) = state.lockout_until {
         if Instant::now() < lockout {
             let secs_left = lockout.duration_since(Instant::now()).as_secs();
-            return Err(format!("Too many failed attempts. Try again in {secs_left}s."));
+            return Err(format!(
+                "Too many failed attempts. Try again in {secs_left}s."
+            ));
         } else {
             state.lockout_until = None;
             state.failed_attempts = 0;
@@ -2361,7 +2620,9 @@ async fn handle_pair_request(
             Err("Maximum attempts exceeded. Server locked for 30s.".to_string())
         } else {
             let remaining = MAX_FAILED_ATTEMPTS - state.failed_attempts;
-            Err(format!("Invalid pairing PIN. {remaining} attempts remaining."))
+            Err(format!(
+                "Invalid pairing PIN. {remaining} attempts remaining."
+            ))
         }
     }
 }
@@ -4521,7 +4782,9 @@ mod tests {
         let pair_resp = good_res.unwrap();
         assert_eq!(pair_resp.token.len(), 32);
         assert_eq!(pair_resp.device_name, "Test Phone");
-        assert!(pair_resp.capabilities.contains(&DeviceCapability::RemoteControl));
+        assert!(pair_resp
+            .capabilities
+            .contains(&DeviceCapability::RemoteControl));
 
         // Verify trusted device was added
         let devices = mgr.get_trusted_devices().await;
@@ -4531,13 +4794,8 @@ mod tests {
         assert!(!devices[0].revoked);
 
         // Incorrect PIN
-        let bad_res = handle_pair_request(
-            &mgr,
-            r#"{"pin":"0000"}"#,
-            "192.168.1.10".to_string(),
-            None,
-        )
-        .await;
+        let bad_res =
+            handle_pair_request(&mgr, r#"{"pin":"0000"}"#, "192.168.1.10".to_string(), None).await;
         assert!(bad_res.is_err());
     }
 
@@ -4559,7 +4817,12 @@ mod tests {
         .unwrap();
 
         // Validate token works
-        let is_valid = validate_token(&mgr, Some(&pair_resp.token), &[DeviceCapability::RemoteControl]).await;
+        let is_valid = validate_token(
+            &mgr,
+            Some(&pair_resp.token),
+            &[DeviceCapability::RemoteControl],
+        )
+        .await;
         assert!(is_valid);
 
         // Revoke device
@@ -4567,7 +4830,12 @@ mod tests {
         assert!(revoked);
 
         // Token should now be refused
-        let is_valid_after = validate_token(&mgr, Some(&pair_resp.token), &[DeviceCapability::RemoteControl]).await;
+        let is_valid_after = validate_token(
+            &mgr,
+            Some(&pair_resp.token),
+            &[DeviceCapability::RemoteControl],
+        )
+        .await;
         assert!(!is_valid_after);
 
         // Audit log should contain Pair and Revoke entries
@@ -4586,7 +4854,9 @@ mod tests {
 
         let pair_resp = handle_pair_request(
             &mgr,
-            &format!(r#"{{"pin":"{pin}","deviceName":"Local Jarvis Agent","deviceType":"aiAgent"}}"#),
+            &format!(
+                r#"{{"pin":"{pin}","deviceName":"Local Jarvis Agent","deviceType":"aiAgent"}}"#
+            ),
             "127.0.0.1".to_string(),
             None,
         )
@@ -4594,7 +4864,9 @@ mod tests {
         .unwrap();
 
         assert!(pair_resp.capabilities.contains(&DeviceCapability::AiAgent));
-        assert!(pair_resp.capabilities.contains(&DeviceCapability::MediaBrowse));
+        assert!(pair_resp
+            .capabilities
+            .contains(&DeviceCapability::MediaBrowse));
     }
 
     #[tokio::test]
@@ -4610,7 +4882,9 @@ mod tests {
 
         let pair_resp = handle_pair_request(
             &mgr,
-            &format!(r#"{{"pin":"{pin}","deviceName":"Living Room Tablet","deviceType":"tablet"}}"#),
+            &format!(
+                r#"{{"pin":"{pin}","deviceName":"Living Room Tablet","deviceType":"tablet"}}"#
+            ),
             "192.168.1.55".to_string(),
             None,
         )
@@ -4635,7 +4909,8 @@ mod tests {
 
     #[tokio::test]
     async fn rename_device_updates_name_and_persists() {
-        let temp_dir = std::env::temp_dir().join(format!("kinora-dev-rename-test-{}", now_unix_secs()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("kinora-dev-rename-test-{}", now_unix_secs()));
         let _ = fs::create_dir_all(&temp_dir);
 
         let mgr = RemoteServerManager::new(Some(temp_dir.clone()));
@@ -4653,7 +4928,9 @@ mod tests {
         .await
         .unwrap();
 
-        let renamed = mgr.rename_device(&pair_resp.device_id, "New Friendly Name").await;
+        let renamed = mgr
+            .rename_device(&pair_resp.device_id, "New Friendly Name")
+            .await;
         assert!(renamed);
 
         let devices = mgr.get_trusted_devices().await;
@@ -4676,10 +4953,16 @@ mod tests {
         assert_eq!(server_mode.mode, PlatformMode::Server);
 
         let client_mode = mgr
-            .set_platform_mode(PlatformMode::Client, Some("http://192.168.1.100:5198".to_string()))
+            .set_platform_mode(
+                PlatformMode::Client,
+                Some("http://192.168.1.100:5198".to_string()),
+            )
             .await;
         assert_eq!(client_mode.mode, PlatformMode::Client);
-        assert_eq!(client_mode.server_url.as_deref(), Some("http://192.168.1.100:5198"));
+        assert_eq!(
+            client_mode.server_url.as_deref(),
+            Some("http://192.168.1.100:5198")
+        );
     }
 
     #[tokio::test]
@@ -4710,21 +4993,22 @@ mod tests {
         let inner = mgr.inner.lock().await;
         assert_eq!(inner.channels.len(), 2);
         assert_eq!(inner.channels[0].name, "BBC One HD");
-        assert_eq!(inner.channels[0].current_programme.as_deref(), Some("News at Six"));
+        assert_eq!(
+            inner.channels[0].current_programme.as_deref(),
+            Some("News at Six")
+        );
     }
 
     #[tokio::test]
     async fn remote_sources_and_library_cache() {
         let mgr = RemoteServerManager::new(None);
-        let sources = vec![
-            RemoteSourceSummary {
-                id: "src-1".to_string(),
-                label: "UK Freeview".to_string(),
-                origin: "https://example.com/playlist.m3u".to_string(),
-                channel_count: 42,
-                kind: "playlist".to_string(),
-            },
-        ];
+        let sources = vec![RemoteSourceSummary {
+            id: "src-1".to_string(),
+            label: "UK Freeview".to_string(),
+            origin: "https://example.com/playlist.m3u".to_string(),
+            channel_count: 42,
+            kind: "playlist".to_string(),
+        }];
         mgr.update_sources(sources).await;
         let fetched_sources = mgr.get_sources().await;
         assert_eq!(fetched_sources.len(), 1);
@@ -4753,34 +5037,41 @@ mod tests {
     #[tokio::test]
     async fn remote_channel_stream_url_resolution() {
         let mgr = RemoteServerManager::new(None);
-        let channels = vec![
-            RemoteChannelSummary {
-                id: "ch-test-1".to_string(),
-                name: "Test Stream HD".to_string(),
-                number: Some(101),
-                group: Some("Test".to_string()),
-                logo: None,
-                current_programme: None,
-                stream_url: Some("https://example.com/live/ch1.m3u8".to_string()),
-            },
-        ];
+        let channels = vec![RemoteChannelSummary {
+            id: "ch-test-1".to_string(),
+            name: "Test Stream HD".to_string(),
+            number: Some(101),
+            group: Some("Test".to_string()),
+            logo: None,
+            current_programme: None,
+            stream_url: Some("https://example.com/live/ch1.m3u8".to_string()),
+        }];
 
         mgr.update_channels(channels).await;
         let inner = mgr.inner.lock().await;
-        assert_eq!(inner.channels[0].stream_url.as_deref(), Some("https://example.com/live/ch1.m3u8"));
+        assert_eq!(
+            inner.channels[0].stream_url.as_deref(),
+            Some("https://example.com/live/ch1.m3u8")
+        );
     }
 
     #[tokio::test]
     async fn platform_config_persists_across_restarts() {
         let temp_dir = std::env::temp_dir().join(format!(
             "kinora_platform_cfg_test_{}",
-            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         let _ = fs::create_dir_all(&temp_dir);
 
         let mgr = RemoteServerManager::new(Some(temp_dir.clone()));
-        mgr.set_platform_mode(PlatformMode::Client, Some("http://192.168.1.42:5198".to_string()))
-            .await;
+        mgr.set_platform_mode(
+            PlatformMode::Client,
+            Some("http://192.168.1.42:5198".to_string()),
+        )
+        .await;
 
         let reloaded = RemoteServerManager::new(Some(temp_dir.clone()));
         let info = reloaded.get_platform_mode().await;
@@ -4842,8 +5133,10 @@ mod tests {
         let srv_port = probe.local_addr().unwrap().port();
         drop(probe);
 
-        let mut policy = crate::fetch::Policy::default();
-        policy.allow_loopback = true;
+        let policy = crate::fetch::Policy {
+            allow_loopback: true,
+            ..crate::fetch::Policy::default()
+        };
         let mgr = RemoteServerManager::with_stream_policy(None, policy);
         mgr.update_channels(vec![RemoteChannelSummary {
             id: "ch-live-1".to_string(),
@@ -4856,7 +5149,10 @@ mod tests {
         }])
         .await;
 
-        let status = mgr.start(Some(srv_port), Some("482910".to_string()), |_| {}).await.unwrap();
+        let status = mgr
+            .start(Some(srv_port), Some("482910".to_string()), |_| {})
+            .await
+            .unwrap();
         assert!(status.running);
 
         let client = reqwest::Client::builder().no_proxy().build().unwrap();
@@ -4939,7 +5235,10 @@ mod tests {
     async fn end_to_end_epg_media_and_artwork_endpoints() {
         let temp_dir = std::env::temp_dir().join(format!(
             "kinora_sync_cat_test_{}",
-            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         let _ = fs::create_dir_all(&temp_dir);
 
@@ -5101,7 +5400,10 @@ mod tests {
     async fn pwa_manifest_icon_and_library_sync_persistence() {
         let temp_dir = std::env::temp_dir().join(format!(
             "kinora_pwa_sync_test_{}",
-            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         let _ = fs::create_dir_all(&temp_dir);
 
@@ -5110,14 +5412,21 @@ mod tests {
         drop(probe);
 
         let mgr = RemoteServerManager::new(Some(temp_dir.clone()));
-        let status = mgr.start(Some(srv_port), Some("739104".to_string()), |_| {}).await.unwrap();
+        let status = mgr
+            .start(Some(srv_port), Some("739104".to_string()), |_| {})
+            .await
+            .unwrap();
         assert!(status.running);
 
         let client = reqwest::Client::builder().no_proxy().build().unwrap();
         let base = format!("http://127.0.0.1:{srv_port}");
 
         // 1. PWA manifest & SVG icon endpoints respond with valid content.
-        let manifest_resp = client.get(format!("{base}/manifest.webmanifest")).send().await.unwrap();
+        let manifest_resp = client
+            .get(format!("{base}/manifest.webmanifest"))
+            .send()
+            .await
+            .unwrap();
         assert_eq!(manifest_resp.status().as_u16(), 200);
         let manifest: serde_json::Value = manifest_resp.json().await.unwrap();
         assert_eq!(manifest["short_name"], "Kinora");
@@ -5131,7 +5440,9 @@ mod tests {
         let pair_json: serde_json::Value = client
             .post(format!("{base}/pair"))
             .header("Content-Type", "application/json")
-            .body(r#"{"pin":"739104","deviceName":"Sync Test Client","deviceType":"desktopClient"}"#)
+            .body(
+                r#"{"pin":"739104","deviceName":"Sync Test Client","deviceType":"desktopClient"}"#,
+            )
             .send()
             .await
             .unwrap()

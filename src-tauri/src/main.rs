@@ -3,7 +3,9 @@
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let is_server = args.iter().any(|arg| arg == "--server" || arg == "--headless")
+    let is_server = args
+        .iter()
+        .any(|arg| arg == "--server" || arg == "--headless")
         || std::env::var("KINORA_MODE")
             .map(|v| v.eq_ignore_ascii_case("server"))
             .unwrap_or(false)

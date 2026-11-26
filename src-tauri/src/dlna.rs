@@ -47,9 +47,8 @@ pub fn is_safe_lan_ip(ip: IpAddr) -> bool {
                 return false;
             }
             // Allow standard private networks: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
-            let is_private = a == 10
-                || (a == 172 && (16..32).contains(&b))
-                || (a == 192 && b == 168);
+            let is_private =
+                a == 10 || (a == 172 && (16..32).contains(&b)) || (a == 192 && b == 168);
 
             #[cfg(test)]
             if v4.is_loopback() {
@@ -155,11 +154,15 @@ pub fn parse_device_xml(xml: &str, location_url: &str) -> Option<DlnaDevice> {
                     } else if current_tag.eq_ignore_ascii_case("controlURL") {
                         current_control_url = text;
                     }
-                } else if current_tag.eq_ignore_ascii_case("friendlyName") && friendly_name.is_empty() {
+                } else if current_tag.eq_ignore_ascii_case("friendlyName")
+                    && friendly_name.is_empty()
+                {
                     friendly_name = text;
                 } else if current_tag.eq_ignore_ascii_case("modelName") && model_name.is_empty() {
                     model_name = text;
-                } else if current_tag.eq_ignore_ascii_case("manufacturer") && manufacturer.is_empty() {
+                } else if current_tag.eq_ignore_ascii_case("manufacturer")
+                    && manufacturer.is_empty()
+                {
                     manufacturer = text;
                 } else if current_tag.eq_ignore_ascii_case("UDN") && udn.is_empty() {
                     udn = text;
@@ -171,9 +174,13 @@ pub fn parse_device_xml(xml: &str, location_url: &str) -> Option<DlnaDevice> {
                 if name.eq_ignore_ascii_case("service") {
                     inside_service = false;
                     if current_service_type.contains("AVTransport") && av_transport_url.is_none() {
-                        av_transport_url = Some(resolve_control_url(&base_url, &current_control_url));
-                    } else if current_service_type.contains("RenderingControl") && rendering_control_url.is_none() {
-                        rendering_control_url = Some(resolve_control_url(&base_url, &current_control_url));
+                        av_transport_url =
+                            Some(resolve_control_url(&base_url, &current_control_url));
+                    } else if current_service_type.contains("RenderingControl")
+                        && rendering_control_url.is_none()
+                    {
+                        rendering_control_url =
+                            Some(resolve_control_url(&base_url, &current_control_url));
                     }
                 }
                 current_tag.clear();
@@ -296,13 +303,19 @@ pub fn build_volume_soap(volume: u8) -> String {
 /// Discovers DLNA / UPnP MediaRenderer devices across the local subnet.
 pub async fn discover_renderers() -> Result<Vec<DlnaDevice>, IngestError> {
     let bind_addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
-    let socket = tokio::net::UdpSocket::bind(bind_addr)
-        .await
-        .map_err(|e| IngestError::new(ErrorCode::Network, format!("Failed to bind SSDP discovery socket: {e}")))?;
+    let socket = tokio::net::UdpSocket::bind(bind_addr).await.map_err(|e| {
+        IngestError::new(
+            ErrorCode::Network,
+            format!("Failed to bind SSDP discovery socket: {e}"),
+        )
+    })?;
 
-    socket
-        .set_broadcast(true)
-        .map_err(|e| IngestError::new(ErrorCode::Network, format!("Failed to set socket broadcast: {e}")))?;
+    socket.set_broadcast(true).map_err(|e| {
+        IngestError::new(
+            ErrorCode::Network,
+            format!("Failed to set socket broadcast: {e}"),
+        )
+    })?;
 
     let target_addr: SocketAddr = SSDP_MULTICAST_ADDR.parse().unwrap();
 
@@ -419,7 +432,9 @@ pub async fn send_soap_action(
         .no_proxy()
         .timeout(Duration::from_secs(6))
         .build()
-        .map_err(|e| IngestError::new(ErrorCode::Network, format!("Failed to create client: {e}")))?;
+        .map_err(|e| {
+            IngestError::new(ErrorCode::Network, format!("Failed to create client: {e}"))
+        })?;
 
     let soap_action = format!("\"{service_type}#{action}\"");
 
@@ -430,7 +445,12 @@ pub async fn send_soap_action(
         .body(body.to_string())
         .send()
         .await
-        .map_err(|e| IngestError::new(ErrorCode::Network, format!("Failed to send SOAP action {action}: {e}")))?;
+        .map_err(|e| {
+            IngestError::new(
+                ErrorCode::Network,
+                format!("Failed to send SOAP action {action}: {e}"),
+            )
+        })?;
 
     let status = response.status();
     if status.is_success() {
@@ -450,7 +470,13 @@ pub async fn cast_media(
     title: &str,
 ) -> Result<bool, IngestError> {
     let set_uri_body = build_set_uri_soap(media_url, title);
-    send_soap_action(control_url, AV_TRANSPORT_SERVICE, "SetAVTransportURI", &set_uri_body).await?;
+    send_soap_action(
+        control_url,
+        AV_TRANSPORT_SERVICE,
+        "SetAVTransportURI",
+        &set_uri_body,
+    )
+    .await?;
 
     // Short pause between setting URI and playback command
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -514,7 +540,10 @@ mod tests {
         let (loc, st, usn) = parse_ssdp_packet(packet).expect("packet should parse");
         assert_eq!(loc, "http://192.168.1.150:8080/desc.xml");
         assert_eq!(st, "urn:schemas-upnp-org:device:MediaRenderer:1");
-        assert_eq!(usn, "uuid:12345678-abcd::urn:schemas-upnp-org:device:MediaRenderer:1");
+        assert_eq!(
+            usn,
+            "uuid:12345678-abcd::urn:schemas-upnp-org:device:MediaRenderer:1"
+        );
     }
 
     #[test]

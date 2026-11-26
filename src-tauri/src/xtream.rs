@@ -470,27 +470,40 @@ impl Providers {
                                 if let Ok(cat) = serde_json::from_slice::<Catalogue>(&bytes) {
                                     for stream in &cat.live_streams {
                                         if let Some(ref icon) = stream.stream_icon {
-                                            if let Ok(checked) = fetch::check_url(icon, &Policy::artwork()) {
+                                            if let Ok(checked) =
+                                                fetch::check_url(icon, &Policy::artwork())
+                                            {
                                                 if initial_artwork.len() < MAX_ARTWORK_URLS {
-                                                    initial_artwork.insert(stream.artwork_key.clone(), checked);
+                                                    initial_artwork.insert(
+                                                        stream.artwork_key.clone(),
+                                                        checked,
+                                                    );
                                                 }
                                             }
                                         }
                                     }
                                     for movie in &cat.movies {
                                         if let Some(ref icon) = movie.icon_url {
-                                            if let Ok(checked) = fetch::check_url(icon, &Policy::artwork()) {
+                                            if let Ok(checked) =
+                                                fetch::check_url(icon, &Policy::artwork())
+                                            {
                                                 if initial_artwork.len() < MAX_ARTWORK_URLS {
-                                                    initial_artwork.insert(movie.artwork_key.clone(), checked);
+                                                    initial_artwork
+                                                        .insert(movie.artwork_key.clone(), checked);
                                                 }
                                             }
                                         }
                                     }
                                     for series in &cat.series {
                                         if let Some(ref icon) = series.icon_url {
-                                            if let Ok(checked) = fetch::check_url(icon, &Policy::artwork()) {
+                                            if let Ok(checked) =
+                                                fetch::check_url(icon, &Policy::artwork())
+                                            {
                                                 if initial_artwork.len() < MAX_ARTWORK_URLS {
-                                                    initial_artwork.insert(series.artwork_key.clone(), checked);
+                                                    initial_artwork.insert(
+                                                        series.artwork_key.clone(),
+                                                        checked,
+                                                    );
                                                 }
                                             }
                                         }
@@ -544,7 +557,9 @@ impl Providers {
             for stream in &cat.live_streams {
                 if let Some(ref icon) = stream.stream_icon {
                     if let Ok(checked) = fetch::check_url(icon, &Policy::artwork()) {
-                        if artwork.contains_key(&stream.artwork_key) || artwork.len() < MAX_ARTWORK_URLS {
+                        if artwork.contains_key(&stream.artwork_key)
+                            || artwork.len() < MAX_ARTWORK_URLS
+                        {
                             artwork.insert(stream.artwork_key.clone(), checked);
                         }
                     }
@@ -553,7 +568,9 @@ impl Providers {
             for movie in &cat.movies {
                 if let Some(ref icon) = movie.icon_url {
                     if let Ok(checked) = fetch::check_url(icon, &Policy::artwork()) {
-                        if artwork.contains_key(&movie.artwork_key) || artwork.len() < MAX_ARTWORK_URLS {
+                        if artwork.contains_key(&movie.artwork_key)
+                            || artwork.len() < MAX_ARTWORK_URLS
+                        {
                             artwork.insert(movie.artwork_key.clone(), checked);
                         }
                     }
@@ -562,7 +579,9 @@ impl Providers {
             for series in &cat.series {
                 if let Some(ref icon) = series.icon_url {
                     if let Ok(checked) = fetch::check_url(icon, &Policy::artwork()) {
-                        if artwork.contains_key(&series.artwork_key) || artwork.len() < MAX_ARTWORK_URLS {
+                        if artwork.contains_key(&series.artwork_key)
+                            || artwork.len() < MAX_ARTWORK_URLS
+                        {
                             artwork.insert(series.artwork_key.clone(), checked);
                         }
                     }
