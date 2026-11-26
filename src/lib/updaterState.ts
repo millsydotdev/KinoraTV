@@ -33,6 +33,8 @@ export interface UpdaterState {
   autoCheckEnabled: boolean
   currentVersion: string
   targetVersion: string | null
+  buildCommit?: string | null
+  sameVersionRefresh?: boolean
   releaseDate: string | null
   releaseNotes: string | null
   downloadUrl: string | null
@@ -229,6 +231,12 @@ export function createInitialUpdaterState(currentVersion: string, channel?: Upda
   }
 }
 
+export function updateDismissalKey(version: string | null, buildCommit?: string | null, sameVersionRefresh?: boolean): string | null {
+  if (!version) return null
+  if (sameVersionRefresh && buildCommit) return `${version}+${buildCommit}`
+  return version
+}
+
 export function shouldShowUpdateNotification(state: UpdaterState): boolean {
   if (
     state.stage === 'downloading' ||
@@ -240,8 +248,9 @@ export function shouldShowUpdateNotification(state: UpdaterState): boolean {
   ) {
     return true
   }
-  if (state.stage === 'available' && state.targetVersion) {
-    return state.dismissedVersion !== state.targetVersion
+  const key = updateDismissalKey(state.targetVersion, state.buildCommit, state.sameVersionRefresh)
+  if (state.stage === 'available' && key) {
+    return state.dismissedVersion !== key
   }
   return false
 }
@@ -260,11 +269,16 @@ export function reduceUpdateCheckResult(state: UpdaterState, res: UpdateCheckRes
 
   if (res.status === 'available') {
     saveLastSuccessfulCheck(checkedAt)
+    const label = res.sameVersionRefresh && res.buildCommit
+      ? `Kinora v${res.latestVersion ?? 'latest'} (maintenance build ${res.buildCommit})`
+      : `Kinora v${res.latestVersion ?? 'latest'}`
     return {
       ...state,
       stage: 'available',
       currentVersion: res.currentVersion,
       targetVersion: res.latestVersion,
+      buildCommit: res.buildCommit ?? null,
+      sameVersionRefresh: Boolean(res.sameVersionRefresh),
       releaseDate: res.releaseDate,
       releaseNotes: res.releaseNotes,
       downloadUrl: res.downloadUrl,
@@ -275,7 +289,7 @@ export function reduceUpdateCheckResult(state: UpdaterState, res: UpdateCheckRes
       signatureVerified: false,
       percent: null,
       error: null,
-      message: `Update available: Kinora v${res.latestVersion ?? 'latest'}${res.hasSignature ? ' (signed release)' : ' (signature missing)'}.`,
+      message: `Update available: ${label}${res.hasSignature ? ' (signed release)' : ' (signature missing)'}.`,
       lastCheckedAt: checkedAt,
       lastSuccessfulCheckAt: checkedAt,
     }

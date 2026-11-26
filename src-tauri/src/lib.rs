@@ -289,6 +289,7 @@ mod desktop {
             .unwrap_or(updater::DEFAULT_UPDATE_ENDPOINT);
         let validated_url = updater::is_trusted_manifest_endpoint(target_endpoint, allow_loopback)?;
 
+        let local_build_ts = updater::current_build_timestamp();
         let updater_client = app
             .updater_builder()
             .endpoints(vec![validated_url])
@@ -298,6 +299,17 @@ mod desktop {
                     format!("Could not configure updater endpoint: {e}"),
                 )
             })?
+            .version_comparator(move |current, remote| {
+                if remote.version > current {
+                    return true;
+                }
+                if remote.version == current {
+                    if let (Some(remote_dt), Some(local_ts)) = (remote.pub_date, local_build_ts) {
+                        return remote_dt.unix_timestamp() > local_ts;
+                    }
+                }
+                false
+            })
             .build()
             .map_err(|e| {
                 ingest::IngestError::new(

@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -86,6 +86,16 @@ describe('Release manifest generation and asset verification scripts', () => {
     expect(genOut).toContain('latest.json')
     expect(genOut).toContain('"linux-x86_64"')
     expect(genOut).toContain('"darwin-aarch64"')
+
+    const manifest = JSON.parse(readFileSync(join(dir, 'latest.json'), 'utf8')) as {
+      version: string
+      build_commit?: string
+      build_timestamp?: number
+    }
+    expect(manifest.version).toBe('0.6.0')
+    expect(manifest.build_commit).toMatch(/^[0-9a-f]{7,40}$/)
+    expect(typeof manifest.build_timestamp).toBe('number')
+    expect(manifest.build_timestamp).toBeGreaterThan(1_700_000_000)
 
     const verifyOut = execFileSync(process.execPath, [VERIFY_SCRIPT, '--dir', dir], {
       cwd: REPO_ROOT,

@@ -86,4 +86,4 @@ Kinora 0.6.0 expands the standalone desktop app into a complete multi-device med
 
 ## Engineering and Infrastructure Notes
 
-- **Release Asset Verification, CI/Docker Repairs & Headless Server Image:** Added automated release verification (latest.json schema, Minisign signatures, SHA256SUMS, SBOM, macOS arch asset collision prevention, and dry-run release workflow validation), repaired timezone-dependent tests and Ubuntu 24.04 Docker UID collisions, hardened cross-platform Windows/macOS/Linux release verification, and added a zero-GUI headless server Docker image, systemd unit, and changelog checks.
+- **Atomic Release Publishing, Build-Revision Detection & Automated Promotion:** Added atomic two-stage GitHub Release publishing (verifying HTTP 200 reachability of all platform assets before publishing latest.json), build-commit and timestamp revision metadata for safe maintenance refresh detection, gated branch-to-main promotion, container health verification before GHCR publish, full release verification (latest.json, Minisign, SHA256SUMS, CycloneDX SBOM with commit provenance), and a zero-GUI headless server Docker image.

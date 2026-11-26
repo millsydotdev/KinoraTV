@@ -107,6 +107,12 @@ if (errors.length === 0) {
     if (manifest) {
       check(manifest.version === authVersion, `latest.json version (${manifest.version}) does not match package.json (${authVersion}).`);
       check(typeof manifest.pub_date === 'string' && !Number.isNaN(Date.parse(manifest.pub_date)), 'latest.json pub_date is missing or invalid ISO-8601.');
+      if (manifest.build_commit !== undefined) {
+        check(typeof manifest.build_commit === 'string' && /^[0-9a-f]{7,40}$/i.test(manifest.build_commit), `latest.json build_commit (${manifest.build_commit}) is invalid.`);
+      }
+      if (manifest.build_timestamp !== undefined) {
+        check(typeof manifest.build_timestamp === 'number' && Number.isInteger(manifest.build_timestamp) && manifest.build_timestamp > 0, `latest.json build_timestamp (${manifest.build_timestamp}) is invalid.`);
+      }
       check(typeof manifest.notes === 'string' && manifest.notes.trim().length > 10, 'latest.json notes are missing or empty.');
       check(typeof manifest.notes === 'string' && !manifest.notes.includes('\u2014'), 'latest.json notes contain a prohibited em-dash character.');
       check(manifest.platforms && typeof manifest.platforms === 'object', 'latest.json platforms object is missing.');

@@ -10,6 +10,7 @@ import {
   savePendingUpdateVersion,
   saveUpdateChannel,
   shouldShowUpdateNotification,
+  updateDismissalKey,
   type UpdateChannel,
   type UpdaterState,
 } from '../lib/updaterState'
@@ -150,9 +151,10 @@ export function UpdaterProvider({ children }: { children: ReactNode }) {
 
   const dismissNotification = useCallback(() => {
     setState((prev) => {
-      if (prev.targetVersion) {
-        saveDismissedUpdateVersion(prev.targetVersion)
-        return { ...prev, dismissedVersion: prev.targetVersion }
+      const key = updateDismissalKey(prev.targetVersion, prev.buildCommit, prev.sameVersionRefresh)
+      if (key) {
+        saveDismissedUpdateVersion(key)
+        return { ...prev, dismissedVersion: key }
       }
       return prev
     })

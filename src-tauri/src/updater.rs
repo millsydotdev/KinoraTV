@@ -73,6 +73,10 @@ pub struct UpdateManifest {
     pub notes: Option<String>,
     #[serde(rename = "pub_date")]
     pub pub_date: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build_commit: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build_timestamp: Option<i64>,
     pub platforms: HashMap<String, PlatformAsset>,
 }
 
@@ -106,6 +110,10 @@ pub struct UpdateCheckResult {
     pub release_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cached: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub build_commit: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub same_version_refresh: Option<bool>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -438,6 +446,56 @@ pub fn current_platform_key() -> &'static str {
     }
 }
 
+/// Returns the compiled 8-character Git commit hash for this binary, if available.
+pub fn current_build_commit() -> Option<&'static str> {
+    option_env!("GIT_COMMIT_HASH").filter(|s| !s.trim().is_empty())
+}
+
+/// Returns the compiled HEAD commit Unix timestamp for this binary, if available.
+pub fn current_build_timestamp() -> Option<i64> {
+    option_env!("KINORA_BUILD_TIMESTAMP").and_then(|s| s.trim().parse::<i64>().ok())
+}
+
+/// Returns true when a manifest carries the same SemVer as the installed app,
+/// a different build commit hash, and a strictly newer commit timestamp.
+/// Never triggers on older builds, identical commits, or manifests lacking build metadata.
+pub fn is_newer_same_version_build(
+    manifest: &UpdateManifest,
+    current_version: &str,
+    current_commit: Option<&str>,
+    current_timestamp: Option<i64>,
+) -> bool {
+    let (Some(r), Some(c)) = (
+        parse_semver_full(&manifest.version),
+        parse_semver_full(current_version),
+    ) else {
+        return false;
+    };
+    if (r.major, r.minor, r.patch) != (c.major, c.minor, c.patch) || r.prerelease != c.prerelease {
+        return false;
+    }
+
+    let Some(remote_commit) = manifest
+        .build_commit
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| s.len() >= 7)
+    else {
+        return false;
+    };
+    let Some(local_commit) = current_commit.map(str::trim).filter(|s| s.len() >= 7) else {
+        return false;
+    };
+    if remote_commit.eq_ignore_ascii_case(local_commit) {
+        return false;
+    }
+
+    match (manifest.build_timestamp, current_timestamp) {
+        (Some(remote_ts), Some(local_ts)) => remote_ts > local_ts,
+        _ => false,
+    }
+}
+
 /// Evaluates a parsed manifest against the local application version and platform.
 #[allow(dead_code)]
 pub fn evaluate_manifest(manifest: &UpdateManifest, current_version: &str) -> UpdateCheckResult {
@@ -450,11 +508,32 @@ pub fn evaluate_manifest_with_options(
     current_version: &str,
     allow_prereleases: bool,
 ) -> UpdateCheckResult {
+    evaluate_manifest_with_build(
+        manifest,
+        current_version,
+        allow_prereleases,
+        current_build_commit(),
+        current_build_timestamp(),
+    )
+}
+
+/// Evaluates a parsed manifest with explicit build commit and timestamp context.
+pub fn evaluate_manifest_with_build(
+    manifest: &UpdateManifest,
+    current_version: &str,
+    allow_prereleases: bool,
+    local_commit: Option<&str>,
+    local_timestamp: Option<i64>,
+) -> UpdateCheckResult {
     let platform = current_platform_key();
     let asset = manifest.platforms.get(platform);
     let channel_compatible =
         is_channel_compatible(&manifest.version, current_version, allow_prereleases);
-    let newer = channel_compatible && is_newer(&manifest.version, current_version);
+    let semver_newer = channel_compatible && is_newer(&manifest.version, current_version);
+    let same_ver_refresh = channel_compatible
+        && !semver_newer
+        && is_newer_same_version_build(manifest, current_version, local_commit, local_timestamp);
+    let newer = semver_newer || same_ver_refresh;
 
     if newer {
         if let Some(target_asset) = asset {
@@ -477,6 +556,8 @@ pub fn evaluate_manifest_with_options(
                 asset_size_bytes: None,
                 release_url: None,
                 cached: None,
+                build_commit: manifest.build_commit.clone(),
+                same_version_refresh: if same_ver_refresh { Some(true) } else { None },
             }
         } else {
             UpdateCheckResult {
@@ -497,6 +578,8 @@ pub fn evaluate_manifest_with_options(
                 asset_size_bytes: None,
                 release_url: None,
                 cached: None,
+                build_commit: manifest.build_commit.clone(),
+                same_version_refresh: if same_ver_refresh { Some(true) } else { None },
             }
         }
     } else {
@@ -518,6 +601,8 @@ pub fn evaluate_manifest_with_options(
             asset_size_bytes: None,
             release_url: None,
             cached: None,
+            build_commit: manifest.build_commit.clone(),
+            same_version_refresh: None,
         }
     }
 }
@@ -759,6 +844,8 @@ mod tests {
             version: "0.6.0-rc.1".into(),
             notes: Some("Prerelease candidate".into()),
             pub_date: Some("2026-11-16T00:00:00Z".into()),
+            build_commit: None,
+            build_timestamp: None,
             platforms,
         };
 
@@ -783,6 +870,8 @@ mod tests {
             version: "0.2.0".into(),
             notes: Some("Added Windows and macOS release candidates".into()),
             pub_date: Some("2026-11-15T19:00:00Z".into()),
+            build_commit: None,
+            build_timestamp: None,
             platforms,
         };
 
@@ -813,6 +902,8 @@ mod tests {
             version: "0.1.0".into(),
             notes: Some("Current version".into()),
             pub_date: Some("2026-11-15T19:00:00Z".into()),
+            build_commit: None,
+            build_timestamp: None,
             platforms,
         };
 
@@ -837,6 +928,8 @@ mod tests {
             version: "0.9.0".into(),
             notes: Some("New version".into()),
             pub_date: Some("2026-11-15T19:00:00Z".into()),
+            build_commit: None,
+            build_timestamp: None,
             platforms,
         };
 
@@ -861,6 +954,8 @@ mod tests {
             version: "0.6.0".into(),
             notes: Some("Kinora v0.6.0 Official Release".into()),
             pub_date: Some("2026-11-19T19:00:00Z".into()),
+            build_commit: None,
+            build_timestamp: None,
             platforms,
         };
 
@@ -874,6 +969,87 @@ mod tests {
             res.download_url.as_deref(),
             Some("https://github.com/millsydotdev/KinoraTV/releases/download/v0.6.0/kinora-0.6.0.AppImage.tar.gz")
         );
+    }
+
+    #[test]
+    fn evaluates_same_version_maintenance_refresh_safely() {
+        let mut platforms = HashMap::new();
+        platforms.insert(
+            current_platform_key().to_string(),
+            PlatformAsset {
+                signature: Some("dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk=".into()),
+                url: "https://github.com/millsydotdev/KinoraTV/releases/download/v0.6.0/Kinora_0.6.0_amd64.AppImage".into(),
+            },
+        );
+
+        let newer_manifest = UpdateManifest {
+            version: "0.6.0".into(),
+            notes: Some("Kinora v0.6.0 maintenance refresh".into()),
+            pub_date: Some("2026-11-27T00:00:00Z".into()),
+            build_commit: Some("9999aaaa".into()),
+            build_timestamp: Some(1_795_737_600),
+            platforms: platforms.clone(),
+        };
+
+        // Newer commit and timestamp on same 0.6.0 version -> available maintenance refresh
+        let refresh = evaluate_manifest_with_build(
+            &newer_manifest,
+            "0.6.0",
+            false,
+            Some("289bd3aa"),
+            Some(1_795_651_200),
+        );
+        assert_eq!(refresh.status, "available");
+        assert_eq!(refresh.same_version_refresh, Some(true));
+        assert_eq!(refresh.build_commit.as_deref(), Some("9999aaaa"));
+        assert!(refresh.has_signature);
+
+        // Identical commit -> upToDate (never causes an infinite reinstall loop)
+        let same_commit = evaluate_manifest_with_build(
+            &newer_manifest,
+            "0.6.0",
+            false,
+            Some("9999aaaa"),
+            Some(1_795_651_200),
+        );
+        assert_eq!(same_commit.status, "upToDate");
+        assert_ne!(same_commit.same_version_refresh, Some(true));
+
+        // Older or equal timestamp -> upToDate (never downgrades)
+        let older_manifest = UpdateManifest {
+            version: "0.6.0".into(),
+            notes: Some("Older 0.6.0 build".into()),
+            pub_date: Some("2026-11-25T00:00:00Z".into()),
+            build_commit: Some("1111bbbb".into()),
+            build_timestamp: Some(1_795_564_800),
+            platforms: platforms.clone(),
+        };
+        let older = evaluate_manifest_with_build(
+            &older_manifest,
+            "0.6.0",
+            false,
+            Some("289bd3aa"),
+            Some(1_795_651_200),
+        );
+        assert_eq!(older.status, "upToDate");
+
+        // Missing metadata -> upToDate (backwards-compatible safe default)
+        let legacy_manifest = UpdateManifest {
+            version: "0.6.0".into(),
+            notes: Some("Legacy manifest without build revision".into()),
+            pub_date: Some("2026-11-27T00:00:00Z".into()),
+            build_commit: None,
+            build_timestamp: None,
+            platforms,
+        };
+        let legacy = evaluate_manifest_with_build(
+            &legacy_manifest,
+            "0.6.0",
+            false,
+            Some("289bd3aa"),
+            Some(1_795_651_200),
+        );
+        assert_eq!(legacy.status, "upToDate");
     }
 
     #[test]

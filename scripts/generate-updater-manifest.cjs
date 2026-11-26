@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 const pkg = require('../package.json');
 
 const authVersion = pkg.version;
@@ -101,10 +102,30 @@ const defaultNotes = loadStructuredReleaseNotes(authVersion) || (
   '- Zero em-dashes and strict privacy-first local architecture'
 );
 
+function readBuildProvenance() {
+  const repoRoot = path.resolve(__dirname, '..');
+  let commit = (process.env.GITHUB_SHA || '').trim().slice(0, 8);
+  let timestamp = null;
+  try {
+    if (!commit) {
+      commit = execFileSync('git', ['rev-parse', '--short=8', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim();
+    }
+    const rawTs = execFileSync('git', ['show', '-s', '--format=%ct', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim();
+    const parsed = Number.parseInt(rawTs, 10);
+    if (Number.isFinite(parsed) && parsed > 0) timestamp = parsed;
+  } catch {
+    // Fallback to environment or null outside git checkout
+  }
+  return { commit: commit || null, timestamp };
+}
+
+const provenance = readBuildProvenance();
 const manifest = {
   version: authVersion,
   notes: process.env.RELEASE_NOTES || defaultNotes,
   pub_date: new Date().toISOString(),
+  ...(provenance.commit ? { build_commit: provenance.commit } : {}),
+  ...(provenance.timestamp ? { build_timestamp: provenance.timestamp } : {}),
   platforms
 };
 

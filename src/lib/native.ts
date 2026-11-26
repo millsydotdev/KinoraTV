@@ -2281,6 +2281,8 @@ export interface UpdateCheckResult {
   assetSizeBytes?: number | null
   releaseUrl?: string | null
   cached?: boolean
+  buildCommit?: string | null
+  sameVersionRefresh?: boolean
 }
 
 /**
@@ -2348,6 +2350,12 @@ export async function checkForUpdates(
     }
     if ('cached' in r) {
       result.cached = Boolean(r.cached)
+    }
+    if ('buildCommit' in r) {
+      result.buildCommit = typeof r.buildCommit === 'string' ? r.buildCommit : null
+    }
+    if ('sameVersionRefresh' in r) {
+      result.sameVersionRefresh = Boolean(r.sameVersionRefresh)
     }
     return result
   } catch (e) {
