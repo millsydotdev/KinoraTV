@@ -74,6 +74,10 @@ CLI flags override environment variables:
 
 ### Safe Upgrade Procedure (Docker)
 
+> **Important:** Desktop application updates (handled by the signed Tauri updater inside the Kinora desktop app) are completely separate from headless Kinora Server / Docker updates. Updating a desktop client never mutates your Docker container, and upgrading the Docker image never touches desktop installations.
+
+Versioned server images are published to GitHub Container Registry as `ghcr.io/millsydotdev/kinoratv/kinora-server:<version>` (for example `:0.6.0` and `:latest`) alongside local `docker compose build server`.
+
 Persistent volumes (`kinora-server-data` mounted at `/data`) store `sources.json`, `devices.json`, `library_sync.json`, `platform_config.json`, and cached EPG/artwork files. Never run `docker compose down -v` during an upgrade, as `-v` deletes named volumes.
 
 1. **Back up the persistent data volume before upgrading:**

@@ -9,7 +9,11 @@ if (!authVersion) {
 }
 
 const tag = `v${authVersion}`;
-const distDir = path.resolve(__dirname, '..', 'release-dist');
+const distArgIdx = process.argv.indexOf('--dist-dir');
+const distDir =
+  distArgIdx >= 0 && process.argv[distArgIdx + 1]
+    ? path.resolve(process.argv[distArgIdx + 1])
+    : path.resolve(__dirname, '..', 'release-dist');
 if (!fs.existsSync(distDir)) {
   fs.mkdirSync(distDir, { recursive: true });
 }
@@ -17,19 +21,34 @@ if (!fs.existsSync(distDir)) {
 const files = fs.readdirSync(distDir);
 console.log(`Generating latest.json updater manifest for ${tag} from release-dist files:`, files);
 
+function isValidMinisign(sig) {
+  if (!sig || sig.length < 40) return false;
+  try {
+    const decoded = Buffer.from(sig, 'base64').toString('utf8');
+    return decoded.includes('untrusted comment:') && decoded.includes('trusted comment:');
+  } catch {
+    return false;
+  }
+}
+
 function findAssetAndSig(patterns) {
   for (const pattern of patterns) {
     const asset = files.find(f => pattern.test(f) && !f.endsWith('.sig'));
     if (asset) {
+      const assetPath = path.join(distDir, asset);
+      if (fs.statSync(assetPath).size === 0) {
+        throw new Error(`Updater asset "${asset}" is empty (0 bytes).`);
+      }
       const sigFile = files.find(f => f === `${asset}.sig`);
       if (sigFile) {
         const sig = fs.readFileSync(path.join(distDir, sigFile), 'utf8').trim();
-        if (sig && sig.length >= 10) {
+        if (isValidMinisign(sig)) {
           return {
             url: `https://github.com/millsydotdev/KinoraTV/releases/download/${tag}/${asset}`,
             signature: sig
           };
         }
+        throw new Error(`Signature file "${sigFile}" does not contain a valid Base64 Minisign signature.`);
       }
     }
   }
