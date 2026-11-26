@@ -312,6 +312,7 @@ export function handleIncomingRemoteCommand(event: RemoteCommandEvent): void {
       break
     }
 
+    case 'remote_search':
     case 'agent_search': {
       const query = typeof payload.query === 'string' ? payload.query : ''
       dispatchKinoraCommand({
@@ -320,6 +321,20 @@ export function handleIncomingRemoteCommand(event: RemoteCommandEvent): void {
         source: 'remote',
       })
       navigateRemote(`/search?q=${encodeURIComponent(query)}`)
+      break
+    }
+
+    case 'sync_progress': {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('kinora:remote_sync_progress', { detail: payload }))
+      }
+      break
+    }
+
+    case 'sync_library': {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('kinora:remote_sync_library', { detail: payload }))
+      }
       break
     }
 

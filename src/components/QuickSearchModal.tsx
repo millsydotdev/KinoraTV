@@ -16,14 +16,25 @@ export interface QuickSearchModalProps {
   initialQuery?: string
 }
 
-type CategoryFilter = 'all' | 'channel' | 'film' | 'series' | 'resource'
+type CategoryFilter = 'all' | 'on-now' | 'channel' | 'film' | 'series' | 'actions'
+
+interface QuickActionEntry {
+  id: string
+  title: string
+  subText: string
+  badgeText: string
+  actionLabel: string
+  keywords: string[]
+  run: () => void
+}
 
 const CATEGORY_TABS: { id: CategoryFilter; label: string }[] = [
   { id: 'all', label: 'All' },
+  { id: 'on-now', label: 'On Now' },
   { id: 'channel', label: 'Live TV' },
   { id: 'film', label: 'Movies' },
   { id: 'series', label: 'Series' },
-  { id: 'resource', label: 'Audio & Media' },
+  { id: 'actions', label: 'Actions' },
 ]
 
 function HighlightMatchedText({ text, query }: { text: string; query: string }) {
@@ -48,12 +59,14 @@ export function QuickSearchModal({ open, onClose, initialQuery = '' }: QuickSear
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
 
-  // Build matrix searchable items
+  // Build matrix searchable items (channels, live On Now EPG, movies, series, VOD/server media)
   const matrixItems = useMemo<MatrixItem[]>(() => {
     const list: MatrixItem[] = []
+    const now = Date.now()
 
-    // 1. Live channels
+    // 1. Live channels + currently airing EPG programmes ("On Now")
     for (const c of store.channels) {
+      const currentProg = store.programmeAt(c, now)
       list.push({
         id: `ch-${c.id}`,
         ref: `channel:${c.id}`,
@@ -62,13 +75,33 @@ export function QuickSearchModal({ open, onClose, initialQuery = '' }: QuickSear
         mediaType: 'channel',
         genres: c.categories || [c.group || 'General'],
         to: `/live?channel=${encodeURIComponent(c.id)}`,
-        subText: `Channel ${c.number || ''} (${c.categories?.[0] || c.group || 'Live TV'})`,
+        subText: currentProg
+          ? `Ch ${c.number || ''} · On Now: ${currentProg.title}`
+          : `Channel ${c.number || ''} (${c.categories?.[0] || c.group || 'Live TV'})`,
         badgeText: 'Live TV',
+        rawItem: { playTo: `/watch/channel:${encodeURIComponent(c.id)}`, actionLabel: 'Tune' },
       })
+
+      if (currentProg && currentProg.title) {
+        const minsLeft = Math.max(1, Math.round((currentProg.stop - now) / 60_000))
+        list.push({
+          id: `epg-now-${c.id}`,
+          ref: `channel:${c.id}`,
+          title: currentProg.title,
+          cleanTitle: currentProg.title,
+          mediaType: 'episode',
+          genres: currentProg.category ? [currentProg.category] : [],
+          to: `/watch/channel:${encodeURIComponent(c.id)}`,
+          subText: `${c.name}${c.number ? ` (Ch ${c.number})` : ''} · ${minsLeft}m left`,
+          badgeText: 'On Now',
+          rawItem: { playTo: `/watch/channel:${encodeURIComponent(c.id)}`, actionLabel: 'Tune Now' },
+        })
+      }
     }
 
     // 2. Movies catalog
     for (const m of movies) {
+      const hasProgress = Boolean(store.library.progress[`movie:${m.id}`])
       list.push({
         id: `movie-${m.id}`,
         ref: `movie:${m.id}`,
@@ -79,7 +112,8 @@ export function QuickSearchModal({ open, onClose, initialQuery = '' }: QuickSear
         year: m.year,
         to: `/movies?movie=${encodeURIComponent(m.id)}`,
         subText: `${m.year} · ${m.genres?.slice(0, 2).join(', ') || 'Movie'}`,
-        badgeText: 'Movie',
+        badgeText: hasProgress ? 'Resume' : 'Movie',
+        rawItem: { playTo: `/watch/movie:${encodeURIComponent(m.id)}`, actionLabel: hasProgress ? 'Resume' : 'Watch' },
       })
     }
 
@@ -105,9 +139,10 @@ export function QuickSearchModal({ open, onClose, initialQuery = '' }: QuickSear
       (store.xtreamCatalogue?.seriesCategories || []).map((c) => [c.id, String(c.name)]),
     )
 
-    // 4. Xtream Movies
+    // 4. Xtream / Server Movies & Local Media
     for (const xm of store.xtreamCatalogue?.movies || []) {
       const catName = xm.categoryId ? movieCats.get(xm.categoryId) : undefined
+      const watchPath = `/watch/movie:xt:${encodeURIComponent(xm.sourceId)}:${encodeURIComponent(xm.id)}`
       list.push({
         id: `xm-${xm.id}`,
         ref: `movie:xt:${xm.sourceId}:${xm.id}`,
@@ -116,13 +151,14 @@ export function QuickSearchModal({ open, onClose, initialQuery = '' }: QuickSear
         mediaType: 'film',
         genres: catName ? [catName] : [],
         year: xm.year || undefined,
-        to: `/watch/movie:xt:${encodeURIComponent(xm.sourceId)}:${encodeURIComponent(xm.id)}`,
+        to: watchPath,
         subText: `${xm.year || ''} · ${catName || 'VOD'}`,
-        badgeText: 'VOD',
+        badgeText: xm.sourceId === 'server' ? 'Server' : 'VOD',
+        rawItem: { playTo: watchPath, actionLabel: 'Play' },
       })
     }
 
-    // 5. Xtream Series
+    // 5. Xtream / Server Series
     for (const xs of store.xtreamCatalogue?.series || []) {
       const catName = xs.categoryId ? seriesCats.get(xs.categoryId) : undefined
       list.push({
@@ -140,24 +176,127 @@ export function QuickSearchModal({ open, onClose, initialQuery = '' }: QuickSear
     }
 
     return list
-  }, [store.channels, store.xtreamCatalogue])
+  }, [store.channels, store.xtreamCatalogue, store.library.progress, store.programmeAt])
+
+  const quickActions = useMemo<QuickActionEntry[]>(() => [
+    {
+      id: 'act-live',
+      title: 'Live TV Guide',
+      subText: 'Jump to the full interactive programme guide',
+      badgeText: 'Action',
+      actionLabel: 'Open',
+      keywords: ['live', 'guide', 'epg', 'tv', 'channels'],
+      run: () => navigate('/live'),
+    },
+    {
+      id: 'act-library',
+      title: 'Continue Watching & Library',
+      subText: 'Resume titles, favourites, watchlist, and collections',
+      badgeText: 'Action',
+      actionLabel: 'Open',
+      keywords: ['library', 'continue', 'resume', 'watchlist', 'favourites', 'favorites'],
+      run: () => navigate('/library'),
+    },
+    {
+      id: 'act-tv-mode',
+      title: store.prefs.viewMode === 'tv' ? 'Switch to Desktop Layout' : 'Switch to TV 10ft Mode',
+      subText: 'Toggle living-room remote-first focus layout',
+      badgeText: 'Action',
+      actionLabel: 'Toggle',
+      keywords: ['tv', 'mode', '10ft', 'layout', 'couch', 'remote'],
+      run: () => {
+        const nextMode = store.prefs.viewMode === 'tv' ? 'desktop' : 'tv'
+        store.setPref('viewMode', nextMode)
+        store.setPref('layoutMode', nextMode === 'tv' ? 'tv' : 'standard')
+      },
+    },
+    {
+      id: 'act-theme',
+      title: store.prefs.theme === 'light' ? 'Switch to Dark Theme' : 'Switch to Light Theme',
+      subText: 'Toggle between Kinora Dark and Light themes',
+      badgeText: 'Action',
+      actionLabel: 'Toggle',
+      keywords: ['theme', 'dark', 'light', 'appearance'],
+      run: () => store.setPref('theme', store.prefs.theme === 'light' ? 'dark' : 'light'),
+    },
+    {
+      id: 'act-sources',
+      title: 'Manage Sources & Discovery',
+      subText: 'Import playlists, XMLTV guides, and browse public catalogues',
+      badgeText: 'Action',
+      actionLabel: 'Open',
+      keywords: ['sources', 'playlist', 'm3u', 'xtream', 'discovery', 'import'],
+      run: () => navigate('/sources'),
+    },
+    {
+      id: 'act-settings',
+      title: 'Settings & Server Sync',
+      subText: 'Playback, server mode, mobile remote pairing, and profiles',
+      badgeText: 'Action',
+      actionLabel: 'Open',
+      keywords: ['settings', 'preferences', 'server', 'remote', 'pair', 'sync'],
+      run: () => navigate('/settings'),
+    },
+  ], [navigate, store])
 
   // Filtered results
   const searchResults = useMemo(() => {
     const q = query.trim()
-    const options = {
-      query: q,
-      mediaType: (category === 'all' ? 'all' : category) as MatrixMediaType | 'all',
-      limitPerGroup: 25,
+    const qLower = q.toLowerCase()
+
+    const matchedActions: MatrixItem[] = quickActions
+      .filter((a) => !qLower || a.title.toLowerCase().includes(qLower) || a.keywords.some((k) => k.includes(qLower)))
+      .map((a) => ({
+        id: a.id,
+        ref: a.id,
+        title: a.title,
+        cleanTitle: a.title,
+        mediaType: 'resource' as MatrixMediaType,
+        genres: [],
+        to: '',
+        subText: a.subText,
+        badgeText: a.badgeText,
+        rawItem: { runAction: a.run, actionLabel: a.actionLabel },
+      }))
+
+    if (category === 'actions') {
+      return matchedActions.slice(0, 20)
     }
-    const results = executeMatrixSearch(matrixItems, options)
+
+    const matrixMediaFilter: MatrixMediaType | 'all' =
+      category === 'on-now' ? 'episode' : category === 'all' ? 'all' : category
+    const results = executeMatrixSearch(matrixItems, {
+      query: q,
+      mediaType: matrixMediaFilter,
+      limitPerGroup: 25,
+    })
+
     const combined: MatrixItem[] = []
-    if (category === 'all' || category === 'channel') combined.push(...results.channels)
-    if (category === 'all' || category === 'film') combined.push(...results.films)
-    if (category === 'all' || category === 'series') combined.push(...results.series)
-    if (category === 'all' || category === 'resource') combined.push(...results.resources)
+    if (category === 'all') {
+      if (qLower) {
+        combined.push(...results.episodes.slice(0, 5))
+        combined.push(...results.channels.slice(0, 6))
+        combined.push(...results.films.slice(0, 6))
+        combined.push(...results.series.slice(0, 5))
+        combined.push(...matchedActions.slice(0, 3))
+      } else {
+        // Default quick-switch view: On Now live shows + quick actions + top channels/movies
+        combined.push(...results.episodes.slice(0, 5))
+        combined.push(...matchedActions.slice(0, 4))
+        combined.push(...results.channels.slice(0, 5))
+        combined.push(...results.films.slice(0, 6))
+      }
+    } else if (category === 'on-now') {
+      combined.push(...results.episodes)
+    } else if (category === 'channel') {
+      combined.push(...results.channels)
+    } else if (category === 'film') {
+      combined.push(...results.films)
+    } else if (category === 'series') {
+      combined.push(...results.series)
+    }
     return combined.slice(0, 20)
-  }, [matrixItems, query, category])
+  }, [matrixItems, quickActions, query, category])
 
   useEffect(() => {
     if (open) {
@@ -184,7 +323,13 @@ export function QuickSearchModal({ open, onClose, initialQuery = '' }: QuickSear
 
   const handleSelect = (item: MatrixItem) => {
     onClose()
-    navigate(item.to)
+    if (item.rawItem?.runAction) {
+      item.rawItem.runAction()
+      return
+    }
+    if (item.to) {
+      navigate(item.to)
+    }
   }
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -286,9 +431,26 @@ export function QuickSearchModal({ open, onClose, initialQuery = '' }: QuickSear
                       </span>
                       <span className="quick-search-item-sub">{item.subText}</span>
                     </div>
-                    {item.badgeText && (
-                      <span className="quick-search-item-badge">{item.badgeText}</span>
-                    )}
+                    <div className="quick-search-item-right">
+                      {item.rawItem?.playTo && (
+                        <button
+                          type="button"
+                          className="quick-search-action-btn"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onClose()
+                            navigate(item.rawItem.playTo)
+                          }}
+                        >
+                          {item.rawItem.actionLabel || 'Play'}
+                        </button>
+                      )}
+                      {item.badgeText && (
+                        <span className={`quick-search-item-badge ${item.badgeText === 'On Now' ? 'is-live' : ''}`}>
+                          {item.badgeText}
+                        </span>
+                      )}
+                    </div>
                   </li>
                 )
               })}

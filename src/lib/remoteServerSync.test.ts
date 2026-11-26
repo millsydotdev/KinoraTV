@@ -5,6 +5,7 @@ import {
   addRemoteCommandListener,
   broadcastRemotePlaybackState,
 } from './remoteServerSync'
+import { mergeRemoteLibraryIntoLocal } from './clientSync'
 import * as nativeModule from './native'
 
 vi.mock('./remoteNav', () => ({
@@ -286,5 +287,60 @@ describe('remoteServerSync', () => {
 
     window.removeEventListener('kinora:remote_seek_delta', seekDeltaSpy)
     window.removeEventListener('kinora:remote_volume_delta', volDeltaSpy)
+  })
+
+  it('dispatches remote_search, sync_progress, and sync_library events and normalizes sync timestamps', async () => {
+    const { dispatchKinoraCommand } = await import('./commands')
+    const progSpy = vi.fn()
+    const libSpy = vi.fn()
+    window.addEventListener('kinora:remote_sync_progress', progSpy)
+    window.addEventListener('kinora:remote_sync_library', libSpy)
+
+    handleIncomingRemoteCommand({
+      command: 'remote_search',
+      payload: { query: 'Blade Runner' },
+      timestamp: Date.now(),
+    })
+    expect(dispatchKinoraCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'searchMedia', payload: { query: 'Blade Runner' }, source: 'remote' })
+    )
+
+    handleIncomingRemoteCommand({
+      command: 'sync_progress',
+      payload: { itemRef: 'movie:blade', position: 612, duration: 7000, updatedAt: 1800000000 },
+      timestamp: Date.now(),
+    })
+    expect(progSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: expect.objectContaining({ itemRef: 'movie:blade', position: 612 }) })
+    )
+
+    handleIncomingRemoteCommand({
+      command: 'sync_library',
+      payload: { action: 'toggle_favourite', id: 'movie:blade', favourites: ['movie:blade'], watchlist: [] },
+      timestamp: Date.now(),
+    })
+    expect(libSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: expect.objectContaining({ action: 'toggle_favourite', id: 'movie:blade' }) })
+    )
+
+    // Seconds-based server updatedAt must beat an older ms-based local timestamp
+    const merged = mergeRemoteLibraryIntoLocal(
+      {
+        favourites: [],
+        watchlist: [],
+        progress: { 'movie:blade': { pos: 120, dur: 7000, at: 1_799_000_000_000 } },
+      },
+      {
+        favourites: ['movie:blade'],
+        watchlist: [],
+        watchProgress: [{ itemRef: 'movie:blade', title: 'Blade', position: 612, duration: 7000, updatedAt: 1_800_000_000 }],
+      },
+      true
+    )
+    expect(merged.progress['movie:blade']?.pos).toBe(612)
+    expect(merged.progress['movie:blade']?.at).toBe(1_800_000_000_000)
+
+    window.removeEventListener('kinora:remote_sync_progress', progSpy)
+    window.removeEventListener('kinora:remote_sync_library', libSpy)
   })
 })

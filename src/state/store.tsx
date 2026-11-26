@@ -783,6 +783,59 @@ function useStoreValue(
   }, [library, clientSync.status])
 
   useEffect(() => {
+    if (typeof window === 'undefined' || clientSync.status === 'connected') return
+    const onRemoteProgress = (e: Event) => {
+      const detail = (e as CustomEvent<{ itemRef?: string; position?: number; duration?: number; updatedAt?: number; remove?: boolean }>).detail
+      if (!detail?.itemRef) return
+      const ref = detail.itemRef as Ref
+      setLibrary((l) => {
+        const progress = { ...l.progress }
+        if (detail.remove) {
+          delete progress[ref]
+        } else {
+          const rawAt = Number(detail.updatedAt) || 0
+          const atMs = rawAt >= 1e9 && rawAt < 1e12 ? rawAt * 1000 : (rawAt || Date.now())
+          const existing = progress[ref]
+          if (!existing || atMs >= existing.at) {
+            progress[ref] = {
+              pos: Math.max(0, Number(detail.position) || 0),
+              dur: Math.max(0, Number(detail.duration) || 0),
+              at: atMs,
+            }
+          }
+        }
+        return { ...l, progress }
+      })
+    }
+    const onRemoteLibrary = (e: Event) => {
+      const detail = (e as CustomEvent<{ action?: string; id?: string; favourites?: string[]; watchlist?: string[] }>).detail
+      if (!detail) return
+      setLibrary((l) => {
+        const nextProgress = { ...l.progress }
+        const nextWatched = [...l.watched]
+        if (detail.action === 'mark_watched' && detail.id) {
+          const ref = detail.id as Ref
+          delete nextProgress[ref]
+          if (!nextWatched.includes(ref)) nextWatched.unshift(ref)
+        }
+        return {
+          ...l,
+          favourites: Array.isArray(detail.favourites) ? (detail.favourites as Ref[]) : l.favourites,
+          watchlist: Array.isArray(detail.watchlist) ? (detail.watchlist as Ref[]) : l.watchlist,
+          watched: nextWatched,
+          progress: nextProgress,
+        }
+      })
+    }
+    window.addEventListener('kinora:remote_sync_progress', onRemoteProgress)
+    window.addEventListener('kinora:remote_sync_library', onRemoteLibrary)
+    return () => {
+      window.removeEventListener('kinora:remote_sync_progress', onRemoteProgress)
+      window.removeEventListener('kinora:remote_sync_library', onRemoteLibrary)
+    }
+  }, [clientSync.status, setLibrary])
+
+  useEffect(() => {
     if (clientSync.status === 'connected') return
     const todayMap = days.get(today)
     if (!todayMap || todayMap.size === 0) return
@@ -1301,25 +1354,35 @@ function useStoreValue(
         void clientSync.toggleLibraryItem('toggle_watchlist', String(ref))
       }
     },
-    setWatched: (refs: Ref[], watched: boolean) =>
+    setWatched: (refs: Ref[], watched: boolean) => {
       setLibrary((l) => {
         const rest = l.watched.filter((r) => !refs.includes(r))
         const progress = { ...l.progress }
         if (watched) for (const r of refs) delete progress[r]
         return { ...l, watched: watched ? [...refs, ...rest] : rest, progress }
-      }),
+      })
+      if (watched && clientSync.status === 'connected') {
+        for (const r of refs) {
+          void clientSync.toggleLibraryItem('mark_watched', String(r))
+        }
+      }
+    },
     setProgress: (ref: Ref, pos: number, dur: number) => {
       setLibrary((l) => ({ ...l, progress: { ...l.progress, [ref]: { pos, dur, at: Date.now() } } }))
       if (clientSync.status === 'connected') {
         void clientSync.syncWatchProgress(String(ref), String(ref), pos, dur)
       }
     },
-    removeProgress: (ref: Ref) =>
+    removeProgress: (ref: Ref) => {
       setLibrary((l) => {
         const progress = { ...l.progress }
         delete progress[ref]
         return { ...l, progress }
-      }),
+      })
+      if (clientSync.status === 'connected') {
+        void clientSync.removeWatchProgress(String(ref))
+      }
+    },
     restoreProgress: (ref: Ref, p: Progress) =>
       setLibrary((l) => ({ ...l, progress: { ...l.progress, [ref]: p } })),
     recordView: (ref: Ref) => {

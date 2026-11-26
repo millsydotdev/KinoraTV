@@ -526,7 +526,7 @@ function HeaderSearch({ placeholder, onOpenQuickSearch }: { placeholder: string;
   return (
     <div className="header-search-container" ref={containerRef}>
       <form className="search-pill-form" onSubmit={handleSubmit} role="search">
-        <label htmlFor="header-search-input" className="visually-hidden">Search</label>
+        <label htmlFor="header-search-input" className="sr-only">Search</label>
         <Icon name="search" size={16} />
         <input
           ref={inputRef}
@@ -676,8 +676,13 @@ export function PageHeader({
         setQuickSearchOpen(true)
       }
     }
+    const handleOpenQuickSearch = () => setQuickSearchOpen(true)
     window.addEventListener('keydown', handleGlobalKey)
-    return () => window.removeEventListener('keydown', handleGlobalKey)
+    window.addEventListener('kinora:quick-search', handleOpenQuickSearch)
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKey)
+      window.removeEventListener('kinora:quick-search', handleOpenQuickSearch)
+    }
   }, [])
 
   return (

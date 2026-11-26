@@ -56,22 +56,29 @@
   gap: 0.2rem;
 }
 
-.mosaic-btn-mode {
+.mosaic-btn-mode,
+.mosaic-btn-mute {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
   padding: 0.35rem 0.65rem;
   border-radius: 4px;
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
   color: var(--muted);
   font-size: 0.8rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
 }
 
-.mosaic-btn-mode:hover {
+.mosaic-btn-mute {
+  background: var(--surface-2, rgba(255, 255, 255, 0.06));
+  border-color: var(--border-subtle, var(--line));
+}
+
+.mosaic-btn-mode:hover,
+.mosaic-btn-mute:hover {
   color: var(--text);
 }
 
@@ -151,14 +158,92 @@
   background: color-mix(in oklab, var(--surface-2) 65%, transparent);
 }
 
+.mosaic-tile-stage,
 .mosaic-tile-video-placeholder {
   flex: 1;
   position: relative;
-  background: #09090b;
+  background: #050507;
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 0;
+  overflow: hidden;
+}
+
+.mosaic-video-el {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000000;
+}
+
+.mosaic-video-status-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 5, 7, 0.78);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  text-align: center;
+}
+
+.mosaic-video-status-text {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.mosaic-standby-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.mosaic-demo-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.mosaic-tile-live-pill {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  background: var(--accent, #e50914);
+  color: #ffffff;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 0.18rem 0.5rem;
+  border-radius: 4px;
+  z-index: 3;
+}
+
+.mosaic-mins-left {
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.mosaic-epg-track {
+  margin-top: 6px;
+  height: 3px;
+  width: 100%;
+  background: var(--surface-3);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.mosaic-epg-fill {
+  height: 100%;
+  background: var(--accent, #e50914);
 }
 
 .mosaic-tile-badge-slot {

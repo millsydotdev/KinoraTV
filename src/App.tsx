@@ -382,15 +382,8 @@ function Shell() {
       }
 
       if (e.key === '/' && !e.metaKey && !e.ctrlKey) {
-        const headerInput = document.getElementById('header-search-input') as HTMLInputElement | null
-        if (headerInput) {
-          e.preventDefault()
-          headerInput.focus()
-          headerInput.select()
-          return
-        }
         e.preventDefault()
-        navigate('/search')
+        window.dispatchEvent(new CustomEvent('kinora:quick-search'))
       }
     }
 

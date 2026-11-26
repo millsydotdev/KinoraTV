@@ -313,13 +313,14 @@ impl RemoteServerManager {
 
     pub fn with_stream_policy(data_dir: Option<PathBuf>, policy: crate::fetch::Policy) -> Self {
         let ip = detect_local_ip();
-        let (loaded_devices, loaded_cfg) = if let Some(ref dir) = data_dir {
+        let (loaded_devices, loaded_cfg, loaded_library) = if let Some(ref dir) = data_dir {
             (
                 load_trusted_devices_from_disk(dir),
                 load_platform_config_from_disk(dir),
+                load_library_sync_from_disk(dir).unwrap_or_default(),
             )
         } else {
-            (Vec::new(), None)
+            (Vec::new(), None, RemoteLibrarySummary::default())
         };
 
         let pin = loaded_cfg
@@ -354,7 +355,7 @@ impl RemoteServerManager {
                 audit_log: Vec::new(),
                 channels: Vec::new(),
                 sources: Vec::new(),
-                library: RemoteLibrarySummary::default(),
+                library: loaded_library,
                 epg: Vec::new(),
                 media: Vec::new(),
                 local_media_roots: Vec::new(),
@@ -500,6 +501,9 @@ impl RemoteServerManager {
     pub async fn update_library(&self, library: RemoteLibrarySummary) {
         let mut state = self.inner.lock().await;
         state.library = library;
+        if let Some(ref dir) = state.data_dir {
+            save_library_sync_to_disk(dir, &state.library);
+        }
     }
 
     #[allow(dead_code)]
@@ -879,6 +883,43 @@ fn save_platform_config_to_disk(data_dir: &Path, cfg: &PlatformConfig) {
     }
 }
 
+fn load_library_sync_from_disk(data_dir: &Path) -> Option<RemoteLibrarySummary> {
+    let file_path = data_dir.join("remote_library_sync.json");
+    let data = fs::read_to_string(file_path).ok()?;
+    serde_json::from_str::<RemoteLibrarySummary>(&data).ok()
+}
+
+fn save_library_sync_to_disk(data_dir: &Path, lib: &RemoteLibrarySummary) {
+    let _ = fs::create_dir_all(data_dir);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(data_dir, fs::Permissions::from_mode(0o700));
+    }
+
+    let file_path = data_dir.join("remote_library_sync.json");
+    let temp_path = data_dir.join("remote_library_sync.json.tmp");
+
+    if let Ok(json) = serde_json::to_string_pretty(lib) {
+        let mut options = OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+
+        if let Ok(mut file) = options.open(&temp_path) {
+            if file.write_all(json.as_bytes()).is_ok() && file.sync_all().is_ok() {
+                drop(file);
+                let _ = fs::rename(&temp_path, &file_path);
+            } else {
+                let _ = fs::remove_file(&temp_path);
+            }
+        }
+    }
+}
+
 fn load_trusted_devices_from_disk(data_dir: &Path) -> Vec<TrustedDevice> {
     let file_path = data_dir.join("devices.json");
     if let Ok(data) = fs::read_to_string(file_path) {
@@ -994,6 +1035,24 @@ async fn handle_connection<F>(
                 "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
                 html.len(),
                 html
+            );
+            let _ = stream.write_all(resp.as_bytes()).await;
+        }
+        ("GET", "/manifest.webmanifest") => {
+            let manifest = get_pwa_manifest_json();
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/manifest+json; charset=utf-8\r\nCache-Control: public, max-age=3600\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+                manifest.len(),
+                manifest
+            );
+            let _ = stream.write_all(resp.as_bytes()).await;
+        }
+        ("GET", "/icon.svg") => {
+            let svg = get_pwa_icon_svg();
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: image/svg+xml; charset=utf-8\r\nCache-Control: public, max-age=86400\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+                svg.len(),
+                svg
             );
             let _ = stream.write_all(resp.as_bytes()).await;
         }
@@ -1845,45 +1904,62 @@ async fn handle_connection<F>(
                 let title = prog_obj.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string();
                 let position = prog_obj.get("position").and_then(|v| v.as_f64()).unwrap_or(0.0);
                 let duration = prog_obj.get("duration").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                let remove = prog_obj.get("remove").and_then(|v| v.as_bool()).unwrap_or(false);
 
                 if !item_ref.is_empty() {
-                    let mut state = manager.inner.lock().await;
                     let now = now_unix_secs();
-                    if let Some(existing) = state.library.watch_progress.iter_mut().find(|p| p.item_ref == item_ref) {
-                        existing.position = position;
-                        existing.duration = duration;
-                        existing.updated_at = now;
-                    } else {
-                        state.library.watch_progress.push(RemoteWatchProgressItem {
-                            item_ref: item_ref.clone(),
-                            title: title.clone(),
-                            position,
-                            duration,
-                            updated_at: now,
-                        });
+                    let payload = serde_json::json!({
+                        "itemRef": item_ref,
+                        "title": title,
+                        "position": position,
+                        "duration": duration,
+                        "remove": remove,
+                        "updatedAt": now
+                    });
+                    {
+                        let mut state = manager.inner.lock().await;
+                        if remove {
+                            state.library.watch_progress.retain(|p| p.item_ref != item_ref);
+                        } else if let Some(existing) = state.library.watch_progress.iter_mut().find(|p| p.item_ref == item_ref) {
+                            existing.position = position;
+                            existing.duration = duration;
+                            existing.updated_at = now;
+                            if !title.is_empty() {
+                                existing.title = title.clone();
+                            }
+                        } else {
+                            state.library.watch_progress.push(RemoteWatchProgressItem {
+                                item_ref: item_ref.clone(),
+                                title: title.clone(),
+                                position,
+                                duration,
+                                updated_at: now,
+                            });
+                        }
+
+                        if let Some(ref dir) = state.data_dir {
+                            save_library_sync_to_disk(dir, &state.library);
+                        }
+
+                        record_audit_action(
+                            &mut state.audit_log,
+                            &caller.id,
+                            &caller.name,
+                            "ClientSync",
+                            if remove { "RemoveProgress" } else { "SyncProgress" },
+                            &format!("Updated progress for {item_ref}: {position}/{duration}s"),
+                            "success",
+                        );
+
+                        broadcast_sse_envelope(&mut state, "sync_progress", payload.clone());
                     }
 
-                    record_audit_action(
-                        &mut state.audit_log,
-                        &caller.id,
-                        &caller.name,
-                        "ClientSync",
-                        "SyncProgress",
-                        &format!("Updated progress for {item_ref}: {position}/{duration}s"),
-                        "success",
-                    );
-
-                    broadcast_sse_envelope(
-                        &mut state,
-                        "sync_progress",
-                        serde_json::json!({
-                            "itemRef": item_ref,
-                            "title": title,
-                            "position": position,
-                            "duration": duration,
-                            "updatedAt": now
-                        }),
-                    );
+                    on_command(RemoteCommandEvent {
+                        command: "sync_progress".to_string(),
+                        payload,
+                        client_id: Some(caller.id.clone()),
+                        timestamp: now,
+                    });
                 }
 
                 let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{\"ok\":true}";
@@ -1911,47 +1987,62 @@ async fn handle_connection<F>(
                 let id = lib_obj.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
 
                 if !id.is_empty() {
-                    let mut state = manager.inner.lock().await;
-                    match action.as_str() {
-                        "toggle_favourite" => {
-                            if let Some(pos) = state.library.favourites.iter().position(|f| f == &id) {
-                                state.library.favourites.remove(pos);
-                            } else {
-                                state.library.favourites.push(id.clone());
+                    let now = now_unix_secs();
+                    let payload = {
+                        let mut state = manager.inner.lock().await;
+                        match action.as_str() {
+                            "toggle_favourite" => {
+                                if let Some(pos) = state.library.favourites.iter().position(|f| f == &id) {
+                                    state.library.favourites.remove(pos);
+                                } else {
+                                    state.library.favourites.push(id.clone());
+                                }
                             }
-                        }
-                        "toggle_watchlist" => {
-                            if let Some(pos) = state.library.watchlist.iter().position(|w| w == &id) {
-                                state.library.watchlist.remove(pos);
-                            } else {
-                                state.library.watchlist.push(id.clone());
+                            "toggle_watchlist" => {
+                                if let Some(pos) = state.library.watchlist.iter().position(|w| w == &id) {
+                                    state.library.watchlist.remove(pos);
+                                } else {
+                                    state.library.watchlist.push(id.clone());
+                                }
                             }
+                            "mark_watched" => {
+                                state.library.watch_progress.retain(|p| p.item_ref != id);
+                            }
+                            _ => {}
                         }
-                        _ => {}
-                    }
 
-                    record_audit_action(
-                        &mut state.audit_log,
-                        &caller.id,
-                        &caller.name,
-                        "ClientSync",
-                        &action,
-                        &format!("Toggled {id}"),
-                        "success",
-                    );
+                        if let Some(ref dir) = state.data_dir {
+                            save_library_sync_to_disk(dir, &state.library);
+                        }
 
-                    let favs = state.library.favourites.clone();
-                    let watch = state.library.watchlist.clone();
-                    broadcast_sse_envelope(
-                        &mut state,
-                        "sync_library",
-                        serde_json::json!({
+                        record_audit_action(
+                            &mut state.audit_log,
+                            &caller.id,
+                            &caller.name,
+                            "ClientSync",
+                            &action,
+                            &format!("Updated library item {id}"),
+                            "success",
+                        );
+
+                        let favs = state.library.favourites.clone();
+                        let watch = state.library.watchlist.clone();
+                        let env_payload = serde_json::json!({
                             "action": action,
                             "id": id,
                             "favourites": favs,
                             "watchlist": watch
-                        }),
-                    );
+                        });
+                        broadcast_sse_envelope(&mut state, "sync_library", env_payload.clone());
+                        env_payload
+                    };
+
+                    on_command(RemoteCommandEvent {
+                        command: "sync_library".to_string(),
+                        payload,
+                        client_id: Some(caller.id.clone()),
+                        timestamp: now,
+                    });
                 }
 
                 let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{\"ok\":true}";
@@ -2359,6 +2450,14 @@ async fn handle_open_proxy_stream(
     }
 }
 
+pub fn get_pwa_manifest_json() -> &'static str {
+    r##"{"name":"Kinora TV Remote","short_name":"Kinora","description":"Wireless companion remote for Kinora TV","start_url":"/","display":"standalone","orientation":"portrait","background_color":"#050507","theme_color":"#050507","icons":[{"src":"/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}"##
+}
+
+pub fn get_pwa_icon_svg() -> &'static str {
+    r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#050507"/><g transform="translate(8 8) scale(1.5)"><path d="M6 5.5C6 4.7 6.7 4 7.5 4h3c.8 0 1.5.7 1.5 1.5v21c0 .8-.7 1.5-1.5 1.5h-3C6.7 28 6 27.3 6 26.5z" fill="#E50914"/><path d="M11 15l9.5-10.2c.5-.5 1.2-.8 1.9-.8H25c.8 0 1.4.8 1 1.6L24 10l-8.5 5.5z" fill="#ff3d4a"/><path d="M15.5 16.5L24 22l2 4.4c.4.8-.2 1.6-1 1.6h-2.6c-.7 0-1.4-.3-1.9-.8L11 17z" fill="#9e040c"/><path d="M7.5 9.5c0-.7.8-1.2 1.4-.8L19 15.2c.6.4.6 1.2 0 1.6L8.9 23.3c-.6.4-1.4-.1-1.4-.8z" fill="#050507"/><path d="M9.2 11.4c0-.5.6-.8 1-.6L17 15.5c.4.3.4.7 0 1l-6.8 4.7c-.4.2-1-.1-1-.6z" fill="#E50914"/></g></svg>"##
+}
+
 pub fn get_embedded_remote_html() -> &'static str {
     r##"<!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -2368,8 +2467,11 @@ pub fn get_embedded_remote_html() -> &'static str {
   <title>Kinora Remote</title>
   <meta name="theme-color" content="#050507">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Kinora">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23050507'/%3E%3Cpath d='M6 5.5C6 4.7 6.7 4 7.5 4h3c.8 0 1.5.7 1.5 1.5v21c0 .8-.7 1.5-1.5 1.5h-3C6.7 28 6 27.3 6 26.5z' fill='%23E50914'/%3E%3Cpath d='M11 15l9.5-10.2c.5-.5 1.2-.8 1.9-.8H25c.8 0 1.4.8 1 1.6L24 10l-8.5 5.5z' fill='%23ff3d4a'/%3E%3Cpath d='M15.5 16.5L24 22l2 4.4c.4.8-.2 1.6-1 1.6h-2.6c-.7 0-1.4-.3-1.9-.8L11 17z' fill='%23ad060f'/%3E%3Cpath d='M9.2 11.4c0-.5.6-.8 1-.6L17 15.5c.4.3.4.7 0 1l-6.8 4.7c-.4.2-1-.1-1-.6z' fill='%23E50914'/%3E%3C/svg%3E">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icon.svg">
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
   <style>
     :root {
       --bg: #050507;
@@ -2787,13 +2889,83 @@ pub fn get_embedded_remote_html() -> &'static str {
       cursor: default;
     }
 
-    /* Sculpted Hardware D-Pad (One deliberate crimson focal point: OK center) */
+    /* Sculpted Hardware D-Pad & Couch Swipe Trackpad */
     .dpad-stage {
       flex: 1;
+      position: relative;
       display: flex;
       align-items: center;
       justify-content: center;
       min-height: 176px;
+    }
+
+    .pad-mode-bar {
+      position: absolute;
+      top: 0;
+      right: 0;
+      display: inline-flex;
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      padding: 2px;
+      gap: 2px;
+      z-index: 4;
+    }
+
+    .pad-mode-btn {
+      min-height: 26px;
+      padding: 2px 9px;
+      border: none;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--text-2);
+      font-size: 0.68rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .pad-mode-btn.active {
+      background: var(--accent);
+      color: #ffffff;
+    }
+
+    .trackpad-surface {
+      width: min(260px, 100%);
+      height: clamp(168px, 24dvh, 206px);
+      border-radius: 18px;
+      background: radial-gradient(circle at 50% 45%, var(--surface-2) 0%, var(--surface) 100%);
+      border: 1px solid var(--line-strong);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 10px 26px rgba(0, 0, 0, 0.45);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      touch-action: none;
+      user-select: none;
+      cursor: pointer;
+      transition: border-color 120ms ease, background-color 120ms ease;
+    }
+
+    .trackpad-surface.active-pulse {
+      border-color: var(--accent);
+    }
+
+    .trackpad-hint {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .trackpad-sub {
+      font-size: 0.7rem;
+      color: var(--text-3);
+    }
+
+    .keypad-actions-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
     }
 
     .dpad-ring {
@@ -3385,8 +3557,12 @@ pub fn get_embedded_remote_html() -> &'static str {
         </div>
       </section>
 
-      <section class="dpad-stage" aria-label="Directional pad">
-        <div class="dpad-ring">
+      <section class="dpad-stage" aria-label="Navigation pad">
+        <div class="pad-mode-bar" role="tablist" aria-label="Navigation mode">
+          <button type="button" class="pad-mode-btn active" id="modeDpadBtn" onclick="setPadMode('dpad')">D-Pad</button>
+          <button type="button" class="pad-mode-btn" id="modeTrackpadBtn" onclick="setPadMode('trackpad')">Swipe</button>
+        </div>
+        <div class="dpad-ring" id="dpadRing">
           <button type="button" class="dpad-btn dpad-up" aria-label="Navigate Up" onclick="sendCmd('dpad_up')">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
           </button>
@@ -3400,6 +3576,10 @@ pub fn get_embedded_remote_html() -> &'static str {
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
           <button type="button" class="dpad-ok" aria-label="Select OK" onclick="sendCmd('dpad_select')">OK</button>
+        </div>
+        <div class="trackpad-surface" id="trackpadSurface" style="display:none;" role="application" aria-label="Swipe trackpad">
+          <div class="trackpad-hint" id="trackpadLabel">Swipe to Navigate</div>
+          <div class="trackpad-sub">Tap = OK / Double-Tap = Back</div>
         </div>
       </section>
 
@@ -3444,9 +3624,12 @@ pub fn get_embedded_remote_html() -> &'static str {
     <!-- Tab 2: Keyboard & Number Keypad -->
     <main id="viewKeypad" class="view-content" style="display:none;">
       <section class="panel">
-        <label class="section-heading" for="typeInput">Type to Kinora TV</label>
-        <input type="text" id="typeInput" class="text-input" placeholder="Search a title or type into TV...">
-        <button type="button" class="btn-primary" onclick="sendTypedText()">Send to TV</button>
+        <label class="section-heading" for="typeInput">Search or Type to Kinora TV</label>
+        <input type="text" id="typeInput" class="text-input" placeholder="Search a movie, show, or channel...">
+        <div class="keypad-actions-row">
+          <button type="button" class="btn-primary" onclick="sendSearchToTv()">Search on TV</button>
+          <button type="button" class="ctrl-btn" onclick="sendTypedText()">Type Text</button>
+        </div>
       </section>
 
       <div class="section-heading" style="text-align:center;">Direct Channel Keypad</div>
@@ -3564,7 +3747,56 @@ pub fn get_embedded_remote_html() -> &'static str {
       const typeInput = document.getElementById('typeInput');
       if (typeInput) {
         typeInput.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') sendTypedText();
+          if (e.key === 'Enter') sendSearchToTv();
+        });
+      }
+
+      const pad = document.getElementById('trackpadSurface');
+      if (pad) {
+        let sx = 0, sy = 0, moved = false, lastTap = 0;
+        const flash = (label) => {
+          const el = document.getElementById('trackpadLabel');
+          if (el) el.textContent = label;
+          pad.classList.add('active-pulse');
+          if (navigator.vibrate) navigator.vibrate(10);
+          setTimeout(() => pad.classList.remove('active-pulse'), 140);
+        };
+        pad.addEventListener('pointerdown', (e) => {
+          sx = e.clientX; sy = e.clientY; moved = false;
+        });
+        pad.addEventListener('pointermove', (e) => {
+          if (!sx && !sy) return;
+          const dx = e.clientX - sx, dy = e.clientY - sy;
+          if (Math.abs(dx) < 28 && Math.abs(dy) < 28) return;
+          moved = true;
+          if (Math.abs(dx) > Math.abs(dy)) {
+            sendCmd(dx > 0 ? 'dpad_right' : 'dpad_left');
+            flash(dx > 0 ? 'Right' : 'Left');
+          } else {
+            sendCmd(dy > 0 ? 'dpad_down' : 'dpad_up');
+            flash(dy > 0 ? 'Down' : 'Up');
+          }
+          sx = e.clientX; sy = e.clientY;
+        });
+        pad.addEventListener('pointerup', () => {
+          if (!moved) {
+            const now = Date.now();
+            if (now - lastTap < 280) {
+              sendCmd('back');
+              flash('Back');
+              lastTap = 0;
+            } else {
+              lastTap = now;
+              setTimeout(() => {
+                if (lastTap === now) {
+                  sendCmd('dpad_select');
+                  flash('OK');
+                  lastTap = 0;
+                }
+              }, 290);
+            }
+          }
+          sx = 0; sy = 0;
         });
       }
 
@@ -4014,6 +4246,28 @@ pub fn get_embedded_remote_html() -> &'static str {
         return;
       }
       renderMedia(filtered);
+    }
+
+    function setPadMode(mode) {
+      const isTrack = mode === 'trackpad';
+      const ring = document.getElementById('dpadRing');
+      const pad = document.getElementById('trackpadSurface');
+      const b1 = document.getElementById('modeDpadBtn');
+      const b2 = document.getElementById('modeTrackpadBtn');
+      if (ring) ring.style.display = isTrack ? 'none' : 'flex';
+      if (pad) pad.style.display = isTrack ? 'flex' : 'none';
+      if (b1) b1.classList.toggle('active', !isTrack);
+      if (b2) b2.classList.toggle('active', isTrack);
+      try { localStorage.setItem('kinora_pad_mode', mode); } catch (_) {}
+    }
+
+    function sendSearchToTv() {
+      const el = document.getElementById('typeInput');
+      const q = (el && el.value || '').trim();
+      if (!q) return;
+      sendCmd('remote_search', { query: q });
+      showToast('Searching TV: ' + q);
+      el.value = '';
     }
 
     function tuneToChannel(channelId, channelNumber) {
@@ -4775,6 +5029,82 @@ mod tests {
         assert!(missing.is_none());
 
         mgr.stop().await;
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[tokio::test]
+    async fn pwa_manifest_icon_and_library_sync_persistence() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "kinora_pwa_sync_test_{}",
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let probe = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let srv_port = probe.local_addr().unwrap().port();
+        drop(probe);
+
+        let mgr = RemoteServerManager::new(Some(temp_dir.clone()));
+        let status = mgr.start(Some(srv_port), Some("739104".to_string()), |_| {}).await.unwrap();
+        assert!(status.running);
+
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let base = format!("http://127.0.0.1:{srv_port}");
+
+        // 1. PWA manifest & SVG icon endpoints respond with valid content.
+        let manifest_resp = client.get(format!("{base}/manifest.webmanifest")).send().await.unwrap();
+        assert_eq!(manifest_resp.status().as_u16(), 200);
+        let manifest: serde_json::Value = manifest_resp.json().await.unwrap();
+        assert_eq!(manifest["short_name"], "Kinora");
+        assert_eq!(manifest["display"], "standalone");
+
+        let icon_resp = client.get(format!("{base}/icon.svg")).send().await.unwrap();
+        assert_eq!(icon_resp.status().as_u16(), 200);
+        assert!(icon_resp.text().await.unwrap().contains("<svg"));
+
+        // 2. Pair a client and push watch progress + favourite toggle.
+        let pair_json: serde_json::Value = client
+            .post(format!("{base}/pair"))
+            .header("Content-Type", "application/json")
+            .body(r#"{"pin":"739104","deviceName":"Sync Test Client","deviceType":"desktopClient"}"#)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let token = pair_json["token"].as_str().unwrap().to_string();
+
+        let prog_resp = client
+            .post(format!("{base}/api/sync/progress"))
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Content-Type", "application/json")
+            .body(r#"{"itemRef":"movie:blade","title":"Blade","position":420,"duration":7000}"#)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(prog_resp.status().as_u16(), 200);
+
+        let lib_resp = client
+            .post(format!("{base}/api/sync/library"))
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Content-Type", "application/json")
+            .body(r#"{"action":"toggle_favourite","id":"movie:blade"}"#)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(lib_resp.status().as_u16(), 200);
+
+        mgr.stop().await;
+
+        // 3. Reloading RemoteServerManager from the same data_dir restores synced progress & favourites.
+        let reloaded = RemoteServerManager::new(Some(temp_dir.clone()));
+        let restored = reloaded.get_library().await;
+        assert!(restored.favourites.contains(&"movie:blade".to_string()));
+        assert_eq!(restored.watch_progress.len(), 1);
+        assert_eq!(restored.watch_progress[0].item_ref, "movie:blade");
+        assert_eq!(restored.watch_progress[0].position, 420.0);
+
         let _ = fs::remove_dir_all(&temp_dir);
     }
 }

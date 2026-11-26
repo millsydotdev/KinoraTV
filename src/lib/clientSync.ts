@@ -329,8 +329,23 @@ class ClientSyncManager {
     }
   }
 
+  public async removeWatchProgress(itemRef: string): Promise<boolean> {
+    const { serverUrl, authToken } = this.state
+    if (!serverUrl || !authToken) return false
+
+    try {
+      const res = await this.lanRequest(serverUrl, 'POST', '/api/sync/progress', authToken, {
+        itemRef,
+        remove: true,
+      })
+      return res.ok
+    } catch {
+      return false
+    }
+  }
+
   public async toggleLibraryItem(
-    action: 'toggle_favourite' | 'toggle_watchlist',
+    action: 'toggle_favourite' | 'toggle_watchlist' | 'mark_watched',
     id: string
   ): Promise<boolean> {
     const { serverUrl, authToken } = this.state
@@ -374,14 +389,16 @@ class ClientSyncManager {
     if (!payload || typeof payload !== 'object') return
     const record = payload as { type?: string; data?: Record<string, unknown> }
     if (record.type === 'sync_progress' && record.data) {
-      const item = record.data as unknown as RemoteLibrarySummary['watchProgress'][number]
+      const raw = record.data as unknown as RemoteLibrarySummary['watchProgress'][number] & { remove?: boolean }
       if (this.state.library) {
         const list = [...this.state.library.watchProgress]
-        const idx = list.findIndex((p) => p.itemRef === item.itemRef)
-        if (idx >= 0) {
-          list[idx] = item
+        const idx = list.findIndex((p) => p.itemRef === raw.itemRef)
+        if (raw.remove) {
+          if (idx >= 0) list.splice(idx, 1)
+        } else if (idx >= 0) {
+          list[idx] = raw
         } else {
-          list.push(item)
+          list.push(raw)
         }
         this.state.library.watchProgress = list
         this.notify()
@@ -557,12 +574,13 @@ export function mergeRemoteLibraryIntoLocal<T extends LocalLibraryShape>(
     for (const entry of remote.watchProgress) {
       if (!entry || typeof entry.itemRef !== 'string' || !entry.itemRef) continue
       const existing = nextProgress[entry.itemRef]
-      const remoteAt = Number(entry.updatedAt) || 0
-      if (!existing || remoteAt >= existing.at) {
+      const rawAt = Number(entry.updatedAt) || 0
+      const remoteAtMs = rawAt >= 1e9 && rawAt < 1e12 ? rawAt * 1000 : rawAt
+      if (!existing || remoteAtMs >= existing.at) {
         nextProgress[entry.itemRef] = {
           pos: Math.max(0, Number(entry.position) || 0),
           dur: Math.max(0, Number(entry.duration) || 0),
-          at: remoteAt || Date.now(),
+          at: remoteAtMs || Date.now(),
         }
       }
     }
@@ -582,7 +600,8 @@ export function useClientSync(): ClientSyncState & {
   disconnect: () => void
   syncAll: () => Promise<void>
   syncWatchProgress: (itemRef: string, title: string, position: number, duration: number) => Promise<boolean>
-  toggleLibraryItem: (action: 'toggle_favourite' | 'toggle_watchlist', id: string) => Promise<boolean>
+  removeWatchProgress: (itemRef: string) => Promise<boolean>
+  toggleLibraryItem: (action: 'toggle_favourite' | 'toggle_watchlist' | 'mark_watched', id: string) => Promise<boolean>
   castMedia: (targetUrl: string, media: { title: string; streamUrl: string; subtitle?: string; position?: number; isLive?: boolean; artUrl?: string }) => Promise<boolean>
   resolveStreamUrl: (channelId: string) => Promise<string | null>
   openServerMediaStream: (mediaId: string) => Promise<{ streamUrl: string; sessionKey: string; proxyPath: string; format: 'hls' | 'direct' } | null>
@@ -603,6 +622,7 @@ export function useClientSync(): ClientSyncState & {
     disconnect: () => clientSyncManager.disconnect(),
     syncAll: () => clientSyncManager.syncAll(),
     syncWatchProgress: (ref, title, pos, dur) => clientSyncManager.syncWatchProgress(ref, title, pos, dur),
+    removeWatchProgress: (ref) => clientSyncManager.removeWatchProgress(ref),
     toggleLibraryItem: (action, id) => clientSyncManager.toggleLibraryItem(action, id),
     castMedia: (url, media) => clientSyncManager.castMedia(url, media),
     resolveStreamUrl: (channelId) => clientSyncManager.resolveStreamUrl(channelId),

@@ -873,22 +873,22 @@
   flex-direction: column;
   gap: 8px;
   padding: 20px;
-  background: linear-gradient(135deg, rgba(23, 27, 34, 0.7) 0%, rgba(17, 19, 24, 0.9) 100%);
+  background: var(--surface, #0e1015);
   border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
   border-radius: 12px;
-  color: var(--text, #fff);
+  color: var(--text, #f5f5f5);
 }
 
 .live-spec-card strong {
   font-size: 0.9375rem;
   font-weight: 600;
-  color: var(--text, #fff);
+  color: var(--text, #f5f5f5);
 }
 
 .live-spec-card .faint {
   font-size: 0.8125rem;
   line-height: 1.45;
-  color: var(--text-2, rgba(255, 255, 255, 0.65));
+  color: var(--text-2, #b4b7bd);
 }
 
 /* TV Guide Smart TV Transformation (media_1795055881697_a374fc69.jpg) */
@@ -1016,6 +1016,26 @@
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+}
+
+@media (max-width: 760px) {
+  .tvguide-compact-bar {
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 10px 12px;
+  }
+  .tvguide-compact-channel-info {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .tvguide-compact-prog-time,
+  .tvguide-compact-prog-bar-wrap {
+    display: none;
+  }
+  .tvguide-compact-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
 }
 
 .tvguide-top-stage.is-collapsed {
@@ -1166,7 +1186,7 @@
 .tvguide-now-title {
   font-size: 1.25rem;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--text, #f5f5f5);
   margin: 0 0 4px 0;
   white-space: nowrap;
   overflow: hidden;
@@ -1174,7 +1194,7 @@
 }
 .tvguide-now-channel-time {
   font-size: 0.8125rem;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--text-2, #b4b7bd);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1184,8 +1204,8 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--surface-2, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.06));
   border-radius: 8px;
   padding: 6px 10px;
   max-width: 190px;
@@ -1196,7 +1216,7 @@
   border-radius: 4px;
   object-fit: cover;
   flex-shrink: 0;
-  background: #171b22;
+  background: var(--surface-3, #171b22);
 }
 .tvguide-next-info {
   display: flex;
@@ -1206,21 +1226,21 @@
 .tvguide-next-kicker {
   font-size: 0.625rem;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-3, #858a93);
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
 .tvguide-next-name {
   font-size: 0.6875rem;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--text, #f5f5f5);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .tvguide-next-time {
   font-size: 0.625rem;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--text-2, #b4b7bd);
 }
 
 .tvguide-now-progress-wrap {
@@ -1228,7 +1248,7 @@
 }
 .tvguide-now-prog-bar {
   height: 3px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--surface-3, rgba(255, 255, 255, 0.1));
   border-radius: 2px;
   overflow: hidden;
   margin-bottom: 4px;
@@ -1241,13 +1261,13 @@
   display: flex;
   justify-content: space-between;
   font-size: 0.6875rem;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-3, #858a93);
 }
 
 .tvguide-now-synopsis {
   font-size: 0.8125rem;
   line-height: 1.4;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--text-2, #b4b7bd);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -1284,19 +1304,19 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--surface-2, rgba(255, 255, 255, 0.08));
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
   border-radius: 9999px;
   padding: 6px 12px;
   font-size: 0.75rem;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--text-2, #b4b7bd);
   cursor: pointer;
   transition: all 120ms ease;
 }
 .tvguide-action-pill-btn:hover {
-  background: rgba(255, 255, 255, 0.14);
-  color: #ffffff;
+  background: var(--surface-3, rgba(255, 255, 255, 0.14));
+  color: var(--text, #f5f5f5);
 }
 
 /* EPG Smart TV Toolbar */
@@ -1327,17 +1347,17 @@
   height: 32px;
   padding: 0 12px;
   border-radius: 6px;
-  background: #171b22;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.8);
+  background: var(--surface-2, #171b22);
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  color: var(--text-2, #b4b7bd);
   font-size: 0.8125rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 120ms ease;
 }
 .tvguide-tool-pill-btn:hover {
-  background: #21262d;
-  color: #ffffff;
+  background: var(--surface-3, #21262d);
+  color: var(--text, #f5f5f5);
 }
 .tvguide-tool-pill-btn.is-active {
   color: var(--accent, #e50914);
@@ -1373,8 +1393,8 @@
   padding: 10px 16px;
   margin-bottom: 12px;
   border-radius: var(--r-m, 8px);
-  background: rgba(35, 40, 52, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--surface-2, #171b22);
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
   font-size: 0.8125rem;
   color: var(--text-2, #b4b7bd);
 }

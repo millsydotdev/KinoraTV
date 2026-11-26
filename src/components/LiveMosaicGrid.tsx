@@ -1,8 +1,9 @@
-import { useState, useEffect, useContext } from 'react'
+import { useState, useEffect, useContext, useRef } from 'react'
 import { Icon } from './Icon'
 import { ChannelMark } from './ui'
 import type { Channel } from '../data/types'
 import { StoreContext } from '../state/store'
+import { useStreamPlayback, playbackText } from '../lib/playback'
 import './LiveMosaicGrid.css'
 
 export interface LiveMosaicGridProps {
@@ -31,6 +32,8 @@ export function LiveMosaicGrid({
   const [focusedIndex, setFocusedIndex] = useState<number>(0)
   const [pickingSlotIndex, setPickingSlotIndex] = useState<number | null>(null)
   const [channelSearch, setChannelSearch] = useState('')
+  const [nowTick, setNowTick] = useState(() => Date.now())
+  const activeVideoRef = useRef<HTMLVideoElement | null>(null)
 
   const [slots, setSlots] = useState<TileSlot[]>(() => {
     const list: TileSlot[] = [
@@ -41,6 +44,18 @@ export function LiveMosaicGrid({
     ]
     return list
   })
+
+  // Refresh live EPG progress bars every 30s while open
+  useEffect(() => {
+    if (!open) return
+    setNowTick(Date.now())
+    const id = window.setInterval(() => setNowTick(Date.now()), 30_000)
+    return () => window.clearInterval(id)
+  }, [open])
+
+  const activeChannel = open ? (slots[focusedIndex]?.channel ?? null) : null
+  const activeStreamUrl = activeChannel?.streamUrl ?? null
+  const playback = useStreamPlayback(activeStreamUrl, activeVideoRef)
 
   // Sync initial channel if provided and slots[0] is empty or different
   useEffect(() => {
@@ -124,10 +139,21 @@ export function LiveMosaicGrid({
         <div className="mosaic-header-left">
           <Icon name="grid" size={20} className="mosaic-title-icon" />
           <h2 className="mosaic-title">Multi-Screen Mosaic</h2>
-          <span className="mosaic-hint">Click a screen for audio focus (1-4) · Double click for full screen</span>
+          <span className="mosaic-hint">Click or press 1-4 to switch live focus · Double click for full screen</span>
         </div>
 
         <div className="mosaic-header-right">
+          {activeStreamUrl && (
+            <button
+              type="button"
+              className="mosaic-btn-mute"
+              onClick={() => playback.toggleMute()}
+              aria-label={playback.muted ? 'Unmute active channel' : 'Mute active channel'}
+            >
+              <Icon name={playback.muted ? 'mute' : 'volume'} size={15} />
+              <span>{playback.muted ? 'Unmute' : 'Mute'}</span>
+            </button>
+          )}
           <div className="mosaic-layout-switch">
             <button
               type="button"
@@ -176,7 +202,13 @@ export function LiveMosaicGrid({
         {slots.map((slot, index) => {
           const isFocused = focusedIndex === index
           const channel = slot.channel
-          const prog = channel && store ? store.programmeAt(channel, Date.now()) : null
+          const prog = channel && store ? store.programmeAt(channel, nowTick) : null
+          const progPct =
+            prog && prog.stop > prog.start
+              ? Math.max(0, Math.min(100, Math.round(((nowTick - prog.start) / (prog.stop - prog.start)) * 100)))
+              : 0
+          const minsLeft = prog ? Math.max(1, Math.round((prog.stop - nowTick) / 60_000)) : null
+          const showLiveVideo = isFocused && Boolean(channel?.streamUrl)
 
           return (
             <div
@@ -205,22 +237,65 @@ export function LiveMosaicGrid({
             >
               {channel ? (
                 <>
-                  <div className="mosaic-tile-video-placeholder">
-                    {/* Simulated live visual placeholder for preview grid */}
+                  <div className={`mosaic-tile-stage ${showLiveVideo ? 'is-live-video' : ''}`}>
                     <div className="mosaic-tile-badge-slot">#{index + 1}</div>
-                    <ChannelMark channel={channel} size={52} />
-                    <div className="mosaic-tile-center-play">
-                      <Icon name="play" size={28} />
-                    </div>
+                    {isFocused && (
+                      <div className="mosaic-tile-live-pill">
+                        {showLiveVideo
+                          ? playback.state.status === 'playing'
+                            ? 'LIVE'
+                            : playback.state.status === 'error' || playback.state.status === 'unsupported'
+                              ? 'OFFLINE'
+                              : 'TUNING'
+                          : 'FOCUS'}
+                      </div>
+                    )}
+                    {showLiveVideo ? (
+                      <>
+                        <video
+                          ref={activeVideoRef}
+                          className="mosaic-video-el"
+                          playsInline
+                          autoPlay
+                          muted={playback.muted}
+                        />
+                        {playback.state.status !== 'playing' && (
+                          <div className="mosaic-video-status-overlay">
+                            <ChannelMark channel={channel} size={44} />
+                            <span className="mosaic-video-status-text">{playbackText(playback.state)}</span>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="mosaic-standby-content">
+                        <ChannelMark channel={channel} size={52} />
+                        {!isFocused && (
+                          <div className="mosaic-tile-center-play" aria-hidden="true">
+                            <Icon name="play" size={24} />
+                          </div>
+                        )}
+                        {isFocused && !channel.streamUrl && (
+                          <span className="mosaic-demo-label">Demo Channel · Open Fullscreen</span>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="mosaic-tile-info">
                     <div className="mosaic-tile-channel-name">
                       <span className="mosaic-ch-num">{channel.number}</span>
                       <span className="mosaic-ch-title">{channel.name}</span>
+                      {minsLeft !== null && (
+                        <span className="mosaic-mins-left">{minsLeft}m left</span>
+                      )}
                     </div>
                     {prog && (
-                      <div className="mosaic-tile-prog-name">{prog.title}</div>
+                      <>
+                        <div className="mosaic-tile-prog-name">{prog.title}</div>
+                        <div className="mosaic-epg-track" aria-hidden="true">
+                          <div className="mosaic-epg-fill" style={{ width: `${progPct}%` }} />
+                        </div>
+                      </>
                     )}
                   </div>
 
@@ -230,12 +305,16 @@ export function LiveMosaicGrid({
                       className={`mosaic-audio-badge ${isFocused ? 'is-active' : ''}`}
                       onClick={(e) => {
                         e.stopPropagation()
-                        setFocusedIndex(index)
+                        if (isFocused && showLiveVideo) {
+                          playback.toggleMute()
+                        } else {
+                          setFocusedIndex(index)
+                        }
                       }}
-                      title={isFocused ? 'Audio active' : 'Click for audio'}
+                      title={isFocused ? (playback.muted ? 'Unmute audio' : 'Audio active') : 'Click to tune & focus'}
                     >
-                      <Icon name={isFocused ? 'volume' : 'mute'} size={14} />
-                      <span>{isFocused ? 'Audio Active' : 'Muted'}</span>
+                      <Icon name={isFocused && !playback.muted ? 'volume' : 'mute'} size={14} />
+                      <span>{isFocused ? (playback.muted ? 'Muted' : 'Live Audio') : 'Standby'}</span>
                     </button>
 
                     <div className="mosaic-tile-actions">

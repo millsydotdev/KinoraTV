@@ -78,7 +78,7 @@
   background: transparent;
   border: none;
   outline: none;
-  color: #ffffff;
+  color: var(--text);
   font-size: 1.05rem;
   font-family: inherit;
 }
@@ -86,7 +86,7 @@
 .quick-search-clear-btn {
   background: transparent;
   border: none;
-  color: var(--text-faint, #8c93a3);
+  color: var(--text-3);
   cursor: pointer;
   padding: 4px;
   border-radius: 4px;
@@ -97,7 +97,7 @@
 }
 
 .quick-search-clear-btn:hover {
-  color: #ffffff;
+  color: var(--text);
 }
 
 .quick-search-category-pills {
@@ -184,7 +184,7 @@
 }
 
 .quick-search-item-title {
-  color: #ffffff;
+  color: var(--text);
   font-size: 0.95rem;
   font-weight: 600;
   white-space: nowrap;
@@ -193,18 +193,41 @@
 }
 
 .quick-search-item-title mark {
-  background: rgba(229, 9, 20, 0.35);
-  color: #ffffff;
+  background: var(--accent-soft);
+  color: var(--text);
   padding: 0 2px;
   border-radius: 2px;
 }
 
 .quick-search-item-sub {
-  color: var(--text-faint, #8c93a3);
+  color: var(--text-3);
   font-size: 0.8rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.quick-search-item-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.quick-search-action-btn {
+  background: var(--accent);
+  color: var(--accent-ink, #ffffff);
+  border: none;
+  border-radius: 4px;
+  font-size: 0.725rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: background-color 120ms var(--ease);
+}
+
+.quick-search-action-btn:hover {
+  background: var(--accent-hover);
 }
 
 .quick-search-item-badge {
@@ -212,9 +235,15 @@
   font-weight: 600;
   padding: 3px 8px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text-muted, #a0a6b5);
+  background: var(--surface-3);
+  color: var(--text-2);
   flex-shrink: 0;
+}
+
+.quick-search-item-badge.is-live {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  border: 1px solid color-mix(in oklab, var(--accent) 35%, transparent);
 }
 
 .quick-search-empty {
