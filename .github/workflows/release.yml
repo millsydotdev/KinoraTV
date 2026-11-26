@@ -21,6 +21,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
   id-token: write
 
 concurrency:
@@ -250,6 +251,55 @@ jobs:
             release-dist/kinora-sbom.json
           if-no-files-found: error
           retention-days: 30
+
+      - name: Pre-publish gate - Verify CI and Docker/server checks passed for this exact main commit
+        if: steps.ver.outputs.should_publish == 'true' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHA="${{ github.sha }}"
+          echo "Verifying required CI and Docker/server runs for exact main commit $SHA..."
+
+          wait_for_workflow() {
+            local wf="$1"
+            local required="$2"
+            local max_attempts=60
+            local attempt=1
+            while [ "$attempt" -le "$max_attempts" ]; do
+              RUNS_JSON=$(gh api "repos/${{ github.repository }}/actions/workflows/${wf}/runs?head_sha=${SHA}&per_page=10")
+              TOTAL=$(echo "$RUNS_JSON" | jq '.workflow_runs | length')
+              SUCCESS=$(echo "$RUNS_JSON" | jq '[.workflow_runs[] | select(.status == "completed" and .conclusion == "success")] | length')
+              FAILED=$(echo "$RUNS_JSON" | jq '[.workflow_runs[] | select(.status == "completed" and (.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out"))] | length')
+              IN_PROG=$(echo "$RUNS_JSON" | jq '[.workflow_runs[] | select(.status != "completed")] | length')
+
+              if [ "${SUCCESS:-0}" -ge 1 ]; then
+                echo "Verified $wf succeeded for $SHA."
+                return 0
+              fi
+              if [ "${FAILED:-0}" -ge 1 ] && [ "${IN_PROG:-0}" -eq 0 ]; then
+                echo "::error::Refusing to publish: $wf failed for commit $SHA."
+                return 1
+              fi
+              if [ "${TOTAL:-0}" -eq 0 ]; then
+                if [ "$required" = "optional" ] && [ "$attempt" -ge 3 ]; then
+                  echo "No $wf run triggered for $SHA (not affected by path filters); continuing."
+                  return 0
+                fi
+                if [ "$attempt" -ge 6 ] && [ "$required" = "required" ]; then
+                  echo "::error::Refusing to publish: no $wf run found for main commit $SHA."
+                  return 1
+                fi
+              fi
+              echo "Waiting for $wf on $SHA (attempt ${attempt}/${max_attempts}, in_progress=${IN_PROG})..."
+              sleep 15
+              attempt=$((attempt + 1))
+            done
+            echo "::error::Timed out waiting for $wf on commit $SHA."
+            return 1
+          }
+
+          wait_for_workflow "ci.yml" "required"
+          wait_for_workflow "docker.yml" "optional"
 
       - name: Stage A - Upload signed release assets, checksums and SBOM (excluding latest.json)
         if: steps.ver.outputs.should_publish == 'true'
