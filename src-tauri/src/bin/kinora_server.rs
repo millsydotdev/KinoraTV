@@ -26,7 +26,7 @@ fn main() {
                 idx += 1;
             }
             "--help" | "-h" => {
-                println!("Kinora Media Server v0.6.0 (Headless)");
+                println!("Kinora Media Server v{} (Headless)", env!("CARGO_PKG_VERSION"));
                 println!("Usage: kinora-server [--port <PORT>] [--pin <PIN>] [--data-dir <DIR>]");
                 println!("Environment: KINORA_PORT, KINORA_PIN, KINORA_DATA_DIR");
                 return;

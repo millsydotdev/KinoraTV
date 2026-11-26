@@ -21,6 +21,10 @@ const MAX_REQUEST_SIZE: usize = 128 * 1024;
 const MAX_FAILED_ATTEMPTS: u32 = 5;
 const LOCKOUT_DURATION_SECS: u64 = 30;
 const MAX_AUDIT_LOG_ITEMS: usize = 100;
+const API_RATE_LIMIT_WINDOW_SECS: u64 = 10;
+const API_RATE_LIMIT_MAX_REQUESTS: u32 = 240;
+pub const SERVER_API_VERSION: &str = "1.0";
+pub const MIN_COMPATIBLE_CLIENT_VERSION: &str = "0.6.0";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -275,6 +279,8 @@ struct ServerInner {
     local_artwork_files: HashMap<String, PathBuf>,
     failed_attempts: u32,
     lockout_until: Option<Instant>,
+    started_at: Instant,
+    rate_limits: HashMap<String, (Instant, u32)>,
     playback_state: RemotePlaybackState,
     sse_senders: Vec<mpsc::UnboundedSender<String>>,
     shutdown_tx: Option<oneshot::Sender<()>>,
@@ -363,6 +369,8 @@ impl RemoteServerManager {
                 local_artwork_files: HashMap::new(),
                 failed_attempts: 0,
                 lockout_until: None,
+                started_at: Instant::now(),
+                rate_limits: HashMap::new(),
                 playback_state: RemotePlaybackState::default(),
                 sse_senders: Vec::new(),
                 shutdown_tx: None,
@@ -1027,6 +1035,34 @@ async fn handle_connection<F>(
         return;
     }
 
+    // Per-IP sliding-window rate limiting on control and metadata API endpoints
+    // (excludes /api/stream/h/ media segment transfers so video playback is never throttled).
+    if path.starts_with("/api/") && !path.starts_with("/api/stream/h/") {
+        let peer_ip = addr.ip().to_string();
+        let now_inst = Instant::now();
+        let mut state = manager.inner.lock().await;
+        let entry = state.rate_limits.entry(peer_ip).or_insert((now_inst, 0));
+        if now_inst.duration_since(entry.0) >= Duration::from_secs(API_RATE_LIMIT_WINDOW_SECS) {
+            *entry = (now_inst, 1);
+        } else {
+            entry.1 = entry.1.saturating_add(1);
+            if entry.1 > API_RATE_LIMIT_MAX_REQUESTS {
+                drop(state);
+                let body = r#"{"error":"Rate limit exceeded. Retry shortly."}"#;
+                let resp = format!(
+                    "HTTP/1.1 429 Too Many Requests\r\nContent-Type: application/json\r\nRetry-After: {API_RATE_LIMIT_WINDOW_SECS}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = stream.write_all(resp.as_bytes()).await;
+                return;
+            }
+        }
+        // Keep rate-limit map bounded
+        if state.rate_limits.len() > 256 {
+            state.rate_limits.retain(|_, (ts, _)| now_inst.duration_since(*ts) < Duration::from_secs(API_RATE_LIMIT_WINDOW_SECS * 2));
+        }
+    }
+
     // Router
     match (method, path) {
         ("GET", "/") => {
@@ -1072,12 +1108,19 @@ async fn handle_connection<F>(
         }
         ("GET", "/api/info") | ("GET", "/info") => {
             let state = manager.inner.lock().await;
+            let active_devices = state.trusted_devices.iter().filter(|d| !d.revoked).count();
             let info = serde_json::json!({
                 "appName": "Kinora",
-                "version": "0.6.0",
+                "version": env!("CARGO_PKG_VERSION"),
+                "apiVersion": SERVER_API_VERSION,
+                "minCompatibleClientVersion": MIN_COMPATIBLE_CLIENT_VERSION,
+                "health": "ok",
+                "uptimeSecs": state.started_at.elapsed().as_secs(),
                 "mode": state.mode,
                 "localIp": state.local_ip,
                 "port": state.port,
+                "trustedDevicesCount": active_devices,
+                "connectedClients": state.sse_senders.len(),
                 "serverUrl": format!("http://{}:{}", state.local_ip, state.port)
             });
             let json = info.to_string();
@@ -1905,27 +1948,37 @@ async fn handle_connection<F>(
                 let position = prog_obj.get("position").and_then(|v| v.as_f64()).unwrap_or(0.0);
                 let duration = prog_obj.get("duration").and_then(|v| v.as_f64()).unwrap_or(0.0);
                 let remove = prog_obj.get("remove").and_then(|v| v.as_bool()).unwrap_or(false);
+                let client_updated_at = prog_obj.get("updatedAt").and_then(|v| v.as_u64());
 
                 if !item_ref.is_empty() {
                     let now = now_unix_secs();
+                    let effective_ts = client_updated_at.unwrap_or(now).min(now.saturating_add(300));
                     let payload = serde_json::json!({
                         "itemRef": item_ref,
                         "title": title,
                         "position": position,
                         "duration": duration,
                         "remove": remove,
-                        "updatedAt": now
+                        "updatedAt": effective_ts
                     });
+                    let mut ignored_stale = false;
                     {
                         let mut state = manager.inner.lock().await;
                         if remove {
                             state.library.watch_progress.retain(|p| p.item_ref != item_ref);
                         } else if let Some(existing) = state.library.watch_progress.iter_mut().find(|p| p.item_ref == item_ref) {
-                            existing.position = position;
-                            existing.duration = duration;
-                            existing.updated_at = now;
-                            if !title.is_empty() {
-                                existing.title = title.clone();
+                            if let Some(incoming_ts) = client_updated_at {
+                                if incoming_ts < existing.updated_at {
+                                    ignored_stale = true;
+                                }
+                            }
+                            if !ignored_stale {
+                                existing.position = position;
+                                existing.duration = duration;
+                                existing.updated_at = effective_ts;
+                                if !title.is_empty() {
+                                    existing.title = title.clone();
+                                }
                             }
                         } else {
                             state.library.watch_progress.push(RemoteWatchProgressItem {
@@ -1933,33 +1986,45 @@ async fn handle_connection<F>(
                                 title: title.clone(),
                                 position,
                                 duration,
-                                updated_at: now,
+                                updated_at: effective_ts,
                             });
                         }
 
-                        if let Some(ref dir) = state.data_dir {
-                            save_library_sync_to_disk(dir, &state.library);
+                        if !ignored_stale {
+                            if let Some(ref dir) = state.data_dir {
+                                save_library_sync_to_disk(dir, &state.library);
+                            }
+
+                            record_audit_action(
+                                &mut state.audit_log,
+                                &caller.id,
+                                &caller.name,
+                                "ClientSync",
+                                if remove { "RemoveProgress" } else { "SyncProgress" },
+                                &format!("Updated progress for {item_ref}: {position}/{duration}s"),
+                                "success",
+                            );
+
+                            broadcast_sse_envelope(&mut state, "sync_progress", payload.clone());
                         }
-
-                        record_audit_action(
-                            &mut state.audit_log,
-                            &caller.id,
-                            &caller.name,
-                            "ClientSync",
-                            if remove { "RemoveProgress" } else { "SyncProgress" },
-                            &format!("Updated progress for {item_ref}: {position}/{duration}s"),
-                            "success",
-                        );
-
-                        broadcast_sse_envelope(&mut state, "sync_progress", payload.clone());
                     }
 
-                    on_command(RemoteCommandEvent {
-                        command: "sync_progress".to_string(),
-                        payload,
-                        client_id: Some(caller.id.clone()),
-                        timestamp: now,
-                    });
+                    if !ignored_stale {
+                        on_command(RemoteCommandEvent {
+                            command: "sync_progress".to_string(),
+                            payload,
+                            client_id: Some(caller.id.clone()),
+                            timestamp: effective_ts,
+                        });
+                    } else {
+                        let resp_body = r#"{"ok":true,"ignored":"stale"}"#;
+                        let resp = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{resp_body}",
+                            resp_body.len()
+                        );
+                        let _ = stream.write_all(resp.as_bytes()).await;
+                        return;
+                    }
                 }
 
                 let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{\"ok\":true}";

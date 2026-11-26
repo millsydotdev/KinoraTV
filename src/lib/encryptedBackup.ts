@@ -37,13 +37,70 @@ export interface KinoraBackupPayload {
   localLibraries?: BackupLocalLibrary[]
   mediaServers?: unknown
   podcastSubscriptions?: unknown
+  podcastProgress?: unknown
   opdsCatalogs?: unknown
+  readingProgress?: unknown
   stalkerPortals?: unknown
+  platformConfig?: {
+    mode?: string
+    serverUrl?: string | null
+  }
+  aiVoiceConfig?: {
+    microphoneEnabled?: boolean
+    spokenResponsesEnabled?: boolean
+    voiceLanguage?: string
+    providerKind?: string
+    providerEndpoint?: string
+    providerModel?: string
+  }
+  whatsNewSeen?: string[]
   checksum?: string
   deviceInfo?: {
     platform?: string
     version?: string
     arch?: string
+  }
+}
+
+export interface BackupHistoryEntry {
+  id: string
+  action: 'export' | 'restore'
+  timestamp: string
+  version: string
+  summary: string
+}
+
+export const BACKUP_HISTORY_STORAGE_KEY = 'kinora.backup_history.v1'
+
+export function loadBackupHistory(): BackupHistoryEntry[] {
+  if (typeof localStorage === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(BACKUP_HISTORY_STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? (parsed as BackupHistoryEntry[]) : []
+  } catch {
+    return []
+  }
+}
+
+export function recordBackupHistory(action: 'export' | 'restore', version: string, summary: string): void {
+  if (typeof localStorage === 'undefined') return
+  try {
+    const current = loadBackupHistory()
+    const next: BackupHistoryEntry[] = [
+      {
+        id: `bk-${Date.now()}`,
+        action,
+        timestamp: new Date().toISOString(),
+        version,
+        summary,
+      },
+      ...current,
+    ].slice(0, 12)
+    localStorage.setItem(BACKUP_HISTORY_STORAGE_KEY, JSON.stringify(next))
+  } catch {
+    // Storage quota safety
   }
 }
 
@@ -67,6 +124,7 @@ export interface BackupInspectionReport {
     mediaServers: number
     podcastSubscriptions: number
     opdsCatalogs: number
+    readingBooks?: number
     stalkerPortals: number
   }
   compatibility: {
@@ -331,7 +389,16 @@ export function inspectBackupPayload(
   const mediaServers = Array.isArray(payload.mediaServers) ? payload.mediaServers.length : 0
   const podcastSubscriptions = Array.isArray(payload.podcastSubscriptions) ? payload.podcastSubscriptions.length : 0
   const opdsCatalogs = Array.isArray(payload.opdsCatalogs) ? payload.opdsCatalogs.length : 0
+  const readingBooks =
+    payload.readingProgress && typeof payload.readingProgress === 'object'
+      ? Object.keys(payload.readingProgress as object).length
+      : 0
   const stalkerPortals = Array.isArray(payload.stalkerPortals) ? payload.stalkerPortals.length : 0
+
+  if (payload.platformConfig?.serverUrl) {
+    warnings.push('Kinora Server URL is included without device auth tokens: re-pair this device with the server PIN after restore.')
+    migrationNeeded = true
+  }
 
   if (mediaServers > 0) {
     warnings.push(`Media servers (${mediaServers}): Access tokens and credentials should be re-verified after restore.`)
@@ -375,6 +442,7 @@ export function inspectBackupPayload(
       mediaServers,
       podcastSubscriptions,
       opdsCatalogs,
+      readingBooks,
       stalkerPortals,
     },
     compatibility: {

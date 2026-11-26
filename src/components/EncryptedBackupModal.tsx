@@ -16,6 +16,7 @@ import {
   type RestoreSelectionOptions,
 } from '../lib/encryptedBackup'
 import {
+  APP_VERSION,
   checkLocalPathsExist,
   dvrSaveConfig,
   dvrSaveRule,
@@ -27,6 +28,9 @@ import {
   type SavedState,
   type SeriesRule,
 } from '../lib/native'
+import { recordBackupHistory } from '../lib/encryptedBackup'
+import { AI_VOICE_CONFIG_STORAGE_KEY, loadAiVoiceConfig } from '../lib/voiceAndAgent'
+import { loadAllBookProgress, readingProgressStorageKey } from '../lib/bookParser'
 import './EncryptedBackupModal.css'
 
 export interface EncryptedBackupModalProps {
@@ -119,13 +123,17 @@ export function EncryptedBackupModal({
 
     setBusy(true)
     try {
+      const profileId = store.activeProfile?.id ?? 'default'
       let bouquetData: unknown = null
       let xtreamFallbackData: unknown = null
       let smartCollectionsData: unknown = null
       let customArtworkData: unknown = null
 
       try {
-        const bqRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('kinora.bouquet_config.v1.default') : null
+        const bqRaw =
+          typeof localStorage !== 'undefined'
+            ? localStorage.getItem(`kinora.bouquet_config.v1.${profileId}`) ?? localStorage.getItem('kinora.bouquet_config.v1.default')
+            : null
         if (bqRaw) bouquetData = JSON.parse(bqRaw)
       } catch {}
 
@@ -135,7 +143,10 @@ export function EncryptedBackupModal({
       } catch {}
 
       try {
-        const scRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('kinora.smart_collections.v1.default') : null
+        const scRaw =
+          typeof localStorage !== 'undefined'
+            ? localStorage.getItem(`kinora.smart_collections.v1.${profileId}`) ?? localStorage.getItem('kinora.smart_collections.v1.default')
+            : null
         if (scRaw) smartCollectionsData = JSON.parse(scRaw)
       } catch {}
 
@@ -146,8 +157,11 @@ export function EncryptedBackupModal({
 
       let mediaServersData: unknown = null
       let podcastData: unknown = null
+      let podcastProgressData: unknown = null
       let opdsData: unknown = null
       let stalkerData: unknown = null
+      let platformConfigData: KinoraBackupPayload['platformConfig'] = undefined
+      let whatsNewSeenData: string[] | undefined = undefined
 
       try {
         const msRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('kinora.media_servers.v1') : null
@@ -157,6 +171,7 @@ export function EncryptedBackupModal({
             mediaServersData = parsed.map((s: Record<string, unknown>) => ({
               ...s,
               password: s.password ? '[PROTECTED]' : undefined,
+              authToken: s.authToken ? '[PROTECTED]' : undefined,
             }))
           } else {
             mediaServersData = parsed
@@ -170,6 +185,11 @@ export function EncryptedBackupModal({
       } catch {}
 
       try {
+        const podProgRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('kinora.podcast.progress.v1') : null
+        if (podProgRaw) podcastProgressData = JSON.parse(podProgRaw)
+      } catch {}
+
+      try {
         const opdsRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('kinora.opds.catalogs.v1') : null
         if (opdsRaw) opdsData = JSON.parse(opdsRaw)
       } catch {}
@@ -178,6 +198,27 @@ export function EncryptedBackupModal({
         const stkRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('kinora.stalker.portals.v1') : null
         if (stkRaw) stalkerData = JSON.parse(stkRaw)
       } catch {}
+
+      try {
+        if (typeof localStorage !== 'undefined') {
+          const modeVal = localStorage.getItem('kinora.platform.mode.v1')
+          const serverUrlVal = localStorage.getItem('kinora.platform.serverUrl.v1')
+          if (modeVal || serverUrlVal) {
+            platformConfigData = {
+              mode: modeVal ?? 'standalone',
+              serverUrl: serverUrlVal ?? null,
+            }
+          }
+          const wnRaw = localStorage.getItem('kinora.whats_new_seen.v1')
+          if (wnRaw) {
+            const parsedWn = JSON.parse(wnRaw)
+            if (Array.isArray(parsedWn)) whatsNewSeenData = parsedWn.filter((v): v is string => typeof v === 'string')
+          }
+        }
+      } catch {}
+
+      const readingProgressData = loadAllBookProgress(profileId)
+      const aiVoiceData = loadAiVoiceConfig()
 
       const [nativeLoaded, localLibs] = await Promise.all([
         loadSources().catch(() => null),
@@ -209,8 +250,13 @@ export function EncryptedBackupModal({
         })),
         mediaServers: mediaServersData,
         podcastSubscriptions: podcastData,
+        podcastProgress: podcastProgressData,
         opdsCatalogs: opdsData,
+        readingProgress: readingProgressData,
         stalkerPortals: stalkerData,
+        platformConfig: platformConfigData,
+        aiVoiceConfig: aiVoiceData,
+        whatsNewSeen: whatsNewSeenData,
         nativeSourcesState: nativeLoaded ?? undefined,
         guideMappings: store.mappings ?? [],
         savedSources: store.playlists.map((p) => ({
@@ -223,12 +269,13 @@ export function EncryptedBackupModal({
         })),
         deviceInfo: {
           platform: typeof navigator !== 'undefined' ? navigator.platform : 'Unknown',
-          version: '0.6.0',
+          version: APP_VERSION,
         },
       }
 
       const encryptedBuffer = await encryptBackupPayload(payload, passphrase)
       triggerBackupDownload(encryptedBuffer, 'kinora-vault')
+      recordBackupHistory('export', APP_VERSION, `Exported ${store.playlists.length} sources and ${store.library.favourites.length} favourites`)
       toast('Encrypted backup (.kinorabackup) downloaded successfully.')
       onClose()
     } catch (err: unknown) {
@@ -285,6 +332,39 @@ export function EncryptedBackupModal({
     setErrorMsg(null)
     setBusy(true)
 
+    const profileId = store.activeProfile?.id ?? 'default'
+    const progressKey = readingProgressStorageKey(profileId)
+    const managedKeys = [
+      'kinora.userPreferences.v1',
+      `kinora.userPreferences.v1.${profileId}`,
+      'kinora.bouquet_config.v1.default',
+      `kinora.bouquet_config.v1.${profileId}`,
+      'kinora.xtream_fallback.v1',
+      'kinora.smart_collections.v1.default',
+      `kinora.smart_collections.v1.${profileId}`,
+      'kinora.custom_artwork.v1',
+      'kinora.media_servers.v1',
+      'kinora.podcast.subscriptions.v1',
+      'kinora.podcast.progress.v1',
+      'kinora.opds.catalogs.v1',
+      progressKey,
+      'kinora.stalker.portals.v1',
+      'kinora.platform.mode.v1',
+      'kinora.platform.serverUrl.v1',
+      AI_VOICE_CONFIG_STORAGE_KEY,
+      'kinora.whats_new_seen.v1',
+    ]
+
+    // Transactional snapshot so any mid-restore failure rolls back cleanly without partial corruption
+    const prevPrefs = { ...store.prefs }
+    const prevLibrary = { ...store.library }
+    const prevStorage = new Map<string, string | null>()
+    if (typeof localStorage !== 'undefined') {
+      for (const k of managedKeys) {
+        prevStorage.set(k, localStorage.getItem(k))
+      }
+    }
+
     try {
       if (options.restorePrefs && decryptedPayload.prefs && typeof decryptedPayload.prefs === 'object') {
         store.importPrefs(decryptedPayload.prefs as unknown as Prefs)
@@ -295,9 +375,10 @@ export function EncryptedBackupModal({
       }
 
       if (options.restorePrefs && decryptedPayload.userPreferences && typeof localStorage !== 'undefined') {
-        try {
+        localStorage.setItem(`kinora.userPreferences.v1.${profileId}`, JSON.stringify(decryptedPayload.userPreferences))
+        if (profileId === 'default') {
           localStorage.setItem('kinora.userPreferences.v1', JSON.stringify(decryptedPayload.userPreferences))
-        } catch {}
+        }
       }
 
       if (options.restorePersonalMedia && decryptedPayload.personalMedia && store.mediaLibrary?.importPersonalLibrary) {
@@ -307,33 +388,23 @@ export function EncryptedBackupModal({
       }
 
       if (options.restoreBouquets && decryptedPayload.bouquets && typeof localStorage !== 'undefined') {
-        try {
-          localStorage.setItem('kinora.bouquet_config.v1.default', JSON.stringify(decryptedPayload.bouquets))
-        } catch {}
+        localStorage.setItem(`kinora.bouquet_config.v1.${profileId}`, JSON.stringify(decryptedPayload.bouquets))
       }
 
       if (decryptedPayload.xtreamFallback && typeof localStorage !== 'undefined') {
-        try {
-          localStorage.setItem('kinora.xtream_fallback.v1', JSON.stringify(decryptedPayload.xtreamFallback))
-        } catch {}
+        localStorage.setItem('kinora.xtream_fallback.v1', JSON.stringify(decryptedPayload.xtreamFallback))
       }
 
       if (options.restoreSmartCollections && decryptedPayload.smartCollections && typeof localStorage !== 'undefined') {
-        try {
-          localStorage.setItem('kinora.smart_collections.v1.default', JSON.stringify(decryptedPayload.smartCollections))
-        } catch {}
+        localStorage.setItem(`kinora.smart_collections.v1.${profileId}`, JSON.stringify(decryptedPayload.smartCollections))
       }
 
       if (options.restoreCustomArtwork !== false && decryptedPayload.customArtwork && typeof localStorage !== 'undefined') {
-        try {
-          localStorage.setItem('kinora.custom_artwork.v1', JSON.stringify(decryptedPayload.customArtwork))
-        } catch {}
+        localStorage.setItem('kinora.custom_artwork.v1', JSON.stringify(decryptedPayload.customArtwork))
       }
 
       if (options.restoreSources && decryptedPayload.nativeSourcesState && typeof decryptedPayload.nativeSourcesState === 'object') {
-        try {
-          await saveSources(decryptedPayload.nativeSourcesState as SavedState)
-        } catch {}
+        await saveSources(decryptedPayload.nativeSourcesState as SavedState)
       }
 
       if (options.restoreSources && Array.isArray(decryptedPayload.localLibraries) && decryptedPayload.localLibraries.length > 0) {
@@ -370,35 +441,66 @@ export function EncryptedBackupModal({
       }
 
       if (options.restoreMediaServers !== false && decryptedPayload.mediaServers && typeof localStorage !== 'undefined') {
-        try {
-          localStorage.setItem('kinora.media_servers.v1', JSON.stringify(decryptedPayload.mediaServers))
-        } catch {}
+        localStorage.setItem('kinora.media_servers.v1', JSON.stringify(decryptedPayload.mediaServers))
       }
 
-      if (options.restorePodcasts !== false && decryptedPayload.podcastSubscriptions && typeof localStorage !== 'undefined') {
-        try {
+      if (options.restorePodcasts !== false && typeof localStorage !== 'undefined') {
+        if (decryptedPayload.podcastSubscriptions) {
           localStorage.setItem('kinora.podcast.subscriptions.v1', JSON.stringify(decryptedPayload.podcastSubscriptions))
-        } catch {}
+        }
+        if (decryptedPayload.podcastProgress) {
+          localStorage.setItem('kinora.podcast.progress.v1', JSON.stringify(decryptedPayload.podcastProgress))
+        }
       }
 
-      if (options.restoreOpds !== false && decryptedPayload.opdsCatalogs && typeof localStorage !== 'undefined') {
-        try {
+      if (options.restoreOpds !== false && typeof localStorage !== 'undefined') {
+        if (decryptedPayload.opdsCatalogs) {
           localStorage.setItem('kinora.opds.catalogs.v1', JSON.stringify(decryptedPayload.opdsCatalogs))
-        } catch {}
+        }
+        if (decryptedPayload.readingProgress) {
+          localStorage.setItem(progressKey, JSON.stringify(decryptedPayload.readingProgress))
+        }
       }
 
       if (options.restoreStalker !== false && decryptedPayload.stalkerPortals && typeof localStorage !== 'undefined') {
-        try {
-          localStorage.setItem('kinora.stalker.portals.v1', JSON.stringify(decryptedPayload.stalkerPortals))
-        } catch {}
+        localStorage.setItem('kinora.stalker.portals.v1', JSON.stringify(decryptedPayload.stalkerPortals))
       }
 
+      if (options.restorePrefs && typeof localStorage !== 'undefined') {
+        if (decryptedPayload.platformConfig?.mode) {
+          localStorage.setItem('kinora.platform.mode.v1', decryptedPayload.platformConfig.mode)
+        }
+        if (decryptedPayload.platformConfig?.serverUrl) {
+          localStorage.setItem('kinora.platform.serverUrl.v1', decryptedPayload.platformConfig.serverUrl)
+        }
+        if (decryptedPayload.aiVoiceConfig) {
+          localStorage.setItem(AI_VOICE_CONFIG_STORAGE_KEY, JSON.stringify(decryptedPayload.aiVoiceConfig))
+        }
+        if (Array.isArray(decryptedPayload.whatsNewSeen)) {
+          localStorage.setItem('kinora.whats_new_seen.v1', JSON.stringify(decryptedPayload.whatsNewSeen))
+        }
+      }
+
+      recordBackupHistory('restore', decryptedPayload.deviceInfo?.version ?? APP_VERSION, `Restored backup from ${decryptedPayload.exportedAt.slice(0, 10)}`)
       toast('Encrypted backup restored and migrated successfully.')
       onRestoreSuccess?.()
       onClose()
     } catch (err: unknown) {
+      // Atomic rollback of all mutated state
+      try {
+        store.importPrefs(prevPrefs)
+        store.importLibrary(prevLibrary)
+        if (typeof localStorage !== 'undefined') {
+          for (const [k, v] of prevStorage.entries()) {
+            if (v === null) localStorage.removeItem(k)
+            else localStorage.setItem(k, v)
+          }
+        }
+      } catch {
+        // Best effort rollback
+      }
       const msg = err instanceof Error ? err.message : 'Restore failed.'
-      setErrorMsg(msg)
+      setErrorMsg(`Restore failed and previous settings were rolled back safely: ${msg}`)
     } finally {
       setBusy(false)
     }

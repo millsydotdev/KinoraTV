@@ -24,10 +24,91 @@ export type ClientSyncStatus = 'disconnected' | 'connecting' | 'connected' | 'sy
 export interface ServerSyncInfo {
   appName: string
   version: string
+  apiVersion?: string
+  minCompatibleClientVersion?: string
+  health?: string
+  uptimeSecs?: number
+  trustedDevicesCount?: number
+  connectedClients?: number
   mode: string
   localIp: string
   port: number
   serverUrl: string
+}
+
+export interface ServerCompatibilityReport {
+  status: 'compatible' | 'clientOutdated' | 'serverOutdated' | 'unknown'
+  clientVersion: string
+  serverVersion: string | null
+  message: string
+}
+
+function parseSemverTuple(v: string): [number, number, number] | null {
+  const clean = v.trim().replace(/^v/i, '').split('-')[0] ?? ''
+  const parts = clean.split('.').map((p) => Number.parseInt(p, 10))
+  if (parts.length < 2 || parts.some((n) => Number.isNaN(n))) return null
+  return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0]
+}
+
+function compareSemverTuples(a: [number, number, number], b: [number, number, number]): number {
+  if (a[0] !== b[0]) return a[0] - b[0]
+  if (a[1] !== b[1]) return a[1] - b[1]
+  return a[2] - b[2]
+}
+
+/**
+ * Evaluates compatibility between the local Kinora client version and a connected Kinora Server.
+ */
+export function evaluateServerCompatibility(
+  clientVersion: string,
+  serverInfo: ServerSyncInfo | null,
+): ServerCompatibilityReport {
+  if (!serverInfo?.version) {
+    return {
+      status: 'unknown',
+      clientVersion,
+      serverVersion: null,
+      message: 'Not connected to a Kinora Server.',
+    }
+  }
+  const c = parseSemverTuple(clientVersion)
+  const s = parseSemverTuple(serverInfo.version)
+  if (!c || !s) {
+    return {
+      status: 'unknown',
+      clientVersion,
+      serverVersion: serverInfo.version,
+      message: `Connected to Kinora Server v${serverInfo.version}.`,
+    }
+  }
+
+  if (serverInfo.minCompatibleClientVersion) {
+    const minC = parseSemverTuple(serverInfo.minCompatibleClientVersion)
+    if (minC && compareSemverTuples(c, minC) < 0) {
+      return {
+        status: 'clientOutdated',
+        clientVersion,
+        serverVersion: serverInfo.version,
+        message: `Kinora Server v${serverInfo.version} requires client v${serverInfo.minCompatibleClientVersion} or newer (installed: v${clientVersion}). Update this client.`,
+      }
+    }
+  }
+
+  if (c[0] > s[0] || (c[0] === s[0] && c[1] > s[1])) {
+    return {
+      status: 'serverOutdated',
+      clientVersion,
+      serverVersion: serverInfo.version,
+      message: `Connected Kinora Server v${serverInfo.version} is older than client v${clientVersion}. Update Kinora Server for full feature compatibility.`,
+    }
+  }
+
+  return {
+    status: 'compatible',
+    clientVersion,
+    serverVersion: serverInfo.version,
+    message: `Client v${clientVersion} is compatible with Kinora Server v${serverInfo.version}${serverInfo.apiVersion ? ` (API ${serverInfo.apiVersion})` : ''}.`,
+  }
 }
 
 export interface ClientSyncState {
@@ -322,6 +403,7 @@ class ClientSyncManager {
         title,
         position,
         duration,
+        updatedAt: Math.floor(Date.now() / 1000),
       })
       return res.ok
     } catch {
@@ -396,7 +478,12 @@ class ClientSyncManager {
         if (raw.remove) {
           if (idx >= 0) list.splice(idx, 1)
         } else if (idx >= 0) {
-          list[idx] = raw
+          const existing = list[idx]
+          const existingTs = existing?.updatedAt ?? 0
+          const incomingTs = raw.updatedAt ?? 0
+          if (incomingTs === 0 || incomingTs >= existingTs) {
+            list[idx] = raw
+          }
         } else {
           list.push(raw)
         }
