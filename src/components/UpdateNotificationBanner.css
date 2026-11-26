@@ -1,0 +1,112 @@
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0.75rem var(--gutter, 24px) 0;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  background: var(--surface-2, #15151c);
+  border: 1px solid color-mix(in oklab, var(--accent) 45%, var(--line));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  flex-wrap: wrap;
+}
+
+.update-banner-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  flex: 1;
+  min-width: 260px;
+}
+
+.update-banner-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--accent-soft, rgba(229, 9, 20, 0.16));
+  color: var(--accent-text, #ff6b73);
+  flex-shrink: 0;
+}
+
+.update-banner-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.update-banner-title-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.update-banner-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.update-banner-meta {
+  font-size: 0.75rem;
+  color: var(--text-2);
+}
+
+.update-banner-summary {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--text-2);
+}
+
+.update-banner-progress {
+  margin-top: 0.35rem;
+  width: 100%;
+  max-width: 320px;
+  height: 6px;
+  border-radius: 4px;
+  background: var(--surface-3, rgba(255, 255, 255, 0.1));
+  overflow: hidden;
+}
+
+.update-banner-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 150ms ease;
+}
+
+.update-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.update-banner-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.update-banner-dismiss:hover {
+  background: var(--state-hover);
+  color: var(--text);
+}
+
+.update-banner-dismiss:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

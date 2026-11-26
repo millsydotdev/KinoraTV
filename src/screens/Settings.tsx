@@ -6,17 +6,20 @@ import { Icon, type IconName } from '../components/Icon'
 import { useToast } from '../components/Toast'
 import { PageHeader } from '../components/PageHeader'
 import { Segmented, Switch } from '../components/ui'
-import { getAppInfo, checkForUpdates, installUpdate, inNativeShell, getArtworkCacheStats, clearArtworkCache, retryFailedArtwork, type ArtworkCacheStats, type AppInfo, APP_VERSION, APP_ENV, isStaging, isProduction, getVersionChannel, formatChannelName, getPlatformMode, setPlatformMode, startRemoteServer, discoverKinoraServers, type PlatformMode, saveSources } from '../lib/native'
+import { getAppInfo, checkForUpdates, installUpdate, restartApp, inNativeShell, getArtworkCacheStats, clearArtworkCache, retryFailedArtwork, type ArtworkCacheStats, type AppInfo, APP_VERSION, APP_ENV, isStaging, isProduction, getVersionChannel, formatChannelName, getPlatformMode, setPlatformMode, startRemoteServer, discoverKinoraServers, type PlatformMode, saveSources } from '../lib/native'
 import { useClientSync, evaluateServerCompatibility } from '../lib/clientSync'
 import {
   createInitialUpdaterState,
   describeUpdaterStage,
+  formatDownloadSize,
   recordUpdateHistory,
   reduceUpdateCheckResult,
+  saveAutoCheckEnabled,
   saveUpdateChannel,
   type UpdateChannel,
   type UpdaterState,
 } from '../lib/updaterState'
+import { useOptionalUpdater } from '../state/updater'
 import { useVoiceAndAgentControl } from '../lib/voiceAndAgent'
 import { CODEC_HELP, codecSupport } from '../lib/playback'
 import { ACCENTS, THEME_PRESETS, safeHex, type AccentName } from '../lib/theme'
@@ -3162,38 +3165,67 @@ function BuildRow() {
   )
 }
 
+function formatLastChecked(iso: string | null): string {
+  if (!iso) return 'Not checked yet'
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return 'Not checked yet'
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 function UpdatesRow({ onOpenWhatsNew }: { onOpenWhatsNew?: () => void }) {
-  const [upd, setUpd] = useState<UpdaterState>(() => createInitialUpdaterState(APP_VERSION))
+  const sharedUpdater = useOptionalUpdater()
+  const [localUpd, setLocalUpd] = useState<UpdaterState>(() => createInitialUpdaterState(APP_VERSION))
   const clientSync = useClientSync()
   const toast = useToast()
+
+  const upd = sharedUpdater ? sharedUpdater.state : localUpd
 
   const serverCompat = clientSync.serverInfo
     ? evaluateServerCompatibility(APP_VERSION, clientSync.serverInfo)
     : null
 
   const onChannelChange = (channel: UpdateChannel) => {
-    saveUpdateChannel(channel)
-    setUpd((prev) => ({ ...prev, channel }))
+    if (sharedUpdater) {
+      sharedUpdater.setChannel(channel)
+    } else {
+      saveUpdateChannel(channel)
+      setLocalUpd((prev) => ({ ...prev, channel }))
+    }
     toast(`Release channel set to ${channel === 'prerelease' ? 'Pre-release (opt-in)' : 'Stable'}`)
   }
 
+  const onAutoCheckChange = (enabled: boolean) => {
+    if (sharedUpdater) {
+      sharedUpdater.setAutoCheckEnabled(enabled)
+    } else {
+      saveAutoCheckEnabled(enabled)
+      setLocalUpd((prev) => ({ ...prev, autoCheckEnabled: enabled }))
+    }
+    toast(enabled ? 'Automatic background update checks enabled' : 'Automatic background update checks disabled')
+  }
+
   const onCheck = async () => {
-    setUpd((prev) => ({
+    if (sharedUpdater) {
+      await sharedUpdater.checkNow({ force: true, silent: false })
+      return
+    }
+    setLocalUpd((prev) => ({
       ...prev,
       stage: 'checking',
       error: null,
       message: 'Checking official Kinora release channel...',
     }))
     try {
-      const res = await checkForUpdates(null, upd.channel === 'prerelease')
-      setUpd((prev) => reduceUpdateCheckResult(prev, res))
+      const res = await checkForUpdates(null, upd.channel === 'prerelease', true)
+      setLocalUpd((prev) => reduceUpdateCheckResult(prev, res))
       if (res?.status === 'available') {
-        toast(`Update available: Kinora v${res.latestVersion}`, {
-          label: 'View release',
-          run: () => {
-            if (res.downloadUrl) window.open(res.downloadUrl, '_blank')
-          },
-        })
+        toast(`Update available: Kinora v${res.latestVersion}`)
       } else if (res?.status === 'upToDate') {
         toast(`Kinora is up to date (v${res.currentVersion})`)
       } else if (res?.status === 'unsupportedPlatform') {
@@ -3202,7 +3234,7 @@ function UpdatesRow({ onOpenWhatsNew }: { onOpenWhatsNew?: () => void }) {
         toast(`Update check failed: ${res.error}`)
       }
     } catch {
-      setUpd((prev) => ({
+      setLocalUpd((prev) => ({
         ...prev,
         stage: 'failed',
         error: 'Could not reach update service.',
@@ -3213,16 +3245,31 @@ function UpdatesRow({ onOpenWhatsNew }: { onOpenWhatsNew?: () => void }) {
   }
 
   const onInstall = async () => {
-    setUpd((prev) => ({
+    if (sharedUpdater) {
+      const res = await sharedUpdater.downloadAndInstall()
+      if (res.success) {
+        toast('Update verified and installed. Restart Kinora to apply.')
+      } else if (res.error) {
+        toast(`Update installation failed: ${res.error}`)
+      }
+      return
+    }
+    if (!upd.hasSignature) {
+      const err = 'Refused to install update: missing cryptographic Minisign signature.'
+      toast(err)
+      setLocalUpd((prev) => ({ ...prev, stage: 'failed', error: err, message: err }))
+      return
+    }
+    setLocalUpd((prev) => ({
       ...prev,
       stage: 'downloading',
       percent: 0,
       error: null,
-      message: 'Downloading update package...',
+      message: 'Downloading signed update package...',
     }))
     try {
       const res = await installUpdate((progress) => {
-        setUpd((prev) => {
+        setLocalUpd((prev) => {
           if (progress.stage === 'downloading') {
             return {
               ...prev,
@@ -3246,22 +3293,23 @@ function UpdatesRow({ onOpenWhatsNew }: { onOpenWhatsNew?: () => void }) {
             return { ...prev, stage: 'installing', message: 'Installing verified update package...' }
           }
           if (progress.stage === 'restartRequired' || progress.stage === 'done') {
-            return { ...prev, stage: 'restartRequired', message: 'Update installed. Restart Kinora to complete the upgrade.' }
+            return { ...prev, stage: 'restartRequired', signatureVerified: true, message: 'Update installed. Restart Kinora to complete the upgrade.' }
           }
           return prev
         })
-      })
+      }, upd.manifestUrl)
       if (res.success) {
         recordUpdateHistory({
           fromVersion: upd.currentVersion,
-          toVersion: upd.targetVersion ?? 'latest',
+          toVersion: res.installedVersion ?? upd.targetVersion ?? 'latest',
           stage: 'restartRequired',
           note: 'Verified and installed via Tauri updater; restart required.',
         })
         toast('Update verified and installed. Restart Kinora to apply.')
-        setUpd((prev) => ({
+        setLocalUpd((prev) => ({
           ...prev,
           stage: 'restartRequired',
+          signatureVerified: true,
           message: 'Update installed. Restart Kinora to apply the new version.',
         }))
       } else {
@@ -3273,29 +3321,59 @@ function UpdatesRow({ onOpenWhatsNew }: { onOpenWhatsNew?: () => void }) {
           note: err,
         })
         toast(`Update installation failed: ${err}`)
-        setUpd((prev) => ({ ...prev, stage: 'failed', error: err, message: `Update failed: ${err}` }))
+        setLocalUpd((prev) => ({
+          ...prev,
+          stage: 'failed',
+          error: err,
+          message: `Update failed (v${prev.currentVersion} remains intact): ${err}`,
+        }))
       }
     } catch (e) {
       const err = e instanceof Error ? e.message : 'Unknown error'
       toast(`Update installation failed: ${err}`)
-      setUpd((prev) => ({ ...prev, stage: 'failed', error: err, message: `Update failed: ${err}` }))
+      setLocalUpd((prev) => ({
+        ...prev,
+        stage: 'failed',
+        error: err,
+        message: `Update failed (v${prev.currentVersion} remains intact): ${err}`,
+      }))
     }
   }
 
-  const isBusy =
-    upd.stage === 'checking' ||
-    upd.stage === 'downloading' ||
-    upd.stage === 'verifying' ||
-    upd.stage === 'installing'
+  const onRestart = async () => {
+    if (sharedUpdater) {
+      await sharedUpdater.restartNow()
+    } else {
+      await restartApp()
+    }
+  }
+
+  const isBusy = sharedUpdater
+    ? sharedUpdater.isBusy
+    : upd.stage === 'checking' ||
+      upd.stage === 'downloading' ||
+      upd.stage === 'verifying' ||
+      upd.stage === 'installing'
+
+  const sizeLabel = formatDownloadSize(upd.assetSizeBytes ?? upd.totalBytes)
+  const releaseDateShort = upd.releaseDate ? upd.releaseDate.slice(0, 10) : null
+  const lastCheckedText = formatLastChecked(upd.lastSuccessfulCheckAt ?? upd.lastCheckedAt)
+  const availableDetails = [
+    upd.targetVersion ? `Version v${upd.targetVersion}` : null,
+    releaseDateShort ? `Released ${releaseDateShort}` : null,
+    sizeLabel ? `Size ${sizeLabel}` : null,
+    upd.hasSignature ? 'Minisign signature present' : 'Missing signature (install blocked)',
+    'Restart required after installation',
+  ].filter(Boolean).join(' | ')
 
   return (
     <>
       <Row
         title="Software updates"
-        hint={`${describeUpdaterStage(upd.stage)}: ${upd.message}${upd.stage === 'available' && upd.hasSignature ? ' (Minisign signature present)' : ''}`}
+        hint={`${describeUpdaterStage(upd.stage)}: ${upd.message} (Installed v${upd.currentVersion}. Last checked: ${lastCheckedText}.)`}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end' }}>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <select
               aria-label="Update release channel"
               className="select"
@@ -3307,7 +3385,16 @@ function UpdatesRow({ onOpenWhatsNew }: { onOpenWhatsNew?: () => void }) {
               <option value="stable">Stable Channel</option>
               <option value="prerelease">Pre-release Channel</option>
             </select>
-            {upd.stage === 'available' && inNativeShell() && (
+            {upd.stage === 'restartRequired' && inNativeShell() && (
+              <button
+                type="button"
+                className="btn btn-primary btn-small"
+                onClick={() => void onRestart()}
+              >
+                Restart Now to Apply
+              </button>
+            )}
+            {upd.stage === 'available' && inNativeShell() && upd.hasSignature && (
               <button
                 type="button"
                 className="btn btn-primary btn-small"
@@ -3328,7 +3415,7 @@ function UpdatesRow({ onOpenWhatsNew }: { onOpenWhatsNew?: () => void }) {
               disabled={isBusy}
               onClick={() => void onCheck()}
             >
-              {upd.stage === 'checking' ? 'Checking...' : 'Check for updates'}
+              {upd.stage === 'checking' ? 'Checking...' : upd.stage === 'failed' ? 'Retry check' : 'Check for updates'}
             </button>
             {onOpenWhatsNew && (
               <button
@@ -3340,12 +3427,50 @@ function UpdatesRow({ onOpenWhatsNew }: { onOpenWhatsNew?: () => void }) {
               </button>
             )}
           </div>
-          {upd.stage === 'downloading' && upd.percent !== null && (
-            <div style={{ width: '220px', height: '6px', borderRadius: '4px', background: 'var(--surface-3, rgba(255,255,255,0.1))', overflow: 'hidden' }} role="progressbar" aria-valuenow={upd.percent} aria-valuemin={0} aria-valuemax={100}>
+          {(upd.stage === 'downloading' || upd.stage === 'verifying' || upd.stage === 'installing') && upd.percent !== null && (
+            <div style={{ width: '240px', height: '6px', borderRadius: '4px', background: 'var(--surface-3, rgba(255,255,255,0.1))', overflow: 'hidden' }} role="progressbar" aria-valuenow={upd.percent} aria-valuemin={0} aria-valuemax={100}>
               <div style={{ width: `${upd.percent}%`, height: '100%', background: 'var(--accent)' }} />
             </div>
           )}
         </div>
+      </Row>
+      {upd.stage === 'available' && upd.targetVersion && (
+        <Row
+          title={`Update available: v${upd.targetVersion}`}
+          hint={availableDetails}
+        >
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            {onOpenWhatsNew && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-small"
+                onClick={onOpenWhatsNew}
+              >
+                View Release Notes
+              </button>
+            )}
+            {upd.releaseUrl && (
+              <a
+                href={upd.releaseUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-link"
+              >
+                GitHub Release
+              </a>
+            )}
+          </div>
+        </Row>
+      )}
+      <Row
+        title="Automatic update checks"
+        hint="Check the official Kinora GitHub release manifest at startup and periodically in the background. Updates are never installed without your confirmation."
+      >
+        <Switch
+          label="Automatic update checks"
+          checked={upd.autoCheckEnabled}
+          onChange={onAutoCheckChange}
+        />
       </Row>
       {serverCompat && (
         <Row title="Kinora Server compatibility" hint={serverCompat.message}>
@@ -3366,6 +3491,7 @@ function UpdatesRow({ onOpenWhatsNew }: { onOpenWhatsNew?: () => void }) {
 
 function About() {
   const store = useStore()
+  const sharedUpdater = useOptionalUpdater()
   const [whatsNewOpen, setWhatsNewOpen] = useState(false)
   const [appVersion, setAppVersion] = useState<string>(APP_VERSION)
 
@@ -3449,7 +3575,19 @@ function About() {
         </dl>
       </Group>
 
-      <WhatsNewModal open={whatsNewOpen} onClose={() => setWhatsNewOpen(false)} />
+      <WhatsNewModal
+        open={whatsNewOpen}
+        onClose={() => setWhatsNewOpen(false)}
+        onlineReleaseNotice={
+          sharedUpdater?.state.stage === 'available' && sharedUpdater.state.targetVersion
+            ? {
+                version: sharedUpdater.state.targetVersion,
+                releaseDate: sharedUpdater.state.releaseDate,
+                notes: sharedUpdater.state.releaseNotes,
+              }
+            : null
+        }
+      />
     </>
   )
 }

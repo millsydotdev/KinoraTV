@@ -10,7 +10,7 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Kinora 0.6.0 expands the standalone desktop app into a complete multi-device media platform with an optional headless Kinora Server, a touch-optimised mobile web remote, a virtualised Live TV guide, a CSP-safe EPUB/PDF canvas reader, guarded Jellyfin/Emby/Plex transport, full native transactional encrypted backups, opt-in prerelease update discovery, and a structured in-app release history.
 
 ### New Features
-- **Structured What's New, Offline Version History & Hardened Updater:** Review categorised release notes after every update, browse full version history offline, choose stable or opt-in prerelease update channels via GitHub Releases discovery, track verified download and installation stages, and check client/server version compatibility.
+- **Automatic Update Notifications, Signed Updater & Offline What's New:** Receive non-intrusive update notifications when a signed GitHub release is available, toggle background checks, switch between Stable and opt-in Pre-release channels, review release notes, verify Minisign signatures before installing, restart cleanly to apply, and browse full version history offline.
 
 ### UI Upgrades
 - **Cinematic Home Stage & Full-Width Layouts:** Redesigned Home with a widescreen featured spotlight, Quick Jump navigation ribbon, curated rails, and a collapsible companion hub, while expanding Live TV, Movies, Search, and Settings to use the full viewport width.
@@ -56,7 +56,7 @@ Kinora 0.6.0 expands the standalone desktop app into a complete multi-device med
 - **Cache Clearing, QR Encoding, Sidebar Contrast & Routing Fixes:** Fixed artwork cache clearing in Settings to invoke native storage cleanup, corrected QR code Reed-Solomon format bits for reliable phone scanning, elevated sidebar contrast, and unified BrowserRouter navigation across voice and remote commands.
 
 ### Developer and Infrastructure Improvements
-- **Staging Isolation, Headless Server Docker Target & Automated Changelog Pipeline:** Added isolated staging build configuration, a zero-GUI headless server Docker image, systemd service unit, automated changelog validation, and end-to-end multi-device verification scripts.
+- **Release Asset Verification, Staging Isolation & Headless Server Image:** Added automated release verification (latest.json schema, Minisign signatures, SHA256SUMS, SBOM, macOS arch asset collision prevention, and dry-run release workflow validation), isolated staging builds, a zero-GUI headless server Docker image, systemd unit, and changelog checks.
 
 ---
 

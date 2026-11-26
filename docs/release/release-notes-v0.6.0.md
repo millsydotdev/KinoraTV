@@ -7,8 +7,8 @@ Kinora 0.6.0 expands the standalone desktop app into a complete multi-device med
 
 ## New Features
 
-- **Structured What's New, Offline Version History & Hardened Updater:** Review categorised release notes after every update, browse full version history offline, choose stable or opt-in prerelease update channels via GitHub Releases discovery, track verified download and installation stages, and check client/server version compatibility.
-  Single version-controlled release database generates the in-app What's New view, CHANGELOG.md, and updater release notes consistently, with WebKitGTK layout fixes for the version bar.
+- **Automatic Update Notifications, Signed Updater & Offline What's New:** Receive non-intrusive update notifications when a signed GitHub release is available, toggle background checks, switch between Stable and opt-in Pre-release channels, review release notes, verify Minisign signatures before installing, restart cleanly to apply, and browse full version history offline.
+  Uses ETag-cached GitHub Releases discovery with rate-limit handling, blocks unsigned packages, keeps the installed version intact on failure, and generates What's New, CHANGELOG.md, and release notes from one version-controlled database.
 
 ## UI Upgrades
 
@@ -83,4 +83,4 @@ Kinora 0.6.0 expands the standalone desktop app into a complete multi-device med
 
 ## Engineering and Infrastructure Notes
 
-- **Staging Isolation, Headless Server Docker Target & Automated Changelog Pipeline:** Added isolated staging build configuration, a zero-GUI headless server Docker image, systemd service unit, automated changelog validation, and end-to-end multi-device verification scripts.
+- **Release Asset Verification, Staging Isolation & Headless Server Image:** Added automated release verification (latest.json schema, Minisign signatures, SHA256SUMS, SBOM, macOS arch asset collision prevention, and dry-run release workflow validation), isolated staging builds, a zero-GUI headless server Docker image, systemd unit, and changelog checks.

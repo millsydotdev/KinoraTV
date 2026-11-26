@@ -43,6 +43,7 @@ const LanguageScreen = lazy(() => import('./screens/LanguageScreen').then((m) =>
 const ArchivesScreen = lazy(() => import('./screens/ArchivesScreen').then((m) => ({ default: m.ArchivesScreen })))
 import { AudioPlayerBar } from './components/AudioPlayerBar'
 import { OfflineBanner } from './components/OfflineBanner'
+import { UpdateNotificationBanner } from './components/UpdateNotificationBanner'
 import { WhatsNewModal, hasSeenWhatsNew } from './components/WhatsNewModal'
 import { AmbientScreensaver } from './components/AmbientScreensaver'
 import { RemoteControlModal } from './components/RemoteControlModal'
@@ -62,9 +63,11 @@ import { APP_VERSION } from './lib/native'
 import { ProfileProvider } from './state/profiles'
 import { StoreProvider, useStore } from './state/store'
 import { LocalMediaProvider } from './state/localMedia'
+import { UpdaterProvider, useUpdater } from './state/updater'
 
 function Shell() {
   const store = useStore()
+  const updater = useUpdater()
   const { prefs, setPref, setupDone, mediaLibrary } = store
   const navigate = useNavigate()
   useEffect(() => {
@@ -556,6 +559,12 @@ function Shell() {
     }
   }, [navigate, prefs.viewMode, setPref])
 
+  useEffect(() => {
+    if (updater.state.stage === 'updated' && !hasSeenWhatsNew(APP_VERSION)) {
+      setWhatsNewOpen(true)
+    }
+  }, [updater.state.stage])
+
   return (
     <NavMenuContext.Provider value={openNav}>
       <a href="#main" className="skip-link">Skip to content</a>
@@ -563,6 +572,7 @@ function Shell() {
       <div className={inPlayer ? '' : `shell${mediaLibrary.currentAudio ? ' has-audio-bar' : ''}`}>
       {!inPlayer && <Sidebar open={navOpen} onClose={closeNav} />}
       <main id="main" className="main" tabIndex={-1}>
+        {!inPlayer && <UpdateNotificationBanner onViewReleaseNotes={() => setWhatsNewOpen(true)} />}
         <ErrorBoundary key={pathname}>
           <Suspense fallback={<div className="page-loader" aria-label="Loading page..."><span className="spinner" /></div>}>
             <Routes>
@@ -642,7 +652,19 @@ function Shell() {
       )}
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
-      <WhatsNewModal open={whatsNewOpen} onClose={() => setWhatsNewOpen(false)} />
+      <WhatsNewModal
+        open={whatsNewOpen}
+        onClose={() => setWhatsNewOpen(false)}
+        onlineReleaseNotice={
+          updater.state.stage === 'available' && updater.state.targetVersion
+            ? {
+                version: updater.state.targetVersion,
+                releaseDate: updater.state.releaseDate,
+                notes: updater.state.releaseNotes,
+              }
+            : null
+        }
+      />
       <RemoteControlModal open={remoteModalOpen} onClose={() => setRemoteModalOpen(false)} />
       <TraktSettingsModal open={traktModalOpen} onClose={() => setTraktModalOpen(false)} />
       <DownloadsModal
@@ -684,7 +706,9 @@ export function App() {
             <NotificationProvider>
               <BackgroundTaskProvider>
                 <ToastProvider>
-                  <Shell />
+                  <UpdaterProvider>
+                    <Shell />
+                  </UpdaterProvider>
                 </ToastProvider>
               </BackgroundTaskProvider>
             </NotificationProvider>
