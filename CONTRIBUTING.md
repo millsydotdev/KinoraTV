@@ -80,3 +80,5 @@ bash scripts/onboarding.sh
    - New features and bug fixes must include tests in Vitest (`src/screens/*.test.tsx`) or Cargo tests (`src-tauri/src/*.rs`).
 5. **Zero Em-Dash Enforcement:**
    - Confirm that no em-dash or en-dash characters are introduced in code or documentation.
+6. **Local Artefacts and Images:**
+   - Keep temporary reports, debug screenshots, and artwork experiments inside `.local/` (ignored by Git). Follow the permanent asset rules in `DEVELOPMENT.md` when adding production icons, UI artwork, or README screenshots.

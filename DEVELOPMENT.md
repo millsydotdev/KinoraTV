@@ -184,7 +184,40 @@ Compiled packages are located in `src-tauri/target/release/bundle/`.
 
 ---
 
-## 8. Common Troubleshooting
+## 8. Local Development Artefacts and Image Asset Policy
+
+Kinora separates permanent tracked assets from local development reports, screenshots, mockups, and artwork experiments.
+
+### Local-Only Workspace (Ignored by Git and Docker)
+
+Store local development artefacts under `.local/` so they remain available on disk without cluttering Git status or Docker build contexts:
+
+- `.local/reports/` - Local audit reports, investigation summaries, test logs, and one-off checklists.
+- `.local/screenshots/` - Temporary UI captures, visual inspection screenshots, and comparison images.
+- `.local/images/` - Experimental artwork, AI-generated concepts, logo mockups, and design references.
+- `.local/evidence/` - Packaged local evidence bundles and archives.
+- `.local/scripts/` - One-off local capture or inspection scripts.
+
+Top-level `/reports/`, `/screenshots/`, `/tmp/`, `/coverage/`, `/playwright-report/`, and `/test-results/` directories are also ignored, along with clearly temporary image naming patterns (`*.tmp.*`, `*.scratch.*`, `*.debug.*`, `screenshot-*.png`, `capture-*.png`, `debug-*.png`, `tmp-*.png`, `mockup-*.png`, `mockup-*.jpg`, `concept-*.png`, `concept-*.svg`, `*-comparison.png`, `*-fullpage.png`, `*-screenshot.png`).
+
+Blanket rules such as `*.png`, `*.jpg`, `*.webp`, or `*.svg` are intentionally avoided so legitimate application artwork is never hidden.
+
+### Adding a Permanent Image Asset to Kinora
+
+When an image is ready to become a permanent tracked asset rather than a local experiment:
+
+1. Place it in the appropriate permanent asset directory:
+   - Application icons and installer graphics: `src-tauri/icons/` and `src-tauri/app-icon.svg`
+   - Web and UI static assets (badges, favicon): `public/assets/` and `public/favicon.svg`
+   - Genre and runtime artwork referenced by the app: `public/art/genres/` or `public/art/`
+   - Deliberately maintained README and documentation screenshots: `docs/images/` and `docs/images/screenshots/`
+2. Use a clean, descriptive filename that does not match a temporary pattern (avoid prefixes such as `tmp-`, `debug-`, `screenshot-`, `concept-`, or `mockup-`).
+3. Reference the asset explicitly in application code, configuration, or documentation (and add/update tests such as `src/data/genre-art.test.ts` where applicable).
+4. Verify Git tracks the file cleanly with `git status` and `git check-ignore -v <path>` (confirming it is not ignored) before committing.
+
+---
+
+## 9. Common Troubleshooting
 
 ### Port 5199 or 18765 in Use
 If the port is already bound by an existing process:

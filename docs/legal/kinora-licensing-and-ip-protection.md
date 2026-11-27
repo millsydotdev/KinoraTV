@@ -32,7 +32,7 @@ These restrictions apply to the fullest extent permitted by applicable law.
 ## 5. Third-Party Software and Permissive Dependencies
 
 Kinora strictly distinguishes its original proprietary source code from third-party open-source dependencies:
-- Shipped runtime dependencies are documented in [public/THIRD-PARTY-NOTICES.txt](file:///mnt/storage/TVMovie/public/THIRD-PARTY-NOTICES.txt).
+- Shipped runtime dependencies are documented in [public/THIRD-PARTY-NOTICES.txt](../../public/THIRD-PARTY-NOTICES.txt).
 - All integrated third-party libraries use permissive open-source licences (MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, Unlicense).
 - No copyleft (GPL / AGPL) components are statically linked into the Tauri release binary.
 - System decoders and WebKit libraries are dynamically linked from the host operating system.
