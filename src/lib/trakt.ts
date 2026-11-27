@@ -5,7 +5,7 @@
 import { fetchTrakt } from './native'
 
 export const TRAKT_STORAGE_KEY = 'kinora.trakt_config.v1'
-export const DEFAULT_TRAKT_CLIENT_ID = 'd7178306df8bcf0e0477e48348d42d3beaaec074d28cf464bfd4aa387cf3d3b7'
+export const DEFAULT_TRAKT_CLIENT_ID = ''
 
 export interface TraktUser {
   username: string
@@ -149,6 +149,9 @@ export function clearTraktTokens(): TraktConfig {
  */
 export async function requestDeviceCode(clientIdOverride?: string): Promise<TraktDeviceCode> {
   const clientId = (clientIdOverride || loadTraktConfig().clientId).trim()
+  if (!clientId) {
+    throw new Error('A Trakt API Client ID is required. Create an application at trakt.tv/oauth/applications and enter your Client ID in Advanced settings.')
+  }
   const payload = JSON.stringify({ client_id: clientId })
 
   const raw = await fetchTrakt(

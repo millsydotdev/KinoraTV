@@ -355,17 +355,13 @@ describe('Unified Metadata Providers, Priority & Fallback', () => {
     expect(customWin.src).toBe('data:image/png;base64,USER_CUSTOM')
   })
 
-  it('verifies all Open Catalogue movies and series have genuine artwork URLs and IMDb IDs', () => {
-    expect(OPEN_MOVIES.length).toBeGreaterThanOrEqual(16)
+  it('verifies all Open Catalogue movies have genuine artwork URLs and IMDb IDs, and no copyrighted series are bundled', () => {
+    expect(OPEN_MOVIES.length).toBeGreaterThanOrEqual(8)
     for (const m of OPEN_MOVIES) {
       expect(m.imdbId).toMatch(/^tt\d+$/)
       expect(m.posterUrl || m.art).toMatch(/^https:\/\//)
     }
-    expect(OPEN_SERIES.length).toBeGreaterThanOrEqual(6)
-    for (const s of OPEN_SERIES) {
-      expect(s.imdbId).toMatch(/^tt\d+$/)
-      expect(s.posterUrl || s.art).toMatch(/^https:\/\//)
-    }
+    expect(OPEN_SERIES.length).toBe(0)
   })
 
   it('tracks playback yielding state in artworkEngine', () => {

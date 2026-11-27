@@ -21,7 +21,11 @@ to clone, view, and compile this source code exclusively for:
 2. STRICT PROHIBITIONS
 Without prior express written permission from the copyright holder, you may not:
   (a) Copy, reproduce, redistribute, republish, or sublicense the Software, in whole or in part;
-  (b) Create, distribute, or maintain public forks, clones, mirrors, or derivative products;
+  (b) Distribute, publish, host, or maintain derivative products, rebranded builds,
+      independent mirrors, or public fork releases (where hosted in a public GitHub
+      repository, GitHub's standard platform fork mechanism is acknowledged strictly for
+      submitting pull requests back to the canonical repository and grants no right to
+      publish, deploy, or distribute modified or independent versions);
   (c) Rebrand, rename, or redistribute the Software under a different name or identity;
   (d) Remove, alter, obscure, or fail to display copyright notices, creator attribution,
       or licence terms;
@@ -44,9 +48,11 @@ solicitor review.
 
 4. THIRD-PARTY COMPONENTS
 Third-party open-source libraries, fonts, and dependencies incorporated into or linked by this
-project are governed by their respective permissive licences as documented in
-`public/THIRD-PARTY-NOTICES.txt`. Nothing in this licence diminishes or expands rights granted
-under those third-party licences.
+project are governed by their respective licences as documented in `public/THIRD-PARTY-NOTICES.txt`
+(predominantly permissive MIT, Apache-2.0, BSD, ISC, Zlib, Unicode-3.0, and Unlicense packages,
+together with weak-copyleft MPL-2.0 Rust crates and SIL OFL-1.1 font packages). Nothing in this
+licence diminishes or expands rights granted under those third-party licences, and MPL-2.0
+covered files remain available in source form in accordance with Section 3.2 of the MPL-2.0.
 
 5. TERMINATION
 Any breach of this licence immediately and automatically terminates all rights granted herein.

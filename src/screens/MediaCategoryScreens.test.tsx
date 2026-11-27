@@ -63,11 +63,11 @@ describe('Media Category Screens', () => {
     expect(document.querySelectorAll('.res-card').length).toBeGreaterThanOrEqual(1)
   })
 
-  it('filters Radio stations by search query', async () => {
+  it('filters Radio directories by search query', async () => {
     await mount(<RadioScreen />)
-    await typeInto('.media-search-input', 'SomaFM')
+    await typeInto('.media-search-input', 'Radio Browser')
     const text = document.body.textContent ?? ''
-    expect(text).toContain('SomaFM')
+    expect(text).toContain('Radio Browser')
   })
 
   it('renders Music screen with subcategory rail', async () => {

@@ -553,44 +553,9 @@ impl ArtworkStore {
         }
 
         if let Some(id) = tvg_id {
-            if let Some(fallback_url) = tv_logo_url_for_id(id) {
-                let cache_key = format!("tvg:{id}");
-                if let Some(cached) = self.read_cached(&cache_key) {
-                    return Ok(Some(cached));
-                }
-                let fb_key = format!("fb:{fallback_url}");
-                if !self.is_failed(&fb_key) {
-                    let policy = Policy::logo();
-                    if let Ok(checked) = fetch::check_url(fallback_url, &policy) {
-                        let _permit = REQUESTS.acquire().await.map_err(|_| {
-                            IngestError::new(
-                                ErrorCode::Busy,
-                                "Logo loading is busy. Try again later.",
-                            )
-                        })?;
-                        if let Ok((raw_bytes, _)) = fetch::download_bytes(
-                            checked.as_str(),
-                            &policy,
-                            "image/png,image/jpeg,image/webp,image/gif",
-                        )
-                        .await
-                        {
-                            if !is_region_block(checked.host_str(), &raw_bytes) {
-                                if let Some(mime_type) = detect_raster_mime(&raw_bytes) {
-                                    self.write_cached(&cache_key, &raw_bytes);
-                                    if let Some(key) = channel_key {
-                                        self.write_cached(&format!("channel:{key}"), &raw_bytes);
-                                    }
-                                    return Ok(Some(Artwork {
-                                        mime_type,
-                                        bytes: raw_bytes,
-                                    }));
-                                }
-                            }
-                        }
-                    }
-                    self.mark_failed(fb_key);
-                }
+            let cache_key = format!("tvg:{id}");
+            if let Some(cached) = self.read_cached(&cache_key) {
+                return Ok(Some(cached));
             }
             if let Some(matched) = conservative_logo_for_id(id) {
                 return Ok(Some(matched));
@@ -713,134 +678,9 @@ impl ArtworkStore {
     }
 }
 
-/// Verified fallback channel logos from the public tv-logo project for public broadcasters
-/// whose playlists link to region-blocked hosts like i.imgur.com in the UK.
-pub fn tv_logo_url_for_id(id: &str) -> Option<&'static str> {
-    let lower = id.trim().to_ascii_lowercase();
-    let raw_stem = lower.split('@').next().unwrap_or(&lower);
-    let normalized = if let Some(dot) = raw_stem.rfind('.') {
-        let (left, right) = raw_stem.split_at(dot);
-        let clean_left: String = left.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
-        format!("{clean_left}{right}")
-    } else {
-        raw_stem.to_string()
-    };
-    let stem = normalized.as_str();
-    match stem {
-        "bbcone.uk" | "bbconehd.uk" | "bbconelondon.uk" | "bbconescotland.uk" | "bbconewales.uk" | "bbconeni.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/bbc-one-uk.png"),
-        "bbctwo.uk" | "bbctwohd.uk" | "bbctwowales.uk" | "bbctwoni.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/bbc-two-uk.png"),
-        "bbcthree.uk" | "bbcthreehd.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/bbc-three-uk.png"),
-        "bbcfour.uk" | "bbcfourhd.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/bbc-four-uk.png"),
-        "bbcfourcbeebies.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/bbc-four-cbeebies-uk.png"),
-        "bbcalba.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/bbc-alba-uk.png"),
-        "bbcscotland.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/bbc-scotland-uk.png"),
-        "bbcnews.uk" | "bbcnewshd.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/bbc-news-uk.png"),
-        "bbcparliament.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/bbc-parliament-uk.png"),
-        "cbeebies.uk" | "cbeebieshd.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/bbc-cbeebies-uk.png"),
-        "cbbc.uk" | "cbbchd.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/bbc-cbbc-uk.png"),
-        "itv1.uk" | "itv1hd.uk" | "itv.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/itv-1-uk.png"),
-        "itv2.uk" | "itv2hd.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/itv-2-uk.png"),
-        "itv3.uk" | "itv3hd.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/itv-3-uk.png"),
-        "itv4.uk" | "itv4hd.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/itv-4-uk.png"),
-        "itvbe.uk" | "itvquiz.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/itv-be-uk.png"),
-        "channel4.uk" | "channel4hd.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/channel-4-uk.png"),
-        "channel5.uk" | "channel5hd.uk" | "5.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/channel-5-uk.png"),
-        "film4.uk" | "film4hd.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/film-4-uk.png"),
-        "e4.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/e-4-uk.png"),
-        "e4extra.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/e-4-extra-uk.png"),
-        "more4.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/4-more-uk.png"),
-        "4seven.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/4-seven-uk.png"),
-        "5usa.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/5-usa-uk.png"),
-        "5action.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/5-action-uk.png"),
-        "5select.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/5-select-uk.png"),
-        "5star.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/5-star-uk.png"),
-        "dave.uk" | "u&dave.uk" | "udave.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/u-and-dave-uk.png"),
-        "yesterday.uk" | "u&yesterday.uk" | "uyesterday.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/u-and-yesterday-uk.png"),
-        "drama.uk" | "u&drama.uk" | "udrama.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/u-and-drama-uk.png"),
-        "ualibi.uk" | "alibi.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/u-and-alibi-uk.png"),
-        "uw.uk" | "w.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/u-and-w-uk.png"),
-        "skynews.uk" | "skynewshd.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/sky-news-uk.png"),
-        "gbnews.uk" | "gbnewshd.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/gb-news-uk.png"),
-        "talktv.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/talk-tv-uk.png"),
-        "blaze.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/blaze-uk.png"),
-        "s4c.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/s4c-uk.png"),
-        "stv.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/stv-uk.png"),
-        "really.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/really-uk.png"),
-        "quest.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/quest-uk.png"),
-        "questred.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/quest-red-uk.png"),
-        "dmax.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/dmax-uk.png"),
-        "hgtv.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/hgtv-uk.png"),
-        "foodnetwork.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/food-network-uk.png"),
-        "talkingpicturestv.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/talking-pictures-tv-uk.png"),
-        "togethertv.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/together-tv-uk.png"),
-        "truecrime.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/true-crime-uk.png"),
-        "pop.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/pop-uk.png"),
-        "tinypop.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/tiny-pop-uk.png"),
-        "qvc.uk" | "qvcuk.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/qvc-uk.png"),
-        "qvcbeauty.uk" | "qvcbeautyuk.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/qvc-beauty-uk.png"),
-        "qvcextra.uk" | "qvcextrauk.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/qvc-extra-uk.png"),
-        "qvcstyle.uk" | "qvcstyleuk.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/qvc-style-uk.png"),
-        "tjc.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/tjc-the-jewellery-channel-uk.png"),
-        "jewellerymaker.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/jewellery-maker-uk.png"),
-        "greatmovies.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/great-movies-uk.png"),
-        "greatromance.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/great-romance-uk.png"),
-        "now70s.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/now-70s-uk.png"),
-        "now80s.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/now-80s-uk.png"),
-        "nowrock.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/now-rock-uk.png"),
-        "thats70s.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/thats-70s-uk.png"),
-        "thatstv.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/thats-tv-uk.png"),
-        "tbnuk.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/tbn-uk.png"),
-        "islamchannel.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/islam-channel-uk.png"),
-        "loveworlduk.ng" | "loveworld.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/loveworld-uk.png"),
-        "horsecountrytv.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/horse-and-country-uk.png"),
-        "utsavplus.uk" | "starplus.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/utsav-plus-uk.png"),
-        "utsavbharat.uk" | "starbharat.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/utsav-bharat-uk.png"),
-        "tvwarehouse.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/tv-warehouse-uk.png"),
-        "faithuk.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/faith-uk-uk.png"),
-        "goodnewstv.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/good-news-tv-uk.png"),
-        "foodxp.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/food-xp-uk.png"),
-        "pbsamerica.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/pbs-america-uk.png"),
-        "nickelodeon.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/nickelodeon-uk.png"),
-        "nbcnewsnow.us" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/nbc-news-now-uk.png"),
-        "bbcpersian.uk" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/international/bbc-news-persian-int.png"),
-        "france24english.fr" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/international/france-24-english-int.png"),
-        "dwenglish.de" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/international/dw-english-int.png"),
-        "cgtn.cn" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/international/cgtn-int.png"),
-        "cgtndocumentary.cn" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/international/cgtn-documentary-int.png"),
-        "cbcnewsnetwork.ca" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/canada/cbc-news-network-ca.png"),
-        "abcnews.au" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/australia/abc-news-au.png"),
-        "wion.in" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/india/wion-in.png"),
-        "ddindia.in" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/india/dd-india-in.png"),
-        "indiatoday.in" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/india/india-today-in.png"),
-        "ndtv24x7.in" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/india/ndtv-24x7-in.png"),
-        "aastha.in" | "aasthauk.in" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/india/aastha-in.png"),
-        "sanskar.in" | "sanskaruk.in" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/india/sanskar-in.png"),
-        "starvijay.in" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/india/star-vijay-in.png"),
-        "rteone.ie" | "rte1.ie" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/ireland/rte-one-ie.png"),
-        "rte2.ie" | "rtetwo.ie" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/ireland/rte-2-ie.png"),
-        "rtejr.ie" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/ireland/rte-jr-ie.png"),
-        "rtenews.ie" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/ireland/rte-news-ie.png"),
-        "virginmediaone.ie" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/ireland/virgin-media-one-ie.png"),
-        "virginmediatwo.ie" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/ireland/virgin-media-two-ie.png"),
-        "virginmediathree.ie" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/ireland/virgin-media-three-ie.png"),
-        "tg4.ie" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/ireland/tg4-ie.png"),
-        "oireachtastv.ie" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/ireland/oireachtas-tv-ie.png"),
-        "euronewsenglish.fr" | "euronews.fr" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/international/euronews-int.png"),
-        "nhkworldjapan.jp" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/international/nhk-world-japan-int.png"),
-        "aljazeeraenglish.qa" | "aljazeera.qa" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/international/al-jazeera-english-int.png"),
-        "trtworld.tr" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/international/trt-world-int.png"),
-        "cbsnews.us" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-states/cbs-news-us.png"),
-        "nasa.us" | "nasatv.us" => Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-states/nasa-tv-us.png"),
-        c if c.starts_with("bbcredbutton") && c.ends_with(".uk") => {
-            Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/bbc-red-button-uk.png")
-        }
-        _ => None,
-    }
-}
-
 /// Conservative matching against known verified broadcasters by tvg-id.
-/// Returns None when no trusted bundled asset exists, allowing the designed
-/// initials badge fallback to render rather than an empty 1x1 placeholder.
+/// Kinora never hardcodes third-party broadcaster trademark/logo URLs; logos come
+/// only from a user's own playlist or local cache, falling back to typographic initials.
 pub fn conservative_logo_for_id(_id: &str) -> Option<Artwork> {
     None
 }
@@ -1016,36 +856,16 @@ mod tests {
     }
 
     #[test]
-    fn tv_logo_fallback_resolves_region_blocked_uk_broadcasters() {
-        assert_eq!(
-            tv_logo_url_for_id("5USA.uk@SD"),
-            Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/5-usa-uk.png")
-        );
-        assert_eq!(
-            tv_logo_url_for_id("E4.uk@SD"),
-            Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/e-4-uk.png")
-        );
-        assert_eq!(
-            tv_logo_url_for_id("More4.uk@SD"),
-            Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/4-more-uk.png")
-        );
-        assert_eq!(
-            tv_logo_url_for_id("BBCAlba.uk@SD"),
-            Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/bbc-alba-uk.png")
-        );
-        assert_eq!(
-            tv_logo_url_for_id("BBCRedButton12.uk@SD"),
-            Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/bbc-red-button-uk.png")
-        );
-        assert_eq!(
-            tv_logo_url_for_id("CBBC.uk@HD"),
-            Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/bbc-cbbc-uk.png")
-        );
-        assert_eq!(
-            tv_logo_url_for_id("Film4.uk@HD"),
-            Some("https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/film-4-uk.png")
-        );
-        assert_eq!(tv_logo_url_for_id("UnknownChannel.xx@SD"), None);
+    fn uncached_logo_with_no_valid_primary_url_returns_none_without_hardcoded_broadcaster_fallback() {
+        let tmp = TempDir::new("no-hardcoded-fallback");
+        let store = ArtworkStore::new(Some(tmp.0.clone()));
+        let result = tauri::async_runtime::block_on(store.get_or_fetch_logo(
+            Some("http://127.0.0.1:9/blocked.png"),
+            Some("pl-1~bbc1"),
+            Some("BBCOne.uk@HD"),
+        ))
+        .expect("should not error");
+        assert!(result.is_none());
     }
 
     #[test]

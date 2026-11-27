@@ -25,11 +25,16 @@ describe('trakt', () => {
     localStorage.removeItem(TRAKT_STORAGE_KEY)
   })
 
-  it('loads default configuration when empty', () => {
+  it('loads default configuration when empty with no hardcoded client ID', () => {
     const config = loadTraktConfig()
     expect(config.enabled).toBe(false)
     expect(config.autoScrobble).toBe(true)
+    expect(config.clientId).toBe('')
     expect(config.accessToken).toBe('')
+  })
+
+  it('rejects device authorization when no user-supplied client ID is configured', async () => {
+    await expect(requestDeviceCode()).rejects.toThrow(/Client ID is required/i)
   })
 
   it('saves configuration and clears tokens safely', () => {

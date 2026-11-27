@@ -123,11 +123,21 @@ describe('International Discovery & Expanded Master Catalogue', () => {
     expect(regions.has('Southeast Asia')).toBe(true)
     expect(regions.has('Oceania')).toBe(true)
 
-    // Check expanded scale threshold and category completeness
-    expect(DISCOVERED_RESOURCES.length).toBeGreaterThanOrEqual(500)
+    // Check pruned non-stream reference directory scale, regions, and compliance
+    expect(DISCOVERED_RESOURCES.length).toBeGreaterThanOrEqual(300)
 
     const categories = new Set(DISCOVERED_RESOURCES.map((r) => r.category))
-    expect(categories.size).toBe(20)
+    expect(categories.size).toBeGreaterThanOrEqual(19)
+
+    // Ensure no bundled live streams, M3U playlists, raw IPs, broadcaster logo packs, or API keys remain
+    for (const r of DISCOVERED_RESOURCES) {
+      expect(r.resourceType).not.toBe('stream')
+      expect(r.resourceType).not.toBe('m3u')
+      expect(r.url).not.toMatch(/^https?:\/\/\d+\.\d+\.\d+\.\d+/)
+      expect(r.url).not.toMatch(/amagi\.tv|delivery\.roku\.com|akamaized\.net|iptv-org\.github\.io\/iptv\//i)
+      expect(r.artworkUrl ?? '').not.toContain('tv-logo/tv-logos')
+      expect(`${r.url} ${r.playbackUrl ?? ''}`).not.toMatch(/(?:client_id|api_key|wskey|apikey)=/i)
+    }
 
     // Verify zero em-dashes and en-dashes across all resources
     const serialized = JSON.stringify(DISCOVERED_RESOURCES)
@@ -149,7 +159,7 @@ describe('International Discovery & Expanded Master Catalogue', () => {
     const formatSelect = document.querySelector<HTMLSelectElement>('select[aria-label="Filter by format"]')!
     expect(formatSelect).toBeDefined()
     await act(async () => {
-      formatSelect.value = 'm3u'
+      formatSelect.value = 'archive'
       formatSelect.dispatchEvent(new Event('change', { bubbles: true }))
     })
     await settle()
