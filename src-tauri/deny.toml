@@ -19,7 +19,7 @@ allow = [
 ]
 
 [licenses.private]
-# Kinora itself has no licence until the owner chooses one (docs/COMPLETION-TRACKER.md, finding 7).
+# Kinora uses a proprietary source-available licence (see LICENSE).
 ignore = true
 
 [bans]

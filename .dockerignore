@@ -14,14 +14,48 @@
 .gemini/**
 .melvu/
 .melvu/**
+skills/
+skills/**
 
-# Dependency and Build Artifacts
+# Local development workspace, reports, and visual captures
+.local/
+.local/**
+reports/
+reports/**
+screenshots/
+screenshots/**
+tmp/
+tmp/**
+anti-slop/
+anti-slop/**
+Kinora_COMPLETE_UI_Evidence/
+Kinora_COMPLETE_UI_Evidence/**
+docs/images/
+docs/images/**
+docs/ui/
+docs/ui/**
+docs/logo-concepts/
+docs/logo-concepts/**
+
+# Dependency, test, and build artifacts
 node_modules/
 node_modules/**
 **/node_modules/
 **/node_modules/**
 dist/
 dist/**
+coverage/
+coverage/**
+playwright-report/
+playwright-report/**
+test-results/
+test-results/**
+test-env/
+test-env/**
+local-fixtures/
+local-fixtures/**
+scripts/native-smoke/tmp/
+scripts/native-smoke/tmp/**
 target/
 target/**
 **/target/
@@ -46,7 +80,32 @@ src-tauri/target/**
 **/*.exe
 *.msi
 **/*.msi
-Kinora_COMPLETE_UI_Evidence.zip
+
+# Temporary image and screenshot patterns
+*.tmp.png
+*.tmp.jpg
+*.tmp.jpeg
+*.tmp.webp
+*.tmp.svg
+*.scratch.png
+*.scratch.jpg
+*.scratch.jpeg
+*.scratch.webp
+*.debug.png
+*.debug.jpg
+*.debug.jpeg
+*.debug.webp
+*-comparison.png
+*-fullpage.png
+*-screenshot.png
+screenshot-*.png
+capture-*.png
+debug-*.png
+tmp-*.png
+mockup-*.png
+mockup-*.jpg
+concept-*.png
+concept-*.svg
 
 # Credentials and Environment
 .env
@@ -56,11 +115,16 @@ Kinora_COMPLETE_UI_Evidence.zip
 *.key
 *.sig
 
-# Logs and Caches
+# Operating system metadata, logs, and caches
+.DS_Store
+Thumbs.db
+Desktop.ini
 *.log
 **/*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .eslintcache
+.vite/
+.cache/
 tsconfig.tsbuildinfo

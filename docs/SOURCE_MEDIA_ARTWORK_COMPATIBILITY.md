@@ -27,7 +27,7 @@ The goal of the Source, Media, and Artwork Compatibility Architecture is to make
 
 ## 2. Source Capability Matrix
 
-The source capability matrix is defined in [src/data/sourceCompatibility.ts](file:///mnt/storage/TVMovie/src/data/sourceCompatibility.ts). It catalogs 10 distinct source types supported or planned in Kinora:
+The source capability matrix is defined in [src/data/sourceCompatibility.ts](../src/data/sourceCompatibility.ts). It catalogs 10 distinct source types supported or planned in Kinora:
 
 | Source Type | Protocol / Format | Supported Media Kinds | Artwork Roles Provided | Auth Methods |
 | :--- | :--- | :--- | :--- | :--- |
@@ -51,7 +51,7 @@ Every source integration exports helper functions:
 
 ## 3. Canonical Media and Asset Model
 
-The canonical media and asset model is defined in [src/data/mediaAssetModel.ts](file:///mnt/storage/TVMovie/src/data/mediaAssetModel.ts).
+The canonical media and asset model is defined in [src/data/mediaAssetModel.ts](../src/data/mediaAssetModel.ts).
 
 ### 3.1 Media Kinds
 Kinora establishes 20 distinct `MediaKind` definitions:
@@ -82,7 +82,7 @@ Kinora enforces 33 distinct `ArtworkRole` definitions across 5 orientations:
 
 ## 4. Artwork Suitability and Validation Engine
 
-The suitability engine is implemented in [src/lib/artworkSuitability.ts](file:///mnt/storage/TVMovie/src/lib/artworkSuitability.ts). Every candidate image passes through `validateArtworkSuitability(url, role, options)`:
+The suitability engine is implemented in [src/lib/artworkSuitability.ts](../src/lib/artworkSuitability.ts). Every candidate image passes through `validateArtworkSuitability(url, role, options)`:
 
 ```ts
 export function validateArtworkSuitability(
@@ -113,7 +113,7 @@ Broadcasters often reuse generic stock cards for unbilled programmes or daily ca
 
 ## 5. Universal 6-Tier Resolution Pipeline
 
-The resolution pipeline is implemented in [src/lib/artworkResolver.ts](file:///mnt/storage/TVMovie/src/lib/artworkResolver.ts) and consumed via [src/lib/useArtwork.ts](file:///mnt/storage/TVMovie/src/lib/useArtwork.ts):
+The resolution pipeline is implemented in [src/lib/artworkResolver.ts](../src/lib/artworkResolver.ts) and consumed via [src/lib/useArtwork.ts](../src/lib/useArtwork.ts):
 
 ```
 +-------------------------------------------------------------+
@@ -150,7 +150,7 @@ The resolution pipeline is implemented in [src/lib/artworkResolver.ts](file:///m
 ```
 
 ### 5.1 Matching and Disambiguation Rules
-In [src/data/artworkEngine.ts](file:///mnt/storage/TVMovie/src/data/artworkEngine.ts):
+In [src/data/artworkEngine.ts](../src/data/artworkEngine.ts):
 - **Word-Boundary Matching:** Substring matching requires explicit word boundaries (`[\s:\-,._()\[\]]`). Prefix searches ensure that `"NCIS"` matches `"NCIS: Hawaii"` or `"NCIS: Origins"` but strictly rejects `"NCISverse: The First 1,000"`.
 - **Release Year Disambiguation:** Subtitles or spin-offs lacking confirmed release years are scored as ambiguous (`confidence: 0.45`) and will not overwrite authentic source broadcast stills.
 - **Channel Scoping for EPG Artwork:** EPG programme icons are registered with their parent `channelId`. When querying `findArtwork`, cross-channel leaking of generic titles (e.g. "News" or "Special") is blocked.
@@ -199,7 +199,7 @@ In [src/data/artworkEngine.ts](file:///mnt/storage/TVMovie/src/data/artworkEngin
 
 ## 7. Diagnostics and User Customization Controls
 
-To empower users and provide full operational visibility, Kinora integrates `ArtworkDiagnosticsModal` ([src/components/ArtworkDiagnosticsModal.tsx](file:///mnt/storage/TVMovie/src/components/ArtworkDiagnosticsModal.tsx)):
+To empower users and provide full operational visibility, Kinora integrates `ArtworkDiagnosticsModal` ([src/components/ArtworkDiagnosticsModal.tsx](../src/components/ArtworkDiagnosticsModal.tsx)):
 1. **Context Menu Access:** Right-clicking any card (or pressing Options / Menu on a remote) provides **Artwork Details and Diagnostics...**.
 2. **Provenance Metadata Display:**
    - Media Title, Canonical ID, and Classified `MediaKind`.
